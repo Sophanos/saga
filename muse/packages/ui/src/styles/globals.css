@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --mythos-bg-primary: 0 0% 4%;
+    --mythos-bg-secondary: 240 20% 7%;
+    --mythos-bg-tertiary: 240 14% 11%;
+  }
+
+  * {
+    @apply border-mythos-text-muted/20;
+  }
+
+  body {
+    @apply bg-mythos-bg-primary text-mythos-text-primary;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  /* Entity highlight colors */
+  .entity-character {
+    @apply text-mythos-entity-character underline decoration-mythos-entity-character/50 decoration-dotted underline-offset-2;
+  }
+
+  .entity-location {
+    @apply text-mythos-entity-location underline decoration-mythos-entity-location/50 decoration-dotted underline-offset-2;
+  }
+
+  .entity-item {
+    @apply text-mythos-entity-item underline decoration-mythos-entity-item/50 decoration-dotted underline-offset-2;
+  }
+
+  .entity-magic {
+    @apply text-mythos-entity-magic underline decoration-mythos-entity-magic/50 decoration-dotted underline-offset-2;
+  }
+
+  /* ASCII HUD styling */
+  .ascii-hud {
+    @apply font-mono text-sm bg-mythos-bg-primary border border-mythos-accent-cyan/50 rounded-md shadow-lg;
+    @apply shadow-mythos-accent-cyan/20;
+  }
+
+  /* Linter issue styling */
+  .linter-error {
+    @apply bg-mythos-accent-red/10 border-l-2 border-mythos-accent-red;
+  }
+
+  .linter-warning {
+    @apply bg-mythos-accent-amber/10 border-l-2 border-mythos-accent-amber;
+  }
+
+  .linter-info {
+    @apply bg-mythos-accent-cyan/10 border-l-2 border-mythos-accent-cyan;
+  }
+
+  /* Tension graph colors */
+  .tension-low {
+    @apply fill-mythos-accent-green stroke-mythos-accent-green;
+  }
+
+  .tension-medium {
+    @apply fill-mythos-accent-amber stroke-mythos-accent-amber;
+  }
+
+  .tension-high {
+    @apply fill-mythos-accent-red stroke-mythos-accent-red;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-mythos-bg-secondary;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-mythos-text-muted/30 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-mythos-text-muted/50;
+}
+
+/* Selection */
+::selection {
+  @apply bg-mythos-accent-cyan/30 text-mythos-text-primary;
+}

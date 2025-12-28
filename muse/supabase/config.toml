@@ -1,0 +1,78 @@
+# Supabase Configuration for Mythos IDE
+# See: https://supabase.com/docs/guides/cli/config
+
+[project]
+id = "mythos-ide"
+name = "Mythos IDE"
+
+[api]
+enabled = true
+port = 54321
+# Extra schemas to expose in the API
+schemas = ["public"]
+# Extra schemas for max rows
+# max_rows = 1000
+
+[db]
+# Port to use for the local database URL
+port = 54322
+# The database major version to use
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+# Email testing service
+enabled = true
+port = 54324
+smtp_port = 54325
+pop3_port = 54326
+
+[storage]
+enabled = true
+
+[auth]
+enabled = true
+# The base URL of the site
+site_url = "http://localhost:5173"
+# Allowed redirect URLs after authentication
+additional_redirect_urls = ["http://localhost:5173"]
+# How long tokens are valid for (in seconds)
+jwt_expiry = 3600
+# Allow/disallow new user signups
+enable_signup = true
+# Email confirmation settings
+enable_confirmations = false
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = false
+enable_confirmations = false
+
+# Edge Functions Configuration
+[functions]
+# Enable edge functions
+enabled = true
+
+# Function-specific settings
+[functions.ai-lint]
+# Consistency linter endpoint
+verify_jwt = false  # Allow public access with BYOK
+
+[functions.ai-coach]
+# Writing coach endpoint
+verify_jwt = false  # Allow public access with BYOK
+
+[functions.ai-detect]
+# Entity detection endpoint (placeholder)
+verify_jwt = false  # Allow public access with BYOK
+
+# Analytics (optional)
+[analytics]
+enabled = false
+
+# Realtime (for future live collaboration)
+[realtime]
+enabled = true

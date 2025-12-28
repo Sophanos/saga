@@ -1,0 +1,151 @@
+@import "@mythos/ui/styles.css";
+
+/* Editor-specific styles */
+.tiptap {
+  @apply min-h-full outline-none;
+}
+
+.tiptap p {
+  @apply my-4 first:mt-0;
+}
+
+.tiptap h1 {
+  @apply text-3xl font-bold my-6;
+}
+
+.tiptap h2 {
+  @apply text-2xl font-semibold my-5;
+}
+
+.tiptap h3 {
+  @apply text-xl font-semibold my-4;
+}
+
+.tiptap blockquote {
+  @apply border-l-4 border-mythos-accent-purple pl-4 italic my-4;
+}
+
+/* Placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  @apply text-mythos-text-muted pointer-events-none float-left h-0;
+  content: attr(data-placeholder);
+}
+
+/* Scene block styling */
+.scene-block {
+  @apply relative my-6 pl-4 border-l-2 border-mythos-accent-purple/30;
+}
+
+.scene-block::before {
+  @apply absolute -left-3 top-0 text-xs text-mythos-text-muted font-mono bg-mythos-bg-secondary px-1;
+  content: "SCENE";
+}
+
+/* Entity highlights */
+.entity-character {
+  @apply relative cursor-pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(34, 211, 238, 0.5);
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.entity-character:hover {
+  @apply bg-mythos-entity-character/10;
+}
+
+.entity-location {
+  @apply relative cursor-pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(34, 197, 94, 0.5);
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.entity-location:hover {
+  @apply bg-mythos-entity-location/10;
+}
+
+.entity-item {
+  @apply relative cursor-pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(245, 158, 11, 0.5);
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.entity-item:hover {
+  @apply bg-mythos-entity-item/10;
+}
+
+.entity-magic_system {
+  @apply relative cursor-pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(168, 85, 247, 0.5);
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.entity-magic_system:hover {
+  @apply bg-mythos-entity-magic/10;
+}
+
+/* Resize handle styling */
+[data-panel-group-direction="horizontal"] > [data-panel-resize-handle-id] {
+  @apply w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-cyan/30 transition-colors;
+}
+
+/* Custom focus styles */
+:focus-visible {
+  @apply outline-none ring-1 ring-mythos-accent-cyan ring-offset-1 ring-offset-mythos-bg-primary;
+}
+
+/* =============================================================================
+   Linter Squiggle Decorations
+   Visual underlines for linter issues in the editor
+   ============================================================================= */
+
+.linter-squiggle {
+  position: relative;
+  cursor: help;
+}
+
+.linter-squiggle::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 3px;
+  background-repeat: repeat-x;
+  background-size: 4px 3px;
+  pointer-events: none;
+}
+
+/* Error squiggle - red wavy line */
+.linter-error::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3' viewBox='0 0 4 3'%3E%3Cpath fill='none' stroke='%23ef4444' stroke-width='1' d='M0 2 Q1 0 2 2 T4 2'/%3E%3C/svg%3E");
+}
+
+/* Warning squiggle - amber wavy line */
+.linter-warning::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3' viewBox='0 0 4 3'%3E%3Cpath fill='none' stroke='%23f59e0b' stroke-width='1' d='M0 2 Q1 0 2 2 T4 2'/%3E%3C/svg%3E");
+}
+
+/* Info squiggle - cyan wavy line */
+.linter-info::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3' viewBox='0 0 4 3'%3E%3Cpath fill='none' stroke='%2322d3ee' stroke-width='1' d='M0 2 Q1 0 2 2 T4 2'/%3E%3C/svg%3E");
+}
+
+/* Hover state - subtle background highlight */
+.linter-error:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.linter-warning:hover {
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+.linter-info:hover {
+  background-color: rgba(34, 211, 238, 0.1);
+}
