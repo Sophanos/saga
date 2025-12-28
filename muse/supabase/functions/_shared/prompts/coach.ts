@@ -1,8 +1,8 @@
 /**
  * Writing Coach Prompts
  *
- * System prompts and templates for the AI writing coach that analyzes
- * prose in real-time and provides actionable feedback on craft elements.
+ * System prompts for the AI writing coach.
+ * Used by the ai-coach edge function.
  */
 
 export const WRITING_COACH_SYSTEM = `You are a writing coach AI for Mythos IDE, a creative writing tool for fiction authors.
@@ -105,35 +105,3 @@ Return ONLY valid JSON matching this exact structure:
 - **ALWAYS include the fix object for issues where a rewrite is possible**
 - The "oldText" MUST exactly match the "text" field for the fix to work
 - Provide creative, genre-appropriate rewrites that maintain the author's voice`;
-
-export const GENRE_COACH_CONTEXTS: Record<string, string> = {
-  fantasy: `Genre context: Fantasy fiction. Poetic language and world-building are valued.
-Flowery prose is acceptable. Magic descriptions benefit from sensory richness.`,
-
-  scifi: `Genre context: Science Fiction. Technical precision matters.
-Show futuristic elements through character interaction, not info-dumps.`,
-
-  thriller: `Genre context: Thriller. Pace is paramount. Short, punchy sentences in action.
-Minimize adverbs. Every sentence should create tension or release it strategically.`,
-
-  romance: `Genre context: Romance. Emotional interiority is expected and valued.
-Internal feelings are important but show them through physical reactions too.`,
-
-  literary: `Genre context: Literary Fiction. Prose style is paramount.
-Voice and metaphor matter. Some "telling" can be intentional stylistic choice.`,
-
-  horror: `Genre context: Horror. Atmosphere through sensory detail.
-Dread builds through what's NOT shown. Restraint creates fear.`,
-
-  mystery: `Genre context: Mystery. Plant clues subtly.
-Red herrings through action, not author manipulation. Fair-play rules.`,
-
-  historical: `Genre context: Historical Fiction. Period-appropriate voice.
-Show era through details, avoid anachronistic language patterns.`,
-};
-
-export const QUICK_COACH_PROMPT = `Analyze this prose excerpt for writing quality. Focus on tension, sensory details, and show-don't-tell. Provide fix objects for all issues.`;
-
-export const SENSORY_FOCUS_PROMPT = `Analyze the sensory detail distribution in this prose. Which senses are underrepresented? Suggest specific additions.`;
-
-export const TENSION_FOCUS_PROMPT = `Analyze the tension curve of this passage paragraph by paragraph. Identify any flat spots or abrupt shifts.`;

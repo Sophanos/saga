@@ -155,6 +155,22 @@ export function Console() {
     editor.commands.focus();
   }, [editor, linterIssues]);
 
+  // Callback to jump to a related location (uses line and text search)
+  const handleJumpToRelatedLocation = useCallback((line: number, text: string) => {
+    if (!editor || editor.isDestroyed) {
+      console.warn("[Console] No editor instance available");
+      return;
+    }
+
+    const content = editor.getText({ blockSeparator: "\n" });
+    // Use text search with line hint to find current position
+    const position = findTextPosition(content, text, line);
+
+    // Jump to position and focus editor
+    jumpToPosition(editor, position);
+    editor.commands.focus();
+  }, [editor]);
+
   // Callback to apply a fix for an issue (uses undo-aware path)
   const handleApplyFix = useCallback((issueId: string, _suggestion: string) => {
     // Use the hook's applyFix which handles undo stack
@@ -253,6 +269,7 @@ export function Console() {
       ) : activeTab === "linter" ? (
         <LinterView
           onJumpToPosition={handleJumpToPosition}
+          onJumpToRelatedLocation={handleJumpToRelatedLocation}
           onApplyFix={handleApplyFix}
           onUndo={handleUndo}
           onRedo={handleRedo}

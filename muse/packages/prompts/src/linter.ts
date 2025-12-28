@@ -38,13 +38,19 @@ Return issues in this JSON structure:
     {
       "type": "character" | "world" | "plot" | "timeline",
       "severity": "info" | "warning" | "error",
-      "location": { "line": number, "text": "quoted text" },
+      "location": { "line": number, "text": "exact quoted text from document" },
       "message": "description of the issue",
-      "suggestion": "how to fix it",
+      "suggestion": "EXACT replacement text (not instructions - this text will directly replace location.text)",
       "relatedLocations": [{ "line": number, "text": "related text" }]
     }
   ]
 }
+
+## IMPORTANT - Suggestion Format:
+The "suggestion" field must contain the EXACT TEXT that will replace "location.text".
+- DO NOT write instructions like "Change X to Y"
+- DO write the actual corrected text that should appear in the document
+- Example: If location.text is "blue eyes" and should be "brown eyes", suggestion should be "brown eyes" (not "Change 'blue eyes' to 'brown eyes'")
 
 Be thorough but avoid false positives. Consider intentional unreliable narration or character development.`;
 
