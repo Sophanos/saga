@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { immer } from "zustand/middleware/immer";
 import { persist } from "zustand/middleware";
 import type { SceneMetrics } from "@mythos/core";
@@ -42,15 +43,26 @@ export interface ImprovementInsight {
 }
 
 /**
+ * Sync status for database synchronization
+ */
+export type SyncStatus = "idle" | "syncing" | "synced" | "error";
+
+/**
  * History store state interface
  */
 interface HistoryState {
+  /** Current project ID for scoped history */
+  currentProjectId: string | null;
   /** Historical analysis records */
   analysisHistory: AnalysisRecord[];
   /** Current session statistics */
   sessionStats: SessionStats;
   /** Maximum number of records to keep */
   maxHistorySize: number;
+  /** Database sync status */
+  syncStatus: SyncStatus;
+  /** Sync error message if any */
+  syncError: string | null;
 }
 
 /**
@@ -59,6 +71,12 @@ interface HistoryState {
 interface HistoryActions {
   /** Add a new analysis record to history */
   addAnalysisRecord: (record: Omit<AnalysisRecord, "timestamp">) => void;
+  /** Hydrate history with records from database */
+  hydrateHistory: (projectId: string, records: AnalysisRecord[]) => void;
+  /** Set sync status */
+  setSyncStatus: (status: SyncStatus, error?: string | null) => void;
+  /** Set current project ID */
+  setCurrentProjectId: (projectId: string | null) => void;
   /** Increment a session stat */
   incrementStat: (stat: keyof Omit<SessionStats, "sessionStartedAt">) => void;
   /** Add to words written count */
@@ -104,9 +122,12 @@ export const useHistoryStore = create<HistoryStore>()(
   persist(
     immer((set, get) => ({
       // Initial state
+      currentProjectId: null,
       analysisHistory: [],
       sessionStats: { ...defaultSessionStats },
       maxHistorySize: 100,
+      syncStatus: "idle" as SyncStatus,
+      syncError: null,
 
       // Actions
       addAnalysisRecord: (record) =>
@@ -124,6 +145,41 @@ export const useHistoryStore = create<HistoryStore>()(
 
           // Increment analysis runs
           state.sessionStats.analysisRuns++;
+        }),
+
+      hydrateHistory: (projectId, records) =>
+        set((state) => {
+          state.currentProjectId = projectId;
+          // Merge with existing records, avoiding duplicates by sceneId+timestamp
+          const existingKeys = new Set(
+            state.analysisHistory.map((r) => `${r.sceneId}-${r.timestamp.getTime()}`)
+          );
+          const newRecords = records.filter(
+            (r) => !existingKeys.has(`${r.sceneId}-${r.timestamp.getTime()}`)
+          );
+          // Prepend DB records (they're older) and sort by timestamp
+          state.analysisHistory = [...newRecords, ...state.analysisHistory]
+            .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+            .slice(-state.maxHistorySize);
+          state.syncStatus = "synced";
+          state.syncError = null;
+        }),
+
+      setSyncStatus: (status, error = null) =>
+        set((state) => {
+          state.syncStatus = status;
+          state.syncError = error ?? null;
+        }),
+
+      setCurrentProjectId: (projectId) =>
+        set((state) => {
+          // Clear history when switching projects
+          if (projectId !== state.currentProjectId) {
+            state.analysisHistory = [];
+            state.syncStatus = "idle";
+            state.syncError = null;
+          }
+          state.currentProjectId = projectId;
         }),
 
       incrementStat: (stat) =>
@@ -357,13 +413,13 @@ export const useHistoryStore = create<HistoryStore>()(
  * Get analysis history
  */
 export const useAnalysisHistory = () =>
-  useHistoryStore((state) => state.analysisHistory);
+  useHistoryStore(useShallow((state) => state.analysisHistory));
 
 /**
  * Get session stats
  */
 export const useSessionStats = () =>
-  useHistoryStore((state) => state.sessionStats);
+  useHistoryStore(useShallow((state) => state.sessionStats));
 
 /**
  * Get history record count
@@ -375,18 +431,22 @@ export const useHistoryCount = () =>
  * Get the most recent analysis record
  */
 export const useLatestAnalysis = () =>
-  useHistoryStore((state) =>
-    state.analysisHistory.length > 0
-      ? state.analysisHistory[state.analysisHistory.length - 1]
-      : null
+  useHistoryStore(
+    useShallow((state) =>
+      state.analysisHistory.length > 0
+        ? state.analysisHistory[state.analysisHistory.length - 1]
+        : null
+    )
   );
 
 /**
  * Get analysis records for a specific scene
  */
 export const useSceneHistory = (sceneId: string) =>
-  useHistoryStore((state) =>
-    state.analysisHistory.filter((r) => r.sceneId === sceneId)
+  useHistoryStore(
+    useShallow((state) =>
+      state.analysisHistory.filter((r) => r.sceneId === sceneId)
+    )
   );
 
 /**
@@ -394,3 +454,33 @@ export const useSceneHistory = (sceneId: string) =>
  */
 export const useIsSessionActive = () =>
   useHistoryStore((state) => state.sessionStats.sessionStartedAt !== null);
+
+/**
+ * Get sync status
+ */
+export const useSyncStatus = () =>
+  useHistoryStore((state) => state.syncStatus);
+
+/**
+ * Get sync error
+ */
+export const useSyncError = () =>
+  useHistoryStore((state) => state.syncError);
+
+/**
+ * Get current project ID
+ */
+export const useCurrentProjectId = () =>
+  useHistoryStore((state) => state.currentProjectId);
+
+/**
+ * Check if history is syncing
+ */
+export const useIsSyncing = () =>
+  useHistoryStore((state) => state.syncStatus === "syncing");
+
+/**
+ * Check if history is synced
+ */
+export const useIsSynced = () =>
+  useHistoryStore((state) => state.syncStatus === "synced");

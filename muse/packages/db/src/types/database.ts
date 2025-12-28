@@ -45,6 +45,12 @@ export interface Database {
           created_at: string;
           updated_at: string;
           user_id: string | null;
+          // Migration 005: Flexible kinds support
+          template_id: string | null;
+          entity_kinds_config: Record<string, unknown>[] | null;
+          relationship_kinds_config: Record<string, unknown>[] | null;
+          document_kinds_config: Record<string, unknown>[] | null;
+          ui_config: Record<string, unknown> | null;
         };
         Insert: {
           id?: string;
@@ -56,6 +62,12 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
           user_id?: string | null;
+          // Migration 005: Flexible kinds support
+          template_id?: string | null;
+          entity_kinds_config?: Record<string, unknown>[] | null;
+          relationship_kinds_config?: Record<string, unknown>[] | null;
+          document_kinds_config?: Record<string, unknown>[] | null;
+          ui_config?: Record<string, unknown> | null;
         };
         Update: {
           id?: string;
@@ -67,6 +79,12 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
           user_id?: string | null;
+          // Migration 005: Flexible kinds support
+          template_id?: string | null;
+          entity_kinds_config?: Record<string, unknown>[] | null;
+          relationship_kinds_config?: Record<string, unknown>[] | null;
+          document_kinds_config?: Record<string, unknown>[] | null;
+          ui_config?: Record<string, unknown> | null;
         };
       };
       entities: {
@@ -81,6 +99,12 @@ export interface Database {
           embedding: number[] | null;
           created_at: string;
           updated_at: string;
+          // Migration 005: Extensibility columns
+          custom_fields: Record<string, unknown> | null;
+          category: string | null;
+          visible_in: string | null;
+          icon: string | null;
+          color: string | null;
         };
         Insert: {
           id?: string;
@@ -93,6 +117,12 @@ export interface Database {
           embedding?: number[] | null;
           created_at?: string;
           updated_at?: string;
+          // Migration 005: Extensibility columns
+          custom_fields?: Record<string, unknown> | null;
+          category?: string | null;
+          visible_in?: string | null;
+          icon?: string | null;
+          color?: string | null;
         };
         Update: {
           id?: string;
@@ -105,6 +135,12 @@ export interface Database {
           embedding?: number[] | null;
           created_at?: string;
           updated_at?: string;
+          // Migration 005: Extensibility columns
+          custom_fields?: Record<string, unknown> | null;
+          category?: string | null;
+          visible_in?: string | null;
+          icon?: string | null;
+          color?: string | null;
         };
       };
       relationships: {
@@ -118,6 +154,9 @@ export interface Database {
           strength: number | null;
           metadata: Record<string, unknown> | null;
           created_at: string;
+          // Migration 005: Extensibility columns
+          category: string | null;
+          visible_in: string | null;
         };
         Insert: {
           id?: string;
@@ -129,6 +168,9 @@ export interface Database {
           strength?: number | null;
           metadata?: Record<string, unknown> | null;
           created_at?: string;
+          // Migration 005: Extensibility columns
+          category?: string | null;
+          visible_in?: string | null;
         };
         Update: {
           id?: string;
@@ -140,6 +182,9 @@ export interface Database {
           strength?: number | null;
           metadata?: Record<string, unknown> | null;
           created_at?: string;
+          // Migration 005: Extensibility columns
+          category?: string | null;
+          visible_in?: string | null;
         };
       };
       documents: {
@@ -156,6 +201,9 @@ export interface Database {
           word_count: number;
           created_at: string;
           updated_at: string;
+          // Migration 005: Extensibility columns
+          visible_in: string | null;
+          icon: string | null;
         };
         Insert: {
           id?: string;
@@ -170,6 +218,9 @@ export interface Database {
           word_count?: number;
           created_at?: string;
           updated_at?: string;
+          // Migration 005: Extensibility columns
+          visible_in?: string | null;
+          icon?: string | null;
         };
         Update: {
           id?: string;
@@ -184,6 +235,9 @@ export interface Database {
           word_count?: number;
           created_at?: string;
           updated_at?: string;
+          // Migration 005: Extensibility columns
+          visible_in?: string | null;
+          icon?: string | null;
         };
       };
       mentions: {
@@ -318,6 +372,148 @@ export interface Database {
           created_at?: string;
         };
       };
+      // Migration 005: Kind registry tables
+      entity_kind_registry: {
+        Row: {
+          id: string;
+          project_id: string;
+          kind: string;
+          label: string;
+          label_plural: string;
+          category: string;
+          color: string;
+          icon: string;
+          description: string | null;
+          fields: Record<string, unknown>[] | null;
+          has_visual_description: boolean;
+          has_status: boolean;
+          visible_in: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          kind: string;
+          label: string;
+          label_plural: string;
+          category: string;
+          color: string;
+          icon: string;
+          description?: string | null;
+          fields?: Record<string, unknown>[] | null;
+          has_visual_description?: boolean;
+          has_status?: boolean;
+          visible_in?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          kind?: string;
+          label?: string;
+          label_plural?: string;
+          category?: string;
+          color?: string;
+          icon?: string;
+          description?: string | null;
+          fields?: Record<string, unknown>[] | null;
+          has_visual_description?: boolean;
+          has_status?: boolean;
+          visible_in?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      relationship_kind_registry: {
+        Row: {
+          id: string;
+          project_id: string;
+          kind: string;
+          label: string;
+          inverse_label: string | null;
+          category: string;
+          color: string;
+          default_bidirectional: boolean;
+          valid_source_kinds: string[];
+          valid_target_kinds: string[];
+          visible_in: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          kind: string;
+          label: string;
+          inverse_label?: string | null;
+          category: string;
+          color: string;
+          default_bidirectional?: boolean;
+          valid_source_kinds?: string[];
+          valid_target_kinds?: string[];
+          visible_in?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          kind?: string;
+          label?: string;
+          inverse_label?: string | null;
+          category?: string;
+          color?: string;
+          default_bidirectional?: boolean;
+          valid_source_kinds?: string[];
+          valid_target_kinds?: string[];
+          visible_in?: string;
+          created_at?: string;
+        };
+      };
+      document_kind_registry: {
+        Row: {
+          id: string;
+          project_id: string;
+          kind: string;
+          label: string;
+          label_plural: string;
+          icon: string;
+          description: string | null;
+          allow_children: boolean;
+          child_kinds: string[];
+          default_content: Record<string, unknown> | null;
+          visible_in: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          kind: string;
+          label: string;
+          label_plural: string;
+          icon: string;
+          description?: string | null;
+          allow_children?: boolean;
+          child_kinds?: string[];
+          default_content?: Record<string, unknown> | null;
+          visible_in?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          kind?: string;
+          label?: string;
+          label_plural?: string;
+          icon?: string;
+          description?: string | null;
+          allow_children?: boolean;
+          child_kinds?: string[];
+          default_content?: Record<string, unknown> | null;
+          visible_in?: string;
+          created_at?: string;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -392,6 +588,21 @@ export interface Database {
           p_limit?: number;
         };
         Returns: Database["public"]["Tables"]["scene_analysis"]["Row"][];
+      };
+      // Migration 005: Entity kind helper function
+      get_project_entity_kinds: {
+        Args: {
+          project_uuid: string;
+        };
+        Returns: {
+          kind: string;
+          label: string;
+          label_plural: string;
+          category: string;
+          color: string;
+          icon: string;
+          is_custom: boolean;
+        }[];
       };
     };
     Enums: Record<string, never>;

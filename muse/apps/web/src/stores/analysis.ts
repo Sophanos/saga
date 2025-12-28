@@ -38,6 +38,8 @@ interface AnalysisActions {
   setError: (error: string | null) => void;
   /** Clear all analysis data */
   clearAnalysis: () => void;
+  /** Dismiss a specific style issue by id */
+  dismissStyleIssue: (issueId: string) => void;
   /** Update all analysis data at once */
   updateAnalysis: (data: {
     metrics: SceneMetrics;
@@ -126,6 +128,11 @@ export const useAnalysisStore = create<AnalysisStore>()(
         state.lastAnalyzedAt = null;
         state.error = null;
         state.lastAnalyzedHash = null;
+      }),
+
+    dismissStyleIssue: (issueId) =>
+      set((state) => {
+        state.issues = state.issues.filter((i) => i.id !== issueId);
       }),
 
     updateAnalysis: (data) =>

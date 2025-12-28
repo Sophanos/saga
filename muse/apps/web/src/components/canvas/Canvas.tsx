@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useCallback, useRef } from "react";
 import {
   useEditor,
   EditorContent,
@@ -7,7 +7,11 @@ import {
   EntityMark,
   LinterDecoration,
   PasteHandler,
+  EntitySuggestion,
+  createSuggestionItems,
+  ReactRenderer,
 } from "@mythos/editor";
+import tippy, { type Instance as TippyInstance } from "tippy.js";
 import { ScrollArea } from "@mythos/ui";
 import type { Entity } from "@mythos/core";
 import { useEntityClick } from "../../hooks/useEntityClick";
@@ -15,18 +19,21 @@ import { useWritingAnalysis } from "../../hooks/useWritingAnalysis";
 import { useLinterFixes } from "../../hooks/useLinterFixes";
 import { useEntityDetection } from "../../hooks/useEntityDetection";
 import { useDynamicsExtraction } from "../../hooks/useDynamicsExtraction";
+import { useAutoSave } from "../../hooks/useAutoSave";
+import { useAutoApplyEntityMarks } from "../../hooks/useEntityMarks";
 import { useMythosStore, useEntities } from "../../stores";
 import { useMood } from "../../stores/analysis";
 import { EntitySuggestionModal } from "../modals/EntitySuggestionModal";
 import { SceneContextBar } from "./SceneContextBar";
+import {
+  EntitySuggestionList,
+  type EntitySuggestionListRef,
+} from "../editor/EntitySuggestionList";
 
-const INITIAL_CONTENT = `<p>The ancient city of <span data-entity-id="loc1" data-entity-type="location" class="entity-location">Valdris</span> stretched before him, its spires catching the last light of sunset. <span data-entity-id="char1" data-entity-type="character" class="entity-character">Kael</span> adjusted the worn leather of his cloak and stepped through the gate.</p>
-
-<p>"You're late," said <span data-entity-id="char2" data-entity-type="character" class="entity-character">Master Theron</span>, emerging from the shadows. The old man's eyes gleamed with something between amusement and concern. "The council has been waiting."</p>
-
-<p>Kael's hand instinctively moved to the <span data-entity-id="item1" data-entity-type="item" class="entity-item">Blade of Whispers</span> at his side. He could feel its familiar hum, a reminder of the power—and the burden—he carried.</p>
-
-<p>"Let them wait," he replied, though he quickened his pace. "What I've discovered changes everything."</p>`;
+/**
+ * Placeholder content shown when no document is selected
+ */
+const PLACEHOLDER_CONTENT = `<p>Select or create a document to begin writing...</p>`;
 
 export function Canvas() {
   const { handleEntityClick } = useEntityClick();
@@ -39,6 +46,15 @@ export function Canvas() {
   const showHud = useMythosStore((state) => state.showHud);
   const setSelectedEntity = useMythosStore((state) => state.setSelectedEntity);
   const tensionLevel = useMythosStore((state) => state.editor.tensionLevel);
+
+  // Get current document from store
+  const currentDocument = useMythosStore(
+    (state) => state.document.currentDocument
+  );
+  const updateDocumentInStore = useMythosStore((state) => state.updateDocument);
+
+  // Track the current document ID to detect changes
+  const previousDocumentIdRef = useRef<string | null>(null);
 
   // Get entities from the store for SceneContextBar
   const sceneEntities = useEntities();
@@ -59,17 +75,28 @@ export function Canvas() {
     [setSelectedEntity, showHud]
   );
 
-  // Entity detection hook
-  const {
-    isDetecting,
-    detectedEntities,
-    warnings,
-    isModalOpen,
-    isCreating,
-    handlePaste,
-    closeModal,
-    applyEntities,
-  } = useEntityDetection({ minLength: 100 });
+  // Create a stable callback ref for handlePaste to break circular dependency
+  // (editor needs handlePaste, but useEntityDetection needs editor for marks)
+  const handlePasteRef = useRef<(text: string, pastePosition: number) => void>(
+    () => {}
+  );
+  const stableHandlePaste = useCallback(
+    (text: string, pastePosition: number) => {
+      handlePasteRef.current(text, pastePosition);
+    },
+    []
+  );
+
+  // Determine initial content based on currentDocument
+  const initialContent = useMemo(() => {
+    if (currentDocument?.content) {
+      // Document content is stored as Tiptap JSON
+      return currentDocument.content;
+    }
+    return PLACEHOLDER_CONTENT;
+    // Only recompute on initial mount - we'll handle document switches via effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Create editor at Canvas level (lifted state for cross-component access)
   const editor = useEditor({
@@ -78,16 +105,83 @@ export function Canvas() {
         heading: { levels: [1, 2, 3] },
       }),
       Placeholder.configure({
-        placeholder: "Begin your story...",
+        placeholder: currentDocument
+          ? "Begin your story..."
+          : "Select or create a document to begin...",
       }),
       EntityMark,
       LinterDecoration,
       PasteHandler.configure({
         minLength: 100,
-        onSubstantialPaste: handlePaste,
+        onSubstantialPaste: stableHandlePaste,
+      }),
+      EntitySuggestion.configure({
+        suggestion: {
+          items: ({ query }) => {
+            // Read entities from store dynamically
+            const entities = Array.from(
+              useMythosStore.getState().world.entities.values()
+            );
+            return createSuggestionItems(entities, query);
+          },
+          render: () => {
+            let component: ReactRenderer<EntitySuggestionListRef> | null = null;
+            let popup: TippyInstance[] | null = null;
+
+            return {
+              onStart: (props) => {
+                component = new ReactRenderer(EntitySuggestionList, {
+                  props,
+                  editor: props.editor,
+                });
+
+                if (!props.clientRect) {
+                  return;
+                }
+
+                popup = tippy("body", {
+                  getReferenceClientRect: props.clientRect as () => DOMRect,
+                  appendTo: () => document.body,
+                  content: component.element,
+                  showOnCreate: true,
+                  interactive: true,
+                  trigger: "manual",
+                  placement: "bottom-start",
+                });
+              },
+
+              onUpdate: (props) => {
+                component?.updateProps(props);
+
+                if (!props.clientRect) {
+                  return;
+                }
+
+                popup?.[0]?.setProps({
+                  getReferenceClientRect: props.clientRect as () => DOMRect,
+                });
+              },
+
+              onKeyDown: (props) => {
+                if (props.event.key === "Escape") {
+                  popup?.[0]?.hide();
+                  return true;
+                }
+
+                return component?.ref?.onKeyDown(props) ?? false;
+              },
+
+              onExit: () => {
+                popup?.[0]?.destroy();
+                component?.destroy();
+              },
+            };
+          },
+        },
       }),
     ],
-    content: INITIAL_CONTENT,
+    content: initialContent,
+    editable: !!currentDocument, // Only editable when a document is selected
     editorProps: {
       attributes: {
         class:
@@ -99,6 +193,15 @@ export function Canvas() {
       const text = ed.getText();
       const words = text.split(/\s+/).filter(Boolean).length;
       setWordCount(words);
+
+      // Update document content in the store (for local state consistency)
+      if (currentDocument?.id) {
+        const jsonContent = ed.getJSON();
+        updateDocumentInStore(currentDocument.id, {
+          content: jsonContent,
+          wordCount: words,
+        });
+      }
     },
   });
 
@@ -108,31 +211,89 @@ export function Canvas() {
     return () => setEditorInstance(null);
   }, [editor, setEditorInstance]);
 
+  // Entity detection hook - called after editor is created so marks can be applied
+  const {
+    isDetecting,
+    detectedEntities,
+    warnings,
+    isModalOpen,
+    isCreating,
+    handlePaste,
+    closeModal,
+    applyEntities,
+  } = useEntityDetection({ minLength: 100, editor });
+
+  // Wire up the stable callback ref to the actual handlePaste
+  useEffect(() => {
+    handlePasteRef.current = handlePaste;
+  }, [handlePaste]);
+
+  // Auto-apply EntityMarks when document loads (for existing entity mentions)
+  useAutoApplyEntityMarks(editor, sceneEntities, currentDocument?.id ?? null);
+
+  // Wire up auto-save for document persistence
+  const { isSaving, lastSavedAt, error: saveError } = useAutoSave({
+    editor,
+    documentId: currentDocument?.id ?? null,
+    enabled: !!currentDocument,
+    debounceMs: 2000,
+  });
+
+  // Handle document switching - update editor content when currentDocument changes
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+
+    const currentId = currentDocument?.id ?? null;
+    const previousId = previousDocumentIdRef.current;
+
+    // Only update content if the document actually changed
+    if (currentId !== previousId) {
+      previousDocumentIdRef.current = currentId;
+
+      if (currentDocument?.content) {
+        // Load the new document's content
+        editor.commands.setContent(currentDocument.content);
+      } else if (!currentDocument) {
+        // No document selected - show placeholder
+        editor.commands.setContent(PLACEHOLDER_CONTENT);
+      } else {
+        // New document with no content - start fresh
+        editor.commands.setContent("");
+      }
+
+      // Update editable state
+      editor.setEditable(!!currentDocument);
+    }
+  }, [editor, currentDocument]);
+
   // Get editor text content for AI hooks
   const content = useMemo(() => {
     return editor?.getText() ?? "";
   }, [editor?.state?.doc?.content]);
 
-  // Wire up Writing Analysis hook
+  // Wire up Writing Analysis hook (disabled when no document selected)
   const { isAnalyzing, metrics } = useWritingAnalysis({
     content,
     autoAnalyze: true,
     debounceMs: 1500,
+    enabled: !!currentDocument,
   });
 
-  // Wire up Linter Fixes hook
+  // Wire up Linter Fixes hook (disabled when no document selected)
   const { isLinting } = useLinterFixes({
     content,
     editor,
     autoLint: true,
     debounceMs: 2000,
+    enabled: !!currentDocument,
   });
 
-  // Wire up Dynamics Extraction hook
+  // Wire up Dynamics Extraction hook (disabled when no document selected)
   const { isExtracting } = useDynamicsExtraction({
     content,
     autoExtract: true,
     debounceMs: 2000,
+    enabled: !!currentDocument,
   });
 
   // Sync linter issues from store to editor decorations
@@ -148,11 +309,12 @@ export function Canvas() {
     }
   }, [editor, linterIssues]);
 
-  // Update tension level when metrics change
+  // Update tension level when metrics change (0-100 scale for SceneContextBar)
   useEffect(() => {
     if (metrics?.tension?.length) {
       const latestTension = metrics.tension[metrics.tension.length - 1];
-      setTensionLevel(Math.round(latestTension * 10));
+      // Convert 0-1 normalized tension to 0-100 scale
+      setTensionLevel(Math.round(latestTension * 100));
     }
   }, [metrics, setTensionLevel]);
 
@@ -164,9 +326,10 @@ export function Canvas() {
   const tensionDisplay = useMemo(() => {
     if (metrics?.tension?.length) {
       const latestTension = metrics.tension[metrics.tension.length - 1];
-      return `${Math.round(latestTension * 10)}/10`;
+      // Display as percentage (0-100 scale)
+      return `${Math.round(latestTension * 100)}%`;
     }
-    return "—/10";
+    return "—";
   }, [metrics]);
 
   return (
@@ -179,35 +342,78 @@ export function Canvas() {
         onEntityClick={handleSceneEntityClick}
       />
 
-      {/* Document header - NOW DYNAMIC */}
+      {/* Document header - shows title and status */}
       <div className="p-4 border-b border-mythos-text-muted/20">
-        <input
-          type="text"
-          defaultValue="Chapter 1: The Beginning"
-          className="text-2xl font-serif font-bold bg-transparent border-none outline-none text-mythos-text-primary w-full placeholder:text-mythos-text-muted"
-          placeholder="Chapter Title..."
-        />
-        <div className="flex items-center gap-4 mt-2 text-xs text-mythos-text-muted">
-          <span>Scene 1 of 3</span>
-          <span>|</span>
-          <span>{wordCount.toLocaleString()} words</span>
-          <span>|</span>
-          <span>Tension: {tensionDisplay}</span>
-          {(isAnalyzing || isLinting || isDetecting || isExtracting) && (
-            <>
+        {currentDocument ? (
+          <>
+            <input
+              type="text"
+              defaultValue={currentDocument.title ?? "Untitled"}
+              key={currentDocument.id} // Reset input when document changes
+              className="text-2xl font-serif font-bold bg-transparent border-none outline-none text-mythos-text-primary w-full placeholder:text-mythos-text-muted"
+              placeholder="Document Title..."
+              onChange={(e) => {
+                if (currentDocument?.id) {
+                  updateDocumentInStore(currentDocument.id, {
+                    title: e.target.value,
+                  });
+                }
+              }}
+            />
+            <div className="flex items-center gap-4 mt-2 text-xs text-mythos-text-muted">
+              <span className="capitalize">{currentDocument.type}</span>
               <span>|</span>
-              <span className="animate-pulse text-mythos-accent-cyan">
-                {isDetecting
-                  ? "Detecting entities..."
-                  : isExtracting
-                    ? "Extracting dynamics..."
-                    : isAnalyzing
-                      ? "Analyzing..."
-                      : "Linting..."}
-              </span>
-            </>
-          )}
-        </div>
+              <span>{wordCount.toLocaleString()} words</span>
+              <span>|</span>
+              <span>Tension: {tensionDisplay}</span>
+              {/* Save status */}
+              {isSaving && (
+                <>
+                  <span>|</span>
+                  <span className="animate-pulse text-mythos-accent-gold">
+                    Saving...
+                  </span>
+                </>
+              )}
+              {!isSaving && lastSavedAt && (
+                <>
+                  <span>|</span>
+                  <span className="text-mythos-accent-green">Saved</span>
+                </>
+              )}
+              {saveError && (
+                <>
+                  <span>|</span>
+                  <span className="text-mythos-accent-red" title={saveError}>
+                    Save failed
+                  </span>
+                </>
+              )}
+              {/* Analysis status */}
+              {(isAnalyzing || isLinting || isDetecting || isExtracting) && (
+                <>
+                  <span>|</span>
+                  <span className="animate-pulse text-mythos-accent-cyan">
+                    {isDetecting
+                      ? "Detecting entities..."
+                      : isExtracting
+                        ? "Extracting dynamics..."
+                        : isAnalyzing
+                          ? "Analyzing..."
+                          : "Linting..."}
+                  </span>
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="text-mythos-text-muted">
+            <h2 className="text-2xl font-serif font-bold">No Document Selected</h2>
+            <p className="mt-2 text-sm">
+              Select a document from the manifest or create a new one to start writing.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Editor */}

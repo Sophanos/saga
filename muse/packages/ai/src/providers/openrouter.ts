@@ -3,11 +3,11 @@ import { createOpenAI } from "@ai-sdk/openai";
 // OpenRouter provides access to multiple LLMs through a unified API
 // https://openrouter.ai/docs
 export const openrouter = createOpenAI({
-  apiKey: process.env["OPENROUTER_API_KEY"],
+  apiKey: import.meta.env["VITE_OPENROUTER_API_KEY"],
   baseURL: "https://openrouter.ai/api/v1",
   headers: {
-    "HTTP-Referer": process.env["OPENROUTER_SITE_URL"] || "http://localhost:3000",
-    "X-Title": process.env["OPENROUTER_APP_NAME"] || "Mythos IDE",
+    "HTTP-Referer": import.meta.env["VITE_OPENROUTER_SITE_URL"] || "http://localhost:3000",
+    "X-Title": import.meta.env["VITE_OPENROUTER_APP_NAME"] || "Mythos IDE",
   },
 });
 

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { immer } from "zustand/middleware/immer";
 
 /**
@@ -220,10 +221,10 @@ export const useLastRedoDescription = () =>
  * Get the full undo history (most recent first)
  */
 export const useUndoHistory = () =>
-  useUndoStore((state) => [...state.undoStack].reverse());
+  useUndoStore(useShallow((state) => [...state.undoStack].reverse()));
 
 /**
  * Get the full redo history (most recent first)
  */
 export const useRedoHistory = () =>
-  useUndoStore((state) => [...state.redoStack].reverse());
+  useUndoStore(useShallow((state) => [...state.redoStack].reverse()));

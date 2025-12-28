@@ -32,11 +32,13 @@ Score the text 0-100 based on showing percentage:
 - 0-59 (F): Predominantly telling, needs revision
 
 ### 4. Style Issue Detection
-Flag these common issues:
-- **telling**: Direct emotional statements (e.g., "He was nervous")
-- **passive**: Passive voice constructions (e.g., "The ball was thrown")
-- **adverb**: Weak verb + adverb combinations (e.g., "walked quickly" vs "rushed")
-- **repetition**: Repeated words/phrases within close proximity
+Flag these common issues with AUTO-FIX suggestions:
+- **telling**: Direct emotional statements → Rewrite with physical/behavioral cues
+- **passive**: Passive voice → Convert to active voice
+- **adverb**: Weak verb + adverb → Replace with stronger verb
+- **repetition**: Repeated words/phrases → Suggest synonyms or restructure
+
+**CRITICAL: For each issue, provide a "fix" object with the exact original text and a rewritten replacement.**
 
 ### 5. Pacing Assessment
 Determine the scene's pacing trend:
@@ -70,9 +72,13 @@ Return ONLY valid JSON matching this exact structure:
   "issues": [
     {
       "type": "telling" | "passive" | "adverb" | "repetition",
-      "text": "the problematic text snippet",
+      "text": "the exact problematic text from the input",
       "line": number,
-      "suggestion": "how to fix it"
+      "suggestion": "brief explanation of the issue",
+      "fix": {
+        "oldText": "exact text to replace (must match 'text' field)",
+        "newText": "the improved rewritten version"
+      }
     }
   ],
   "insights": [
@@ -88,9 +94,38 @@ Return ONLY valid JSON matching this exact structure:
 - Limit insights to 3 most valuable observations
 - Consider genre conventions (action scenes may have short sentences intentionally)
 - Focus on craft, not plot or character decisions
-- If the text is too short (< 50 words), provide partial analysis with a note`;
+- If the text is too short (< 50 words), provide partial analysis with a note
+- **ALWAYS include the fix object for issues where a rewrite is possible**
+- The "oldText" MUST exactly match the "text" field for the fix to work
+- Provide creative, genre-appropriate rewrites that maintain the author's voice`;
 
-export const QUICK_COACH_PROMPT = `Analyze this prose excerpt for writing quality. Focus on tension, sensory details, and show-don't-tell.`;
+export const GENRE_COACH_CONTEXTS: Record<string, string> = {
+  fantasy: `Genre context: Fantasy fiction. Poetic language and world-building are valued.
+Flowery prose is acceptable. Magic descriptions benefit from sensory richness.`,
+  
+  scifi: `Genre context: Science Fiction. Technical precision matters.
+Show futuristic elements through character interaction, not info-dumps.`,
+  
+  thriller: `Genre context: Thriller. Pace is paramount. Short, punchy sentences in action.
+Minimize adverbs. Every sentence should create tension or release it strategically.`,
+  
+  romance: `Genre context: Romance. Emotional interiority is expected and valued.
+Internal feelings are important but show them through physical reactions too.`,
+  
+  literary: `Genre context: Literary Fiction. Prose style is paramount.
+Voice and metaphor matter. Some "telling" can be intentional stylistic choice.`,
+  
+  horror: `Genre context: Horror. Atmosphere through sensory detail.
+Dread builds through what's NOT shown. Restraint creates fear.`,
+  
+  mystery: `Genre context: Mystery. Plant clues subtly.
+Red herrings through action, not author manipulation. Fair-play rules.`,
+  
+  historical: `Genre context: Historical Fiction. Period-appropriate voice.
+Show era through details, avoid anachronistic language patterns.`,
+};
+
+export const QUICK_COACH_PROMPT = `Analyze this prose excerpt for writing quality. Focus on tension, sensory details, and show-don't-tell. Provide fix objects for all issues.`;
 
 export const SENSORY_FOCUS_PROMPT = `Analyze the sensory detail distribution in this prose. Which senses are underrepresented? Suggest specific additions.`;
 

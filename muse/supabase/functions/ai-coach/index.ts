@@ -149,6 +149,14 @@ interface CoachRequest {
 }
 
 /**
+ * Fix suggestion with old and new text for replacement
+ */
+interface StyleIssueFix {
+  oldText: string;
+  newText: string;
+}
+
+/**
  * Style issue interface
  */
 interface StyleIssue {
@@ -157,6 +165,7 @@ interface StyleIssue {
   line?: number;
   position?: { start: number; end: number };
   suggestion: string;
+  fix?: StyleIssueFix;
 }
 
 /**
@@ -322,6 +331,7 @@ function validateIssues(raw: unknown): StyleIssue[] {
       const lineData = item["line"];
       const suggestionData = item["suggestion"];
       const positionData = item["position"] as Record<string, unknown> | undefined;
+      const fixData = item["fix"] as Record<string, unknown> | undefined;
 
       let position: { start: number; end: number } | undefined;
       if (positionData && typeof positionData === "object") {
@@ -332,14 +342,47 @@ function validateIssues(raw: unknown): StyleIssue[] {
         }
       }
 
+      // Build fix if AI provided one, or generate from text+suggestion if applicable
+      let fix: StyleIssueFix | undefined;
+      if (fixData && typeof fixData === "object") {
+        const oldText = fixData["oldText"];
+        const newText = fixData["newText"];
+        if (typeof oldText === "string" && typeof newText === "string") {
+          fix = { oldText, newText };
+        }
+      }
+
+      // Auto-generate fix when text and suggestion are both present
+      // and the suggestion looks like a direct replacement (not a general tip)
+      const text = typeof textData === "string" ? textData : "";
+      const suggestion = typeof suggestionData === "string" ? suggestionData : "";
+
+      if (!fix && text.length > 0 && suggestion.length > 0) {
+        // Check if suggestion contains quoted replacement text
+        const quotedMatch = suggestion.match(/["']([^"']+)["']/);
+        if (quotedMatch) {
+          fix = { oldText: text, newText: quotedMatch[1] };
+        } else if (
+          // For short suggestions that look like direct replacements
+          suggestion.length <= text.length * 3 &&
+          !suggestion.includes("Try") &&
+          !suggestion.includes("Consider") &&
+          !suggestion.includes("Instead of") &&
+          !suggestion.includes(".")
+        ) {
+          fix = { oldText: text, newText: suggestion };
+        }
+      }
+
       return {
         type: validTypes.includes(typeData as (typeof validTypes)[number])
           ? (typeData as StyleIssue["type"])
           : "telling",
-        text: typeof textData === "string" ? textData : "",
+        text,
         line: typeof lineData === "number" ? lineData : undefined,
         position,
-        suggestion: typeof suggestionData === "string" ? suggestionData : "",
+        suggestion,
+        fix,
       };
     })
     .filter((issue) => issue.text.length > 0);

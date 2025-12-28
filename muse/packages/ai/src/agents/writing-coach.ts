@@ -1,9 +1,10 @@
 import { NarrativeAgent, type AnalysisContext } from "./base";
-import { WRITING_COACH_SYSTEM } from "../prompts/coach";
+import { WRITING_COACH_SYSTEM, GENRE_COACH_CONTEXTS } from "../prompts/coach";
 import type {
   WritingAnalysis,
   SceneMetrics,
   StyleIssue,
+  StyleIssueFix,
 } from "@mythos/core";
 
 /**
@@ -23,10 +24,21 @@ export class WritingCoach extends NarrativeAgent {
 
   /**
    * Analyze prose content and return structured writing analysis
+   * @param context - Analysis context with document content
+   * @param genre - Optional genre for genre-aware coaching
    */
-  async analyzeWriting(context: AnalysisContext): Promise<WritingAnalysis> {
+  async analyzeWriting(
+    context: AnalysisContext,
+    genre?: string
+  ): Promise<WritingAnalysis> {
+    // Build context with genre-specific guidance if available
+    const genreContext = genre && GENRE_COACH_CONTEXTS[genre.toLowerCase()];
+    const enrichedContext = genreContext
+      ? { ...context, additionalContext: genreContext }
+      : context;
+
     // Get raw response from parent
-    const response = await this.analyze(context);
+    const response = await this.analyze(enrichedContext);
 
     try {
       // Extract JSON from response (may be wrapped in markdown code blocks)
@@ -122,6 +134,19 @@ export class WritingCoach extends NarrativeAgent {
   }
 
   /**
+   * Generate a stable ID for a style issue based on its content
+   */
+  private generateIssueId(type: string, line: number | undefined, text: string): string {
+    const hash = `${type}-${line ?? 0}-${text.slice(0, 32)}`;
+    // Simple hash function
+    let h = 0;
+    for (let i = 0; i < hash.length; i++) {
+      h = ((h << 5) - h + hash.charCodeAt(i)) | 0;
+    }
+    return `style-${Math.abs(h).toString(36)}`;
+  }
+
+  /**
    * Validate and normalize issues array
    */
   private validateIssues(raw: unknown): StyleIssue[] {
@@ -137,14 +162,24 @@ export class WritingCoach extends NarrativeAgent {
         const lineData = item["line"];
         const suggestionData = item["suggestion"];
 
+        const type = validTypes.includes(typeData as (typeof validTypes)[number])
+          ? (typeData as StyleIssue["type"])
+          : "telling";
+        const text = typeof textData === "string" ? textData : "";
+        const line = typeof lineData === "number" ? lineData : undefined;
+
+        // Parse fix object if present
+        const fixData = item["fix"];
+        const fix = this.validateFix(fixData, text);
+
         return {
-          type: validTypes.includes(typeData as (typeof validTypes)[number])
-            ? (typeData as StyleIssue["type"])
-            : "telling",
-          text: typeof textData === "string" ? textData : "",
-          line: typeof lineData === "number" ? lineData : undefined,
+          id: this.generateIssueId(type, line, text),
+          type,
+          text,
+          line,
           position: this.validatePosition(item["position"]),
           suggestion: typeof suggestionData === "string" ? suggestionData : "",
+          fix,
         };
       })
       .filter((issue) => issue.text.length > 0);
@@ -164,6 +199,38 @@ export class WritingCoach extends NarrativeAgent {
       return { start: startData, end: endData };
     }
     return undefined;
+  }
+
+  /**
+   * Validate and normalize fix object
+   */
+  private validateFix(
+    raw: unknown,
+    issueText: string
+  ): StyleIssueFix | undefined {
+    if (typeof raw !== "object" || raw === null) return undefined;
+    const fix = raw as Record<string, unknown>;
+    const oldText = fix["oldText"];
+    const newText = fix["newText"];
+
+    // Both fields must be non-empty strings
+    if (typeof oldText !== "string" || typeof newText !== "string") {
+      return undefined;
+    }
+    if (oldText.length === 0 || newText.length === 0) {
+      return undefined;
+    }
+
+    // oldText should match or be very close to the issue text
+    // Allow some flexibility for AI variations
+    const normalizedOld = oldText.trim().toLowerCase();
+    const normalizedIssue = issueText.trim().toLowerCase();
+    if (!normalizedOld.includes(normalizedIssue) && !normalizedIssue.includes(normalizedOld)) {
+      // Fallback: use issue text as oldText if they don't match
+      return { oldText: issueText, newText: newText.trim() };
+    }
+
+    return { oldText: oldText.trim(), newText: newText.trim() };
   }
 
   /**

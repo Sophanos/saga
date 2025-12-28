@@ -1,62 +1,46 @@
 import { useState } from "react";
-import { Eye, EyeOff, ArrowRight, Sparkles, Zap, Shield, Ghost } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Sparkles, Zap, Shield, Ghost, Loader2 } from "lucide-react";
 import { ScrollArea, cn } from "@mythos/ui";
 import type { Interaction, InteractionType } from "@mythos/core";
-import { useInteractions } from "../../stores/dynamics";
+import { useInteractions, useDynamicsStore } from "../../stores/dynamics";
 
-// Mock data for initial development
-const MOCK_INTERACTIONS: Interaction[] = [
-  {
-    id: "1",
-    source: "Kael",
-    action: "ENTERS",
-    target: "Valdris",
-    type: "neutral",
-    time: "Sc 1",
-    createdAt: new Date("2024-01-01T10:00:00"),
-  },
-  {
-    id: "2",
-    source: "Kael",
-    action: "EQUIPS",
-    target: "Shadow Blade",
-    type: "passive",
-    time: "Sc 1",
-    effect: "+2 STR",
-    createdAt: new Date("2024-01-01T10:05:00"),
-  },
-  {
-    id: "3",
-    source: "Shadow Blade",
-    action: "CORRUPTS",
-    target: "Kael",
-    type: "hidden",
-    time: "Sc 1",
-    effect: "-2 WIS",
-    note: "Player unaware",
-    createdAt: new Date("2024-01-01T10:06:00"),
-  },
-  {
-    id: "4",
-    source: "Kael",
-    action: "ATTACKS",
-    target: "Guard Captain",
-    type: "hostile",
-    time: "Sc 2",
-    effect: "-15 HP",
-    createdAt: new Date("2024-01-01T11:00:00"),
-  },
-  {
-    id: "5",
-    source: "Mysterious Figure",
-    action: "OBSERVES",
-    target: "Kael",
-    type: "hidden",
-    time: "Sc 2",
-    note: "Foreshadowing villain",
-    createdAt: new Date("2024-01-01T11:05:00"),
-  },
-];
+/**
+ * Loading skeleton for interaction timeline
+ */
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="flex items-start gap-3">
+          <div className="w-3 h-3 rounded-full bg-mythos-text-muted/30" />
+          <div className="flex-1 p-3 rounded-md bg-mythos-bg-secondary/30">
+            <div className="h-3 w-16 bg-mythos-text-muted/20 rounded mb-2" />
+            <div className="h-4 w-3/4 bg-mythos-text-muted/20 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Empty state when no interactions detected
+ */
+function EmptyState() {
+  return (
+    <div className="text-center py-8">
+      <div className="w-12 h-12 rounded-full bg-mythos-accent-purple/10 flex items-center justify-center mx-auto mb-3">
+        <Ghost className="w-6 h-6 text-mythos-accent-purple/50" />
+      </div>
+      <h4 className="text-sm font-medium text-mythos-text-primary mb-1">
+        No Interactions Yet
+      </h4>
+      <p className="text-xs text-mythos-text-muted max-w-[220px] mx-auto">
+        Write more prose with character actions and dialogue to see dynamics extracted automatically.
+      </p>
+    </div>
+  );
+}
 
 interface InteractionNodeProps {
   interaction: Interaction;
@@ -241,10 +225,10 @@ function DynamicsInsight({ hiddenCount, hostileCount }: DynamicsInsightProps) {
 export function DynamicsView() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Use store interactions or fall back to mock data
-  const storeInteractions = useInteractions();
-  const interactions =
-    storeInteractions.length > 0 ? storeInteractions : MOCK_INTERACTIONS;
+  // Read from dynamics store - no mock fallback
+  const interactions = useInteractions();
+  const isLoading = useDynamicsStore((state) => state.isLoading);
+  const error = useDynamicsStore((state) => state.error);
 
   const hiddenCount = interactions.filter((i) => i.type === "hidden").length;
   const hostileCount = interactions.filter((i) => i.type === "hostile").length;
@@ -254,35 +238,47 @@ export function DynamicsView() {
       {/* Header with stats */}
       <div className="p-3 border-b border-mythos-text-muted/20 flex items-center justify-between">
         <div className="flex items-center gap-4 text-xs">
-          <span className="text-mythos-text-muted">
-            {interactions.length} events
-          </span>
-          {hiddenCount > 0 && (
-            <span className="flex items-center gap-1 text-mythos-accent-purple">
-              <Ghost className="w-3 h-3" />
-              {hiddenCount} hidden
+          {isLoading ? (
+            <span className="flex items-center gap-1 text-mythos-accent-cyan">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Extracting...
             </span>
-          )}
-          {hostileCount > 0 && (
-            <span className="flex items-center gap-1 text-mythos-accent-red">
-              <Zap className="w-3 h-3" />
-              {hostileCount} hostile
-            </span>
+          ) : (
+            <>
+              <span className="text-mythos-text-muted">
+                {interactions.length} events
+              </span>
+              {hiddenCount > 0 && (
+                <span className="flex items-center gap-1 text-mythos-accent-purple">
+                  <Ghost className="w-3 h-3" />
+                  {hiddenCount} hidden
+                </span>
+              )}
+              {hostileCount > 0 && (
+                <span className="flex items-center gap-1 text-mythos-accent-red">
+                  <Zap className="w-3 h-3" />
+                  {hostileCount} hostile
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>
 
+      {/* Error state */}
+      {error && (
+        <div className="p-3 m-3 rounded bg-mythos-accent-red/10 border border-mythos-accent-red/30">
+          <p className="text-xs text-mythos-accent-red">{error}</p>
+        </div>
+      )}
+
       {/* Timeline */}
       <ScrollArea className="flex-1 p-3">
         <div className="space-y-0">
-          {interactions.length === 0 ? (
-            <div className="text-center py-8 text-mythos-text-muted text-sm">
-              No interactions recorded yet.
-              <br />
-              <span className="text-xs">
-                Add events as they occur in your story.
-              </span>
-            </div>
+          {isLoading && interactions.length === 0 ? (
+            <LoadingSkeleton />
+          ) : interactions.length === 0 ? (
+            <EmptyState />
           ) : (
             interactions.map((interaction) => (
               <InteractionNode

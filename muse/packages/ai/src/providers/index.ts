@@ -19,8 +19,8 @@ export type UnifiedModelType =
  * OpenRouter is primary, direct Gemini is fallback.
  */
 export function getModel(type: UnifiedModelType) {
-  const hasOpenRouter = !!process.env["OPENROUTER_API_KEY"];
-  const hasGemini = !!process.env["GOOGLE_GENERATIVE_AI_API_KEY"];
+  const hasOpenRouter = !!import.meta.env["VITE_OPENROUTER_API_KEY"];
+  const hasGemini = !!import.meta.env["VITE_GOOGLE_GENERATIVE_AI_API_KEY"];
 
   switch (type) {
     case "analysis":
@@ -71,7 +71,7 @@ export function getModel(type: UnifiedModelType) {
  */
 export function getAvailableProviders(): { openrouter: boolean; gemini: boolean } {
   return {
-    openrouter: !!process.env["OPENROUTER_API_KEY"],
-    gemini: !!process.env["GOOGLE_GENERATIVE_AI_API_KEY"],
+    openrouter: !!import.meta.env["VITE_OPENROUTER_API_KEY"],
+    gemini: !!import.meta.env["VITE_GOOGLE_GENERATIVE_AI_API_KEY"],
   };
 }

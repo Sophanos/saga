@@ -5,7 +5,7 @@ export * from "./extensions";
 export * from "./fixes";
 
 // Re-export commonly used Tiptap items
-export { useEditor, EditorContent } from "@tiptap/react";
+export { useEditor, EditorContent, ReactRenderer } from "@tiptap/react";
 export { Extension, Mark, Node } from "@tiptap/core";
 export type { Editor } from "@tiptap/core";
 export { default as StarterKit } from "@tiptap/starter-kit";

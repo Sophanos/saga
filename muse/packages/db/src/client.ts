@@ -1,9 +1,9 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./types/database";
 
-// Environment variables (use bracket notation for strict mode)
-const supabaseUrl = process.env["SUPABASE_URL"] || process.env["NEXT_PUBLIC_SUPABASE_URL"] || "";
-const supabaseAnonKey = process.env["SUPABASE_ANON_KEY"] || process.env["NEXT_PUBLIC_SUPABASE_ANON_KEY"] || "";
+// Environment variables - use VITE_ prefix for Vite client-side access
+const supabaseUrl = import.meta.env["VITE_SUPABASE_URL"] || "";
+const supabaseAnonKey = import.meta.env["VITE_SUPABASE_ANON_KEY"] || "";
 
 // Create typed Supabase client
 export const supabase: SupabaseClient<Database> = createClient<Database>(

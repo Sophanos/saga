@@ -88,13 +88,21 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
   const pendingSaveRef = useRef(false);
 
   /**
-   * Get content hash from editor
+   * Get content hash from editor JSON structure
+   * Uses JSON.stringify to capture marks, metadata, and structural changes
+   * that wouldn't be reflected in plain text alone.
    */
   const getContentHash = useCallback((): string => {
     if (!editor || editor.isDestroyed) {
       return "";
     }
-    return simpleHash(editor.getText());
+    // Hash the full JSON structure to detect all changes including:
+    // - Text content changes
+    // - Mark changes (bold, italic, entity tags, etc.)
+    // - Node attribute changes (metadata)
+    // - Structural changes (node types, nesting)
+    const json = editor.getJSON();
+    return simpleHash(JSON.stringify(json));
   }, [editor]);
 
   /**

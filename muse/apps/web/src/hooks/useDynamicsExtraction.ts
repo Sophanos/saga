@@ -1,20 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
-import { dynamicsExtractor } from "@mythos/ai";
 import type { Interaction } from "@mythos/core";
 import { useDynamicsStore } from "../stores/dynamics";
-
-/**
- * Simple hash function for content deduplication
- */
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return hash.toString(36);
-}
+import { useApiKey } from "./useApiKey";
+import { extractDynamicsViaEdge, DynamicsApiError } from "../services/ai";
+import { simpleHash } from "../utils/hash";
 
 /**
  * Debounce delay in milliseconds before triggering extraction
@@ -40,6 +29,10 @@ interface UseDynamicsExtractionOptions {
   documentId?: string;
   /** Optional scene marker for context */
   sceneMarker?: string;
+  /** Whether the hook is enabled (false disables all extraction) */
+  enabled?: boolean;
+  /** Optional known entities for name resolution */
+  knownEntities?: Array<{ id: string; name: string; type: string }>;
 }
 
 /**
@@ -66,7 +59,8 @@ interface UseDynamicsExtractionResult {
  * - Content hash deduplication to avoid re-analyzing same content
  * - Manual extraction trigger
  * - Integration with dynamics store
- * - Error handling
+ * - BYOK (Bring Your Own Key) support via edge function
+ * - Error handling with specific error codes
  *
  * @param options - Hook configuration options
  * @returns Extraction state and controls
@@ -80,7 +74,12 @@ export function useDynamicsExtraction(
     debounceMs = DEBOUNCE_DELAY,
     documentId,
     sceneMarker,
+    enabled = true,
+    knownEntities,
   } = options;
+
+  // API key for BYOK pattern
+  const { key: apiKey } = useApiKey();
 
   // Store state and actions
   const interactions = useDynamicsStore((state) => state.interactions);
@@ -98,11 +97,11 @@ export function useDynamicsExtraction(
   const abortControllerRef = useRef<AbortController | null>(null);
 
   /**
-   * Run the dynamics extraction
+   * Run the dynamics extraction via edge function
    */
   const runExtraction = useCallback(async () => {
-    // Don't extract if content is too short
-    if (content.length < MIN_CONTENT_LENGTH) {
+    // Don't extract if disabled or content is too short
+    if (!enabled || content.length < MIN_CONTENT_LENGTH) {
       return;
     }
 
@@ -124,11 +123,19 @@ export function useDynamicsExtraction(
     setError(null);
 
     try {
-      const result = await dynamicsExtractor.extract({
-        content,
-        documentId,
-        sceneMarker,
-      });
+      // Call the edge function
+      const result = await extractDynamicsViaEdge(
+        {
+          content,
+          documentId,
+          sceneMarker,
+          knownEntities,
+        },
+        {
+          apiKey: apiKey || undefined,
+          signal: abortControllerRef.current.signal,
+        }
+      );
 
       // Check if we were aborted
       if (abortControllerRef.current?.signal.aborted) {
@@ -151,7 +158,39 @@ export function useDynamicsExtraction(
       lastContentHashRef.current = contentHash;
       lastContentRef.current = content;
     } catch (err) {
-      // Ignore abort errors
+      // Handle DynamicsApiError with specific error codes
+      if (err instanceof DynamicsApiError) {
+        // Ignore abort errors
+        if (err.code === "ABORTED") {
+          return;
+        }
+
+        // Handle specific error codes
+        let errorMessage = err.message;
+        switch (err.code) {
+          case "UNAUTHORIZED":
+            errorMessage = "API key required. Please add your OpenRouter API key in settings.";
+            break;
+          case "RATE_LIMITED":
+            errorMessage = "Rate limit exceeded. Please wait a moment before trying again.";
+            break;
+          case "CONFIGURATION_ERROR":
+            errorMessage = "Configuration error. Please check your environment settings.";
+            break;
+          case "VALIDATION_ERROR":
+            errorMessage = `Validation error: ${err.message}`;
+            break;
+          case "SERVER_ERROR":
+            errorMessage = "Server error. Please try again later.";
+            break;
+        }
+
+        setError(errorMessage);
+        console.error("[useDynamicsExtraction] DynamicsApiError:", err.code, err.message);
+        return;
+      }
+
+      // Handle generic abort errors
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
@@ -166,18 +205,21 @@ export function useDynamicsExtraction(
     content,
     documentId,
     sceneMarker,
+    knownEntities,
+    apiKey,
     interactions,
     setLoading,
     setError,
     addInteraction,
+    enabled,
   ]);
 
   /**
    * Debounced auto-extraction effect
    */
   useEffect(() => {
-    // Skip if auto-extract is disabled
-    if (!autoExtract) {
+    // Skip if disabled or auto-extract is disabled
+    if (!enabled || !autoExtract) {
       return;
     }
 
@@ -207,7 +249,7 @@ export function useDynamicsExtraction(
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [content, autoExtract, debounceMs, runExtraction]);
+  }, [content, autoExtract, debounceMs, runExtraction, enabled]);
 
   /**
    * Cleanup on unmount

@@ -9,18 +9,62 @@ import {
   Sword,
   Sparkles,
   Users,
+  Search,
+  Filter,
+  BookOpen,
+  Film,
+  StickyNote,
+  ListTree,
+  Globe,
+  X,
+  Plus,
+  Pencil,
 } from "lucide-react";
-import { ScrollArea } from "@mythos/ui";
-import type { Entity, EntityType } from "@mythos/core";
+import { ScrollArea, Input, Button } from "@mythos/ui";
+import type { Entity, EntityType, Document, DocumentType, Character, Location, Item, MagicSystem, Faction } from "@mythos/core";
 import { useEntities, useDocuments, useMythosStore } from "../../stores";
+import { EntityFormModal, type EntityFormData } from "../modals";
+import { useEntityPersistence } from "../../hooks";
 
 interface TreeNode {
   id: string;
   name: string;
   type: "folder" | "file" | "entity";
   entityType?: EntityType;
+  documentType?: DocumentType;
   children?: TreeNode[];
   entity?: Entity;
+  document?: Document;
+  wordCount?: number;
+  parentId?: string;
+}
+
+// Document type filter options
+const DOCUMENT_TYPE_FILTERS: { value: DocumentType | "all"; label: string }[] = [
+  { value: "all", label: "All Types" },
+  { value: "chapter", label: "Chapters" },
+  { value: "scene", label: "Scenes" },
+  { value: "note", label: "Notes" },
+  { value: "outline", label: "Outlines" },
+  { value: "worldbuilding", label: "Worldbuilding" },
+];
+
+// Get icon for document type
+function getDocumentIcon(documentType?: DocumentType) {
+  switch (documentType) {
+    case "chapter":
+      return <BookOpen className="w-4 h-4 text-mythos-accent-cyan" />;
+    case "scene":
+      return <Film className="w-4 h-4 text-mythos-accent-purple" />;
+    case "note":
+      return <StickyNote className="w-4 h-4 text-mythos-accent-amber" />;
+    case "outline":
+      return <ListTree className="w-4 h-4 text-mythos-text-secondary" />;
+    case "worldbuilding":
+      return <Globe className="w-4 h-4 text-mythos-entity-location" />;
+    default:
+      return <FileText className="w-4 h-4 text-mythos-text-muted" />;
+  }
 }
 
 function getEntityIcon(entityType?: string) {
@@ -44,27 +88,51 @@ interface TreeItemProps {
   node: TreeNode;
   depth?: number;
   selectedId: string | null;
+  currentDocumentId: string | null;
   onSelect: (node: TreeNode) => void;
+  onEdit?: (entity: Entity) => void;
 }
 
-function TreeItem({ node, depth = 0, selectedId, onSelect }: TreeItemProps) {
+function TreeItem({ node, depth = 0, selectedId, currentDocumentId, onSelect, onEdit }: TreeItemProps) {
   const [isOpen, setIsOpen] = useState(true);
   const hasChildren = node.children && node.children.length > 0;
-  const isSelected = node.id === selectedId;
+  const isSelectedEntity = node.type === "entity" && node.id === selectedId;
+  const isSelectedDocument = node.type === "file" && node.id === currentDocumentId;
+  const isSelected = isSelectedEntity || isSelectedDocument;
 
   const handleClick = () => {
-    if (hasChildren) {
+    if (hasChildren && node.type === "folder") {
       setIsOpen(!isOpen);
     } else {
       onSelect(node);
     }
   };
 
+  // Get the appropriate icon
+  const getIcon = () => {
+    if (node.type === "folder") {
+      return <FolderOpen className="w-4 h-4 text-mythos-accent-amber flex-shrink-0" />;
+    }
+    if (node.type === "file" && node.documentType) {
+      return getDocumentIcon(node.documentType);
+    }
+    return getEntityIcon(node.entityType);
+  };
+
+  // Format word count for display
+  const formatWordCount = (count?: number) => {
+    if (!count) return null;
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}k`;
+    }
+    return count.toString();
+  };
+
   return (
     <div>
       <button
         onClick={handleClick}
-        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left transition-colors ${
+        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left transition-colors group ${
           isSelected
             ? "bg-mythos-accent-purple/20 text-mythos-accent-purple"
             : "hover:bg-mythos-bg-tertiary text-mythos-text-secondary"
@@ -73,19 +141,41 @@ function TreeItem({ node, depth = 0, selectedId, onSelect }: TreeItemProps) {
       >
         {hasChildren ? (
           isOpen ? (
-            <ChevronDown className="w-4 h-4 text-mythos-text-muted" />
+            <ChevronDown className="w-4 h-4 text-mythos-text-muted flex-shrink-0" />
           ) : (
-            <ChevronRight className="w-4 h-4 text-mythos-text-muted" />
+            <ChevronRight className="w-4 h-4 text-mythos-text-muted flex-shrink-0" />
           )
         ) : (
-          <span className="w-4" />
+          <span className="w-4 flex-shrink-0" />
         )}
-        {node.type === "folder" ? (
-          <FolderOpen className="w-4 h-4 text-mythos-accent-amber" />
-        ) : (
-          getEntityIcon(node.entityType)
+        {getIcon()}
+        <span className="truncate flex-1">{node.name}</span>
+        {node.type === "entity" && node.entity && onEdit && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(node.entity!);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                e.preventDefault();
+                onEdit(node.entity!);
+              }
+            }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-0.5 rounded hover:bg-mythos-bg-primary hover:text-mythos-accent-cyan"
+            title="Edit entity"
+          >
+            <Pencil className="w-3 h-3" />
+          </span>
         )}
-        <span className="truncate">{node.name}</span>
+        {node.wordCount !== undefined && node.wordCount > 0 && (
+          <span className="text-xs text-mythos-text-muted opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            {formatWordCount(node.wordCount)}
+          </span>
+        )}
       </button>
       {isOpen && hasChildren && (
         <div>
@@ -95,7 +185,9 @@ function TreeItem({ node, depth = 0, selectedId, onSelect }: TreeItemProps) {
               node={child}
               depth={depth + 1}
               selectedId={selectedId}
+              currentDocumentId={currentDocumentId}
               onSelect={onSelect}
+              onEdit={onEdit}
             />
           ))}
         </div>
@@ -105,38 +197,129 @@ function TreeItem({ node, depth = 0, selectedId, onSelect }: TreeItemProps) {
 }
 
 /**
- * Build the manifest tree from real store data
+ * Check if a string matches a search query (case-insensitive)
  */
-function useManifestTree(): TreeNode[] {
+function matchesSearch(text: string, query: string): boolean {
+  return text.toLowerCase().includes(query.toLowerCase());
+}
+
+/**
+ * Check if an entity matches the search query (by name or aliases)
+ */
+function entityMatchesSearch(entity: Entity, query: string): boolean {
+  if (!query) return true;
+  if (matchesSearch(entity.name, query)) return true;
+  return entity.aliases.some((alias) => matchesSearch(alias, query));
+}
+
+/**
+ * Check if a document matches the search query (by title)
+ */
+function documentMatchesSearch(doc: Document, query: string): boolean {
+  if (!query) return true;
+  const title = doc.title || "";
+  return matchesSearch(title, query);
+}
+
+interface UseManifestTreeOptions {
+  searchQuery: string;
+  documentTypeFilter: DocumentType | "all";
+}
+
+/**
+ * Build the manifest tree from real store data with search and filter support
+ */
+function useManifestTree({ searchQuery, documentTypeFilter }: UseManifestTreeOptions): TreeNode[] {
   const entities = useEntities();
   const documents = useDocuments();
 
   return useMemo(() => {
+    // Filter entities by search query
+    const filteredEntities = searchQuery
+      ? entities.filter((e) => entityMatchesSearch(e, searchQuery))
+      : entities;
+
+    // Filter documents by search query and type
+    let filteredDocuments = documents;
+    if (searchQuery) {
+      filteredDocuments = filteredDocuments.filter((d) => documentMatchesSearch(d, searchQuery));
+    }
+    if (documentTypeFilter !== "all") {
+      filteredDocuments = filteredDocuments.filter((d) => d.type === documentTypeFilter);
+    }
+
     // Group entities by type
-    const characterEntities = entities.filter((e) => e.type === "character");
-    const locationEntities = entities.filter((e) => e.type === "location");
-    const itemEntities = entities.filter((e) => e.type === "item");
-    const magicEntities = entities.filter((e) => e.type === "magic_system");
-    const factionEntities = entities.filter((e) => e.type === "faction");
+    const characterEntities = filteredEntities.filter((e) => e.type === "character");
+    const locationEntities = filteredEntities.filter((e) => e.type === "location");
+    const itemEntities = filteredEntities.filter((e) => e.type === "item");
+    const magicEntities = filteredEntities.filter((e) => e.type === "magic_system");
+    const factionEntities = filteredEntities.filter((e) => e.type === "faction");
 
     // Group documents by type
-    const chapters = documents.filter((d) => d.type === "chapter");
-    const scenes = documents.filter((d) => d.type === "scene");
-    const notes = documents.filter((d) => d.type === "note");
+    const chapters = filteredDocuments.filter((d) => d.type === "chapter");
+    const scenes = filteredDocuments.filter((d) => d.type === "scene");
+    const notes = filteredDocuments.filter((d) => d.type === "note");
+    const outlines = filteredDocuments.filter((d) => d.type === "outline");
+    const worldbuilding = filteredDocuments.filter((d) => d.type === "worldbuilding");
+
+    // Build document hierarchy - scenes can be children of chapters
+    const buildChapterWithChildren = (chapter: Document): TreeNode => {
+      // Find scenes that belong to this chapter (parentId matches)
+      const chapterScenes = scenes.filter((s) => s.parentId === chapter.id);
+
+      return {
+        id: chapter.id,
+        name: chapter.title || `Chapter ${chapter.orderIndex + 1}`,
+        type: "file" as const,
+        documentType: "chapter" as DocumentType,
+        document: chapter,
+        wordCount: chapter.wordCount,
+        children: chapterScenes.length > 0
+          ? chapterScenes
+              .sort((a, b) => a.orderIndex - b.orderIndex)
+              .map((scene) => ({
+                id: scene.id,
+                name: scene.title || `Scene ${scene.orderIndex + 1}`,
+                type: "file" as const,
+                documentType: "scene" as DocumentType,
+                document: scene,
+                wordCount: scene.wordCount,
+                parentId: chapter.id,
+              }))
+          : undefined,
+      };
+    };
+
+    // Get orphan scenes (scenes without a parent chapter)
+    const orphanScenes = scenes.filter(
+      (s) => !s.parentId || !chapters.some((c) => c.id === s.parentId)
+    );
 
     const tree: TreeNode[] = [];
 
-    // Chapters folder
-    if (chapters.length > 0 || scenes.length > 0) {
+    // Chapters folder (with nested scenes)
+    if (chapters.length > 0 || orphanScenes.length > 0) {
+      const chapterNodes = chapters
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map(buildChapterWithChildren);
+
+      // Add orphan scenes at the chapter level
+      const orphanSceneNodes = orphanScenes
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((scene) => ({
+          id: scene.id,
+          name: scene.title || `Scene ${scene.orderIndex + 1}`,
+          type: "file" as const,
+          documentType: "scene" as DocumentType,
+          document: scene,
+          wordCount: scene.wordCount,
+        }));
+
       tree.push({
         id: "chapters",
         name: "Chapters",
         type: "folder",
-        children: chapters.map((doc) => ({
-          id: doc.id,
-          name: doc.title || `Chapter ${doc.orderIndex + 1}`,
-          type: "file" as const,
-        })),
+        children: [...chapterNodes, ...orphanSceneNodes],
       });
     }
 
@@ -226,52 +409,414 @@ function useManifestTree(): TreeNode[] {
         id: "notes",
         name: "Notes",
         type: "folder",
-        children: notes.map((doc) => ({
-          id: doc.id,
-          name: doc.title || "Untitled Note",
-          type: "file" as const,
-        })),
+        children: notes
+          .sort((a, b) => a.orderIndex - b.orderIndex)
+          .map((doc) => ({
+            id: doc.id,
+            name: doc.title || "Untitled Note",
+            type: "file" as const,
+            documentType: "note" as DocumentType,
+            document: doc,
+            wordCount: doc.wordCount,
+          })),
+      });
+    }
+
+    // Outlines folder
+    if (outlines.length > 0) {
+      tree.push({
+        id: "outlines",
+        name: "Outlines",
+        type: "folder",
+        children: outlines
+          .sort((a, b) => a.orderIndex - b.orderIndex)
+          .map((doc) => ({
+            id: doc.id,
+            name: doc.title || "Untitled Outline",
+            type: "file" as const,
+            documentType: "outline" as DocumentType,
+            document: doc,
+            wordCount: doc.wordCount,
+          })),
+      });
+    }
+
+    // Worldbuilding folder
+    if (worldbuilding.length > 0) {
+      tree.push({
+        id: "worldbuilding",
+        name: "Worldbuilding",
+        type: "folder",
+        children: worldbuilding
+          .sort((a, b) => a.orderIndex - b.orderIndex)
+          .map((doc) => ({
+            id: doc.id,
+            name: doc.title || "Untitled",
+            type: "file" as const,
+            documentType: "worldbuilding" as DocumentType,
+            document: doc,
+            wordCount: doc.wordCount,
+          })),
       });
     }
 
     return tree;
-  }, [entities, documents]);
+  }, [entities, documents, searchQuery, documentTypeFilter]);
 }
 
 export function Manifest() {
-  const tree = useManifestTree();
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [documentTypeFilter, setDocumentTypeFilter] = useState<DocumentType | "all">("all");
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Entity form modal state
+  const [isEntityFormOpen, setIsEntityFormOpen] = useState(false);
+  const [entityFormMode, setEntityFormMode] = useState<"create" | "edit">("create");
+  const [editingEntity, setEditingEntity] = useState<Entity | undefined>(undefined);
+
+  const tree = useManifestTree({ searchQuery, documentTypeFilter });
   const selectedEntityId = useMythosStore((state) => state.world.selectedEntityId);
+  const currentDocument = useMythosStore((state) => state.document.currentDocument);
   const setSelectedEntity = useMythosStore((state) => state.setSelectedEntity);
+  const setCurrentDocument = useMythosStore((state) => state.setCurrentDocument);
   const showHud = useMythosStore((state) => state.showHud);
 
-  // Handle node selection - show HUD for entities
+  // Entity persistence hook for DB + store sync
+  // Note: isSaving and saveError are available for future UI feedback
+  const { createEntity, updateEntity, isLoading: _isSaving, error: _saveError } = useEntityPersistence();
+
+  // Handle node selection - show HUD for entities, set currentDocument for files
   const handleSelect = useCallback(
     (node: TreeNode) => {
       if (node.type === "entity" && node.entity) {
         setSelectedEntity(node.entity.id);
         // Show HUD at a fixed position in the manifest area
         showHud(node.entity, { x: 280, y: 200 });
+      } else if (node.type === "file" && node.document) {
+        // Set the document as current document in the store
+        setCurrentDocument(node.document);
       }
-      // TODO: Handle document selection (load into editor)
     },
-    [setSelectedEntity, showHud]
+    [setSelectedEntity, showHud, setCurrentDocument]
   );
+
+  // Clear search
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery("");
+  }, []);
+
+  // Clear filter
+  const handleClearFilter = useCallback(() => {
+    setDocumentTypeFilter("all");
+  }, []);
+
+  // Check if filters are active
+  const hasActiveFilters = searchQuery.length > 0 || documentTypeFilter !== "all";
 
   // Show empty state if no data
   const isEmpty = tree.length === 0;
 
+  // Open create entity modal
+  const handleCreateEntity = useCallback(() => {
+    setEntityFormMode("create");
+    setEditingEntity(undefined);
+    setIsEntityFormOpen(true);
+  }, []);
+
+  // Open edit entity modal
+  const handleEditEntity = useCallback((entity: Entity) => {
+    setEntityFormMode("edit");
+    setEditingEntity(entity);
+    setIsEntityFormOpen(true);
+  }, []);
+
+  // Close entity form modal
+  const handleCloseEntityForm = useCallback(() => {
+    setIsEntityFormOpen(false);
+    setEditingEntity(undefined);
+  }, []);
+
+  // Save entity (create or update) - now persists to DB via useEntityPersistence
+  const handleSaveEntity = useCallback(
+    async (formData: EntityFormData) => {
+      const now = new Date();
+      const baseEntity = {
+        name: formData.name,
+        aliases: formData.aliases,
+        type: formData.type,
+        properties: {},
+        mentions: [],
+        notes: formData.notes,
+        updatedAt: now,
+      };
+
+      // Get projectId from store for DB persistence
+      const projectId = useMythosStore.getState().project.currentProject?.id;
+      if (!projectId) {
+        console.error("[Manifest] Cannot save entity: No project loaded");
+        return;
+      }
+
+      if (entityFormMode === "create") {
+        // Create new entity with generated ID
+        const id = `entity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        let newEntity: Entity;
+
+        switch (formData.type) {
+          case "character":
+            newEntity = {
+              ...baseEntity,
+              id,
+              createdAt: now,
+              type: "character",
+              archetype: formData.archetype,
+              traits: formData.traits || [],
+              status: {},
+              visualDescription: {},
+              backstory: formData.backstory,
+              goals: formData.goals,
+              fears: formData.fears,
+              voiceNotes: formData.voiceNotes,
+            } as Character;
+            break;
+          case "location":
+            newEntity = {
+              ...baseEntity,
+              id,
+              createdAt: now,
+              type: "location",
+              parentLocation: formData.parentLocation,
+              climate: formData.climate,
+              atmosphere: formData.atmosphere,
+            } as Location;
+            break;
+          case "item":
+            newEntity = {
+              ...baseEntity,
+              id,
+              createdAt: now,
+              type: "item",
+              category: formData.category || "other",
+              rarity: formData.rarity,
+              abilities: formData.abilities,
+            } as Item;
+            break;
+          case "magic_system":
+            newEntity = {
+              ...baseEntity,
+              id,
+              createdAt: now,
+              type: "magic_system",
+              rules: formData.rules || [],
+              limitations: formData.limitations || [],
+              costs: formData.costs,
+            } as MagicSystem;
+            break;
+          case "faction":
+            newEntity = {
+              ...baseEntity,
+              id,
+              createdAt: now,
+              type: "faction",
+              leader: formData.leader,
+              headquarters: formData.headquarters,
+              goals: formData.factionGoals,
+              rivals: formData.rivals,
+              allies: formData.allies,
+            } as Faction;
+            break;
+          default:
+            newEntity = {
+              ...baseEntity,
+              id,
+              createdAt: now,
+            } as Entity;
+        }
+
+        // Persist to DB and add to store
+        const result = await createEntity(newEntity, projectId);
+        if (result.error) {
+          console.error("[Manifest] Failed to create entity:", result.error);
+          return;
+        }
+      } else if (editingEntity) {
+        // Update existing entity
+        const updates: Partial<Entity> = {
+          name: formData.name,
+          aliases: formData.aliases,
+          notes: formData.notes,
+          updatedAt: now,
+        };
+
+        // Add type-specific updates
+        switch (formData.type) {
+          case "character":
+            Object.assign(updates, {
+              archetype: formData.archetype,
+              traits: formData.traits || [],
+              backstory: formData.backstory,
+              goals: formData.goals,
+              fears: formData.fears,
+              voiceNotes: formData.voiceNotes,
+            });
+            break;
+          case "location":
+            Object.assign(updates, {
+              parentLocation: formData.parentLocation,
+              climate: formData.climate,
+              atmosphere: formData.atmosphere,
+            });
+            break;
+          case "item":
+            Object.assign(updates, {
+              category: formData.category,
+              rarity: formData.rarity,
+              abilities: formData.abilities,
+            });
+            break;
+          case "magic_system":
+            Object.assign(updates, {
+              rules: formData.rules || [],
+              limitations: formData.limitations || [],
+              costs: formData.costs,
+            });
+            break;
+          case "faction":
+            Object.assign(updates, {
+              leader: formData.leader,
+              headquarters: formData.headquarters,
+              goals: formData.factionGoals,
+              rivals: formData.rivals,
+              allies: formData.allies,
+            });
+            break;
+        }
+
+        // Persist to DB and update in store
+        const result = await updateEntity(editingEntity.id, updates);
+        if (result.error) {
+          console.error("[Manifest] Failed to update entity:", result.error);
+          return;
+        }
+      }
+
+      handleCloseEntityForm();
+    },
+    [entityFormMode, editingEntity, createEntity, updateEntity, handleCloseEntityForm]
+  );
+
   return (
     <div className="h-full flex flex-col">
+      {/* Header */}
       <div className="p-3 border-b border-mythos-text-muted/20">
-        <h2 className="text-xs font-semibold text-mythos-text-muted uppercase tracking-wider">
-          Manifest
-        </h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xs font-semibold text-mythos-text-muted uppercase tracking-wider">
+            Manifest
+          </h2>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-mythos-text-muted hover:text-mythos-accent-green"
+              onClick={handleCreateEntity}
+              title="Create new entity"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-6 w-6 ${showFilters ? "text-mythos-accent-cyan" : "text-mythos-text-muted"}`}
+              onClick={() => setShowFilters(!showFilters)}
+              title="Toggle filters"
+            >
+              <Filter className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-mythos-text-muted" />
+          <Input
+            type="text"
+            placeholder="Search documents & entities..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-8 pl-8 pr-8 text-xs bg-mythos-bg-primary"
+          />
+          {searchQuery && (
+            <button
+              onClick={handleClearSearch}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-mythos-text-muted hover:text-mythos-text-primary transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Filter Dropdown */}
+        {showFilters && (
+          <div className="mt-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-mythos-text-muted whitespace-nowrap">
+                Type:
+              </label>
+              <select
+                value={documentTypeFilter}
+                onChange={(e) => setDocumentTypeFilter(e.target.value as DocumentType | "all")}
+                className="flex-1 h-7 px-2 text-xs rounded-md border border-mythos-text-muted/30 bg-mythos-bg-primary text-mythos-text-primary focus:outline-none focus:ring-1 focus:ring-mythos-accent-cyan"
+              >
+                {DOCUMENT_TYPE_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Active Filters Indicator */}
+        {hasActiveFilters && (
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            <span className="text-mythos-text-muted">Filtering:</span>
+            {searchQuery && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-mythos-accent-cyan/20 text-mythos-accent-cyan">
+                "{searchQuery}"
+                <button onClick={handleClearSearch} className="hover:text-white">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {documentTypeFilter !== "all" && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-mythos-accent-purple/20 text-mythos-accent-purple">
+                {DOCUMENT_TYPE_FILTERS.find((f) => f.value === documentTypeFilter)?.label}
+                <button onClick={handleClearFilter} className="hover:text-white">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Tree Content */}
       <ScrollArea className="flex-1 p-2">
         {isEmpty ? (
           <div className="p-4 text-center text-mythos-text-muted text-sm">
-            <p>No entities or documents yet.</p>
-            <p className="mt-2 text-xs">Paste content to detect entities or create them manually.</p>
+            {hasActiveFilters ? (
+              <>
+                <p>No matching results.</p>
+                <p className="mt-2 text-xs">Try adjusting your search or filters.</p>
+              </>
+            ) : (
+              <>
+                <p>No entities or documents yet.</p>
+                <p className="mt-2 text-xs">Paste content to detect entities or create them manually.</p>
+              </>
+            )}
           </div>
         ) : (
           tree.map((node) => (
@@ -279,11 +824,22 @@ export function Manifest() {
               key={node.id}
               node={node}
               selectedId={selectedEntityId}
+              currentDocumentId={currentDocument?.id ?? null}
               onSelect={handleSelect}
+              onEdit={handleEditEntity}
             />
           ))
         )}
       </ScrollArea>
+
+      {/* Entity Form Modal */}
+      <EntityFormModal
+        isOpen={isEntityFormOpen}
+        mode={entityFormMode}
+        entity={editingEntity}
+        onClose={handleCloseEntityForm}
+        onSave={handleSaveEntity}
+      />
     </div>
   );
 }

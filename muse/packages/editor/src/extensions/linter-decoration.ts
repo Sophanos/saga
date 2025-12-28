@@ -21,6 +21,9 @@ const linterDecorationPluginKey = new PluginKey<DecorationSet>(
 /**
  * Find all occurrences of a text string in the ProseMirror document
  * Returns an array of { from, to } positions
+ *
+ * This properly handles multi-block documents by walking the document structure
+ * and accounting for block boundaries in position calculations.
  */
 function findTextPositions(
   doc: ProseMirrorNode,
@@ -32,21 +35,64 @@ function findTextPositions(
     return positions;
   }
 
-  // Get the full document text with newlines preserved between blocks
-  const fullText = doc.textBetween(0, doc.content.size, "\n");
+  // Build a map of text offsets to ProseMirror positions by walking the document
+  // This properly accounts for block boundaries
+  const textNodes: Array<{ text: string; pmPos: number; textOffset: number }> =
+    [];
+  let cumulativeTextOffset = 0;
 
-  // Find all occurrences in the text
+  doc.descendants((node, pos) => {
+    if (node.isText && node.text) {
+      textNodes.push({
+        text: node.text,
+        pmPos: pos,
+        textOffset: cumulativeTextOffset,
+      });
+      cumulativeTextOffset += node.text.length;
+    }
+    return true;
+  });
+
+  // Concatenate all text to search in
+  const fullText = textNodes.map((n) => n.text).join("");
+
+  // Find all occurrences in the concatenated text
   let searchIndex = 0;
   let foundIndex = fullText.indexOf(searchText, searchIndex);
 
   while (foundIndex !== -1) {
-    // Convert text index to document position
-    // +1 accounts for the opening of the doc node
-    const from = foundIndex + 1;
-    const to = from + searchText.length;
+    // Convert text offset to ProseMirror position
+    // Find which text node contains the start of this match
+    let from = 0;
+    let to = 0;
 
-    // Validate the position is within document bounds
-    if (to <= doc.content.size + 1) {
+    for (let i = 0; i < textNodes.length; i++) {
+      const node = textNodes[i];
+      const nodeEnd = node.textOffset + node.text.length;
+
+      // Check if match starts in this node
+      if (foundIndex >= node.textOffset && foundIndex < nodeEnd) {
+        const offsetInNode = foundIndex - node.textOffset;
+        from = node.pmPos + offsetInNode;
+
+        // Find where the match ends
+        const matchEnd = foundIndex + searchText.length;
+        for (let j = i; j < textNodes.length; j++) {
+          const endNode = textNodes[j];
+          const endNodeEnd = endNode.textOffset + endNode.text.length;
+
+          if (matchEnd <= endNodeEnd) {
+            const endOffsetInNode = matchEnd - endNode.textOffset;
+            to = endNode.pmPos + endOffsetInNode;
+            break;
+          }
+        }
+        break;
+      }
+    }
+
+    // Validate positions are within document bounds
+    if (from > 0 && to > from && to <= doc.content.size) {
       positions.push({ from, to });
     }
 

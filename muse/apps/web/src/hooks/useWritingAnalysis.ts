@@ -3,7 +3,9 @@ import { writingCoach } from "@mythos/ai";
 import type { SceneMetrics, StyleIssue } from "@mythos/core";
 import { useAnalysisStore } from "../stores/analysis";
 import { useHistoryStore } from "../stores/history";
+import { useMythosStore } from "../stores";
 import { simpleHash } from "../utils/hash";
+import { persistAnalysisRecord } from "../services/analysis";
 
 /**
  * Debounce delay in milliseconds before triggering analysis
@@ -25,6 +27,8 @@ interface UseWritingAnalysisOptions {
   autoAnalyze?: boolean;
   /** Custom debounce delay */
   debounceMs?: number;
+  /** Whether the hook is enabled (false disables all analysis) */
+  enabled?: boolean;
 }
 
 /**
@@ -62,7 +66,7 @@ interface UseWritingAnalysisResult {
 export function useWritingAnalysis(
   options: UseWritingAnalysisOptions
 ): UseWritingAnalysisResult {
-  const { content, autoAnalyze = true, debounceMs = DEBOUNCE_DELAY } = options;
+  const { content, autoAnalyze = true, debounceMs = DEBOUNCE_DELAY, enabled = true } = options;
 
   // Store state and actions
   const {
@@ -81,6 +85,10 @@ export function useWritingAnalysis(
   // History store actions
   const addAnalysisRecord = useHistoryStore((state) => state.addAnalysisRecord);
 
+  // Get current project and document for database persistence
+  const currentProject = useMythosStore((state) => state.project.currentProject);
+  const currentDocument = useMythosStore((state) => state.document.currentDocument);
+
   // Refs for debouncing
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastContentRef = useRef<string>("");
@@ -90,8 +98,8 @@ export function useWritingAnalysis(
    * Run the writing analysis
    */
   const runAnalysis = useCallback(async () => {
-    // Don't analyze if content is too short
-    if (content.length < MIN_CONTENT_LENGTH) {
+    // Don't analyze if disabled or content is too short
+    if (!enabled || content.length < MIN_CONTENT_LENGTH) {
       return;
     }
 
@@ -133,6 +141,21 @@ export function useWritingAnalysis(
         metrics: result.metrics,
       });
 
+      // Persist to database if we have a project context
+      if (currentProject?.id) {
+        // Fire and forget - don't block the UI for database persistence
+        persistAnalysisRecord({
+          projectId: currentProject.id,
+          documentId: currentDocument?.id,
+          sceneId: contentHash,
+          metrics: result.metrics,
+          wordCount: content.split(/\s+/).filter(Boolean).length,
+        }).catch((err) => {
+          // Log but don't fail - local history is already saved
+          console.warn("[useWritingAnalysis] Failed to persist to database:", err);
+        });
+      }
+
       // Update last analyzed content
       lastContentRef.current = content;
     } catch (err) {
@@ -147,14 +170,14 @@ export function useWritingAnalysis(
     } finally {
       setAnalyzing(false);
     }
-  }, [content, lastAnalyzedHash, setAnalyzing, setError, updateAnalysis, addAnalysisRecord]);
+  }, [content, lastAnalyzedHash, setAnalyzing, setError, updateAnalysis, addAnalysisRecord, currentProject, currentDocument]);
 
   /**
    * Debounced auto-analysis effect
    */
   useEffect(() => {
-    // Skip if auto-analyze is disabled
-    if (!autoAnalyze) {
+    // Skip if disabled or auto-analyze is disabled
+    if (!enabled || !autoAnalyze) {
       return;
     }
 

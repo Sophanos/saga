@@ -33,8 +33,10 @@ import { FixPreviewModal } from "./FixPreviewModal";
  * Props for LinterView component
  */
 interface LinterViewProps {
-  /** Callback to jump to a position in the editor */
-  onJumpToPosition?: (position: number) => void;
+  /** Callback to jump to an issue location in the editor by issueId */
+  onJumpToPosition?: (issueId: string) => void;
+  /** Callback to jump to a related location by line number and text */
+  onJumpToRelatedLocation?: (line: number, text: string) => void;
   /** Callback to apply a fix for an issue */
   onApplyFix?: (issueId: string, fix: string) => void;
   /** Callback to undo the last fix */
@@ -194,12 +196,14 @@ function IssueItem({
   issue,
   issueId,
   onJumpToPosition,
+  onJumpToRelatedLocation,
   onApplyFix,
   onPreview,
 }: {
   issue: LinterIssue;
   issueId: string;
-  onJumpToPosition?: (position: number) => void;
+  onJumpToPosition?: (issueId: string) => void;
+  onJumpToRelatedLocation?: (line: number, text: string) => void;
   onApplyFix?: (issueId: string, fix: string) => void;
   onPreview?: (issue: LinterIssue) => void;
 }) {
@@ -225,7 +229,7 @@ function IssueItem({
         <div className="flex items-center gap-2">
           {issue.location.line !== undefined && (
             <button
-              onClick={() => onJumpToPosition?.(issue.location.line)}
+              onClick={() => onJumpToPosition?.(issueId)}
               className={cn(
                 "flex items-center gap-1 text-xs text-mythos-text-muted",
                 "hover:text-mythos-accent-cyan transition-colors",
@@ -282,7 +286,7 @@ function IssueItem({
             {issue.relatedLocations.map((loc, idx) => (
               <button
                 key={idx}
-                onClick={() => onJumpToPosition?.(loc.line)}
+                onClick={() => onJumpToRelatedLocation?.(loc.line, loc.text)}
                 className="flex items-center gap-2 text-xs text-mythos-text-secondary hover:text-mythos-accent-cyan transition-colors w-full text-left"
               >
                 <MapPin className="w-3 h-3 text-mythos-text-muted" />
@@ -328,12 +332,14 @@ function SeveritySection({
   severity,
   issues,
   onJumpToPosition,
+  onJumpToRelatedLocation,
   onApplyFix,
   onPreview,
 }: {
   severity: Severity;
   issues: Array<{ issue: LinterIssue; id: string }>;
-  onJumpToPosition?: (position: number) => void;
+  onJumpToPosition?: (issueId: string) => void;
+  onJumpToRelatedLocation?: (line: number, text: string) => void;
   onApplyFix?: (issueId: string, fix: string) => void;
   onPreview?: (issue: LinterIssue) => void;
 }) {
@@ -390,6 +396,7 @@ function SeveritySection({
               issue={issue}
               issueId={id}
               onJumpToPosition={onJumpToPosition}
+              onJumpToRelatedLocation={onJumpToRelatedLocation}
               onApplyFix={onApplyFix}
               onPreview={onPreview}
             />
@@ -548,6 +555,7 @@ function LinterHeader({
  */
 export function LinterView({
   onJumpToPosition,
+  onJumpToRelatedLocation,
   onApplyFix,
   onUndo,
   onRedo,
@@ -698,6 +706,7 @@ export function LinterView({
                   severity={severity}
                   issues={groupedIssues[severity]}
                   onJumpToPosition={onJumpToPosition}
+                  onJumpToRelatedLocation={onJumpToRelatedLocation}
                   onApplyFix={onApplyFix}
                   onPreview={handleOpenPreview}
                 />

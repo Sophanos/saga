@@ -7,8 +7,19 @@ import type {
   EntityType,
 } from "@mythos/core";
 import type { Entity, Mention } from "@mythos/core";
+import type { Editor } from "@mythos/editor";
+import {
+  createEntity as dbCreateEntity,
+  updateEntity as dbUpdateEntity,
+} from "@mythos/db";
 import { useMythosStore, useEntities } from "../stores";
 import { useApiKey } from "./useApiKey";
+import { useEntityMarks } from "./useEntityMarks";
+import {
+  mapCoreEntityToDbInsert,
+  mapCoreEntityToDbUpdate,
+  mapDbEntityToEntity,
+} from "../utils/dbMappers";
 
 /**
  * Generate a simple UUID v4
@@ -31,6 +42,8 @@ export interface UseEntityDetectionOptions {
   detectionOptions?: DetectionOptions;
   /** Whether detection is enabled (default: true) */
   enabled?: boolean;
+  /** Editor instance for applying EntityMarks */
+  editor?: Editor | null;
 }
 
 /**
@@ -71,7 +84,7 @@ export interface UseEntityDetectionResult {
 /**
  * Default detection options
  */
-const DEFAULT_OPTIONS: Required<UseEntityDetectionOptions> = {
+const DEFAULT_OPTIONS: Omit<Required<UseEntityDetectionOptions>, "editor"> = {
   minLength: 100,
   detectionOptions: {},
   enabled: true,
@@ -130,8 +143,9 @@ function convertToEntity(
 export function useEntityDetection(
   options: UseEntityDetectionOptions = {}
 ): UseEntityDetectionResult {
-  const { minLength, detectionOptions, enabled } = {
+  const { minLength, detectionOptions, enabled, editor } = {
     ...DEFAULT_OPTIONS,
+    editor: null,
     ...options,
   };
 
@@ -145,6 +159,9 @@ export function useEntityDetection(
 
   // API key for BYOK
   const { key: apiKey } = useApiKey();
+
+  // EntityMark application
+  const { applyMarksForDetectedEntities } = useEntityMarks(editor);
 
   // Local state
   const [isDetecting, setIsDetecting] = useState(false);
@@ -270,7 +287,7 @@ export function useEntityDetection(
   }, []);
 
   /**
-   * Apply selected entities - create or update in store
+   * Apply selected entities - create or update in DB and store, then apply EntityMarks
    */
   const applyEntities = useCallback(
     async (selectedEntities: DetectedEntity[]) => {
@@ -285,28 +302,75 @@ export function useEntityDetection(
       try {
         const documentId = currentDocument?.id || "unknown";
 
-        for (const detected of selectedEntities) {
-          const entity = convertToEntity(detected, documentId);
+        // Get projectId for DB persistence
+        const projectId = useMythosStore.getState().project.currentProject?.id;
+        if (!projectId) {
+          throw new Error("No project loaded - cannot persist entities");
+        }
 
-          if (detected.matchedExistingId) {
+        // Collect entity IDs for marking (use existing ID or generate new one)
+        const entitiesWithIds = selectedEntities.map((detected) => ({
+          ...detected,
+          tempId: detected.matchedExistingId || generateId(),
+        }));
+
+        for (const detected of entitiesWithIds) {
+          const entity = convertToEntity(
+            { ...detected, matchedExistingId: detected.tempId },
+            documentId
+          );
+
+          if (detected.matchedExistingId && detected.matchedExistingId === detected.tempId) {
             // Update existing entity with new mentions
             const existing = existingEntities.find(
               (e) => e.id === detected.matchedExistingId
             );
             if (existing) {
-              updateEntity(detected.matchedExistingId, {
+              const updates = {
                 mentions: [...(existing.mentions || []), ...(entity.mentions || [])],
                 aliases: [
                   ...new Set([...(existing.aliases || []), ...(entity.aliases || [])]),
                 ],
                 updatedAt: new Date(),
-              });
+              };
+
+              try {
+                // Persist to DB first
+                const dbUpdate = mapCoreEntityToDbUpdate(updates);
+                const dbEntity = await dbUpdateEntity(detected.matchedExistingId, dbUpdate);
+                const persistedEntity = mapDbEntityToEntity(dbEntity);
+
+                // Then update in store
+                updateEntity(detected.matchedExistingId, persistedEntity);
+              } catch (dbErr) {
+                console.error("[useEntityDetection] DB update failed, updating store only:", dbErr);
+                // Fallback to store-only update
+                updateEntity(detected.matchedExistingId, updates);
+              }
             }
           } else {
-            // Create new entity
-            addEntity(entity);
+            // Create new entity with the tempId
+            const newEntity = { ...entity, id: detected.tempId };
+
+            try {
+              // Persist to DB first
+              const dbInsert = mapCoreEntityToDbInsert(newEntity, projectId);
+              const dbEntity = await dbCreateEntity(dbInsert);
+              const persistedEntity = mapDbEntityToEntity(dbEntity);
+
+              // Then add to store with DB-returned data
+              addEntity(persistedEntity);
+            } catch (dbErr) {
+              console.error("[useEntityDetection] DB create failed, adding to store only:", dbErr);
+              // Fallback to store-only add
+              addEntity(newEntity);
+            }
           }
         }
+
+        // Apply EntityMarks to the detected text ranges
+        // Use the paste position offset for accurate positioning
+        applyMarksForDetectedEntities(entitiesWithIds, lastPastePositionRef.current);
 
         // Clear detection state and close modal
         setDetectedEntities([]);
@@ -328,6 +392,7 @@ export function useEntityDetection(
       addEntity,
       updateEntity,
       closeModal,
+      applyMarksForDetectedEntities,
     ]
   );
 

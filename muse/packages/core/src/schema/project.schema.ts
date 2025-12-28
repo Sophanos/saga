@@ -78,6 +78,50 @@ export const arcTemplateSchema = z.enum([
   "freeform", // No structure
 ]);
 
+// Template IDs for builtin templates
+export const templateIdSchema = z.enum([
+  "epic_fantasy",
+  "wizarding_world",
+  "dnd_campaign",
+  "manga_novel",
+  "literary_fiction",
+  "science_fiction",
+  "horror",
+  "romance",
+  "mystery_thriller",
+  "screenplay",
+  "webnovel_serial",
+  "visual_novel",
+  "comics_graphic_novel",
+  "blank",
+]);
+
+// UI Module configuration
+export const uiModuleSchema = z.enum([
+  "manifest",
+  "console",
+  "hud",
+  "chat",
+  "linter",
+  "dynamics",
+  "coach",
+  "history",
+  "editor",
+  "world_graph",
+  "map",
+  "timeline",
+  "codex",
+  "storyboard",
+  "encounter",
+  "initiative",
+  "stat_blocks",
+  "loot",
+  "session_notes",
+  "outline",
+  "character_arcs",
+  "scene_beats",
+]);
+
 // Project configuration
 export const projectConfigSchema = z.object({
   genre: genreSchema.optional(),
@@ -107,11 +151,29 @@ export const projectConfigSchema = z.object({
     .optional(),
 });
 
+// Template override configuration (for customizing a template per-project)
+export const templateOverridesSchema = z.object({
+  // Entity kinds to add (custom kinds)
+  customEntityKinds: z.array(z.any()).optional(),
+  // Entity kinds from template to disable
+  disabledEntityKinds: z.array(z.string()).optional(),
+  // Relationship kinds to add
+  customRelationshipKinds: z.array(z.any()).optional(),
+  // Document kinds to add
+  customDocumentKinds: z.array(z.any()).optional(),
+  // UI module overrides (enable/disable specific modules)
+  uiModuleOverrides: z.record(uiModuleSchema, z.boolean()).optional(),
+});
+
 // Project schema
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string().min(1, "Project name is required"),
   description: z.string().optional(),
+  // Template configuration
+  templateId: templateIdSchema.optional(),
+  templateOverrides: templateOverridesSchema.optional(),
+  // Legacy config (merged with template defaults)
   config: projectConfigSchema.default({}),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
@@ -145,6 +207,9 @@ export type StyleMode = z.infer<typeof styleModeSchema>;
 export type LinterSeverity = z.infer<typeof linterSeveritySchema>;
 export type LinterConfig = z.infer<typeof linterConfigSchema>;
 export type ArcTemplate = z.infer<typeof arcTemplateSchema>;
+export type TemplateId = z.infer<typeof templateIdSchema>;
+export type UIModule = z.infer<typeof uiModuleSchema>;
+export type TemplateOverrides = z.infer<typeof templateOverridesSchema>;
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type DocumentType = z.infer<typeof documentTypeSchema>;

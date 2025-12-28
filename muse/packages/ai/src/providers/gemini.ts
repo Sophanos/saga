@@ -2,7 +2,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
 // Create Gemini provider
 export const google = createGoogleGenerativeAI({
-  apiKey: process.env["GOOGLE_GENERATIVE_AI_API_KEY"],
+  apiKey: import.meta.env["VITE_GOOGLE_GENERATIVE_AI_API_KEY"],
 });
 
 // Model configurations (Gemini 3 models)

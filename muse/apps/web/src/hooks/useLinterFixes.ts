@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { consistencyLinter, type ConsistencyIssue } from "@mythos/ai";
+import type { ConsistencyIssue } from "@mythos/ai";
 import { replaceText, jumpToPosition, type Editor } from "@mythos/editor";
 import { useMythosStore, type LinterIssue } from "../stores";
 import { useUndoStore } from "../stores/undo";
+import { useApiKey } from "./useApiKey";
+import { lintDocumentViaEdge, LinterApiError } from "../services/ai";
 import { simpleHash } from "../utils/hash";
 
 // Re-export LinterIssue for convenience
@@ -20,6 +22,8 @@ export interface UseLinterOptions {
   autoLint?: boolean;
   /** Custom debounce delay in milliseconds */
   debounceMs?: number;
+  /** Whether the hook is enabled (false disables all linting) */
+  enabled?: boolean;
 }
 
 /**
@@ -127,14 +131,23 @@ export function useLinterFixes(options: UseLinterOptions): UseLinterResult {
     editor,
     autoLint = true,
     debounceMs = DEFAULT_DEBOUNCE_MS,
+    enabled = true,
   } = options;
+
+  // API key for BYOK pattern
+  const { key: apiKey } = useApiKey();
 
   // Store actions
   const setLinterIssues = useMythosStore((state) => state.setLinterIssues);
   const setLinterRunning = useMythosStore((state) => state.setLinterRunning);
+  const setLinterError = useMythosStore((state) => state.setLinterError);
   const clearLinterIssues = useMythosStore((state) => state.clearLinterIssues);
   const storeIssues = useMythosStore((state) => state.linter.issues);
   const isLinting = useMythosStore((state) => state.linter.isRunning);
+
+  // Project and document info for API calls
+  const currentProject = useMythosStore((state) => state.project.currentProject);
+  const currentDocument = useMythosStore((state) => state.document.currentDocument);
 
   // Undo store
   const pushUndo = useUndoStore((state) => state.pushUndo);
@@ -163,11 +176,17 @@ export function useLinterFixes(options: UseLinterOptions): UseLinterResult {
   }, [storeIssues]);
 
   /**
-   * Run the consistency linter
+   * Run the consistency linter via edge function
    */
   const runLint = useCallback(async () => {
-    // Don't lint if content is too short
-    if (content.length < MIN_CONTENT_LENGTH) {
+    // Don't lint if disabled or content is too short
+    if (!enabled || content.length < MIN_CONTENT_LENGTH) {
+      return;
+    }
+
+    // Don't lint if we don't have project/document context
+    if (!currentProject?.id || !currentDocument?.id) {
+      console.warn("[useLinterFixes] Missing project or document context");
       return;
     }
 
@@ -189,9 +208,22 @@ export function useLinterFixes(options: UseLinterOptions): UseLinterResult {
     setError(null);
 
     try {
-      const result = await consistencyLinter.lint({
-        documentContent: content,
-      });
+      // Get genre from project config, default to "literary" if not set
+      const genre = currentProject.config?.genre ?? "literary";
+
+      // Call the edge function
+      const result = await lintDocumentViaEdge(
+        {
+          projectId: currentProject.id,
+          documentId: currentDocument.id,
+          content,
+          genre,
+        },
+        {
+          apiKey: apiKey || undefined,
+          signal: abortControllerRef.current.signal,
+        }
+      );
 
       // Check if we were aborted
       if (abortControllerRef.current?.signal.aborted) {
@@ -211,18 +243,60 @@ export function useLinterFixes(options: UseLinterOptions): UseLinterResult {
       // Reset applied fixes since content changed
       setAppliedFixes(new Set());
     } catch (err) {
-      // Ignore abort errors
+      // Handle LinterApiError with specific error codes
+      if (err instanceof LinterApiError) {
+        // Ignore abort errors
+        if (err.code === "ABORTED") {
+          return;
+        }
+
+        // Handle specific error codes
+        let errorMessage = err.message;
+        switch (err.code) {
+          case "UNAUTHORIZED":
+            errorMessage = "API key required. Please add your OpenRouter API key in settings.";
+            break;
+          case "RATE_LIMITED":
+            errorMessage = "Rate limit exceeded. Please wait a moment before trying again.";
+            break;
+          case "CONFIGURATION_ERROR":
+            errorMessage = "Configuration error. Please check your environment settings.";
+            break;
+          case "VALIDATION_ERROR":
+            errorMessage = `Validation error: ${err.message}`;
+            break;
+          case "SERVER_ERROR":
+            errorMessage = "Server error. Please try again later.";
+            break;
+        }
+
+        setError(errorMessage);
+        setLinterError(errorMessage);
+        console.error("[useLinterFixes] LinterApiError:", err.code, err.message);
+        return;
+      }
+
+      // Handle generic abort errors
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
 
       const message = err instanceof Error ? err.message : "Linting failed";
       setError(message);
+      setLinterError(message);
       console.error("[useLinterFixes] Error:", err);
     } finally {
       setLinterRunning(false);
     }
-  }, [content, setLinterIssues, setLinterRunning]);
+  }, [
+    content,
+    currentProject,
+    currentDocument,
+    apiKey,
+    setLinterIssues,
+    setLinterRunning,
+    setLinterError,
+  ]);
 
   /**
    * Apply a single fix to the editor
@@ -495,8 +569,8 @@ export function useLinterFixes(options: UseLinterOptions): UseLinterResult {
    * Debounced auto-lint effect
    */
   useEffect(() => {
-    // Skip if auto-lint is disabled
-    if (!autoLint) {
+    // Skip if disabled or auto-lint is disabled
+    if (!enabled || !autoLint) {
       return;
     }
 
@@ -570,11 +644,13 @@ export function useLinterData() {
   const issues = useMythosStore((state) => state.linter.issues);
   const isRunning = useMythosStore((state) => state.linter.isRunning);
   const lastRunAt = useMythosStore((state) => state.linter.lastRunAt);
+  const error = useMythosStore((state) => state.linter.error);
 
   return {
-    issues: addIdsToIssues(issues),
+    issues, // Issues already have IDs from the API/store
     isRunning,
     lastRunAt,
+    error,
   };
 }
 

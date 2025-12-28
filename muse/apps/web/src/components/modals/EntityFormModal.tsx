@@ -1,0 +1,1029 @@
+import { useState, useCallback, useEffect } from "react";
+import {
+  X,
+  User,
+  Sword,
+  MapPin,
+  Sparkles,
+  Building2,
+  Wand2,
+  ChevronDown,
+  Check,
+  Plus,
+  Save,
+} from "lucide-react";
+import {
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  ScrollArea,
+  Input,
+  cn,
+} from "@mythos/ui";
+import type {
+  Entity,
+  EntityType,
+  Character,
+  Location,
+  Item,
+  MagicSystem,
+  Faction,
+  JungianArchetype,
+  Trait,
+} from "@mythos/core";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+type FormMode = "create" | "edit";
+
+interface EntityFormData {
+  name: string;
+  aliases: string[];
+  type: EntityType;
+  notes?: string;
+  // Character fields
+  archetype?: JungianArchetype;
+  traits?: Trait[];
+  backstory?: string;
+  goals?: string[];
+  fears?: string[];
+  voiceNotes?: string;
+  // Location fields
+  parentLocation?: string;
+  climate?: string;
+  atmosphere?: string;
+  // Item fields
+  category?: Item["category"];
+  rarity?: Item["rarity"];
+  abilities?: string[];
+  // Magic System fields
+  rules?: string[];
+  limitations?: string[];
+  costs?: string[];
+  // Faction fields
+  leader?: string;
+  headquarters?: string;
+  factionGoals?: string[];
+  rivals?: string[];
+  allies?: string[];
+}
+
+interface EntityFormModalProps {
+  isOpen: boolean;
+  mode: FormMode;
+  entityType?: EntityType;
+  entity?: Entity;
+  onClose: () => void;
+  onSave: (data: EntityFormData) => void;
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const ENTITY_TYPES: EntityType[] = [
+  "character",
+  "location",
+  "item",
+  "magic_system",
+  "faction",
+];
+
+const ENTITY_TYPE_CONFIG: Record<
+  EntityType,
+  { icon: typeof User; label: string; color: string }
+> = {
+  character: {
+    icon: User,
+    label: "Character",
+    color: "text-mythos-entity-character",
+  },
+  location: {
+    icon: MapPin,
+    label: "Location",
+    color: "text-mythos-entity-location",
+  },
+  item: {
+    icon: Sword,
+    label: "Item",
+    color: "text-mythos-entity-item",
+  },
+  magic_system: {
+    icon: Wand2,
+    label: "Magic System",
+    color: "text-mythos-entity-magic",
+  },
+  faction: {
+    icon: Building2,
+    label: "Faction",
+    color: "text-mythos-accent-amber",
+  },
+  event: {
+    icon: Sparkles,
+    label: "Event",
+    color: "text-mythos-accent-cyan",
+  },
+  concept: {
+    icon: Sparkles,
+    label: "Concept",
+    color: "text-mythos-accent-purple",
+  },
+};
+
+const JUNGIAN_ARCHETYPES: JungianArchetype[] = [
+  "hero",
+  "mentor",
+  "threshold_guardian",
+  "herald",
+  "shapeshifter",
+  "shadow",
+  "ally",
+  "trickster",
+  "mother",
+  "father",
+  "child",
+  "maiden",
+  "wise_old_man",
+  "wise_old_woman",
+  "anima",
+  "animus",
+];
+
+const ITEM_CATEGORIES: Item["category"][] = [
+  "weapon",
+  "armor",
+  "artifact",
+  "consumable",
+  "key",
+  "other",
+];
+
+const ITEM_RARITIES: Item["rarity"][] = [
+  "common",
+  "uncommon",
+  "rare",
+  "legendary",
+  "unique",
+];
+
+const TRAIT_TYPES: Trait["type"][] = ["strength", "weakness", "neutral", "shadow"];
+
+// ============================================================================
+// Helper Components
+// ============================================================================
+
+interface FormFieldProps {
+  label: string;
+  required?: boolean;
+  error?: string;
+  children: React.ReactNode;
+}
+
+function FormField({ label, required, error, children }: FormFieldProps) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium text-mythos-text-secondary">
+        {label}
+        {required && <span className="text-mythos-accent-red ml-0.5">*</span>}
+      </label>
+      {children}
+      {error && (
+        <p className="text-xs text-mythos-accent-red">{error}</p>
+      )}
+    </div>
+  );
+}
+
+interface SelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+}
+
+function Select({
+  value,
+  onChange,
+  options,
+  placeholder = "Select...",
+  disabled,
+  className,
+}: SelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedOption = options.find((o) => o.value === value);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "flex items-center justify-between w-full h-9 px-3 py-1 rounded-md text-sm",
+          "border border-mythos-text-muted/30 bg-mythos-bg-secondary",
+          "hover:bg-mythos-bg-tertiary transition-colors",
+          "focus:outline-none focus:ring-1 focus:ring-mythos-accent-cyan",
+          disabled && "opacity-50 cursor-not-allowed",
+          className
+        )}
+      >
+        <span className={selectedOption ? "text-mythos-text-primary" : "text-mythos-text-muted"}>
+          {selectedOption?.label || placeholder}
+        </span>
+        <ChevronDown className="w-4 h-4 text-mythos-text-muted" />
+      </button>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setIsOpen(false)}
+          />
+          <ul
+            className={cn(
+              "absolute z-20 mt-1 w-full max-h-60 overflow-auto py-1 rounded-md",
+              "bg-mythos-bg-secondary border border-mythos-text-muted/30",
+              "shadow-lg shadow-black/20"
+            )}
+          >
+            {options.map((option) => (
+              <li
+                key={option.value}
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                className={cn(
+                  "flex items-center justify-between px-3 py-2 cursor-pointer",
+                  "text-sm text-mythos-text-secondary",
+                  "hover:bg-mythos-bg-tertiary",
+                  option.value === value && "bg-mythos-bg-tertiary"
+                )}
+              >
+                <span>{option.label}</span>
+                {option.value === value && (
+                  <Check className="w-4 h-4 text-mythos-accent-cyan" />
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+interface TextAreaProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  rows?: number;
+  className?: string;
+}
+
+function TextArea({ value, onChange, placeholder, rows = 3, className }: TextAreaProps) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
+      className={cn(
+        "flex w-full rounded-md border border-mythos-text-muted/30 bg-mythos-bg-secondary",
+        "px-3 py-2 text-sm text-mythos-text-primary shadow-sm transition-colors",
+        "placeholder:text-mythos-text-muted resize-none",
+        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-mythos-accent-cyan",
+        className
+      )}
+    />
+  );
+}
+
+interface StringListFieldProps {
+  label: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder?: string;
+}
+
+function StringListField({ label, values, onChange, placeholder }: StringListFieldProps) {
+  const [newItem, setNewItem] = useState("");
+
+  const handleAdd = () => {
+    if (newItem.trim()) {
+      onChange([...values, newItem.trim()]);
+      setNewItem("");
+    }
+  };
+
+  const handleRemove = (index: number) => {
+    onChange(values.filter((_, i) => i !== index));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAdd();
+    }
+  };
+
+  return (
+    <FormField label={label}>
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <Input
+            value={newItem}
+            onChange={(e) => setNewItem(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={handleAdd}
+            disabled={!newItem.trim()}
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
+        {values.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {values.map((item, index) => (
+              <span
+                key={index}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs",
+                  "bg-mythos-bg-tertiary text-mythos-text-secondary"
+                )}
+              >
+                {item}
+                <button
+                  type="button"
+                  onClick={() => handleRemove(index)}
+                  className="hover:text-mythos-accent-red transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </FormField>
+  );
+}
+
+interface TraitListFieldProps {
+  traits: Trait[];
+  onChange: (traits: Trait[]) => void;
+}
+
+function TraitListField({ traits, onChange }: TraitListFieldProps) {
+  const [newTraitName, setNewTraitName] = useState("");
+  const [newTraitType, setNewTraitType] = useState<Trait["type"]>("neutral");
+
+  const handleAdd = () => {
+    if (newTraitName.trim()) {
+      onChange([...traits, { name: newTraitName.trim(), type: newTraitType }]);
+      setNewTraitName("");
+      setNewTraitType("neutral");
+    }
+  };
+
+  const handleRemove = (index: number) => {
+    onChange(traits.filter((_, i) => i !== index));
+  };
+
+  const getTraitColor = (type: Trait["type"]) => {
+    switch (type) {
+      case "strength":
+        return "bg-mythos-accent-green/20 text-mythos-accent-green border-mythos-accent-green/30";
+      case "weakness":
+        return "bg-mythos-accent-red/20 text-mythos-accent-red border-mythos-accent-red/30";
+      case "shadow":
+        return "bg-mythos-accent-purple/20 text-mythos-accent-purple border-mythos-accent-purple/30";
+      default:
+        return "bg-mythos-bg-tertiary text-mythos-text-secondary border-mythos-text-muted/30";
+    }
+  };
+
+  return (
+    <FormField label="Character Traits">
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <Input
+            value={newTraitName}
+            onChange={(e) => setNewTraitName(e.target.value)}
+            placeholder="Trait name..."
+            className="flex-1"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+          />
+          <Select
+            value={newTraitType}
+            onChange={(v) => setNewTraitType(v as Trait["type"])}
+            options={TRAIT_TYPES.map((t) => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }))}
+            className="w-32"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={handleAdd}
+            disabled={!newTraitName.trim()}
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
+        {traits.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {traits.map((trait, index) => (
+              <span
+                key={index}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border",
+                  getTraitColor(trait.type)
+                )}
+              >
+                <span className="font-medium">{trait.name}</span>
+                <span className="opacity-60 text-[10px] uppercase">{trait.type}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(index)}
+                  className="hover:opacity-70 transition-opacity ml-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </FormField>
+  );
+}
+
+// ============================================================================
+// Entity Type Selector
+// ============================================================================
+
+interface EntityTypeSelectorProps {
+  value: EntityType;
+  onChange: (type: EntityType) => void;
+  disabled?: boolean;
+}
+
+function EntityTypeSelector({ value, onChange, disabled }: EntityTypeSelectorProps) {
+  return (
+    <div className="grid grid-cols-5 gap-2">
+      {ENTITY_TYPES.map((type) => {
+        const config = ENTITY_TYPE_CONFIG[type];
+        const Icon = config.icon;
+        const isSelected = type === value;
+
+        return (
+          <button
+            key={type}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(type)}
+            className={cn(
+              "flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-all",
+              isSelected
+                ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10"
+                : "border-mythos-text-muted/30 hover:border-mythos-text-muted/50 hover:bg-mythos-bg-tertiary",
+              disabled && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            <Icon className={cn("w-5 h-5", isSelected ? "text-mythos-accent-cyan" : config.color)} />
+            <span className={cn(
+              "text-xs font-medium",
+              isSelected ? "text-mythos-accent-cyan" : "text-mythos-text-secondary"
+            )}>
+              {config.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================================
+// Type-Specific Form Sections
+// ============================================================================
+
+interface CharacterFieldsProps {
+  data: EntityFormData;
+  onChange: (updates: Partial<EntityFormData>) => void;
+}
+
+function CharacterFields({ data, onChange }: CharacterFieldsProps) {
+  return (
+    <div className="space-y-4">
+      <FormField label="Archetype">
+        <Select
+          value={data.archetype || ""}
+          onChange={(v) => onChange({ archetype: v as JungianArchetype })}
+          options={[
+            { value: "", label: "Select an archetype..." },
+            ...JUNGIAN_ARCHETYPES.map((a) => ({
+              value: a,
+              label: a.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
+            })),
+          ]}
+        />
+      </FormField>
+
+      <TraitListField
+        traits={data.traits || []}
+        onChange={(traits) => onChange({ traits })}
+      />
+
+      <FormField label="Backstory">
+        <TextArea
+          value={data.backstory || ""}
+          onChange={(v) => onChange({ backstory: v })}
+          placeholder="Character's background and history..."
+          rows={4}
+        />
+      </FormField>
+
+      <StringListField
+        label="Goals"
+        values={data.goals || []}
+        onChange={(goals) => onChange({ goals })}
+        placeholder="Add a goal..."
+      />
+
+      <StringListField
+        label="Fears"
+        values={data.fears || []}
+        onChange={(fears) => onChange({ fears })}
+        placeholder="Add a fear..."
+      />
+
+      <FormField label="Voice Notes">
+        <TextArea
+          value={data.voiceNotes || ""}
+          onChange={(v) => onChange({ voiceNotes: v })}
+          placeholder="How does this character speak? Accent, vocabulary, mannerisms..."
+          rows={3}
+        />
+      </FormField>
+    </div>
+  );
+}
+
+interface LocationFieldsProps {
+  data: EntityFormData;
+  onChange: (updates: Partial<EntityFormData>) => void;
+}
+
+function LocationFields({ data, onChange }: LocationFieldsProps) {
+  return (
+    <div className="space-y-4">
+      <FormField label="Climate">
+        <Input
+          value={data.climate || ""}
+          onChange={(e) => onChange({ climate: e.target.value })}
+          placeholder="e.g., Tropical, Arctic, Temperate..."
+        />
+      </FormField>
+
+      <FormField label="Atmosphere">
+        <TextArea
+          value={data.atmosphere || ""}
+          onChange={(v) => onChange({ atmosphere: v })}
+          placeholder="The mood and feeling of this place..."
+          rows={3}
+        />
+      </FormField>
+    </div>
+  );
+}
+
+interface ItemFieldsProps {
+  data: EntityFormData;
+  onChange: (updates: Partial<EntityFormData>) => void;
+}
+
+function ItemFields({ data, onChange }: ItemFieldsProps) {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <FormField label="Category" required>
+          <Select
+            value={data.category || "other"}
+            onChange={(v) => onChange({ category: v as Item["category"] })}
+            options={ITEM_CATEGORIES.map((c) => ({
+              value: c,
+              label: c.charAt(0).toUpperCase() + c.slice(1),
+            }))}
+          />
+        </FormField>
+
+        <FormField label="Rarity">
+          <Select
+            value={data.rarity || ""}
+            onChange={(v) => onChange({ rarity: (v || undefined) as Item["rarity"] })}
+            options={[
+              { value: "", label: "Select rarity..." },
+              ...ITEM_RARITIES.filter((r): r is NonNullable<Item["rarity"]> => r !== undefined).map((r) => ({
+                value: r,
+                label: r.charAt(0).toUpperCase() + r.slice(1),
+              })),
+            ]}
+          />
+        </FormField>
+      </div>
+
+      <StringListField
+        label="Abilities"
+        values={data.abilities || []}
+        onChange={(abilities) => onChange({ abilities })}
+        placeholder="Add an ability..."
+      />
+    </div>
+  );
+}
+
+interface MagicSystemFieldsProps {
+  data: EntityFormData;
+  onChange: (updates: Partial<EntityFormData>) => void;
+}
+
+function MagicSystemFields({ data, onChange }: MagicSystemFieldsProps) {
+  return (
+    <div className="space-y-4">
+      <StringListField
+        label="Rules"
+        values={data.rules || []}
+        onChange={(rules) => onChange({ rules })}
+        placeholder="Add a rule..."
+      />
+
+      <StringListField
+        label="Limitations"
+        values={data.limitations || []}
+        onChange={(limitations) => onChange({ limitations })}
+        placeholder="Add a limitation..."
+      />
+
+      <StringListField
+        label="Costs"
+        values={data.costs || []}
+        onChange={(costs) => onChange({ costs })}
+        placeholder="Add a cost..."
+      />
+    </div>
+  );
+}
+
+interface FactionFieldsProps {
+  data: EntityFormData;
+  onChange: (updates: Partial<EntityFormData>) => void;
+}
+
+function FactionFields({ data, onChange }: FactionFieldsProps) {
+  return (
+    <div className="space-y-4">
+      <FormField label="Leader">
+        <Input
+          value={data.leader || ""}
+          onChange={(e) => onChange({ leader: e.target.value })}
+          placeholder="Name of the faction leader..."
+        />
+      </FormField>
+
+      <FormField label="Headquarters">
+        <Input
+          value={data.headquarters || ""}
+          onChange={(e) => onChange({ headquarters: e.target.value })}
+          placeholder="Main base or location..."
+        />
+      </FormField>
+
+      <StringListField
+        label="Goals"
+        values={data.factionGoals || []}
+        onChange={(factionGoals) => onChange({ factionGoals })}
+        placeholder="Add a goal..."
+      />
+
+      <StringListField
+        label="Rivals"
+        values={data.rivals || []}
+        onChange={(rivals) => onChange({ rivals })}
+        placeholder="Add a rival faction..."
+      />
+
+      <StringListField
+        label="Allies"
+        values={data.allies || []}
+        onChange={(allies) => onChange({ allies })}
+        placeholder="Add an allied faction..."
+      />
+    </div>
+  );
+}
+
+// ============================================================================
+// Main Modal Component
+// ============================================================================
+
+function getInitialFormData(mode: FormMode, entityType?: EntityType, entity?: Entity): EntityFormData {
+  if (mode === "edit" && entity) {
+    const base: EntityFormData = {
+      name: entity.name,
+      aliases: entity.aliases,
+      type: entity.type,
+      notes: entity.notes,
+    };
+
+    switch (entity.type) {
+      case "character": {
+        const char = entity as Character;
+        return {
+          ...base,
+          archetype: char.archetype,
+          traits: char.traits,
+          backstory: char.backstory,
+          goals: char.goals,
+          fears: char.fears,
+          voiceNotes: char.voiceNotes,
+        };
+      }
+      case "location": {
+        const loc = entity as Location;
+        return {
+          ...base,
+          parentLocation: loc.parentLocation,
+          climate: loc.climate,
+          atmosphere: loc.atmosphere,
+        };
+      }
+      case "item": {
+        const item = entity as Item;
+        return {
+          ...base,
+          category: item.category,
+          rarity: item.rarity,
+          abilities: item.abilities,
+        };
+      }
+      case "magic_system": {
+        const magic = entity as MagicSystem;
+        return {
+          ...base,
+          rules: magic.rules,
+          limitations: magic.limitations,
+          costs: magic.costs,
+        };
+      }
+      case "faction": {
+        const faction = entity as Faction;
+        return {
+          ...base,
+          leader: faction.leader,
+          headquarters: faction.headquarters,
+          factionGoals: faction.goals,
+          rivals: faction.rivals,
+          allies: faction.allies,
+        };
+      }
+      default:
+        return base;
+    }
+  }
+
+  return {
+    name: "",
+    aliases: [],
+    type: entityType || "character",
+    notes: "",
+    traits: [],
+    goals: [],
+    fears: [],
+    rules: [],
+    limitations: [],
+    costs: [],
+    abilities: [],
+    factionGoals: [],
+    rivals: [],
+    allies: [],
+  };
+}
+
+export function EntityFormModal({
+  isOpen,
+  mode,
+  entityType,
+  entity,
+  onClose,
+  onSave,
+}: EntityFormModalProps) {
+  const [formData, setFormData] = useState<EntityFormData>(() =>
+    getInitialFormData(mode, entityType, entity)
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Reset form when modal opens with different entity/mode
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(getInitialFormData(mode, entityType, entity));
+      setErrors({});
+    }
+  }, [isOpen, mode, entityType, entity]);
+
+  const updateFormData = useCallback((updates: Partial<EntityFormData>) => {
+    setFormData((prev) => ({ ...prev, ...updates }));
+    // Clear errors for updated fields
+    const fieldNames = Object.keys(updates);
+    setErrors((prev) => {
+      const next = { ...prev };
+      fieldNames.forEach((f) => delete next[f]);
+      return next;
+    });
+  }, []);
+
+  const validate = useCallback((): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.name.trim()) {
+      newErrors["name"] = "Name is required";
+    }
+
+    if (formData.type === "item" && !formData.category) {
+      newErrors["category"] = "Category is required for items";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [formData]);
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (validate()) {
+        onSave(formData);
+      }
+    },
+    [formData, validate, onSave]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    },
+    [onClose]
+  );
+
+  const title = mode === "create" ? "Create Entity" : `Edit ${entity?.name || "Entity"}`;
+  const TypeIcon = ENTITY_TYPE_CONFIG[formData.type].icon;
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      onKeyDown={handleKeyDown}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="entity-form-title"
+    >
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-mythos-bg-primary/80 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Modal */}
+      <Card className="relative z-10 w-full max-w-2xl mx-4 shadow-xl border-mythos-text-muted/30 max-h-[90vh] flex flex-col">
+        <CardHeader className="pb-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TypeIcon className={cn("w-5 h-5", ENTITY_TYPE_CONFIG[formData.type].color)} />
+              <CardTitle id="entity-form-title" className="text-lg">
+                {title}
+              </CardTitle>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-8 w-8 text-mythos-text-muted hover:text-mythos-text-primary"
+              aria-label="Close modal"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+          {mode === "create" && (
+            <CardDescription className="pt-1">
+              Add a new entity to your world. Choose a type and fill in the details.
+            </CardDescription>
+          )}
+        </CardHeader>
+
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+          <CardContent className="flex-1 overflow-hidden py-0">
+            <ScrollArea className="h-full pr-4">
+              <div className="space-y-6 pb-4">
+                {/* Entity Type Selector (only for create mode) */}
+                {mode === "create" && (
+                  <FormField label="Entity Type" required>
+                    <EntityTypeSelector
+                      value={formData.type}
+                      onChange={(type) => updateFormData({ type })}
+                    />
+                  </FormField>
+                )}
+
+                {/* Base Fields */}
+                <div className="grid grid-cols-1 gap-4">
+                  <FormField label="Name" required error={errors["name"]}>
+                    <Input
+                      value={formData.name}
+                      onChange={(e) => updateFormData({ name: e.target.value })}
+                      placeholder={`Enter ${formData.type.replace("_", " ")} name...`}
+                      autoFocus
+                    />
+                  </FormField>
+
+                  <StringListField
+                    label="Aliases"
+                    values={formData.aliases}
+                    onChange={(aliases) => updateFormData({ aliases })}
+                    placeholder="Add an alias..."
+                  />
+
+                  <FormField label="Notes">
+                    <TextArea
+                      value={formData.notes || ""}
+                      onChange={(v) => updateFormData({ notes: v })}
+                      placeholder="General notes about this entity..."
+                      rows={2}
+                    />
+                  </FormField>
+                </div>
+
+                {/* Divider */}
+                <div className="border-t border-mythos-text-muted/20 pt-4">
+                  <h3 className="text-sm font-medium text-mythos-text-secondary mb-4">
+                    {ENTITY_TYPE_CONFIG[formData.type].label} Details
+                  </h3>
+
+                  {/* Type-specific fields */}
+                  {formData.type === "character" && (
+                    <CharacterFields data={formData} onChange={updateFormData} />
+                  )}
+                  {formData.type === "location" && (
+                    <LocationFields data={formData} onChange={updateFormData} />
+                  )}
+                  {formData.type === "item" && (
+                    <ItemFields data={formData} onChange={updateFormData} />
+                  )}
+                  {formData.type === "magic_system" && (
+                    <MagicSystemFields data={formData} onChange={updateFormData} />
+                  )}
+                  {formData.type === "faction" && (
+                    <FactionFields data={formData} onChange={updateFormData} />
+                  )}
+                </div>
+              </div>
+            </ScrollArea>
+          </CardContent>
+
+          <CardFooter className="flex justify-between gap-2 pt-4 flex-shrink-0 border-t border-mythos-text-muted/20">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" className="gap-1.5 min-w-[120px]">
+              <Save className="w-4 h-4" />
+              {mode === "create" ? "Create" : "Save Changes"}
+            </Button>
+          </CardFooter>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
+export type { EntityFormData, FormMode, EntityFormModalProps };

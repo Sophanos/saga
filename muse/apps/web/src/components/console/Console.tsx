@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   MessageSquare,
   Send,
@@ -7,13 +7,14 @@ import {
   BarChart3,
 } from "lucide-react";
 import { Button, Input, ScrollArea } from "@mythos/ui";
-import { replaceText, jumpToPosition } from "@mythos/editor";
+import { jumpToPosition } from "@mythos/editor";
 import { DynamicsView } from "./DynamicsView";
 import { CoachView } from "./CoachView";
 import { LinterView } from "./LinterView";
 import { AnalysisDashboard } from "./AnalysisDashboard";
 import { useLinterIssueCounts, useMythosStore, useEditorInstance } from "../../stores";
 import { useHistoryCount } from "../../stores/history";
+import { useLinterFixes } from "../../hooks/useLinterFixes";
 
 function ChatPanel() {
   const [input, setInput] = useState("");
@@ -58,27 +59,34 @@ function ChatPanel() {
 }
 
 /**
- * Find the position in the document for a given line number and text
+ * Find the position of text in the document content.
+ * Searches for the exact text and returns the character offset.
+ * If lineHint is provided, searches near that line first for better accuracy.
  */
-function findPositionForLine(content: string, lineNumber: number, targetText: string): number {
-  const lines = content.split("\n");
-  let position = 0;
+function findTextPosition(content: string, targetText: string, lineHint?: number): number {
+  // If we have a line hint, calculate approximate position and search nearby first
+  if (lineHint !== undefined) {
+    const lines = content.split("\n");
+    let hintPosition = 0;
+    for (let i = 0; i < Math.min(lineHint - 1, lines.length); i++) {
+      hintPosition += lines[i].length + 1;
+    }
 
-  // Calculate position at start of target line
-  for (let i = 0; i < Math.min(lineNumber - 1, lines.length); i++) {
-    position += lines[i].length + 1; // +1 for newline
-  }
+    // Search within a reasonable range around the hint position
+    const searchRadius = 500; // characters to search around hint
+    const searchStart = Math.max(0, hintPosition - searchRadius);
+    const searchEnd = Math.min(content.length, hintPosition + searchRadius);
+    const searchRegion = content.substring(searchStart, searchEnd);
 
-  // Try to find the target text within the line for more precise positioning
-  if (lineNumber <= lines.length) {
-    const line = lines[lineNumber - 1];
-    const textIndex = line.indexOf(targetText);
-    if (textIndex !== -1) {
-      position += textIndex;
+    const localIndex = searchRegion.indexOf(targetText);
+    if (localIndex !== -1) {
+      return searchStart + localIndex;
     }
   }
 
-  return position;
+  // Fallback: search the entire document
+  const globalIndex = content.indexOf(targetText);
+  return globalIndex !== -1 ? globalIndex : 0;
 }
 
 export function Console() {
@@ -86,58 +94,81 @@ export function Console() {
   const setActiveTab = useMythosStore((state) => state.setActiveTab);
   const issueCounts = useLinterIssueCounts();
   const linterIssues = useMythosStore((state) => state.linter.issues);
-  const removeLinterIssue = useMythosStore((state) => state.removeLinterIssue);
   const editor = useEditorInstance();
   const historyCount = useHistoryCount();
 
+  // Track editor content for linter hook
+  const [editorContent, setEditorContent] = useState("");
+
+  // Subscribe to editor updates for content tracking
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+
+    // Get initial content
+    setEditorContent(editor.getText({ blockSeparator: "\n" }));
+
+    // Subscribe to updates
+    const handleUpdate = () => {
+      setEditorContent(editor.getText({ blockSeparator: "\n" }));
+    };
+
+    editor.on("update", handleUpdate);
+    return () => {
+      editor.off("update", handleUpdate);
+    };
+  }, [editor]);
+
+  // Use the linter fixes hook for undo-aware fix application
+  const {
+    applyFix,
+    undoLastFix,
+    redoLastFix,
+  } = useLinterFixes({
+    content: editorContent,
+    editor,
+    autoLint: false, // Don't auto-lint from Console - that's handled elsewhere
+    enabled: Boolean(editor),
+  });
+
   // Callback to jump to a position in the editor
-  const handleJumpToPosition = useCallback((line: number) => {
+  // LinterView passes issueId, we look up the issue and find its current position
+  const handleJumpToPosition = useCallback((issueId: string) => {
     if (!editor || editor.isDestroyed) {
       console.warn("[Console] No editor instance available");
       return;
     }
 
-    // Find the issue for this line to get the target text
-    const issue = linterIssues.find((i) => i.location.line === line);
+    // Find the issue by ID
+    const issue = linterIssues.find((i) => i.id === issueId);
     if (!issue) {
-      console.warn("[Console] No issue found for line:", line);
+      console.warn("[Console] No issue found for id:", issueId);
       return;
     }
 
-    const content = editor.getText();
-    const position = findPositionForLine(content, line, issue.location.text);
+    const content = editor.getText({ blockSeparator: "\n" });
+    // Use text search with line hint to find current position
+    // This handles cases where line numbers have shifted due to edits
+    const position = findTextPosition(content, issue.location.text, issue.location.line);
 
     // Jump to position and focus editor
     jumpToPosition(editor, position);
     editor.commands.focus();
   }, [editor, linterIssues]);
 
-  // Callback to apply a fix for an issue
-  const handleApplyFix = useCallback((issueId: string, suggestion: string) => {
-    if (!editor || editor.isDestroyed) {
-      console.warn("[Console] No editor instance available");
-      removeLinterIssue(issueId);
-      return;
-    }
+  // Callback to apply a fix for an issue (uses undo-aware path)
+  const handleApplyFix = useCallback((issueId: string, _suggestion: string) => {
+    // Use the hook's applyFix which handles undo stack
+    applyFix(issueId);
+  }, [applyFix]);
 
-    const issue = linterIssues.find((i) => i.id === issueId);
-    if (!issue) {
-      console.warn("[Console] No issue found for id:", issueId);
-      removeLinterIssue(issueId);
-      return;
-    }
+  // Undo/Redo handlers that return boolean for LinterView
+  const handleUndo = useCallback((): boolean => {
+    return undoLastFix();
+  }, [undoLastFix]);
 
-    const content = editor.getText();
-    const position = findPositionForLine(content, issue.location.line, issue.location.text);
-    const from = position;
-    const to = position + issue.location.text.length;
-
-    // Apply the fix using replaceText utility
-    replaceText(editor, from, to, suggestion);
-
-    // Remove the issue from the store
-    removeLinterIssue(issueId);
-  }, [editor, linterIssues, removeLinterIssue]);
+  const handleRedo = useCallback((): boolean => {
+    return redoLastFix();
+  }, [redoLastFix]);
 
   // Get badge color based on severity counts
   const getBadgeClass = () => {
@@ -223,6 +254,8 @@ export function Console() {
         <LinterView
           onJumpToPosition={handleJumpToPosition}
           onApplyFix={handleApplyFix}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
         />
       ) : activeTab === "dynamics" ? (
         <DynamicsView />

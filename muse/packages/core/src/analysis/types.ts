@@ -34,9 +34,21 @@ export interface SceneMetrics {
 export type StyleIssueType = "telling" | "passive" | "adverb" | "repetition";
 
 /**
+ * Fix suggestion with old and new text for replacement
+ */
+export interface StyleIssueFix {
+  /** Original text to replace */
+  oldText: string;
+  /** New text to insert */
+  newText: string;
+}
+
+/**
  * A detected style issue in the writing
  */
 export interface StyleIssue {
+  /** Unique identifier for tracking/dismissing */
+  id: string;
   /** Category of the style issue */
   type: StyleIssueType;
   /** The problematic text snippet */
@@ -47,6 +59,8 @@ export interface StyleIssue {
   position?: { start: number; end: number };
   /** Suggested improvement for the issue */
   suggestion: string;
+  /** Optional fix that can be applied automatically */
+  fix?: StyleIssueFix;
 }
 
 /**

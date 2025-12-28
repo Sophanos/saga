@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { RefreshCw, Lightbulb, Zap, BookOpen } from "lucide-react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
 import { TensionGraph } from "./TensionGraph";
@@ -5,12 +6,16 @@ import { SensoryHeatmap } from "./SensoryHeatmap";
 import { ShowDontTellMeter } from "./ShowDontTellMeter";
 import { StyleIssuesList } from "./StyleIssuesList";
 import { useAnalysisData } from "../../hooks/useWritingAnalysis";
+import { useEditorNavigation } from "../../hooks/useEditorNavigation";
 import {
   useIsAnalyzing,
   usePacing,
   useMood,
   useInsights,
+  useAnalysisStore,
+  useStyleIssues,
 } from "../../stores/analysis";
+import type { StyleIssue } from "@mythos/core";
 
 /**
  * Props for CoachView component
@@ -122,15 +127,13 @@ function SectionHeader({
 }
 
 /**
- * Loading overlay component
+ * Loading indicator badge (non-blocking)
  */
-function LoadingOverlay() {
+function AnalyzingBadge() {
   return (
-    <div className="absolute inset-0 bg-mythos-bg-primary/80 flex items-center justify-center z-10">
-      <div className="flex items-center gap-2">
-        <RefreshCw className="w-5 h-5 text-mythos-accent-cyan animate-spin" />
-        <span className="text-sm text-mythos-text-secondary">Analyzing...</span>
-      </div>
+    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-mythos-accent-cyan/10 text-mythos-accent-cyan text-xs">
+      <RefreshCw className="w-3 h-3 animate-spin" />
+      <span>Analyzing...</span>
     </div>
   );
 }
@@ -144,17 +147,90 @@ function LoadingOverlay() {
 export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
   const isAnalyzing = useIsAnalyzing();
   const { metrics, error } = useAnalysisData();
+  const { jumpToLine, applyTextReplacement, isReady } = useEditorNavigation();
+  const dismissStyleIssue = useAnalysisStore((state) => state.dismissStyleIssue);
+
+  // Jump to the location of a style issue
+  const handleJumpToIssue = useCallback(
+    (issue: StyleIssue) => {
+      if (!isReady || issue.line === undefined) {
+        console.warn("[CoachView] Cannot jump: editor not ready or no line number");
+        return;
+      }
+
+      jumpToLine(issue.line, issue.text);
+    },
+    [isReady, jumpToLine]
+  );
+
+  // Apply a fix for a style issue
+  const handleApplyFix = useCallback(
+    (issue: StyleIssue) => {
+      if (!isReady) {
+        console.warn("[CoachView] Cannot apply fix: editor not ready");
+        return;
+      }
+
+      if (!issue.fix) {
+        console.warn("[CoachView] Cannot apply fix: no fix data");
+        return;
+      }
+
+      // Apply the replacement using the navigation hook
+      const success = applyTextReplacement(
+        issue.fix.oldText,
+        issue.fix.newText,
+        issue.position
+      );
+
+      if (success) {
+        // Dismiss the issue after successful fix
+        dismissStyleIssue(issue.id);
+      }
+    },
+    [isReady, applyTextReplacement, dismissStyleIssue]
+  );
+
+  // Get all style issues for Fix All
+  const styleIssues = useStyleIssues();
+
+  // Fix all fixable style issues
+  const handleFixAll = useCallback(() => {
+    if (!isReady) {
+      console.warn("[CoachView] Cannot fix all: editor not ready");
+      return;
+    }
+
+    const fixableIssues = styleIssues.filter((issue) => issue.fix);
+
+    // Apply fixes in reverse order (bottom to top) to preserve line positions
+    const sortedIssues = [...fixableIssues].sort(
+      (a, b) => (b.line ?? 0) - (a.line ?? 0)
+    );
+
+    for (const issue of sortedIssues) {
+      if (!issue.fix) continue;
+
+      const success = applyTextReplacement(
+        issue.fix.oldText,
+        issue.fix.newText,
+        issue.position
+      );
+
+      if (success) {
+        dismissStyleIssue(issue.id);
+      }
+    }
+  }, [isReady, styleIssues, applyTextReplacement, dismissStyleIssue]);
 
   return (
     <div className={cn("relative h-full flex flex-col", className)}>
-      {/* Loading overlay */}
-      {isAnalyzing && <LoadingOverlay />}
-
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-mythos-text-muted/20">
         <div className="flex items-center gap-3">
           <PacingIndicator />
           <MoodDisplay />
+          {isAnalyzing && <AnalyzingBadge />}
         </div>
         {onRunAnalysis && (
           <Button
@@ -206,7 +282,11 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
 
           {/* Style Issues Section */}
           <section>
-            <StyleIssuesList />
+            <StyleIssuesList
+              onJumpToIssue={handleJumpToIssue}
+              onApplyFix={handleApplyFix}
+              onFixAll={handleFixAll}
+            />
           </section>
 
           {/* Empty state */}

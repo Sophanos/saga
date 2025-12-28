@@ -1,5 +1,5 @@
-import { AlertTriangle, Pencil, RefreshCcw, Copy, CheckCircle2 } from "lucide-react";
-import { cn } from "@mythos/ui";
+import { AlertTriangle, Pencil, RefreshCcw, Copy, CheckCircle2, ArrowRight, Wand2 } from "lucide-react";
+import { cn, Button } from "@mythos/ui";
 import { useStyleIssues } from "../../stores/analysis";
 import type { StyleIssue } from "@mythos/core";
 
@@ -51,8 +51,16 @@ function IssueTypeBadge({ type }: { type: StyleIssue["type"] }) {
   );
 }
 
-function IssueItem({ issue }: { issue: StyleIssue }) {
+interface IssueItemProps {
+  issue: StyleIssue;
+  onJump?: (issue: StyleIssue) => void;
+  onApplyFix?: (issue: StyleIssue) => void;
+}
+
+function IssueItem({ issue, onJump, onApplyFix }: IssueItemProps) {
   const config = issueTypeConfig[issue.type];
+  const canJump = issue.line !== undefined && onJump;
+  const canFix = issue.fix && onApplyFix;
 
   return (
     <div
@@ -64,11 +72,24 @@ function IssueItem({ issue }: { issue: StyleIssue }) {
     >
       <div className="flex items-center justify-between mb-2">
         <IssueTypeBadge type={issue.type} />
-        {issue.line !== undefined && (
-          <span className="text-xs text-mythos-text-muted">
-            Line {issue.line}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {issue.line !== undefined && (
+            <button
+              onClick={() => canJump && onJump(issue)}
+              disabled={!canJump}
+              className={cn(
+                "text-xs flex items-center gap-1 transition-colors",
+                canJump
+                  ? "text-mythos-accent-cyan hover:text-mythos-accent-cyan/80 cursor-pointer"
+                  : "text-mythos-text-muted cursor-default"
+              )}
+              title={canJump ? "Jump to location" : undefined}
+            >
+              Line {issue.line}
+              {canJump && <ArrowRight className="w-3 h-3" />}
+            </button>
+          )}
+        </div>
       </div>
 
       <p
@@ -81,10 +102,25 @@ function IssueItem({ issue }: { issue: StyleIssue }) {
         "{issue.text}"
       </p>
 
-      <p className="text-xs text-mythos-text-secondary">
+      <p className="text-xs text-mythos-text-secondary mb-2">
         <span className="text-mythos-text-muted">Suggestion: </span>
         {issue.suggestion}
       </p>
+
+      {/* Apply Fix button */}
+      {canFix && (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onApplyFix(issue)}
+            className="text-xs h-7 px-2 text-mythos-accent-green hover:text-mythos-accent-green/80 hover:bg-mythos-accent-green/10"
+          >
+            <Wand2 className="w-3 h-3 mr-1" />
+            Apply Fix
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -105,7 +141,13 @@ function EmptyState() {
   );
 }
 
-function ListHeader({ count }: { count: number }) {
+interface ListHeaderProps {
+  count: number;
+  fixableCount: number;
+  onFixAll?: () => void;
+}
+
+function ListHeader({ count, fixableCount, onFixAll }: ListHeaderProps) {
   return (
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
@@ -113,38 +155,61 @@ function ListHeader({ count }: { count: number }) {
         <h3 className="text-sm font-medium text-mythos-text-primary">
           Style Issues
         </h3>
+        <span
+          className={cn(
+            "px-2 py-0.5 rounded-full text-xs font-medium",
+            count > 0
+              ? "bg-mythos-accent-amber/20 text-mythos-accent-amber"
+              : "bg-green-500/20 text-green-400"
+          )}
+        >
+          {count}
+        </span>
       </div>
-      <span
-        className={cn(
-          "px-2 py-0.5 rounded-full text-xs font-medium",
-          count > 0
-            ? "bg-mythos-accent-amber/20 text-mythos-accent-amber"
-            : "bg-green-500/20 text-green-400"
-        )}
-      >
-        {count}
-      </span>
+      {fixableCount > 0 && onFixAll && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onFixAll}
+          className="h-7 text-xs"
+        >
+          <Wand2 className="w-3 h-3 mr-1" />
+          Fix All ({fixableCount})
+        </Button>
+      )}
     </div>
   );
 }
 
-interface StyleIssuesListProps {
+export interface StyleIssuesListProps {
   className?: string;
+  /** Callback when user clicks to jump to an issue location */
+  onJumpToIssue?: (issue: StyleIssue) => void;
+  /** Callback when user clicks to apply a fix */
+  onApplyFix?: (issue: StyleIssue) => void;
+  /** Callback when user clicks Fix All */
+  onFixAll?: () => void;
 }
 
-export function StyleIssuesList({ className }: StyleIssuesListProps) {
+export function StyleIssuesList({ className, onJumpToIssue, onApplyFix, onFixAll }: StyleIssuesListProps) {
   const issues = useStyleIssues();
+  const fixableCount = issues.filter((i) => Boolean(i.fix)).length;
 
   return (
     <div className={cn("", className)}>
-      <ListHeader count={issues.length} />
+      <ListHeader count={issues.length} fixableCount={fixableCount} onFixAll={onFixAll} />
 
       {issues.length === 0 ? (
         <EmptyState />
       ) : (
         <div className="space-y-2">
           {issues.map((issue, index) => (
-            <IssueItem key={`${issue.type}-${issue.line ?? index}-${index}`} issue={issue} />
+            <IssueItem
+              key={issue.id || `${issue.type}-${issue.line ?? index}-${index}`}
+              issue={issue}
+              onJump={onJumpToIssue}
+              onApplyFix={onApplyFix}
+            />
           ))}
         </div>
       )}

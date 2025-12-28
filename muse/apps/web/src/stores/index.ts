@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { immer } from "zustand/middleware/immer";
 import type {
   Entity,
@@ -101,13 +102,23 @@ interface MythosStore {
   setCurrentDocument: (document: Document | null) => void;
   addDocument: (document: Document) => void;
   updateDocument: (id: string, updates: Partial<Document>) => void;
+  setDocuments: (documents: Document[]) => void;
+  clearDocuments: () => void;
 
   // World actions
   addEntity: (entity: Entity) => void;
   updateEntity: (id: string, updates: Partial<Entity>) => void;
   removeEntity: (id: string) => void;
   addRelationship: (relationship: Relationship) => void;
+  updateRelationship: (id: string, updates: Partial<Relationship>) => void;
+  removeRelationship: (id: string) => void;
+  setRelationships: (relationships: Relationship[]) => void;
   setSelectedEntity: (id: string | null) => void;
+  setEntities: (entities: Entity[]) => void;
+  clearWorld: () => void;
+
+  // Project switching
+  resetForProjectSwitch: () => void;
 
   // Editor actions
   setEditorContent: (content: unknown) => void;
@@ -157,7 +168,7 @@ export const useMythosStore = create<MythosStore>()(
     editor: {
       content: null,
       wordCount: 0,
-      tensionLevel: 5,
+      tensionLevel: 50, // 0-100 scale, matches SceneContextBar thresholds
       isDirty: false,
       editorInstance: null,
     },
@@ -208,6 +219,15 @@ export const useMythosStore = create<MythosStore>()(
           Object.assign(state.document.documents[idx], updates);
         }
       }),
+    setDocuments: (documents) =>
+      set((state) => {
+        state.document.documents = documents;
+      }),
+    clearDocuments: () =>
+      set((state) => {
+        state.document.documents = [];
+        state.document.currentDocument = null;
+      }),
 
     // World actions
     addEntity: (entity) =>
@@ -232,9 +252,63 @@ export const useMythosStore = create<MythosStore>()(
       set((state) => {
         state.world.relationships.push(relationship);
       }),
+    updateRelationship: (id, updates) =>
+      set((state) => {
+        const idx = state.world.relationships.findIndex((r) => r.id === id);
+        if (idx !== -1) {
+          state.world.relationships[idx] = {
+            ...state.world.relationships[idx],
+            ...updates,
+          } as Relationship;
+        }
+      }),
+    removeRelationship: (id) =>
+      set((state) => {
+        state.world.relationships = state.world.relationships.filter(
+          (r) => r.id !== id
+        );
+      }),
+    setRelationships: (relationships) =>
+      set((state) => {
+        state.world.relationships = relationships;
+      }),
     setSelectedEntity: (id) =>
       set((state) => {
         state.world.selectedEntityId = id;
+      }),
+    setEntities: (entities) =>
+      set((state) => {
+        state.world.entities.clear();
+        entities.forEach((entity) => {
+          state.world.entities.set(entity.id, entity);
+        });
+      }),
+    clearWorld: () =>
+      set((state) => {
+        state.world.entities.clear();
+        state.world.relationships = [];
+        state.world.selectedEntityId = null;
+      }),
+
+    // Project switching
+    resetForProjectSwitch: () =>
+      set((state) => {
+        // Clear documents
+        state.document.documents = [];
+        state.document.currentDocument = null;
+        // Clear world
+        state.world.entities.clear();
+        state.world.relationships = [];
+        state.world.selectedEntityId = null;
+        // Clear linter
+        state.linter.issues = [];
+        state.linter.isRunning = false;
+        state.linter.lastRunAt = null;
+        state.linter.error = null;
+        state.linter.lastLintedHash = null;
+        state.linter.selectedIssueId = null;
+        // Reset editor dirty state
+        state.editor.isDirty = false;
       }),
 
     // Editor actions
@@ -345,24 +419,30 @@ export const useCurrentProject = () =>
   useMythosStore((state) => state.project.currentProject);
 
 export const useEntities = () =>
-  useMythosStore((state) => Array.from(state.world.entities.values()));
+  useMythosStore(
+    useShallow((state) => Array.from(state.world.entities.values()))
+  );
 
 export const useCharacters = () =>
-  useMythosStore((state) =>
-    Array.from(state.world.entities.values()).filter(
-      (e) => e.type === "character"
-    ) as Character[]
+  useMythosStore(
+    useShallow((state) =>
+      Array.from(state.world.entities.values()).filter(
+        (e) => e.type === "character"
+      ) as Character[]
+    )
   );
 
 export const useLocations = () =>
-  useMythosStore((state) =>
-    Array.from(state.world.entities.values()).filter(
-      (e) => e.type === "location"
-    ) as Location[]
+  useMythosStore(
+    useShallow((state) =>
+      Array.from(state.world.entities.values()).filter(
+        (e) => e.type === "location"
+      ) as Location[]
+    )
   );
 
 export const useLinterIssues = () =>
-  useMythosStore((state) => state.linter.issues);
+  useMythosStore(useShallow((state) => state.linter.issues));
 
 export const useEditorWordCount = () =>
   useMythosStore((state) => state.editor.wordCount);
@@ -378,74 +458,90 @@ export const useEditorInstance = () =>
  * Get issues by severity
  */
 export const useLinterIssuesBySeverity = (severity: LinterIssue["severity"]) =>
-  useMythosStore((state) =>
-    state.linter.issues.filter((i) => i.severity === severity)
+  useMythosStore(
+    useShallow((state) =>
+      state.linter.issues.filter((i) => i.severity === severity)
+    )
   );
 
 /**
  * Get error issues
  */
 export const useLinterErrorIssues = () =>
-  useMythosStore((state) =>
-    state.linter.issues.filter((i) => i.severity === "error")
+  useMythosStore(
+    useShallow((state) =>
+      state.linter.issues.filter((i) => i.severity === "error")
+    )
   );
 
 /**
  * Get warning issues
  */
 export const useLinterWarningIssues = () =>
-  useMythosStore((state) =>
-    state.linter.issues.filter((i) => i.severity === "warning")
+  useMythosStore(
+    useShallow((state) =>
+      state.linter.issues.filter((i) => i.severity === "warning")
+    )
   );
 
 /**
  * Get info issues
  */
 export const useLinterInfoIssues = () =>
-  useMythosStore((state) =>
-    state.linter.issues.filter((i) => i.severity === "info")
+  useMythosStore(
+    useShallow((state) =>
+      state.linter.issues.filter((i) => i.severity === "info")
+    )
   );
 
 /**
  * Get issues by type (character, world, plot, timeline)
  */
 export const useLinterIssuesByType = (type: LinterIssue["type"]) =>
-  useMythosStore((state) =>
-    state.linter.issues.filter((i) => i.type === type)
+  useMythosStore(
+    useShallow((state) =>
+      state.linter.issues.filter((i) => i.type === type)
+    )
   );
 
 /**
  * Get fixable issues
  */
 export const useFixableLinterIssues = () =>
-  useMythosStore((state) =>
-    state.linter.issues.filter((i) => i.fixable === true)
+  useMythosStore(
+    useShallow((state) =>
+      state.linter.issues.filter((i) => i.fixable === true)
+    )
   );
 
 /**
  * Get issue counts by severity
  */
 export const useLinterIssueCounts = () =>
-  useMythosStore((state) => {
-    const counts = { error: 0, warning: 0, info: 0, total: 0 };
-    state.linter.issues.forEach((issue) => {
-      counts[issue.severity]++;
-      counts.total++;
-    });
-    return counts;
-  });
+  useMythosStore(
+    useShallow((state) => {
+      const counts = { error: 0, warning: 0, info: 0, total: 0 };
+      state.linter.issues.forEach((issue) => {
+        counts[issue.severity]++;
+        counts.total++;
+      });
+      return counts;
+    })
+  );
 
 /**
  * Get issue counts by type
  */
 export const useLinterIssueCountsByType = () =>
-  useMythosStore((state) => {
-    const counts = { character: 0, world: 0, plot: 0, timeline: 0 };
-    state.linter.issues.forEach((issue) => {
-      counts[issue.type]++;
-    });
-    return counts;
-  });
+  useMythosStore(
+    useShallow((state) => {
+      const counts = { character: 0, world: 0, plot: 0, timeline: 0 };
+      state.linter.issues.forEach((issue) => {
+        counts[issue.type]++;
+      });
+      return counts;
+    })
+  );
 
 /**
  * Get linting state
@@ -490,34 +586,38 @@ export const useLastLintedAt = () =>
  * Get issues grouped by type
  */
 export const useLinterIssuesGroupedByType = () =>
-  useMythosStore((state) => {
-    const grouped: Record<LinterIssue["type"], LinterIssue[]> = {
-      character: [],
-      world: [],
-      plot: [],
-      timeline: [],
-    };
-    state.linter.issues.forEach((issue) => {
-      grouped[issue.type].push(issue);
-    });
-    return grouped;
-  });
+  useMythosStore(
+    useShallow((state) => {
+      const grouped: Record<LinterIssue["type"], LinterIssue[]> = {
+        character: [],
+        world: [],
+        plot: [],
+        timeline: [],
+      };
+      state.linter.issues.forEach((issue) => {
+        grouped[issue.type].push(issue);
+      });
+      return grouped;
+    })
+  );
 
 /**
  * Get issues grouped by severity
  */
 export const useLinterIssuesGroupedBySeverity = () =>
-  useMythosStore((state) => {
-    const grouped: Record<LinterIssue["severity"], LinterIssue[]> = {
-      error: [],
-      warning: [],
-      info: [],
-    };
-    state.linter.issues.forEach((issue) => {
-      grouped[issue.severity].push(issue);
-    });
-    return grouped;
-  });
+  useMythosStore(
+    useShallow((state) => {
+      const grouped: Record<LinterIssue["severity"], LinterIssue[]> = {
+        error: [],
+        warning: [],
+        info: [],
+      };
+      state.linter.issues.forEach((issue) => {
+        grouped[issue.severity].push(issue);
+      });
+      return grouped;
+    })
+  );
 
 // ============================================================================
 // Document Selectors
@@ -527,28 +627,34 @@ export const useLinterIssuesGroupedBySeverity = () =>
  * Get all documents
  */
 export const useDocuments = () =>
-  useMythosStore((state) => state.document.documents);
+  useMythosStore(useShallow((state) => state.document.documents));
 
 /**
  * Get documents by type
  */
 export const useDocumentsByType = (type: Document["type"]) =>
-  useMythosStore((state) =>
-    state.document.documents.filter((d) => d.type === type)
+  useMythosStore(
+    useShallow((state) =>
+      state.document.documents.filter((d) => d.type === type)
+    )
   );
 
 /**
  * Get chapters (convenience selector)
  */
 export const useChapters = () =>
-  useMythosStore((state) =>
-    state.document.documents.filter((d) => d.type === "chapter")
+  useMythosStore(
+    useShallow((state) =>
+      state.document.documents.filter((d) => d.type === "chapter")
+    )
   );
 
 /**
  * Get scenes (convenience selector)
  */
 export const useScenes = () =>
-  useMythosStore((state) =>
-    state.document.documents.filter((d) => d.type === "scene")
+  useMythosStore(
+    useShallow((state) =>
+      state.document.documents.filter((d) => d.type === "scene")
+    )
   );

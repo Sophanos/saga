@@ -25,11 +25,19 @@ export interface AgentConfig {
 
 export abstract class NarrativeAgent {
   protected config: AgentConfig;
-  protected model: LanguageModel;
+  private _model: LanguageModel | null = null;
 
   constructor(config: AgentConfig) {
     this.config = config;
-    this.model = getModel(config.model || "analysis");
+    // Model resolution is deferred until first use to ensure env vars are loaded
+  }
+
+  // Lazy model getter - resolves model on first access
+  protected get model(): LanguageModel {
+    if (!this._model) {
+      this._model = getModel(this.config.model || "analysis");
+    }
+    return this._model;
   }
 
   async analyze(context: AnalysisContext): Promise<string> {

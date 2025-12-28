@@ -8,3 +8,6 @@ export type { Conflict } from "./world-graph";
 
 // Analysis module
 export * from "./analysis";
+
+// Template system
+export * from "./templates";

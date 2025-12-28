@@ -4,3 +4,5 @@ export * from "./documents";
 export * from "./interactions";
 export * from "./analysis";
 export * from "./embeddings";
+export * from "./mentions";
+export * from "./relationships";
