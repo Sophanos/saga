@@ -47,6 +47,7 @@
       "dependencies": {
         "@ai-sdk/google": "^1.0.16",
         "@ai-sdk/openai": "^1.0.14",
+        "@mythos/prompts": "workspace:*",
         "ai": "^4.0.34",
         "zod": "^3.24.1",
       },
@@ -106,6 +107,14 @@
       "peerDependencies": {
         "react": "^18.0.0",
         "react-dom": "^18.0.0",
+      },
+    },
+    "packages/prompts": {
+      "name": "@mythos/prompts",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@mythos/typescript-config": "workspace:*",
+        "typescript": "^5.7.2",
       },
     },
     "packages/ui": {
@@ -309,6 +318,8 @@
     "@mythos/editor": ["@mythos/editor@workspace:packages/editor"],
 
     "@mythos/eslint-config": ["@mythos/eslint-config@workspace:tooling/eslint"],
+
+    "@mythos/prompts": ["@mythos/prompts@workspace:packages/prompts"],
 
     "@mythos/tailwind-config": ["@mythos/tailwind-config@workspace:tooling/tailwind"],
 
