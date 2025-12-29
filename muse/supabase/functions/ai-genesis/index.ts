@@ -21,6 +21,7 @@ import {
   GENESIS_SYSTEM_PROMPT,
   buildGenesisUserPrompt,
 } from "../_shared/prompts/mod.ts";
+import type { GeneratedEntity, GenesisResult } from "../_shared/genesis-types.ts";
 
 // ============================================================================
 // Types
@@ -36,27 +37,8 @@ interface GenesisRequest {
   };
 }
 
-interface GeneratedEntity {
-  name: string;
-  type: "character" | "location" | "item" | "faction" | "magic_system";
-  description: string;
-  properties?: Record<string, string | number | boolean>;
-  relationships?: Array<{
-    targetName: string;
-    type: string;
-    description?: string;
-  }>;
-}
-
-interface GenesisResponse {
-  entities: GeneratedEntity[];
-  worldSummary: string;
-  suggestedTitle?: string;
-  outline?: Array<{
-    title: string;
-    summary: string;
-  }>;
-}
+// Re-export GenesisResult as GenesisResponse for local use
+type GenesisResponse = GenesisResult;
 
 // ============================================================================
 // Main Handler

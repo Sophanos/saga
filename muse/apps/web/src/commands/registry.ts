@@ -36,6 +36,12 @@ export interface Command {
   requiredModule?: UIModuleId;
 }
 
+// Internal command with cached search string (for performance)
+interface CachedCommand extends Command {
+  /** Pre-computed lowercase searchable string for fast filtering */
+  _searchableCache: string;
+}
+
 // ============================================================================
 // Progressive Disclosure Helpers
 // ============================================================================
@@ -63,10 +69,24 @@ export function getUnlockHint(module: UIModuleId): string {
 }
 
 /**
+ * Build pre-computed lowercase searchable string for a command
+ */
+function buildSearchableCache(command: Command): string {
+  return [
+    command.label,
+    command.description ?? "",
+    ...command.keywords,
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+/**
  * Command registry for managing all available commands
  */
 class CommandRegistry {
-  private commands: Map<string, Command> = new Map();
+  // Internally store commands with cached search strings
+  private commands: Map<string, CachedCommand> = new Map();
 
   /**
    * Register a single command
@@ -75,7 +95,12 @@ class CommandRegistry {
     if (this.commands.has(command.id)) {
       console.warn(`Command "${command.id}" is already registered, overwriting.`);
     }
-    this.commands.set(command.id, command);
+    // Pre-compute and cache the lowercase searchable string at registration time
+    const cachedCommand: CachedCommand = {
+      ...command,
+      _searchableCache: buildSearchableCache(command),
+    };
+    this.commands.set(command.id, cachedCommand);
   }
 
   /**
@@ -119,20 +144,17 @@ class CommandRegistry {
 
   /**
    * Search commands by query (fuzzy match on label, description, keywords)
+   * Uses pre-computed lowercase searchable strings for performance
    */
   search(query: string, ctx?: CommandContext): Command[] {
     const normalizedQuery = query.toLowerCase().trim();
     if (!normalizedQuery) return this.list(ctx);
 
+    // Filter using the pre-computed cached searchable string
     return this.list(ctx).filter((cmd) => {
-      const searchable = [
-        cmd.label,
-        cmd.description ?? "",
-        ...cmd.keywords,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return searchable.includes(normalizedQuery);
+      // Use cached lowercase string (computed at registration time)
+      const cached = cmd as CachedCommand;
+      return cached._searchableCache.includes(normalizedQuery);
     });
   }
 

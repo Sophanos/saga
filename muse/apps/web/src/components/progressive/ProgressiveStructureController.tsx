@@ -20,6 +20,7 @@ import {
   type FeatureUnlockNudge,
 } from "@mythos/state";
 import { useEntityDetection } from "../../hooks/useEntityDetection";
+import { setPasteHandler } from "./pasteEvents";
 
 // ============================================================================
 // Constants
@@ -58,45 +59,48 @@ const UNLOCK_THRESHOLDS = {
 function useWordCount(): number {
   const editorInstance = useMythosStore((s) => s.editor.editorInstance);
   const [wordCount, setWordCount] = useState(0);
-  const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingUpdateRef = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cache the last calculated word count to avoid recalculation
+  const cachedWordCountRef = useRef<{ text: string; count: number } | null>(null);
 
-  // Calculate word count from editor text
+  // Calculate word count from editor text with memoization
   const calculateWordCount = useCallback(() => {
     if (!editorInstance) return 0;
     const text = (editorInstance as { getText?: () => string })?.getText?.() ?? "";
+
+    // Return cached value if text hasn't changed
+    if (cachedWordCountRef.current && cachedWordCountRef.current.text === text) {
+      return cachedWordCountRef.current.count;
+    }
+
+    // Calculate and cache
     const words = text.trim().split(/\s+/).filter(Boolean);
-    return words.length;
+    const count = words.length;
+    cachedWordCountRef.current = { text, count };
+    return count;
   }, [editorInstance]);
 
-  // Subscribe to editor updates with throttling
+  // Subscribe to editor updates with debouncing (only calculate after typing stops)
   useEffect(() => {
     if (!editorInstance) {
       setWordCount(0);
+      cachedWordCountRef.current = null;
       return;
     }
 
-    // Initial word count
+    // Initial word count (calculate once on mount)
     setWordCount(calculateWordCount());
 
     const handleUpdate = () => {
-      // If we're already throttled, mark that an update is pending
-      if (throttleRef.current) {
-        pendingUpdateRef.current = true;
-        return;
+      // Cancel any pending debounced calculation
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
       }
 
-      // Update immediately
-      setWordCount(calculateWordCount());
-
-      // Set up throttle
-      throttleRef.current = setTimeout(() => {
-        throttleRef.current = null;
-        // If there was a pending update during throttle, process it now
-        if (pendingUpdateRef.current) {
-          pendingUpdateRef.current = false;
-          setWordCount(calculateWordCount());
-        }
+      // Debounce: wait until typing stops for WORD_COUNT_THROTTLE_MS
+      debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
+        setWordCount(calculateWordCount());
       }, WORD_COUNT_THROTTLE_MS);
     };
 
@@ -109,9 +113,9 @@ function useWordCount(): number {
 
     return () => {
       editor.off?.("update", handleUpdate);
-      if (throttleRef.current) {
-        clearTimeout(throttleRef.current);
-        throttleRef.current = null;
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
       }
     };
   }, [editorInstance, calculateWordCount]);
@@ -186,33 +190,37 @@ export function ProgressiveStructureController({
       
       if (text.length > 0) {
         // Run entity detection
-        detectInText(text).then(() => {
-          // Only transition to Phase 2 if entities were detected
-          const pendingEntities = useProgressiveStore.getState().pendingDetectedEntities;
-          if (pendingEntities.length > 0) {
-            // Transition to Phase 2
-            setPhase(projectId, 2);
-            setLastEntityNudgeWordCount(projectId, wordCount);
+        detectInText(text)
+          .then(() => {
+            // Only transition to Phase 2 if entities were detected
+            const pendingEntities = useProgressiveStore.getState().pendingDetectedEntities;
+            if (pendingEntities.length > 0) {
+              // Transition to Phase 2
+              setPhase(projectId, 2);
+              setLastEntityNudgeWordCount(projectId, wordCount);
 
-            // Show entity discovery nudge
-            const nudge: EntityDiscoveryNudge = {
-              id: `${projectId}:entity_discovery:${Date.now()}`,
-              projectId,
-              type: "entity_discovery",
-              createdAt: new Date().toISOString(),
-              entities: pendingEntities.map((e) => ({
-                tempId: e.tempId,
-                name: e.name,
-                type: e.type,
-                count: e.occurrences,
-                confidence: e.confidence,
-              })),
-            };
-            showNudge(nudge);
+              // Show entity discovery nudge
+              const nudge: EntityDiscoveryNudge = {
+                id: `${projectId}:entity_discovery:${Date.now()}`,
+                projectId,
+                type: "entity_discovery",
+                createdAt: new Date().toISOString(),
+                entities: pendingEntities.map((e) => ({
+                  tempId: e.tempId,
+                  name: e.name,
+                  type: e.type,
+                  count: e.occurrences,
+                  confidence: e.confidence,
+                })),
+              };
+              showNudge(nudge);
 
-            onEntityDetectionComplete?.();
-          }
-        });
+              onEntityDetectionComplete?.();
+            }
+          })
+          .catch((error) => {
+            console.error("[ProgressiveStructureController] Entity detection failed:", error);
+          });
       }
     }
   }, [
@@ -289,11 +297,10 @@ export function ProgressiveStructureController({
         addWritingTime(projectId, WRITING_TIME_INTERVAL / 1000);
       }
 
-      // Reset active flag - will be set again by next activity
-      // If idle threshold exceeded, force reset
-      if (timeSinceActivity >= IDLE_THRESHOLD) {
-        isActiveRef.current = false;
-      }
+      // Always reset active flag after checking - user must be active again
+      // in the next interval for time to be counted. This prevents over-counting
+      // when user is idle but within the IDLE_THRESHOLD window.
+      isActiveRef.current = false;
     }, WRITING_TIME_INTERVAL);
 
     return () => clearInterval(interval);
@@ -368,33 +375,37 @@ export function ProgressiveStructureController({
       if (isSnoozed) return;
 
       // Run entity detection on pasted text
-      detectInText(text).then(() => {
-        // Only show nudge and transition phase if entities were detected
-        const pendingEntities = useProgressiveStore.getState().pendingDetectedEntities;
-        if (pendingEntities.length > 0) {
-          if (phase === 1) {
-            setPhase(projectId, 2);
+      detectInText(text)
+        .then(() => {
+          // Only show nudge and transition phase if entities were detected
+          const pendingEntities = useProgressiveStore.getState().pendingDetectedEntities;
+          if (pendingEntities.length > 0) {
+            if (phase === 1) {
+              setPhase(projectId, 2);
+            }
+
+            // Show entity discovery nudge
+            const nudge: EntityDiscoveryNudge = {
+              id: `${projectId}:entity_discovery:paste:${Date.now()}`,
+              projectId,
+              type: "entity_discovery",
+              createdAt: new Date().toISOString(),
+              entities: pendingEntities.map((e) => ({
+                tempId: e.tempId,
+                name: e.name,
+                type: e.type,
+                count: e.occurrences,
+                confidence: e.confidence,
+              })),
+            };
+            showNudge(nudge);
+
+            onEntityDetectionComplete?.();
           }
-
-          // Show entity discovery nudge
-          const nudge: EntityDiscoveryNudge = {
-            id: `${projectId}:entity_discovery:paste:${Date.now()}`,
-            projectId,
-            type: "entity_discovery",
-            createdAt: new Date().toISOString(),
-            entities: pendingEntities.map((e) => ({
-              tempId: e.tempId,
-              name: e.name,
-              type: e.type,
-              count: e.occurrences,
-              confidence: e.confidence,
-            })),
-          };
-          showNudge(nudge);
-
-          onEntityDetectionComplete?.();
-        }
-      });
+        })
+        .catch((error) => {
+          console.error("[ProgressiveStructureController] Paste entity detection failed:", error);
+        });
     },
     [
       isGardener,
@@ -408,14 +419,11 @@ export function ProgressiveStructureController({
     ]
   );
 
-  // Expose paste handler via context or store
+  // Register paste handler via event emitter pattern
+  // This replaces the fragile window global with a clean module-based approach
   useEffect(() => {
-    // Store the paste handler in a way that MythosEditor can access it
-    (window as { __progressivePasteHandler?: typeof handleSubstantialPaste }).__progressivePasteHandler = handleSubstantialPaste;
-    
-    return () => {
-      delete (window as { __progressivePasteHandler?: typeof handleSubstantialPaste }).__progressivePasteHandler;
-    };
+    const unsubscribe = setPasteHandler(handleSubstantialPaste);
+    return unsubscribe;
   }, [handleSubstantialPaste]);
 
   // This is a controller component - renders nothing

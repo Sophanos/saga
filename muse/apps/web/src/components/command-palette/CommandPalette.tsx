@@ -33,14 +33,10 @@ import {
 } from "../../commands";
 import { CommandItem } from "./CommandItem";
 import { searchViaEdge, SearchApiError } from "../../services/ai";
-import { useGetEditorSelection } from "../../hooks/useEditorSelection";
+import { useGetEditorSelection, useIsCommandLocked } from "../../hooks";
 import { getEntityIconComponent } from "../../utils/entityConfig";
 import type { Editor } from "@mythos/editor";
 import type { EntityType } from "@mythos/core";
-import {
-  useIsGardenerMode,
-  useUnlockedModules,
-} from "@mythos/state";
 
 const FILTER_LABELS: Record<CommandPaletteFilter, string> = {
   all: "All",
@@ -92,19 +88,8 @@ export function CommandPalette() {
   // Get selection imperatively (for command execution)
   const getSelectedText = useGetEditorSelection(editorInstance);
 
-  // Progressive disclosure state
-  const isGardener = useIsGardenerMode();
-  const unlockedModules = useUnlockedModules();
-
-  // Helper to check if a command is locked
-  const isCommandLocked = useCallback(
-    (cmd: Command): boolean => {
-      if (!isGardener) return false; // Architect mode: everything unlocked
-      if (!cmd.requiredModule) return false; // No module requirement
-      return unlockedModules?.[cmd.requiredModule] !== true;
-    },
-    [isGardener, unlockedModules]
-  );
+  // Use shared hook for checking command lock state (progressive disclosure)
+  const isCommandLocked = useIsCommandLocked();
 
   // Recent items
   const recentDocuments = useRecentDocuments();

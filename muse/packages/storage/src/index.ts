@@ -10,12 +10,33 @@
  * import { createStorage } from "@mythos/storage"
  */
 
+// =============================================================================
+// Exports
+// =============================================================================
+
 export type { StorageAdapter } from "./types";
 export { STORAGE_PREFIX, createKey } from "./types";
 
 // Re-export platform-specific adapters
 export { webStorage } from "./web";
 export { nativeStorage } from "./native";
+
+// =============================================================================
+// Types
+// =============================================================================
+
+/**
+ * StateStorage interface compatible with zustand persist
+ */
+export interface StateStorage {
+  getItem: (name: string) => string | null | Promise<string | null>;
+  setItem: (name: string, value: string) => void | Promise<void>;
+  removeItem: (name: string) => void | Promise<void>;
+}
+
+// =============================================================================
+// Functions
+// =============================================================================
 
 /**
  * Detect platform and return appropriate storage adapter
@@ -26,15 +47,6 @@ export function createStorage() {
     return import("./web").then((m) => m.webStorage);
   }
   return import("./native").then((m) => m.nativeStorage);
-}
-
-/**
- * StateStorage interface compatible with zustand persist
- */
-export interface StateStorage {
-  getItem: (name: string) => string | null | Promise<string | null>;
-  setItem: (name: string, value: string) => void | Promise<void>;
-  removeItem: (name: string) => void | Promise<void>;
 }
 
 /**

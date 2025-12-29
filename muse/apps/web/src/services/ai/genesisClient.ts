@@ -1,11 +1,15 @@
 /**
  * Genesis Client
- * 
+ *
  * Client for calling the ai-genesis edge function to generate
  * story world scaffolding in Architect mode.
  */
 
 import { callEdgeFunction, type ApiErrorCode } from "../api-client";
+import type { GeneratedEntity, GenesisResult } from "@mythos/core";
+
+// Re-export GeneratedEntity for consumers
+export type { GeneratedEntity };
 
 // ============================================================================
 // Types
@@ -34,27 +38,8 @@ export interface GenesisRequestPayload {
   };
 }
 
-export interface GeneratedEntity {
-  name: string;
-  type: "character" | "location" | "item" | "faction" | "magic_system";
-  description: string;
-  properties?: Record<string, string | number | boolean>;
-  relationships?: Array<{
-    targetName: string;
-    type: string;
-    description?: string;
-  }>;
-}
-
-export interface GenesisResponsePayload {
-  entities: GeneratedEntity[];
-  worldSummary: string;
-  suggestedTitle?: string;
-  outline?: Array<{
-    title: string;
-    summary: string;
-  }>;
-}
+// Use GenesisResult from core as the response payload
+export type GenesisResponsePayload = GenesisResult;
 
 export interface GenesisRequestOptions {
   apiKey?: string;

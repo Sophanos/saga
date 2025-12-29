@@ -3,6 +3,7 @@
  * Platform-agnostic progressive disclosure, milestones, and captures inbox state
  */
 
+import { useCallback } from "react";
 import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
@@ -1238,6 +1239,140 @@ export const useIsEntityNudgeSnoozed = () =>
     if (!snoozedUntil) return false;
     return new Date(snoozedUntil) > new Date();
   });
+
+// ============================================================================
+// Progressive Nudge Actions Hook
+// ============================================================================
+
+/**
+ * Options for configuring progressive nudge action callbacks
+ */
+export interface UseProgressiveNudgeActionsOptions {
+  /** Called when entity tracking is requested (after state updates) */
+  onTrackEntities?: () => void;
+  /** Called when consistency resolution is requested */
+  onResolveConsistency?: (issueId: string) => void;
+  /** Called when a feature unlock is requested */
+  onUnlockFeature?: (module: string) => void;
+  /** Called to animate out before dismissing (mobile) - if not provided, dismisses immediately */
+  onAnimateOut?: (callback: () => void) => void;
+}
+
+/**
+ * Return type for the useProgressiveNudgeActions hook
+ */
+export interface UseProgressiveNudgeActionsResult {
+  /** Handle tracking entities from an entity discovery nudge */
+  handleTrackEntities: () => void;
+  /** Handle resolving a consistency issue */
+  handleResolveConsistency: () => void;
+  /** Handle unlocking a feature */
+  handleUnlockFeature: () => void;
+  /** Handle dismissing the current nudge */
+  handleDismiss: () => void;
+  /** Handle "never ask again" for the current nudge type */
+  handleNeverAsk: () => void;
+  /** Handle snoozing the nudge for 5 minutes */
+  handleSnooze: () => void;
+}
+
+/**
+ * Shared hook for progressive nudge actions
+ *
+ * Provides handlers for all nudge interactions:
+ * - Track entities (unlocks manifest and hud modules)
+ * - Resolve consistency issues
+ * - Unlock features
+ * - Dismiss/snooze/never ask
+ *
+ * Supports an optional onAnimateOut callback for platforms that need
+ * to animate out before dismissing (e.g., React Native).
+ *
+ * @example
+ * // Web usage (no animation)
+ * const actions = useProgressiveNudgeActions({
+ *   onTrackEntities: () => console.log('Tracked!'),
+ * });
+ *
+ * @example
+ * // Mobile usage (with animation)
+ * const actions = useProgressiveNudgeActions({
+ *   onAnimateOut: (cb) => {
+ *     Animated.timing(opacity, { toValue: 0 }).start(cb);
+ *   },
+ * });
+ */
+export function useProgressiveNudgeActions(
+  options?: UseProgressiveNudgeActionsOptions
+): UseProgressiveNudgeActionsResult {
+  const nudge = useActiveNudge();
+  const dismissNudge = useProgressiveStore((s) => s.dismissNudge);
+  const unlockModule = useProgressiveStore((s) => s.unlockModule);
+
+  const finishWithAnimation = useCallback(
+    (callback: () => void) => {
+      if (options?.onAnimateOut) {
+        options.onAnimateOut(callback);
+      } else {
+        callback();
+      }
+    },
+    [options]
+  );
+
+  const handleDismiss = useCallback(() => {
+    if (nudge) {
+      finishWithAnimation(() => dismissNudge(nudge.id));
+    }
+  }, [nudge, dismissNudge, finishWithAnimation]);
+
+  const handleNeverAsk = useCallback(() => {
+    if (nudge) {
+      finishWithAnimation(() => dismissNudge(nudge.id, { neverAsk: true }));
+    }
+  }, [nudge, dismissNudge, finishWithAnimation]);
+
+  const handleSnooze = useCallback(() => {
+    if (nudge) {
+      // Snooze for 5 minutes
+      finishWithAnimation(() => dismissNudge(nudge.id, { snoozeMs: 5 * 60 * 1000 }));
+    }
+  }, [nudge, dismissNudge, finishWithAnimation]);
+
+  const handleTrackEntities = useCallback(() => {
+    if (nudge && nudge.type === "entity_discovery") {
+      // Unlock manifest and hud modules
+      unlockModule(nudge.projectId, "manifest");
+      unlockModule(nudge.projectId, "hud");
+      options?.onTrackEntities?.();
+      finishWithAnimation(() => dismissNudge(nudge.id));
+    }
+  }, [nudge, unlockModule, dismissNudge, options, finishWithAnimation]);
+
+  const handleResolveConsistency = useCallback(() => {
+    if (nudge && nudge.type === "consistency_choice") {
+      options?.onResolveConsistency?.(nudge.issueId);
+      finishWithAnimation(() => dismissNudge(nudge.id));
+    }
+  }, [nudge, dismissNudge, options, finishWithAnimation]);
+
+  const handleUnlockFeature = useCallback(() => {
+    if (nudge && nudge.type === "feature_unlock") {
+      unlockModule(nudge.projectId, nudge.module);
+      options?.onUnlockFeature?.(nudge.module);
+      finishWithAnimation(() => dismissNudge(nudge.id));
+    }
+  }, [nudge, unlockModule, dismissNudge, options, finishWithAnimation]);
+
+  return {
+    handleTrackEntities,
+    handleResolveConsistency,
+    handleUnlockFeature,
+    handleDismiss,
+    handleNeverAsk,
+    handleSnooze,
+  };
+}
 
 /**
  * Get UI panel visibility based on progressive state

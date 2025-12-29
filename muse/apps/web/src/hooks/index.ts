@@ -122,6 +122,9 @@ export type { UseSearchOptions, UseSearchResult } from "./useSearch";
 
 export { useGlobalShortcuts } from "./useGlobalShortcuts";
 
+// Command lock state (progressive disclosure)
+export { useIsCommandLocked } from "./useIsCommandLocked";
+
 export {
   useEditorSelection,
   useGetEditorSelection,

@@ -24,6 +24,7 @@ import { useSyncEngine } from "../lib/useSyncEngine";
 import { useProgressiveSync } from "../lib/useProgressiveSync";
 import { useProjectStore } from "@mythos/state";
 import { ProgressiveNudge } from "../components/progressive/ProgressiveNudge";
+import { accent } from "@mythos/theme";
 import "../global.css";
 
 // Keep splash screen visible while loading fonts and checking auth
@@ -86,11 +87,11 @@ function SyncStatusIndicator() {
   }
 
   const getStatusColor = () => {
-    if (!isOnline) return "#ef4444"; // Red for offline
-    if (hasError) return "#f59e0b"; // Amber for error
-    if (isSyncing) return "#3b82f6"; // Blue for syncing
-    if (pendingCount > 0) return "#eab308"; // Yellow for pending
-    return "#22c55e"; // Green for synced
+    if (!isOnline) return accent.red; // Red for offline
+    if (hasError) return accent.amber; // Amber for error
+    if (isSyncing) return accent.blue; // Blue for syncing
+    if (pendingCount > 0) return accent.yellow; // Yellow for pending
+    return accent.green; // Green for synced
   };
 
   const getStatusText = () => {
@@ -210,8 +211,11 @@ export default function RootLayout() {
   
   // Try to load custom fonts, but gracefully handle failures
   const [fontsLoaded, fontError] = useFonts({
-    // Wrap in try-catch style by checking if assets exist
-    // If fonts don't exist, useFonts will error but we handle it gracefully
+    "DM-Sans": require("../assets/fonts/DMSans-Regular.ttf"),
+    "DM-Sans-Medium": require("../assets/fonts/DMSans-Medium.ttf"),
+    "DM-Sans-Bold": require("../assets/fonts/DMSans-Bold.ttf"),
+    "JetBrains-Mono": require("../assets/fonts/JetBrainsMono-Regular.ttf"),
+    "Instrument-Serif": require("../assets/fonts/InstrumentSerif-Regular.ttf"),
   });
 
   useEffect(() => {

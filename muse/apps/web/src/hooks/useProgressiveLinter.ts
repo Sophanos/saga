@@ -6,8 +6,7 @@
  * and trigger the Phase 2 → 3 transition.
  */
 
-import { useEffect, useRef, useCallback } from "react";
-import { useMythosStore } from "../stores";
+import { useEffect, useRef, useCallback, useState } from "react";
 import {
   useProgressiveStore,
   useIsGardenerMode,
@@ -15,6 +14,7 @@ import {
   useActiveProjectId,
   type ConsistencyChoiceNudge,
 } from "@mythos/state";
+import { useMythosStore } from "../stores";
 import { lintDocumentViaEdge, type LintIssue } from "../services/ai";
 
 // ============================================================================
@@ -86,15 +86,41 @@ export function useProgressiveLinter(
   const isGardener = useIsGardenerMode();
   const phase = useActivePhase();
 
-  // Get documents from store
+  // Get documents from store with stable ID-based selector for dependency tracking
+  // Issue 1 fix: Use document IDs for stability to prevent runLint recreation
+  const documentIds = useMythosStore((s) =>
+    Array.from(s.document.documents.keys()).sort().join(",")
+  );
   const documents = useMythosStore((s) =>
     Array.from(s.document.documents.values())
   );
 
+  // Issue 2 fix: Capture current project/document at callback creation time via refs
+  const currentProjectRef = useRef(
+    useMythosStore.getState().project.currentProject
+  );
+  const currentDocumentRef = useRef(
+    useMythosStore.getState().document.currentDocument
+  );
+
+  // Keep refs in sync with store
+  useEffect(() => {
+    const unsubscribe = useMythosStore.subscribe((state) => {
+      currentProjectRef.current = state.project.currentProject;
+      currentDocumentRef.current = state.document.currentDocument;
+    });
+    return unsubscribe;
+  }, []);
+
   // Refs for timing and state
   const lastLintRef = useRef<number>(0);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isLintingRef = useRef<boolean>(false);
+
+  // Issue 3 fix: Convert isLinting to useState so changes trigger re-render
+  const [isLinting, setIsLinting] = useState(false);
+
+  // Issue 4 fix: AbortController for cancelling in-flight requests
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Store actions
   const { setPhase, showNudge, unlockModule } = useProgressiveStore.getState();
@@ -105,23 +131,30 @@ export function useProgressiveLinter(
   const runLint = useCallback(async () => {
     // Guard conditions
     if (!projectId || !isGardener || phase !== 2) return;
-    if (isLintingRef.current) return;
-    
+    if (isLinting) return;
+
     // Cooldown check
     const now = Date.now();
     if (now - lastLintRef.current < LINT_COOLDOWN_MS) return;
+
+    // Issue 2 fix: Capture project/document from refs at callback start
+    const currentProject = currentProjectRef.current;
+    const currentDocument = currentDocumentRef.current;
+
+    if (!currentProject || !currentDocument) return;
 
     // Concatenate all document text for cross-doc analysis
     const sortedDocs = [...documents].sort(
       (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)
     );
-    
+
     const combinedText = sortedDocs
       .map((doc, i) => {
         // Extract text from Tiptap JSON content
-        const text = typeof doc.content === "string"
-          ? doc.content
-          : JSON.stringify(doc.content || "");
+        const text =
+          typeof doc.content === "string"
+            ? doc.content
+            : JSON.stringify(doc.content || "");
         return `--- ${doc.title || `Document ${i + 1}`} ---\n${text}`;
       })
       .join("\n\n");
@@ -130,22 +163,24 @@ export function useProgressiveLinter(
     if (getWordCount(combinedText) < MIN_WORD_COUNT_FOR_LINT) return;
 
     try {
-      isLintingRef.current = true;
+      // Issue 3 fix: Use setState instead of ref
+      setIsLinting(true);
       lastLintRef.current = now;
 
-      // Get current project info for linter
-      const currentProject = useMythosStore.getState().project.currentProject;
-      const currentDocument = useMythosStore.getState().document.currentDocument;
+      // Issue 4 fix: Abort any existing request and create new controller
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = new AbortController();
 
-      if (!currentProject || !currentDocument) return;
-
-      // Run the linter
-      const result = await lintDocumentViaEdge({
-        projectId: currentProject.id,
-        documentId: currentDocument.id,
-        content: combinedText,
-        genre: "general", // TODO: Extract genre from project config when available
-      });
+      // Run the linter with abort signal
+      const result = await lintDocumentViaEdge(
+        {
+          projectId: currentProject.id,
+          documentId: currentDocument.id,
+          content: combinedText,
+          genre: "general", // TODO: Extract genre from project config when available
+        },
+        { signal: abortControllerRef.current.signal }
+      );
 
       // Check for contradictions
       const contradictions = result.issues.filter(isContradiction);
@@ -153,7 +188,7 @@ export function useProgressiveLinter(
       if (contradictions.length > 0) {
         // Transition to Phase 3
         setPhase(projectId, 3);
-        
+
         // Unlock console so user can see the issue
         unlockModule(projectId, "console");
 
@@ -174,15 +209,21 @@ export function useProgressiveLinter(
         );
       }
     } catch (error) {
+      // Ignore abort errors - they're expected when cancelling
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
       console.error("[useProgressiveLinter] Lint failed:", error);
     } finally {
-      isLintingRef.current = false;
+      setIsLinting(false);
     }
   }, [
     projectId,
     isGardener,
     phase,
+    isLinting,
     documents,
+    documentIds, // Issue 1 fix: Use stable ID string for dependency tracking
     setPhase,
     showNudge,
     unlockModule,
@@ -210,11 +251,20 @@ export function useProgressiveLinter(
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [enabled, isGardener, phase, documents, debounceMs, runLint]);
+  }, [enabled, isGardener, phase, documentIds, debounceMs, runLint]); // Issue 1 fix: Use documentIds for stability
+
+  /**
+   * Issue 4 fix: Cleanup effect to abort in-flight requests on unmount or project change
+   */
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, [projectId]);
 
   return {
     runLint,
-    isLinting: isLintingRef.current,
+    isLinting, // Issue 3 fix: Return state instead of ref for reactivity
     lastLintAt: lastLintRef.current || null,
   };
 }

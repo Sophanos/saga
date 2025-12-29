@@ -7,12 +7,12 @@
  * - Features become available to unlock (Phase 4)
  */
 
-import { useCallback } from "react";
+import { useMemo } from "react";
 import { X, Users, AlertTriangle, Sparkles, ChevronRight } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import {
   useActiveNudge,
-  useProgressiveStore,
+  useProgressiveNudgeActions,
   type EntityDiscoveryNudge,
   type ConsistencyChoiceNudge,
   type FeatureUnlockNudge,
@@ -209,52 +209,27 @@ export function ProgressiveNudge({
   className,
 }: ProgressiveNudgeProps) {
   const nudge = useActiveNudge();
-  const dismissNudge = useProgressiveStore((s) => s.dismissNudge);
-  const unlockModule = useProgressiveStore((s) => s.unlockModule);
 
-  const handleDismiss = useCallback(() => {
-    if (nudge) {
-      dismissNudge(nudge.id);
-    }
-  }, [nudge, dismissNudge]);
+  // Memoize options to prevent unnecessary re-renders of the shared hook
+  const nudgeActionOptions = useMemo(
+    () => ({
+      onTrackEntities,
+      onResolveConsistency,
+      onUnlockFeature,
+      // No onAnimateOut for web - CSS handles animations
+    }),
+    [onTrackEntities, onResolveConsistency, onUnlockFeature]
+  );
 
-  const handleNeverAsk = useCallback(() => {
-    if (nudge) {
-      dismissNudge(nudge.id, { neverAsk: true });
-    }
-  }, [nudge, dismissNudge]);
-
-  const handleSnooze = useCallback(() => {
-    if (nudge) {
-      // Snooze for 5 minutes
-      dismissNudge(nudge.id, { snoozeMs: 5 * 60 * 1000 });
-    }
-  }, [nudge, dismissNudge]);
-
-  const handleTrackEntities = useCallback(() => {
-    if (nudge && nudge.type === "entity_discovery") {
-      // Unlock manifest panel
-      unlockModule(nudge.projectId, "manifest");
-      unlockModule(nudge.projectId, "hud");
-      onTrackEntities?.();
-      dismissNudge(nudge.id);
-    }
-  }, [nudge, unlockModule, onTrackEntities, dismissNudge]);
-
-  const handleResolveConsistency = useCallback(() => {
-    if (nudge && nudge.type === "consistency_choice") {
-      onResolveConsistency?.(nudge.issueId);
-      dismissNudge(nudge.id);
-    }
-  }, [nudge, onResolveConsistency, dismissNudge]);
-
-  const handleUnlockFeature = useCallback(() => {
-    if (nudge && nudge.type === "feature_unlock") {
-      unlockModule(nudge.projectId, nudge.module);
-      onUnlockFeature?.(nudge.module);
-      dismissNudge(nudge.id);
-    }
-  }, [nudge, unlockModule, onUnlockFeature, dismissNudge]);
+  // Use shared hook for all nudge actions
+  const {
+    handleTrackEntities,
+    handleResolveConsistency,
+    handleUnlockFeature,
+    handleDismiss,
+    handleNeverAsk,
+    handleSnooze,
+  } = useProgressiveNudgeActions(nudgeActionOptions);
 
   if (!nudge) return null;
 

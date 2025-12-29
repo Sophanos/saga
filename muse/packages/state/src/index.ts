@@ -173,6 +173,8 @@ export {
   useActiveTotalWritingTime,
   useIsEntityNudgeSnoozed,
   useProgressivePanelVisibility,
+  // Shared hooks
+  useProgressiveNudgeActions,
 } from "./progressive";
 export type {
   ProgressiveState,
@@ -194,4 +196,6 @@ export type {
   ConsistencyChoiceNudge,
   FeatureUnlockNudge,
   ProgressiveProjectState,
+  UseProgressiveNudgeActionsOptions,
+  UseProgressiveNudgeActionsResult,
 } from "./progressive";

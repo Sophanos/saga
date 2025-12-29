@@ -7,7 +7,7 @@
  * - Features become available to unlock (Phase 4)
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -18,36 +18,42 @@ import {
 } from "react-native";
 import {
   useActiveNudge,
-  useProgressiveStore,
+  useProgressiveNudgeActions,
   type EntityDiscoveryNudge,
   type ConsistencyChoiceNudge,
   type FeatureUnlockNudge,
 } from "@mythos/state";
+import { neutral, accent, text } from "@mythos/theme";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
 const ANIMATION_DURATION = 300;
-const NUDGE_WIDTH = Dimensions.get("window").width - 32; // 16px margin on each side
+const HORIZONTAL_MARGIN = 16; // margin on each side
+
+/** Calculate nudge width based on window dimensions */
+function calculateNudgeWidth(): number {
+  return Dimensions.get("window").width - HORIZONTAL_MARGIN * 2;
+}
 
 // ============================================================================
-// Colors (matching Mythos theme)
+// Colors (from @mythos/theme)
 // ============================================================================
 
 const colors = {
-  bgSecondary: "#18181b",
-  borderSubtle: "#27272a",
-  textPrimary: "#fafafa",
-  textMuted: "#a1a1aa",
-  accentCyan: "#22d3ee",
-  accentCyanBg: "rgba(34, 211, 238, 0.2)",
-  accentAmber: "#fbbf24",
-  accentAmberBg: "rgba(251, 191, 36, 0.2)",
-  accentPurple: "#a855f7",
-  accentPurpleBg: "rgba(168, 85, 247, 0.2)",
-  buttonBg: "#3f3f46",
-  buttonHover: "#52525b",
+  bgSecondary: neutral[900],
+  borderSubtle: neutral[800],
+  textPrimary: neutral[50],
+  textMuted: text.secondary,
+  accentCyan: accent.cyan,
+  accentCyanBg: `${accent.cyan}33`, // 20% opacity
+  accentAmber: accent.amber,
+  accentAmberBg: `${accent.amber}33`, // 20% opacity
+  accentPurple: accent.purple,
+  accentPurpleBg: `${accent.purple}33`, // 20% opacity
+  buttonBg: neutral[700],
+  buttonHover: neutral[600],
 };
 
 // ============================================================================
@@ -200,17 +206,27 @@ export function ProgressiveNudge({
   onUnlockFeature,
 }: ProgressiveNudgeProps) {
   const nudge = useActiveNudge();
-  const dismissNudge = useProgressiveStore((s) => s.dismissNudge);
-  const unlockModule = useProgressiveStore((s) => s.unlockModule);
+
+  // Responsive width state
+  const [nudgeWidth, setNudgeWidth] = useState(calculateNudgeWidth);
 
   // Animation value for slide-in
   const slideAnim = useRef(new Animated.Value(100)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
-  // Animate in when nudge appears
+  // Update width on dimension changes (e.g., rotation)
   useEffect(() => {
+    const subscription = Dimensions.addEventListener("change", () => {
+      setNudgeWidth(calculateNudgeWidth());
+    });
+    return () => subscription.remove();
+  }, []);
+
+  // Animate in when nudge appears, with cleanup on unmount
+  useEffect(() => {
+    let animations: Animated.CompositeAnimation | null = null;
     if (nudge) {
-      Animated.parallel([
+      animations = Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 0,
           duration: ANIMATION_DURATION,
@@ -221,14 +237,19 @@ export function ProgressiveNudge({
           duration: ANIMATION_DURATION,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]);
+      animations.start();
     } else {
       // Reset animation values when no nudge
       slideAnim.setValue(100);
       opacityAnim.setValue(0);
     }
+    return () => {
+      animations?.stop();
+    };
   }, [nudge, slideAnim, opacityAnim]);
 
+  // Animation out callback for the shared hook
   const animateOut = useCallback(
     (callback: () => void) => {
       Animated.parallel([
@@ -249,49 +270,26 @@ export function ProgressiveNudge({
     [slideAnim, opacityAnim]
   );
 
-  const handleDismiss = useCallback(() => {
-    if (nudge) {
-      animateOut(() => dismissNudge(nudge.id));
-    }
-  }, [nudge, dismissNudge, animateOut]);
+  // Memoize options to prevent unnecessary re-renders of the shared hook
+  const nudgeActionOptions = useMemo(
+    () => ({
+      onTrackEntities,
+      onResolveConsistency,
+      onUnlockFeature,
+      onAnimateOut: animateOut,
+    }),
+    [onTrackEntities, onResolveConsistency, onUnlockFeature, animateOut]
+  );
 
-  const handleNeverAsk = useCallback(() => {
-    if (nudge) {
-      animateOut(() => dismissNudge(nudge.id, { neverAsk: true }));
-    }
-  }, [nudge, dismissNudge, animateOut]);
-
-  const handleSnooze = useCallback(() => {
-    if (nudge) {
-      // Snooze for 5 minutes
-      animateOut(() => dismissNudge(nudge.id, { snoozeMs: 5 * 60 * 1000 }));
-    }
-  }, [nudge, dismissNudge, animateOut]);
-
-  const handleTrackEntities = useCallback(() => {
-    if (nudge && nudge.type === "entity_discovery") {
-      // Unlock manifest panel
-      unlockModule(nudge.projectId, "manifest");
-      unlockModule(nudge.projectId, "hud");
-      onTrackEntities?.();
-      animateOut(() => dismissNudge(nudge.id));
-    }
-  }, [nudge, unlockModule, onTrackEntities, dismissNudge, animateOut]);
-
-  const handleResolveConsistency = useCallback(() => {
-    if (nudge && nudge.type === "consistency_choice") {
-      onResolveConsistency?.(nudge.issueId);
-      animateOut(() => dismissNudge(nudge.id));
-    }
-  }, [nudge, onResolveConsistency, dismissNudge, animateOut]);
-
-  const handleUnlockFeature = useCallback(() => {
-    if (nudge && nudge.type === "feature_unlock") {
-      unlockModule(nudge.projectId, nudge.module);
-      onUnlockFeature?.(nudge.module);
-      animateOut(() => dismissNudge(nudge.id));
-    }
-  }, [nudge, unlockModule, onUnlockFeature, dismissNudge, animateOut]);
+  // Use shared hook for all nudge actions
+  const {
+    handleTrackEntities,
+    handleResolveConsistency,
+    handleUnlockFeature,
+    handleDismiss,
+    handleNeverAsk,
+    handleSnooze,
+  } = useProgressiveNudgeActions(nudgeActionOptions);
 
   if (!nudge) return null;
 
@@ -300,6 +298,7 @@ export function ProgressiveNudge({
       style={[
         styles.container,
         {
+          width: nudgeWidth,
           transform: [{ translateY: slideAnim }],
           opacity: opacityAnim,
         },
@@ -345,9 +344,9 @@ const styles = StyleSheet.create({
   container: {
     position: "absolute",
     bottom: 16,
-    left: 16,
-    right: 16,
-    width: NUDGE_WIDTH,
+    left: HORIZONTAL_MARGIN,
+    right: HORIZONTAL_MARGIN,
+    // width is set dynamically via nudgeWidth state for responsiveness
     backgroundColor: colors.bgSecondary,
     borderWidth: 1,
     borderColor: colors.borderSubtle,

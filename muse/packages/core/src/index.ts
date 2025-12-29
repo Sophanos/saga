@@ -14,3 +14,9 @@ export * from "./templates";
 
 // Collaboration types
 export * from "./collaboration";
+
+// Inbox / Captures
+export * from "./inbox";
+
+// Genesis types (AI world generation)
+export * from "./genesis";

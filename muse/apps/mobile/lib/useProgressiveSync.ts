@@ -1,31 +1,14 @@
 /**
  * useProgressiveSync
- * 
+ *
  * Syncs progressive state from database on mobile.
  * Loads project progressive state when a project is selected.
  */
 
 import { useEffect, useRef } from "react";
 import { useProgressiveStore } from "@mythos/state";
+import { type DbProgressiveProjectState } from "@mythos/db";
 import { getMobileSupabase } from "./supabase";
-
-// ============================================================================
-// Types
-// ============================================================================
-
-interface DbProgressiveProjectState {
-  id: string;
-  project_id: string;
-  user_id: string;
-  creation_mode: "architect" | "gardener" | "hybrid";
-  phase: number;
-  unlocked_modules: Record<string, boolean>;
-  total_writing_time_sec: number;
-  last_entity_nudge_word_count: number | null;
-  never_ask: Record<string, boolean>;
-  created_at: string;
-  updated_at: string;
-}
 
 // ============================================================================
 // Hook
@@ -54,17 +37,17 @@ export function useProgressiveSync(projectId: string | null): void {
         // Fetch progressive state from database
         const { data, error } = await supabase
           .from("project_progressive_state" as never)
-          .select("*")
+          .select("id, project_id, user_id, creation_mode, phase, unlocked_modules, total_writing_time_sec, last_entity_nudge_word_count, never_ask")
           .eq("project_id", projectId)
           .single();
 
         if (error && error.code !== "PGRST116") {
           // PGRST116 = no rows found, which is OK
           console.error("[useProgressiveSync] Failed to load state:", error);
-          return;
+          // DON'T return here - fall through to set up default state
         }
 
-        if (data) {
+        if (data && !error) {
           // Found existing state - restore it
           const dbState = data as DbProgressiveProjectState;
           

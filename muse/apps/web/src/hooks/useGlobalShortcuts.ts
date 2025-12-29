@@ -1,9 +1,9 @@
 import { useEffect, useCallback } from "react";
 import { useCommandPaletteStore } from "../stores/commandPalette";
 import { useMythosStore } from "../stores";
-import { commandRegistry, getUnlockHint, type CommandContext, type Command } from "../commands";
+import { commandRegistry, getUnlockHint, type CommandContext } from "../commands";
 import { useGetEditorSelection } from "./useEditorSelection";
-import { useIsGardenerMode, useUnlockedModules } from "@mythos/state";
+import { useIsCommandLocked } from "./useIsCommandLocked";
 import type { Editor } from "@mythos/editor";
 
 interface UseGlobalShortcutsOptions {
@@ -46,19 +46,8 @@ export function useGlobalShortcuts(options?: UseGlobalShortcutsOptions): void {
   // Get selection imperatively (for command execution)
   const getSelectedText = useGetEditorSelection(editorInstance);
 
-  // Progressive disclosure state
-  const isGardener = useIsGardenerMode();
-  const unlockedModules = useUnlockedModules();
-
-  // Check if a command is locked
-  const isCommandLocked = useCallback(
-    (cmd: Command): boolean => {
-      if (!isGardener) return false;
-      if (!cmd.requiredModule) return false;
-      return unlockedModules?.[cmd.requiredModule] !== true;
-    },
-    [isGardener, unlockedModules]
-  );
+  // Use shared hook for checking command lock state (progressive disclosure)
+  const isCommandLocked = useIsCommandLocked();
 
   const buildContext = useCallback((): CommandContext => {
     const state = store.getState();

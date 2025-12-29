@@ -122,22 +122,34 @@ CREATE TRIGGER update_user_progressive_preferences_updated_at
 ALTER TABLE project_progressive_state ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_progressive_preferences ENABLE ROW LEVEL SECURITY;
 
--- Project progressive state: Users can only manage their own state
+-- Project progressive state: Users can only manage their own state AND must be project members
 CREATE POLICY "Users can view their own project progressive state"
   ON project_progressive_state FOR SELECT
-  USING (auth.uid() = user_id);
+  USING (
+    auth.uid() = user_id
+    AND is_project_member(project_id)
+  );
 
 CREATE POLICY "Users can insert their own project progressive state"
   ON project_progressive_state FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK (
+    auth.uid() = user_id
+    AND is_project_member(project_id)
+  );
 
 CREATE POLICY "Users can update their own project progressive state"
   ON project_progressive_state FOR UPDATE
-  USING (auth.uid() = user_id);
+  USING (
+    auth.uid() = user_id
+    AND is_project_member(project_id)
+  );
 
 CREATE POLICY "Users can delete their own project progressive state"
   ON project_progressive_state FOR DELETE
-  USING (auth.uid() = user_id);
+  USING (
+    auth.uid() = user_id
+    AND is_project_member(project_id)
+  );
 
 -- User progressive preferences: Users can only manage their own preferences
 CREATE POLICY "Users can view their own progressive preferences"
