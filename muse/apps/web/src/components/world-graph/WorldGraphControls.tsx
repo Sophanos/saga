@@ -1,6 +1,7 @@
-import { User, MapPin, Sword, Wand2, Building2, Calendar, Sparkles, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import type { EntityType } from "@mythos/core";
+import { getEntityTypeButtons } from "../../utils/entityConfig";
 
 interface WorldGraphControlsProps {
   visibleTypes: Set<EntityType>;
@@ -10,20 +11,7 @@ interface WorldGraphControlsProps {
   relationshipCount: number;
 }
 
-const ENTITY_TYPE_BUTTONS: Array<{
-  type: EntityType;
-  icon: typeof User;
-  label: string;
-  color: string;
-}> = [
-  { type: "character", icon: User, label: "Characters", color: "#22d3ee" },
-  { type: "location", icon: MapPin, label: "Locations", color: "#22c55e" },
-  { type: "item", icon: Sword, label: "Items", color: "#f59e0b" },
-  { type: "magic_system", icon: Wand2, label: "Magic", color: "#8b5cf6" },
-  { type: "faction", icon: Building2, label: "Factions", color: "#a855f7" },
-  { type: "event", icon: Calendar, label: "Events", color: "#f97316" },
-  { type: "concept", icon: Sparkles, label: "Concepts", color: "#64748b" },
-];
+const ENTITY_TYPE_BUTTONS = getEntityTypeButtons();
 
 export function WorldGraphControls({
   visibleTypes,

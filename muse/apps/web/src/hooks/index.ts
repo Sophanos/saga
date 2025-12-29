@@ -123,6 +123,11 @@ export type { UseSearchOptions, UseSearchResult } from "./useSearch";
 export { useGlobalShortcuts } from "./useGlobalShortcuts";
 
 export {
+  useEditorSelection,
+  useGetEditorSelection,
+} from "./useEditorSelection";
+
+export {
   useEditorChatContext,
   useHasEditorSelection,
 } from "./useEditorChatContext";

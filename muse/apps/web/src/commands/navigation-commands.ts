@@ -7,6 +7,7 @@ import {
   PanelRight,
 } from "lucide-react";
 import type { Command } from "./registry";
+import { useCommandPaletteStore } from "../stores/commandPalette";
 
 export const navigationCommands: Command[] = [
   {
@@ -19,8 +20,9 @@ export const navigationCommands: Command[] = [
     shortcut: "⌘P",
     when: (ctx) => ctx.state.project.currentProject !== null,
     execute: () => {
-      // Focus the command palette on documents
-      // The palette itself will handle document navigation
+      // Open the command palette - it shows recent documents by default
+      // Users can type to search for specific documents via semantic search
+      useCommandPaletteStore.getState().open();
     },
   },
   {

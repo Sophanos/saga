@@ -4,9 +4,6 @@
  */
 
 import { z } from "zod";
-import type { StyleIssue, SceneMetrics } from "@mythos/core/analysis";
-import type { DetectedEntity } from "@mythos/core/entities";
-import type { Interaction } from "@mythos/core/dynamics";
 
 // ============================================
 // SCHEMAS

@@ -1,10 +1,5 @@
 import { useCallback } from "react";
 import {
-  User,
-  MapPin,
-  Sword,
-  Wand2,
-  Building2,
   GitBranch,
   FileText,
   Check,
@@ -20,21 +15,14 @@ import {
 } from "../../../stores";
 import { useEntityPersistence } from "../../../hooks/useEntityPersistence";
 import { useRelationshipPersistence } from "../../../hooks/useRelationshipPersistence";
-import type { Entity, EntityType, RelationType } from "@mythos/core";
+import { getEntityIconComponent } from "../../../utils/entityConfig";
+import type { EntityType, RelationType } from "@mythos/core";
+import { buildEntity, type EntityBuildData } from "@mythos/core";
 
 interface ToolResultCardProps {
   messageId: string;
   tool: ChatToolInvocation;
 }
-
-// Entity type icons
-const ENTITY_ICONS: Record<string, typeof User> = {
-  character: User,
-  location: MapPin,
-  item: Sword,
-  magic_system: Wand2,
-  faction: Building2,
-};
 
 // Tool action labels
 const TOOL_LABELS: Record<string, string> = {
@@ -101,64 +89,36 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
 
     try {
       if (tool.toolName === "create_entity") {
-        const entityType = getArg<EntityType>("type") ?? "character";
-        const now = new Date();
-
-        // Build entity based on type
-        const baseEntity = {
-          id: crypto.randomUUID(),
+        // Build entity data from tool args
+        const entityData: EntityBuildData = {
           name: getArg<string>("name") ?? "Unnamed",
-          type: entityType,
-          aliases: getArg<string[]>("aliases") ?? [],
+          type: getArg<EntityType>("type") ?? "character",
+          aliases: getArg<string[]>("aliases"),
           notes: getArg<string>("notes"),
-          createdAt: now,
-          updatedAt: now,
-          mentions: [],
-          properties: {},
+          // Character fields
+          archetype: getArg<string>("archetype") as EntityBuildData["archetype"],
+          backstory: getArg<string>("backstory"),
+          goals: getArg<string[]>("goals"),
+          fears: getArg<string[]>("fears"),
+          // Location fields
+          climate: getArg<string>("climate"),
+          atmosphere: getArg<string>("atmosphere"),
+          // Item fields
+          category: getArg<string>("category") as EntityBuildData["category"],
+          abilities: getArg<string[]>("abilities"),
+          // Faction fields
+          leader: getArg<string>("leader"),
+          headquarters: getArg<string>("headquarters"),
+          factionGoals: getArg<string[]>("factionGoals"),
+          // Magic system fields
+          rules: getArg<string[]>("rules"),
+          limitations: getArg<string[]>("limitations"),
         };
 
-        let entity: Record<string, unknown> = { ...baseEntity };
+        // Build entity using the factory
+        const entity = buildEntity(entityData);
 
-        // Add type-specific fields
-        if (entityType === "character") {
-          entity = {
-            ...entity,
-            archetype: getArg<string>("archetype"),
-            traits: [],
-            status: {},
-            visualDescription: {},
-            backstory: getArg<string>("backstory"),
-            goals: getArg<string[]>("goals") ?? [],
-            fears: getArg<string[]>("fears") ?? [],
-          };
-        } else if (entityType === "location") {
-          entity = {
-            ...entity,
-            climate: getArg<string>("climate"),
-            atmosphere: getArg<string>("atmosphere"),
-          };
-        } else if (entityType === "item") {
-          entity = {
-            ...entity,
-            category: getArg<string>("category") ?? "other",
-            abilities: getArg<string[]>("abilities") ?? [],
-          };
-        } else if (entityType === "faction") {
-          entity = {
-            ...entity,
-            leader: getArg<string>("leader"),
-            headquarters: getArg<string>("headquarters"),
-            goals: getArg<string[]>("factionGoals") ?? [],
-          };
-        } else if (entityType === "magic_system") {
-          entity = {
-            ...entity,
-            rules: getArg<string[]>("rules") ?? [],
-            limitations: getArg<string[]>("limitations") ?? [],
-          };
-        }
-
-        const result = await createEntity(entity as unknown as Entity, projectId);
+        const result = await createEntity(entity, projectId);
         if (result.data) {
           addEntity(result.data);
           updateToolStatus(messageId, "executed");
@@ -240,7 +200,8 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
   // Get icon based on tool type
   const getIcon = () => {
     if (tool.toolName === "create_entity") {
-      const Icon = ENTITY_ICONS[getArg<string>("type") ?? "character"] ?? User;
+      const entityType = getArg<EntityType>("type") ?? "character";
+      const Icon = getEntityIconComponent(entityType);
       return <Icon className="w-4 h-4" />;
     }
     if (tool.toolName === "create_relationship") {

@@ -22,7 +22,9 @@ import {
   sendChatMessageStreaming,
   ChatApiError,
   type ChatMessagePayload,
+  type ToolCallResult,
 } from "../services/ai";
+import type { ChatToolInvocation } from "../stores";
 
 /**
  * Options for the useChatAgent hook
@@ -92,7 +94,6 @@ export function useChatAgent(options?: UseChatAgentOptions): UseChatAgentResult 
 
   // Store state and actions
   const currentProject = useMythosStore((s) => s.project.currentProject);
-  const messages = useMythosStore((s) => s.chat.messages);
   const isStreaming = useMythosStore((s) => s.chat.isStreaming);
   const error = useMythosStore((s) => s.chat.error);
 
@@ -156,18 +157,14 @@ export function useChatAgent(options?: UseChatAgentOptions): UseChatAgentResult 
 
       try {
         // Build messages array for API (excluding the placeholder)
-        const apiMessages: ChatMessagePayload[] = messages
+        // Use getState() to get real-time messages including the one we just added
+        const currentMessages = useMythosStore.getState().chat.messages;
+        const apiMessages: ChatMessagePayload[] = currentMessages
           .filter((m) => m.role !== "system" && !m.isStreaming)
           .map((m) => ({
             role: m.role as "user" | "assistant",
             content: m.content,
           }));
-
-        // Add the new user message
-        apiMessages.push({
-          role: "user",
-          content: content.trim(),
-        });
 
         await sendChatMessageStreaming(
           {
@@ -182,6 +179,22 @@ export function useChatAgent(options?: UseChatAgentOptions): UseChatAgentResult 
             },
             onDelta: (delta: string) => {
               appendToChatMessage(assistantMessageId, delta);
+            },
+            onTool: (tool: ToolCallResult) => {
+              // Create a tool message to display in the UI via ToolResultCard
+              const toolMessage: ChatMessage = {
+                id: generateMessageId(),
+                role: "assistant",
+                content: "",
+                timestamp: new Date(),
+                kind: "tool",
+                tool: {
+                  toolName: tool.toolName as ChatToolInvocation["toolName"],
+                  args: tool.args,
+                  status: "proposed",
+                },
+              };
+              addChatMessage(toolMessage);
             },
             onDone: () => {
               updateChatMessage(assistantMessageId, { isStreaming: false });
@@ -223,7 +236,6 @@ export function useChatAgent(options?: UseChatAgentOptions): UseChatAgentResult 
     [
       enabled,
       currentProject?.id,
-      messages,
       addChatMessage,
       updateChatMessage,
       appendToChatMessage,

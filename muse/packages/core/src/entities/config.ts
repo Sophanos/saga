@@ -33,6 +33,20 @@ export interface EntityTypeConfig {
 }
 
 /**
+ * Hex colors for entity types (for inline styles, canvas, etc.)
+ * These are the canonical color values; Tailwind classes derive from these.
+ */
+export const ENTITY_HEX_COLORS: Record<EntityType, string> = {
+  character: "#22d3ee", // cyan
+  location: "#22c55e",  // green
+  item: "#f59e0b",      // amber
+  magic_system: "#8b5cf6", // violet
+  faction: "#a855f7",   // purple
+  event: "#f97316",     // orange
+  concept: "#64748b",   // slate
+};
+
+/**
  * Complete configuration for all entity types
  */
 export const ENTITY_TYPE_CONFIG: Record<EntityType, EntityTypeConfig> = {
@@ -111,6 +125,15 @@ export function getEntityLabel(type: EntityType): string {
  */
 export function getEntityIcon(type: EntityType): EntityIconName {
   return ENTITY_TYPE_CONFIG[type]?.icon ?? "Sparkles";
+}
+
+/**
+ * Get the hex color for an entity type
+ * @param type - The entity type
+ * @returns Hex color string (e.g., "#22d3ee")
+ */
+export function getEntityHexColor(type: EntityType): string {
+  return ENTITY_HEX_COLORS[type] ?? "#64748b";
 }
 
 // ============================================================================

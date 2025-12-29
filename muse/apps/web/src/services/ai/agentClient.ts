@@ -70,6 +70,24 @@ export interface AgentStreamOptions {
 }
 
 // =============================================================================
+// SSE Timeout Helper
+// =============================================================================
+
+const SSE_READ_TIMEOUT_MS = 30000;
+
+async function readWithTimeout<T>(
+  reader: ReadableStreamDefaultReader<T>,
+  timeoutMs: number = SSE_READ_TIMEOUT_MS
+) {
+  return Promise.race([
+    reader.read(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('SSE read timeout')), timeoutMs)
+    ),
+  ]);
+}
+
+// =============================================================================
 // SSE Parsing
 // =============================================================================
 
@@ -145,7 +163,7 @@ export async function sendAgentMessageStreaming(
     let buffer = "";
 
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithTimeout(reader);
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });

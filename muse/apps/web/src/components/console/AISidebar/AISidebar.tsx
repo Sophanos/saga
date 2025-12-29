@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { Trash2 } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import {
@@ -9,6 +9,7 @@ import {
   type ChatMention,
 } from "../../../stores";
 import { useChatAgent } from "../../../hooks/useChatAgent";
+import { useEditorSelection } from "../../../hooks/useEditorSelection";
 import { ContextBar } from "./ContextBar";
 import { QuickActions } from "./QuickActions";
 import { ChatMessages } from "./ChatMessages";
@@ -33,13 +34,8 @@ export function AISidebar({ className }: AISidebarProps) {
   const currentDocument = useMythosStore((s) => s.document.currentDocument);
   const editorInstance = useMythosStore((s) => s.editor.editorInstance) as Editor | null;
 
-  // Get selection text from editor
-  const selectionText = useMemo(() => {
-    if (!editorInstance) return null;
-    const { from, to } = editorInstance.state.selection;
-    if (from === to) return null;
-    return editorInstance.state.doc.textBetween(from, to, "\n");
-  }, [editorInstance?.state?.selection]);
+  // Get selection text from editor (properly reactive via selectionUpdate events)
+  const selectionText = useEditorSelection(editorInstance);
 
   // Handle message send
   const handleSend = useCallback(

@@ -1,9 +1,11 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { User, MapPin, Sword, Wand2, Building2, Calendar, Sparkles } from "lucide-react";
 import { cn } from "@mythos/ui";
 import type { EntityType } from "@mythos/core";
-import { ENTITY_TYPE_CONFIG } from "@mythos/core";
+import {
+  getEntityIconComponent,
+  getEntityHexColor,
+} from "../../../utils/entityConfig";
 
 export interface EntityNodeData extends Record<string, unknown> {
   entityId: string;
@@ -15,33 +17,10 @@ export interface EntityNodeData extends Record<string, unknown> {
 // Full node type for React Flow
 export type EntityNodeType = Node<EntityNodeData, "entityNode">;
 
-// Map icon names to components
-const ICON_MAP: Record<string, typeof User> = {
-  User,
-  MapPin,
-  Sword,
-  Wand2,
-  Building2,
-  Calendar,
-  Sparkles,
-};
-
-// Entity type colors (hex values for inline styles)
-const ENTITY_COLORS: Record<EntityType, string> = {
-  character: "#22d3ee", // cyan
-  location: "#22c55e",  // green
-  item: "#f59e0b",      // amber
-  magic_system: "#8b5cf6", // violet
-  faction: "#a855f7",   // purple
-  event: "#f97316",     // orange
-  concept: "#64748b",   // slate
-};
-
 function EntityNodeComponent({ data, selected }: NodeProps<EntityNodeType>) {
   const nodeData = data as EntityNodeData;
-  const config = ENTITY_TYPE_CONFIG[nodeData.type];
-  const IconComponent = ICON_MAP[config?.icon ?? "Sparkles"] ?? Sparkles;
-  const borderColor = ENTITY_COLORS[nodeData.type] ?? "#64748b";
+  const IconComponent = getEntityIconComponent(nodeData.type);
+  const borderColor = getEntityHexColor(nodeData.type);
 
   return (
     <>

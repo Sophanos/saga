@@ -2,6 +2,7 @@ import { useEffect, useCallback } from "react";
 import { useCommandPaletteStore } from "../stores/commandPalette";
 import { useMythosStore } from "../stores";
 import { commandRegistry, type CommandContext } from "../commands";
+import { useGetEditorSelection } from "./useEditorSelection";
 import type { Editor } from "@mythos/editor";
 
 interface UseGlobalShortcutsOptions {
@@ -41,28 +42,23 @@ export function useGlobalShortcuts(options?: UseGlobalShortcutsOptions): void {
   const setCanvasView = useMythosStore((s) => s.setCanvasView);
   const editorInstance = useMythosStore((s) => s.editor.editorInstance) as Editor | null;
 
+  // Get selection imperatively (for command execution)
+  const getSelectedText = useGetEditorSelection(editorInstance);
+
   const buildContext = useCallback((): CommandContext => {
     const state = store.getState();
-    let selectedText: string | null = null;
-    
-    if (editorInstance) {
-      const { from, to } = editorInstance.state.selection;
-      if (from !== to) {
-        selectedText = editorInstance.state.doc.textBetween(from, to, "\n");
-      }
-    }
 
     return {
       store,
       state,
       editor: editorInstance,
-      selectedText,
+      selectedText: getSelectedText(),
       openModal,
       closeModal,
       setActiveTab: setActiveTab as (tab: string) => void,
       setCanvasView,
     };
-  }, [store, editorInstance, openModal, closeModal, setActiveTab, setCanvasView]);
+  }, [store, editorInstance, getSelectedText, openModal, closeModal, setActiveTab, setCanvasView]);
 
   useEffect(() => {
     if (!enabled) return;

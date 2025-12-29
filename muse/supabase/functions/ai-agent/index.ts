@@ -63,6 +63,12 @@ interface RAGContext {
 }
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+const MAX_HISTORY_MESSAGES = 20;
+
+// =============================================================================
 // Tool Definitions
 // =============================================================================
 
@@ -303,10 +309,11 @@ serve(async (req: Request): Promise<Response> => {
       systemPrompt += "\n\n" + editorContextStr;
     }
 
-    // Build messages array
+    // Build messages array with sliding window to prevent token overflow
+    const recentMessages = messages.slice(-MAX_HISTORY_MESSAGES);
     const apiMessages = [
       { role: "system" as const, content: systemPrompt },
-      ...messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      ...recentMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
     ];
 
     // Get model

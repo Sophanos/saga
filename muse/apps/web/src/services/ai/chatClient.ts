@@ -39,7 +39,15 @@ export interface ChatResponsePayload {
 /**
  * Streaming event types
  */
-export type ChatStreamEventType = "context" | "delta" | "done" | "error";
+export type ChatStreamEventType = "context" | "delta" | "tool" | "done" | "error";
+
+/**
+ * Tool call result from SSE stream
+ */
+export interface ToolCallResult {
+  toolName: string;
+  args: unknown;
+}
 
 /**
  * Streaming event
@@ -49,6 +57,8 @@ export interface ChatStreamEvent {
   content?: string;
   data?: ChatContext;
   message?: string;
+  toolName?: string;
+  args?: unknown;
 }
 
 /**
@@ -65,6 +75,7 @@ export interface ChatRequestOptions {
 export interface ChatStreamOptions extends ChatRequestOptions {
   onContext?: (context: ChatContext) => void;
   onDelta?: (content: string) => void;
+  onTool?: (tool: ToolCallResult) => void;
   onDone?: () => void;
   onError?: (error: Error) => void;
 }
@@ -111,7 +122,7 @@ export async function sendChatMessageStreaming(
   payload: ChatRequestPayload,
   opts?: ChatStreamOptions
 ): Promise<void> {
-  const { signal, apiKey, onContext, onDelta, onDone, onError } = opts ?? {};
+  const { signal, apiKey, onContext, onDelta, onTool, onDone, onError } = opts ?? {};
 
   if (!SUPABASE_URL) {
     throw new ChatApiError(
@@ -195,6 +206,15 @@ export async function sendChatMessageStreaming(
           case "delta":
             if (event.content && onDelta) {
               onDelta(event.content);
+            }
+            break;
+
+          case "tool":
+            if (event.toolName && onTool) {
+              onTool({
+                toolName: event.toolName,
+                args: event.args,
+              });
             }
             break;
 

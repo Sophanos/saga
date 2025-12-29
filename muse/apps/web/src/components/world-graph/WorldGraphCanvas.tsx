@@ -14,6 +14,7 @@ import { useWorldGraph } from "../../hooks/useWorldGraph";
 import { useGraphLayout } from "../../hooks/useGraphLayout";
 import { EntityNode, type EntityNodeData, type EntityNodeType } from "./nodes/EntityNode";
 import { RelationshipEdge, type RelationshipEdgeType } from "./edges/RelationshipEdge";
+import { getEntityHexColor } from "../../utils/entityConfig";
 import type { EntityType } from "@mythos/core";
 
 // Custom node and edge types
@@ -123,16 +124,7 @@ export function WorldGraphCanvas({
         className="!bg-mythos-bg-secondary !border-mythos-text-muted/20 !rounded-lg"
         nodeColor={(node) => {
           const data = node.data as EntityNodeData;
-          const colors: Record<EntityType, string> = {
-            character: "#22d3ee",
-            location: "#22c55e",
-            item: "#f59e0b",
-            magic_system: "#8b5cf6",
-            faction: "#a855f7",
-            event: "#f97316",
-            concept: "#64748b",
-          };
-          return colors[data.type] ?? "#64748b";
+          return getEntityHexColor(data.type);
         }}
         maskColor="rgba(7, 7, 10, 0.7)"
       />

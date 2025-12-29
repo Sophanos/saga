@@ -3,9 +3,6 @@ import { Command as CmdkCommand } from "cmdk";
 import {
   Search,
   FileText,
-  User,
-  MapPin,
-  Sparkles,
   Clock,
   ChevronRight,
   Loader2,
@@ -35,17 +32,10 @@ import {
 } from "../../commands";
 import { CommandItem } from "./CommandItem";
 import { searchViaEdge, SearchApiError } from "../../services/ai";
+import { useGetEditorSelection } from "../../hooks/useEditorSelection";
+import { getEntityIconComponent } from "../../utils/entityConfig";
 import type { Editor } from "@mythos/editor";
 import type { EntityType } from "@mythos/core";
-
-// Entity type icons
-const ENTITY_TYPE_ICONS: Record<string, typeof User> = {
-  character: User,
-  location: MapPin,
-  item: Sparkles,
-  faction: User,
-  magic_system: Sparkles,
-};
 
 const FILTER_LABELS: Record<CommandPaletteFilter, string> = {
   all: "All",
@@ -94,6 +84,9 @@ export function CommandPalette() {
   const documents = useMythosStore((s) => s.document.documents);
   const entities = useMythosStore((s) => s.world.entities);
 
+  // Get selection imperatively (for command execution)
+  const getSelectedText = useGetEditorSelection(editorInstance);
+
   // Recent items
   const recentDocuments = useRecentDocuments();
   const recentEntities = useRecentEntities();
@@ -109,26 +102,18 @@ export function CommandPalette() {
   // Build command context
   const getCommandContext = useCallback((): CommandContext => {
     const currentState = store.getState();
-    let selectedText: string | null = null;
-    
-    if (editorInstance) {
-      const { from, to } = editorInstance.state.selection;
-      if (from !== to) {
-        selectedText = editorInstance.state.doc.textBetween(from, to, "\n");
-      }
-    }
 
     return {
       store,
       state: currentState,
       editor: editorInstance,
-      selectedText,
+      selectedText: getSelectedText(),
       openModal,
       closeModal,
       setActiveTab: setActiveTab as (tab: string) => void,
       setCanvasView,
     };
-  }, [store, editorInstance, openModal, closeModal, setActiveTab, setCanvasView]);
+  }, [store, editorInstance, getSelectedText, openModal, closeModal, setActiveTab, setCanvasView]);
 
   // Get filtered commands
   const filteredCommands = useMemo(() => {
@@ -288,6 +273,7 @@ export function CommandPalette() {
 
     return () => {
       clearTimeout(timeout);
+      abortControllerRef.current?.abort();
     };
   }, [query, projectId]);
 
@@ -423,7 +409,7 @@ export function CommandPalette() {
                 </CmdkCommand.Item>
               ))}
               {recentEntities.slice(0, 2).map((entity) => {
-                const Icon = ENTITY_TYPE_ICONS[entity.type] ?? User;
+                const Icon = getEntityIconComponent(entity.type);
                 return (
                   <CmdkCommand.Item
                     key={`entity-${entity.id}`}
@@ -492,7 +478,7 @@ export function CommandPalette() {
                     Entities
                   </div>
                   {searchState.entities.map((hit) => {
-                    const Icon = ENTITY_TYPE_ICONS[hit.type] ?? User;
+                    const Icon = getEntityIconComponent(hit.type);
                     return (
                       <CmdkCommand.Item
                         key={`search-entity-${hit.id}`}
