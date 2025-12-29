@@ -230,6 +230,7 @@ export interface ProgressiveState {
   activeProjectId: string | null;
   projects: Record<string, ProgressiveProjectState>;
   activeNudge: ProgressiveNudge | null;
+  nudgeQueue: ProgressiveNudge[];
 
   // Pending detected entities (ephemeral, not persisted)
   pendingDetectedEntities: Array<{
@@ -359,6 +360,7 @@ const initialState = {
   activeProjectId: null as string | null,
   projects: {} as Record<string, ProgressiveProjectState>,
   activeNudge: null as ProgressiveNudge | null,
+  nudgeQueue: [] as ProgressiveNudge[],
   pendingDetectedEntities: [] as Array<{ tempId: string; name: string; type: EntityType; confidence: number; occurrences: number }>,
 
   // Loading states
@@ -618,8 +620,13 @@ export const useProgressiveStore = create<ProgressiveState>()(
     ensureProject: (projectId, defaults) =>
       set((state) => {
         if (!state.projects[projectId]) {
+          // Use gardener defaults if creationMode is "gardener"
+          const baseState =
+            defaults?.creationMode === "gardener"
+              ? gardenerDefaultState
+              : defaultProgressiveProjectState;
           state.projects[projectId] = {
-            ...defaultProgressiveProjectState,
+            ...baseState,
             ...defaults,
           };
         }
@@ -701,7 +708,19 @@ export const useProgressiveStore = create<ProgressiveState>()(
         if (projectState?.neverAsk[nudge.type]) {
           return; // Don't show if user said "never ask"
         }
-        state.activeNudge = nudge;
+
+        // If no active nudge, set it directly
+        if (!state.activeNudge) {
+          state.activeNudge = nudge;
+          return;
+        }
+
+        // If there's already an active nudge, add to queue (with de-dupe by id)
+        const alreadyInQueue = state.nudgeQueue.some((n) => n.id === nudge.id);
+        const isActiveNudge = state.activeNudge.id === nudge.id;
+        if (!alreadyInQueue && !isActiveNudge) {
+          state.nudgeQueue.push(nudge);
+        }
       }),
 
     dismissNudge: (nudgeId, opts) =>
@@ -727,7 +746,12 @@ export const useProgressiveStore = create<ProgressiveState>()(
           ).toISOString();
         }
 
-        state.activeNudge = null;
+        // Pop the next nudge from queue, or clear
+        if (state.nudgeQueue.length > 0) {
+          state.activeNudge = state.nudgeQueue.shift()!;
+        } else {
+          state.activeNudge = null;
+        }
       }),
 
     clearNudge: () =>
@@ -1053,6 +1077,12 @@ export const useHasActiveNudge = (type?: NudgeType) =>
     if (type) return s.activeNudge.type === type;
     return true;
   });
+
+/**
+ * Get the length of the nudge queue
+ */
+export const useNudgeQueueLength = () =>
+  useProgressiveStore((s) => s.nudgeQueue.length);
 
 /**
  * Get pending detected entities

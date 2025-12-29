@@ -389,6 +389,7 @@ export function useEntityDetection(
         setDetectedEntities([]);
         setWarnings([]);
         setStats(null);
+        useProgressiveStore.getState().clearPendingDetectedEntities();
         closeModal();
       } catch (err) {
         const message =
@@ -418,6 +419,7 @@ export function useEntityDetection(
     setStats(null);
     setError(null);
     setIsModalOpen(false);
+    useProgressiveStore.getState().clearPendingDetectedEntities();
 
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();

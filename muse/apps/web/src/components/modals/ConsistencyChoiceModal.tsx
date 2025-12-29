@@ -5,7 +5,7 @@
  * Part of Phase 3 progressive disclosure - helps establish canon.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { X, AlertTriangle, Check, FileText, ChevronRight } from "lucide-react";
 import {
   Button,
@@ -164,6 +164,11 @@ export function ConsistencyChoiceModal({
   isApplying = false,
 }: ConsistencyChoiceModalProps) {
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
+
+  // Reset selection when issue changes or modal reopens
+  useEffect(() => {
+    setSelectedChoiceId(null);
+  }, [issue?.id, isOpen]);
 
   const handleChoose = useCallback(() => {
     if (!selectedChoiceId || !issue?.canonChoices) return;

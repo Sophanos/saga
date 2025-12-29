@@ -36,7 +36,7 @@ function EntityNudgeContent({
   onNeverAsk,
 }: EntityNudgeContentProps) {
   // Show top 3 entities by count
-  const topEntities = nudge.entities
+  const topEntities = [...nudge.entities]
     .sort((a, b) => b.count - a.count)
     .slice(0, 3);
 

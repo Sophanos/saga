@@ -52,7 +52,7 @@ export function Layout() {
         )}
 
         {/* Center Pane: The Canvas */}
-        <Panel defaultSize={showManifest && showConsole ? 55 : showManifest || showConsole ? 75 : 100} minSize={30} className="bg-mythos-bg-primary">
+        <Panel defaultSize={showManifest && showConsole ? 55 : showManifest ? 80 : showConsole ? 75 : 100} minSize={30} className="bg-mythos-bg-primary">
           <Canvas />
         </Panel>
 
@@ -91,7 +91,12 @@ export function Layout() {
       <ProgressiveStructureController />
 
       {/* Progressive Nudge (shows subtle prompts) */}
-      <ProgressiveNudge />
+      <ProgressiveNudge
+        onTrackEntities={() => {
+          // TODO: Open entity suggestion modal with pendingDetectedEntities
+          console.log('[Progressive] Track entities requested');
+        }}
+      />
     </div>
   );
 }

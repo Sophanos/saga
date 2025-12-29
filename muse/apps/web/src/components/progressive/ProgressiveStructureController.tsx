@@ -8,7 +8,7 @@
  * - Triggers nudges at appropriate moments
  */
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useMythosStore } from "../../stores";
 import {
   useProgressiveStore,
@@ -40,6 +40,9 @@ const WRITING_TIME_INTERVAL = 5000;
 /** Idle threshold before stopping writing time tracking (ms) */
 const IDLE_THRESHOLD = 30000;
 
+/** Throttle interval for word count updates (ms) */
+const WORD_COUNT_THROTTLE_MS = 500;
+
 /** Thresholds for feature unlock suggestions */
 const UNLOCK_THRESHOLDS = {
   manifest: { writingTimeHours: 0.5 }, // 30 minutes
@@ -54,13 +57,66 @@ const UNLOCK_THRESHOLDS = {
 
 function useWordCount(): number {
   const editorInstance = useMythosStore((s) => s.editor.editorInstance);
-  
-  if (!editorInstance) return 0;
-  
-  // Get plain text from editor
-  const text = (editorInstance as { getText?: () => string })?.getText?.() ?? "";
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  return words.length;
+  const [wordCount, setWordCount] = useState(0);
+  const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingUpdateRef = useRef(false);
+
+  // Calculate word count from editor text
+  const calculateWordCount = useCallback(() => {
+    if (!editorInstance) return 0;
+    const text = (editorInstance as { getText?: () => string })?.getText?.() ?? "";
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    return words.length;
+  }, [editorInstance]);
+
+  // Subscribe to editor updates with throttling
+  useEffect(() => {
+    if (!editorInstance) {
+      setWordCount(0);
+      return;
+    }
+
+    // Initial word count
+    setWordCount(calculateWordCount());
+
+    const handleUpdate = () => {
+      // If we're already throttled, mark that an update is pending
+      if (throttleRef.current) {
+        pendingUpdateRef.current = true;
+        return;
+      }
+
+      // Update immediately
+      setWordCount(calculateWordCount());
+
+      // Set up throttle
+      throttleRef.current = setTimeout(() => {
+        throttleRef.current = null;
+        // If there was a pending update during throttle, process it now
+        if (pendingUpdateRef.current) {
+          pendingUpdateRef.current = false;
+          setWordCount(calculateWordCount());
+        }
+      }, WORD_COUNT_THROTTLE_MS);
+    };
+
+    // Subscribe to editor updates
+    const editor = editorInstance as {
+      on?: (event: string, handler: () => void) => void;
+      off?: (event: string, handler: () => void) => void
+    };
+    editor.on?.("update", handleUpdate);
+
+    return () => {
+      editor.off?.("update", handleUpdate);
+      if (throttleRef.current) {
+        clearTimeout(throttleRef.current);
+        throttleRef.current = null;
+      }
+    };
+  }, [editorInstance, calculateWordCount]);
+
+  return wordCount;
 }
 
 // ============================================================================
@@ -131,13 +187,14 @@ export function ProgressiveStructureController({
       if (text.length > 0) {
         // Run entity detection
         detectInText(text).then(() => {
-          // Transition to Phase 2
-          setPhase(projectId, 2);
-          setLastEntityNudgeWordCount(projectId, wordCount);
-          
-          // Show entity discovery nudge
+          // Only transition to Phase 2 if entities were detected
           const pendingEntities = useProgressiveStore.getState().pendingDetectedEntities;
           if (pendingEntities.length > 0) {
+            // Transition to Phase 2
+            setPhase(projectId, 2);
+            setLastEntityNudgeWordCount(projectId, wordCount);
+
+            // Show entity discovery nudge
             const nudge: EntityDiscoveryNudge = {
               id: `${projectId}:entity_discovery:${Date.now()}`,
               projectId,
@@ -152,9 +209,9 @@ export function ProgressiveStructureController({
               })),
             };
             showNudge(nudge);
+
+            onEntityDetectionComplete?.();
           }
-          
-          onEntityDetectionComplete?.();
         });
       }
     }
@@ -279,13 +336,14 @@ export function ProgressiveStructureController({
 
       // Run entity detection on pasted text
       detectInText(text).then(() => {
-        if (phase === 1) {
-          setPhase(projectId, 2);
-        }
-        
-        // Show entity discovery nudge
+        // Only show nudge and transition phase if entities were detected
         const pendingEntities = useProgressiveStore.getState().pendingDetectedEntities;
         if (pendingEntities.length > 0) {
+          if (phase === 1) {
+            setPhase(projectId, 2);
+          }
+
+          // Show entity discovery nudge
           const nudge: EntityDiscoveryNudge = {
             id: `${projectId}:entity_discovery:paste:${Date.now()}`,
             projectId,
@@ -300,9 +358,9 @@ export function ProgressiveStructureController({
             })),
           };
           showNudge(nudge);
+
+          onEntityDetectionComplete?.();
         }
-        
-        onEntityDetectionComplete?.();
       });
     },
     [
