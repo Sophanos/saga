@@ -1,10 +1,12 @@
-import { BookOpen, Settings, Sparkles, Play, FileDown, FileUp, Clock } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { BookOpen, Settings, Sparkles, Play, FileDown, FileUp, Clock, ChevronDown, FolderPlus, FolderOpen } from "lucide-react";
 import { Button } from "@mythos/ui";
 import { ModeToggle } from "./ModeToggle";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { CollaboratorsBar } from "./collaboration/CollaboratorsBar";
 import { useApiKey } from "../hooks/useApiKey";
 import { useCurrentProject, useMythosStore } from "../stores";
+import { useNavigationStore } from "../stores/navigation";
 import { useActiveTotalWritingTime, useIsGardenerMode } from "@mythos/state";
 
 /**
@@ -27,7 +29,24 @@ export function Header() {
   const { hasKey } = useApiKey();
   const project = useCurrentProject();
   const openModal = useMythosStore((s) => s.openModal);
-  
+  const requestNewProject = useNavigationStore((s) => s.requestNewProject);
+  const requestProjectSelector = useNavigationStore((s) => s.requestProjectSelector);
+
+  // Dropdown state
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Progressive writing time (gardener mode only)
   const writingTimeSec = useActiveTotalWritingTime();
   const isGardener = useIsGardenerMode();
@@ -43,9 +62,43 @@ export function Header() {
           </span>
         </div>
         <span className="text-mythos-text-muted">|</span>
-        <span className="text-sm text-mythos-text-secondary">
-          {project?.name ?? "Untitled Project"}
-        </span>
+
+        {/* Project dropdown */}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            className="flex items-center gap-1.5 text-sm text-mythos-text-secondary hover:text-mythos-text-primary transition-colors group"
+          >
+            <span>{project?.name ?? "Untitled Project"}</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {isDropdownOpen && (
+            <div className="absolute top-full left-0 mt-1 w-48 bg-mythos-bg-secondary border border-mythos-text-muted/20 rounded-lg shadow-xl z-50 py-1">
+              <button
+                onClick={() => {
+                  requestNewProject();
+                  setIsDropdownOpen(false);
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2 text-sm text-mythos-text-secondary hover:bg-mythos-accent-cyan/10 hover:text-mythos-text-primary transition-colors"
+              >
+                <FolderPlus className="w-4 h-4" />
+                New Project
+                <span className="ml-auto text-[10px] text-mythos-text-muted">⌘N</span>
+              </button>
+              <button
+                onClick={() => {
+                  requestProjectSelector();
+                  setIsDropdownOpen(false);
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2 text-sm text-mythos-text-secondary hover:bg-mythos-accent-cyan/10 hover:text-mythos-text-primary transition-colors"
+              >
+                <FolderOpen className="w-4 h-4" />
+                Switch Project
+              </button>
+            </div>
+          )}
+        </div>
         
         {/* Writing time indicator (gardener mode only) */}
         {isGardener && writingTimeSec > 60 && (

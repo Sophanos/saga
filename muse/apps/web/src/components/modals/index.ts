@@ -9,6 +9,7 @@ export {
   ProjectCreateModal,
   type ProjectCreateModalProps,
 } from "./ProjectCreateModal";
+export { TemplatePickerModal } from "./TemplatePickerModal";
 export {
   ExportModal,
   type ExportModalProps,

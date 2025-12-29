@@ -98,11 +98,15 @@ export type CanvasView = "editor" | "worldGraph";
 // Modal state types
 export type FormMode = "create" | "edit";
 
+// Template picker step type
+export type TemplatePickerStep = "start" | "browse" | "ai-builder" | "preview" | "create";
+
 export type ModalState =
   | { type: "settings" }
   | { type: "import" }
   | { type: "export" }
-  | { type: "entityForm"; mode: FormMode; entityType?: EntityType; entityId?: string };
+  | { type: "entityForm"; mode: FormMode; entityType?: EntityType; entityId?: string }
+  | { type: "templatePicker"; step: TemplatePickerStep; templateId?: string };
 
 // Recent items tracking
 export interface RecentItems {

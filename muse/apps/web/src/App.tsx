@@ -1,13 +1,35 @@
 import { useState, useCallback, useEffect } from "react";
 import { Layout } from "./components/Layout";
 import { ProjectSelectorScreen } from "./components/projects";
-import { ProjectCreateModal } from "./components/modals";
+import { TemplatePickerModal } from "./components/modals";
+import { AuthScreen, AuthCallback } from "./components/auth";
+import { LandingPage } from "@mythos/website/pages";
 import { useProjects } from "./hooks/useProjects";
 import { useProjectLoader } from "./hooks/useProjectLoader";
+import { useSupabaseAuthSync } from "./hooks/useSupabaseAuthSync";
+import { useAuthStore } from "./stores/auth";
+import { useNavigationStore } from "./stores/navigation";
 
 const LAST_PROJECT_KEY = "mythos:lastProjectId";
 
-function App() {
+/**
+ * Loading screen shown while checking auth state
+ */
+function LoadingScreen() {
+  return (
+    <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary font-sans antialiased flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-8 h-8 border-2 border-mythos-accent-cyan border-t-transparent rounded-full animate-spin" />
+        <span className="text-mythos-text-muted font-mono text-sm">Initializing...</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Main authenticated app content
+ */
+function AuthenticatedApp() {
   // State for selected project - initialize from localStorage
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     () => localStorage.getItem(LAST_PROJECT_KEY)
@@ -45,6 +67,21 @@ function App() {
     }
   }, [projectLoadError, clearSelectedProject]);
 
+  // Listen for navigation requests (e.g., from Header's "New Project" button)
+  const showProjectSelector = useNavigationStore((s) => s.showProjectSelector);
+  const openNewProjectModal = useNavigationStore((s) => s.openNewProjectModal);
+  const clearNavigationRequest = useNavigationStore((s) => s.clearNavigationRequest);
+
+  useEffect(() => {
+    if (showProjectSelector) {
+      clearSelectedProject();
+      if (openNewProjectModal) {
+        setIsCreateModalOpen(true);
+      }
+      clearNavigationRequest();
+    }
+  }, [showProjectSelector, openNewProjectModal, clearSelectedProject, clearNavigationRequest]);
+
   // Handle opening the create project modal
   const handleCreateProject = useCallback(() => {
     setIsCreateModalOpen(true);
@@ -77,7 +114,7 @@ function App() {
           onCreate={handleCreateProject}
           onRetry={handleRetry}
         />
-        <ProjectCreateModal
+        <TemplatePickerModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
           onCreated={handleProjectCreated}
@@ -122,6 +159,65 @@ function App() {
       <Layout />
     </div>
   );
+}
+
+function App() {
+  // Auth state from store
+  const isLoading = useAuthStore((state) => state.isLoading);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const setAuthenticatedUser = useAuthStore((state) => state.setAuthenticatedUser);
+  const setLoading = useAuthStore((state) => state.setLoading);
+  const updateUserProfile = useAuthStore((state) => state.updateUserProfile);
+  const signOut = useAuthStore((state) => state.signOut);
+
+  // State for showing auth screen vs landing page
+  const [showAuth, setShowAuth] = useState(false);
+
+  // Check if we're on the auth callback route
+  const isAuthCallback = window.location.pathname === "/auth/callback" ||
+    window.location.search.includes("code=");
+
+  // Sync Supabase auth with Zustand store
+  useSupabaseAuthSync({
+    authStore: {
+      setAuthenticatedUser,
+      setLoading,
+      updateUserProfile,
+      signOut,
+    },
+  });
+
+  // Show loading state while checking auth
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  // Handle OAuth callback
+  if (isAuthCallback) {
+    return <AuthCallback onComplete={() => window.location.href = "/"} />;
+  }
+
+  // Show landing or auth screen if not authenticated
+  if (!isAuthenticated) {
+    if (showAuth) {
+      return <AuthScreen onBack={() => setShowAuth(false)} />;
+    }
+    return (
+      <div onClick={(e) => {
+        const target = e.target as HTMLElement;
+        const link = target.closest('a');
+        if (link && (link.href.includes('/login') || link.href.includes('/signup'))) {
+          e.preventDefault();
+          setShowAuth(true);
+        }
+      }}>
+        <LandingPage />
+      </div>
+    );
+  }
+
+  // Show authenticated app
+  return <AuthenticatedApp />;
 }
 
 export default App;

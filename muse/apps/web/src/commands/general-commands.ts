@@ -3,10 +3,36 @@ import {
   FileDown,
   FileUp,
   Shuffle,
+  FolderPlus,
+  FolderOpen,
 } from "lucide-react";
 import type { Command } from "./registry";
+import { useNavigationStore } from "../stores/navigation";
 
 export const generalCommands: Command[] = [
+  {
+    id: "general.new-project",
+    label: "New Project",
+    description: "Create a new project with template picker",
+    icon: FolderPlus,
+    category: "general",
+    keywords: ["new", "project", "create", "template"],
+    shortcut: "⌘N",
+    execute: () => {
+      useNavigationStore.getState().requestNewProject();
+    },
+  },
+  {
+    id: "general.switch-project",
+    label: "Switch Project",
+    description: "Go back to project selector",
+    icon: FolderOpen,
+    category: "general",
+    keywords: ["switch", "project", "change", "select", "back"],
+    execute: () => {
+      useNavigationStore.getState().requestProjectSelector();
+    },
+  },
   {
     id: "general.settings",
     label: "Settings",

@@ -13,9 +13,10 @@ interface UseGlobalShortcutsOptions {
 
 /**
  * Hook to handle global keyboard shortcuts.
- * 
+ *
  * Shortcuts:
  * - Cmd/Ctrl+K: Toggle command palette
+ * - Cmd/Ctrl+N: New project
  * - Cmd/Ctrl+Shift+C: Create character
  * - Cmd/Ctrl+Shift+O: Create location
  * - Cmd/Ctrl+Shift+I: Create item
@@ -158,6 +159,9 @@ export function useGlobalShortcuts(options?: UseGlobalShortcutsOptions): void {
         let commandId: string | null = null;
 
         switch (key) {
+          case "n":
+            commandId = "general.new-project";
+            break;
           case "g":
             commandId = "nav.world-graph";
             break;
