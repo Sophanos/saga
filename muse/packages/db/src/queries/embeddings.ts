@@ -1,4 +1,4 @@
-import { supabase } from "../client";
+import { getSupabaseClient } from "../client";
 import type { Database } from "../types/database";
 
 type Entity = Database["public"]["Tables"]["entities"]["Row"];
@@ -23,6 +23,7 @@ export async function searchEntitiesByEmbedding(
   limit: number = 10,
   threshold: number = 0.7
 ): Promise<SemanticSearchResult[]> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase.rpc("search_entities", {
     query_embedding: embedding,
     match_threshold: threshold,
@@ -47,6 +48,7 @@ export async function searchDocumentsByEmbedding(
   limit: number = 10,
   threshold: number = 0.7
 ): Promise<SemanticSearchResult[]> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase.rpc("search_documents", {
     query_embedding: embedding,
     match_threshold: threshold,
@@ -69,6 +71,7 @@ export async function fulltextSearchDocuments(
   searchQuery: string,
   limit: number = 20
 ): Promise<{ id: string; title: string; type: string; rank: number }[]> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase.rpc("fulltext_search_documents", {
     search_query: searchQuery,
     project_filter: projectId,
@@ -92,6 +95,7 @@ export async function hybridSearchDocuments(
   limit: number = 20,
   semanticWeight: number = 0.7
 ): Promise<{ id: string; title: string; type: string; combined_score: number }[]> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase.rpc("hybrid_search_documents", {
     query_embedding: embedding,
     search_query: searchQuery,
@@ -114,6 +118,7 @@ export async function updateEntityEmbedding(
   entityId: string,
   embedding: number[]
 ): Promise<Entity> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("entities")
     .update({ embedding, updated_at: new Date().toISOString() } as never)
@@ -135,6 +140,7 @@ export async function updateDocumentEmbedding(
   documentId: string,
   embedding: number[]
 ): Promise<Document> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("documents")
     .update({ embedding, updated_at: new Date().toISOString() } as never)
@@ -156,6 +162,7 @@ export async function updateDocumentContentText(
   documentId: string,
   contentText: string
 ): Promise<Document> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("documents")
     .update({ content_text: contentText, updated_at: new Date().toISOString() } as never)
@@ -178,6 +185,7 @@ export async function updateDocumentSearchData(
   embedding: number[],
   contentText: string
 ): Promise<Document> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("documents")
     .update({
@@ -202,6 +210,7 @@ export async function updateDocumentSearchData(
 export async function batchUpdateEntityEmbeddings(
   updates: { id: string; embedding: number[] }[]
 ): Promise<void> {
+  const supabase = getSupabaseClient();
   // Supabase doesn't support native batch updates, so we use Promise.all
   const promises = updates.map(({ id, embedding }) =>
     supabase
@@ -226,6 +235,7 @@ export async function batchUpdateEntityEmbeddings(
 export async function batchUpdateDocumentEmbeddings(
   updates: { id: string; embedding: number[]; contentText?: string }[]
 ): Promise<void> {
+  const supabase = getSupabaseClient();
   const promises = updates.map(({ id, embedding, contentText }) =>
     supabase
       .from("documents")
@@ -254,6 +264,7 @@ export async function getEntitiesWithoutEmbeddings(
   projectId: string,
   limit: number = 100
 ): Promise<Entity[]> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("entities")
     .select("*")
@@ -275,6 +286,7 @@ export async function getDocumentsWithoutEmbeddings(
   projectId: string,
   limit: number = 100
 ): Promise<Document[]> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("documents")
     .select("*")
@@ -287,4 +299,72 @@ export async function getDocumentsWithoutEmbeddings(
   }
 
   return (data as Document[]) || [];
+}
+
+/**
+ * Update document embedding only if the document hasn't changed since expectedUpdatedAt.
+ * This prevents stale embeddings from overwriting newer content.
+ *
+ * @param documentId - Document ID
+ * @param embedding - Embedding vector (1536 dimensions)
+ * @param expectedUpdatedAt - The updated_at timestamp when embedding generation started
+ * @returns The updated document, or null if the document was modified (stale write prevented)
+ */
+export async function updateDocumentEmbeddingIfUnchanged(
+  documentId: string,
+  embedding: number[],
+  expectedUpdatedAt: string
+): Promise<Document | null> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("documents")
+    .update({ embedding, updated_at: new Date().toISOString() } as never)
+    .eq("id", documentId)
+    .eq("updated_at", expectedUpdatedAt)
+    .select();
+
+  if (error) {
+    throw new Error(`Failed to update document embedding: ${error.message}`);
+  }
+
+  // If no rows were updated, the document was modified since we started
+  if (!data || data.length === 0) {
+    return null;
+  }
+
+  return data[0] as Document;
+}
+
+/**
+ * Update entity embedding only if the entity hasn't changed since expectedUpdatedAt.
+ * This prevents stale embeddings from overwriting newer content.
+ *
+ * @param entityId - Entity ID
+ * @param embedding - Embedding vector (1536 dimensions)
+ * @param expectedUpdatedAt - The updated_at timestamp when embedding generation started
+ * @returns The updated entity, or null if the entity was modified (stale write prevented)
+ */
+export async function updateEntityEmbeddingIfUnchanged(
+  entityId: string,
+  embedding: number[],
+  expectedUpdatedAt: string
+): Promise<Entity | null> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("entities")
+    .update({ embedding, updated_at: new Date().toISOString() } as never)
+    .eq("id", entityId)
+    .eq("updated_at", expectedUpdatedAt)
+    .select();
+
+  if (error) {
+    throw new Error(`Failed to update entity embedding: ${error.message}`);
+  }
+
+  // If no rows were updated, the entity was modified since we started
+  if (!data || data.length === 0) {
+    return null;
+  }
+
+  return data[0] as Entity;
 }

@@ -34,3 +34,26 @@ export {
   type DetectRequestOptions,
   type DetectApiErrorCode,
 } from "./detectClient";
+
+export {
+  embedTextViaEdge,
+  embedManyViaEdge,
+  EmbeddingApiError,
+  type EmbedRequestOptions,
+  type EmbedResponse,
+  type QdrantPointMeta,
+  type QdrantIndexOptions,
+  type EmbeddingApiErrorCode,
+} from "./embeddingClient";
+
+export {
+  searchViaEdge,
+  findSimilarViaEdge,
+  SearchApiError,
+  type SearchScope,
+  type SemanticResult,
+  type SearchRequestPayload,
+  type SearchResponsePayload,
+  type SearchRequestOptions,
+  type SearchApiErrorCode,
+} from "./searchClient";

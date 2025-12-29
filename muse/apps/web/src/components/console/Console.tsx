@@ -5,6 +5,7 @@ import {
   GitGraph,
   TrendingUp,
   BarChart3,
+  Search,
 } from "lucide-react";
 import { Button, Input, ScrollArea } from "@mythos/ui";
 import { jumpToPosition } from "@mythos/editor";
@@ -12,6 +13,7 @@ import { DynamicsView } from "./DynamicsView";
 import { CoachView } from "./CoachView";
 import { LinterView } from "./LinterView";
 import { AnalysisDashboard } from "./AnalysisDashboard";
+import { SearchPanel } from "./SearchPanel";
 import { useLinterIssueCounts, useMythosStore, useEditorInstance } from "../../stores";
 import { useHistoryCount } from "../../stores/history";
 import { useLinterFixes } from "../../hooks/useLinterFixes";
@@ -209,6 +211,17 @@ export function Console() {
           Chat
         </button>
         <button
+          onClick={() => setActiveTab("search")}
+          className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === "search"
+              ? "text-mythos-accent-cyan border-b-2 border-mythos-accent-cyan"
+              : "text-mythos-text-muted hover:text-mythos-text-secondary"
+          }`}
+        >
+          <Search className="w-4 h-4" />
+          Search
+        </button>
+        <button
           onClick={() => setActiveTab("linter")}
           className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
             activeTab === "linter"
@@ -266,6 +279,8 @@ export function Console() {
       {/* Content */}
       {activeTab === "chat" ? (
         <ChatPanel />
+      ) : activeTab === "search" ? (
+        <SearchPanel />
       ) : activeTab === "linter" ? (
         <LinterView
           onJumpToPosition={handleJumpToPosition}

@@ -115,3 +115,7 @@ export type { UseStoryExporterResult } from "./useStoryExporter";
 // Story import
 export { useStoryImporter } from "./useStoryImporter";
 export type { UseStoryImporterResult } from "./useStoryImporter";
+
+// Search
+export { useSearch } from "./useSearch";
+export type { UseSearchOptions, UseSearchResult } from "./useSearch";

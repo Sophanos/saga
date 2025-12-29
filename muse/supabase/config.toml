@@ -38,7 +38,27 @@ enabled = true
 # The base URL of the site
 site_url = "http://localhost:5173"
 # Allowed redirect URLs after authentication
-additional_redirect_urls = ["http://localhost:5173"]
+# Web development URLs
+additional_redirect_urls = [
+  "http://localhost:5173",
+  "http://localhost:5173/auth/callback",
+  "http://localhost:5173/auth/confirm",
+  "http://localhost:3000",
+  "http://localhost:3000/auth/callback",
+  # Production web URLs (update with actual domain)
+  "https://mythos.app",
+  "https://mythos.app/auth/callback",
+  "https://mythos.app/auth/confirm",
+  "https://*.mythos.app",
+  # Mobile deep linking URLs
+  "mythos://auth/callback",
+  "mythos://auth/confirm",
+  "exp://localhost:8081/--/auth/callback",
+  "exp://localhost:19000/--/auth/callback",
+  # Expo Go development URLs
+  "exp://192.168.*.*:8081/--/auth/callback",
+  "exp://192.168.*.*:19000/--/auth/callback"
+]
 # How long tokens are valid for (in seconds)
 jwt_expiry = 3600
 # Allow/disallow new user signups
@@ -50,6 +70,22 @@ enable_confirmations = false
 enable_signup = true
 double_confirm_changes = false
 enable_confirmations = false
+
+# OAuth providers (configure as needed)
+[auth.external.google]
+enabled = false
+# client_id = "env(GOOGLE_CLIENT_ID)"
+# secret = "env(GOOGLE_CLIENT_SECRET)"
+
+[auth.external.github]
+enabled = false
+# client_id = "env(GITHUB_CLIENT_ID)"
+# secret = "env(GITHUB_CLIENT_SECRET)"
+
+[auth.external.apple]
+enabled = false
+# client_id = "env(APPLE_CLIENT_ID)"
+# secret = "env(APPLE_CLIENT_SECRET)"
 
 # Edge Functions Configuration
 [functions]
@@ -68,6 +104,18 @@ verify_jwt = false  # Allow public access with BYOK
 [functions.ai-detect]
 # Entity detection endpoint (placeholder)
 verify_jwt = false  # Allow public access with BYOK
+
+[functions.ai-embed]
+# Embedding generation endpoint (DeepInfra + Qdrant)
+verify_jwt = false  # Server-side secrets, no BYOK
+
+[functions.ai-dynamics]
+# Dynamics extraction endpoint
+verify_jwt = false  # Allow public access with BYOK
+
+[functions.ai-search]
+# Semantic search endpoint (DeepInfra + Qdrant)
+verify_jwt = false  # Server-side secrets
 
 # Analytics (optional)
 [analytics]

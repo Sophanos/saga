@@ -71,7 +71,45 @@ interface LinterState {
 }
 
 // Console tab type - shared between UIState and setActiveTab action
-export type ConsoleTab = "chat" | "linter" | "dynamics" | "coach" | "history";
+export type ConsoleTab = "chat" | "search" | "linter" | "dynamics" | "coach" | "history";
+
+// Search types
+export type SearchMode = "fulltext" | "semantic" | "hybrid";
+export type SearchScope = "all" | "documents" | "entities";
+
+export interface DocumentSearchHit {
+  id: string;
+  title?: string;
+  type: Document["type"];
+  score: number;
+  scoreKind: "rank" | "similarity" | "combined";
+  preview?: string;
+}
+
+export interface EntitySearchHit {
+  id: string;
+  name: string;
+  type: Entity["type"];
+  score: number;
+  scoreKind: "similarity" | "match";
+  preview?: string;
+}
+
+export interface SearchResults {
+  documents: DocumentSearchHit[];
+  entities: EntitySearchHit[];
+}
+
+interface SearchState {
+  query: string;
+  mode: SearchMode;
+  scope: SearchScope;
+  results: SearchResults;
+  isSearching: boolean;
+  error: string | null;
+  lastRunAt: Date | null;
+  source: { kind: "query" } | { kind: "entity"; entityId: string };
+}
 
 // UI slice
 interface UIState {
@@ -91,6 +129,7 @@ interface MythosStore {
   world: WorldState;
   editor: EditorState;
   linter: LinterState;
+  search: SearchState;
   ui: UIState;
 
   // Project actions
@@ -138,6 +177,15 @@ interface MythosStore {
   setSelectedLinterIssue: (id: string | null) => void;
   markLinterIssueFixed: (id: string) => void;
 
+  // Search actions
+  setSearchQuery: (query: string) => void;
+  setSearchMode: (mode: SearchMode) => void;
+  setSearchScope: (scope: SearchScope) => void;
+  setSearchResults: (results: SearchResults, source?: SearchState["source"]) => void;
+  clearSearch: () => void;
+  setSearching: (isSearching: boolean) => void;
+  setSearchError: (error: string | null) => void;
+
   // UI actions
   setActiveTab: (tab: ConsoleTab) => void;
   toggleManifest: () => void;
@@ -179,6 +227,16 @@ export const useMythosStore = create<MythosStore>()(
       error: null,
       lastLintedHash: null,
       selectedIssueId: null,
+    },
+    search: {
+      query: "",
+      mode: "semantic",
+      scope: "all",
+      results: { documents: [], entities: [] },
+      isSearching: false,
+      error: null,
+      lastRunAt: null,
+      source: { kind: "query" },
     },
     ui: {
       activeTab: "linter",
@@ -307,6 +365,13 @@ export const useMythosStore = create<MythosStore>()(
         state.linter.error = null;
         state.linter.lastLintedHash = null;
         state.linter.selectedIssueId = null;
+        // Clear search
+        state.search.query = "";
+        state.search.results = { documents: [], entities: [] };
+        state.search.isSearching = false;
+        state.search.error = null;
+        state.search.lastRunAt = null;
+        state.search.source = { kind: "query" };
         // Reset editor dirty state
         state.editor.isDirty = false;
       }),
@@ -383,6 +448,49 @@ export const useMythosStore = create<MythosStore>()(
         if (state.linter.selectedIssueId === id) {
           state.linter.selectedIssueId = null;
         }
+      }),
+
+    // Search actions
+    setSearchQuery: (query) =>
+      set((state) => {
+        state.search.query = query;
+      }),
+    setSearchMode: (mode) =>
+      set((state) => {
+        state.search.mode = mode;
+      }),
+    setSearchScope: (scope) =>
+      set((state) => {
+        state.search.scope = scope;
+      }),
+    setSearchResults: (results, source) =>
+      set((state) => {
+        state.search.results = results;
+        state.search.source = source ?? { kind: "query" };
+        state.search.lastRunAt = new Date();
+        state.search.error = null;
+        state.search.isSearching = false;
+      }),
+    clearSearch: () =>
+      set((state) => {
+        state.search.query = "";
+        state.search.results = { documents: [], entities: [] };
+        state.search.error = null;
+        state.search.isSearching = false;
+        state.search.lastRunAt = null;
+        state.search.source = { kind: "query" };
+      }),
+    setSearching: (isSearching) =>
+      set((state) => {
+        state.search.isSearching = isSearching;
+        if (isSearching) {
+          state.search.error = null;
+        }
+      }),
+    setSearchError: (error) =>
+      set((state) => {
+        state.search.error = error;
+        state.search.isSearching = false;
       }),
 
     // UI actions
@@ -658,3 +766,66 @@ export const useScenes = () =>
       state.document.documents.filter((d) => d.type === "scene")
     )
   );
+
+// ============================================================================
+// Search Selectors
+// ============================================================================
+
+/**
+ * Get full search state
+ */
+export const useSearchState = () => useMythosStore((s) => s.search);
+
+/**
+ * Get search results
+ */
+export const useSearchResults = () => useMythosStore((s) => s.search.results);
+
+/**
+ * Get search loading state
+ */
+export const useIsSearching = () => useMythosStore((s) => s.search.isSearching);
+
+/**
+ * Get search error
+ */
+export const useSearchError = () => useMythosStore((s) => s.search.error);
+
+/**
+ * Get search query
+ */
+export const useSearchQuery = () => useMythosStore((s) => s.search.query);
+
+/**
+ * Get search mode
+ */
+export const useSearchMode = () => useMythosStore((s) => s.search.mode);
+
+/**
+ * Get search scope
+ */
+export const useSearchScope = () => useMythosStore((s) => s.search.scope);
+
+/**
+ * Get document search hits
+ */
+export const useDocumentSearchHits = () =>
+  useMythosStore(useShallow((s) => s.search.results.documents));
+
+/**
+ * Get entity search hits
+ */
+export const useEntitySearchHits = () =>
+  useMythosStore(useShallow((s) => s.search.results.entities));
+
+/**
+ * Get total search result count
+ */
+export const useSearchResultCount = () =>
+  useMythosStore(
+    (s) => s.search.results.documents.length + s.search.results.entities.length
+  );
+
+// Re-export auth store
+export { useAuthStore } from "./auth";
+export type { AuthState } from "./auth";

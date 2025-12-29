@@ -94,13 +94,28 @@ export function createSuccessResponse<T>(
 }
 
 /**
+ * Options for handleAIError
+ */
+export interface HandleAIErrorOptions {
+  /** Name of the AI provider for error messages (default: "AI provider") */
+  providerName?: string;
+}
+
+/**
  * Parse error from AI provider and return appropriate response
+ *
+ * @param error - The error to handle
+ * @param origin - Request origin for CORS headers
+ * @param options - Optional configuration (e.g., provider name for error messages)
  */
 export function handleAIError(
   error: unknown,
-  origin: string | null
+  origin: string | null,
+  options?: HandleAIErrorOptions
 ): Response {
   console.error("[AI Error]", error);
+
+  const providerName = options?.providerName ?? "AI provider";
 
   // Check for rate limiting
   if (error instanceof Error) {
@@ -109,7 +124,7 @@ export function handleAIError(
     if (message.includes("rate limit") || message.includes("429")) {
       return createErrorResponse(
         ErrorCode.RATE_LIMITED,
-        "AI provider rate limit exceeded. Please try again later.",
+        `${providerName} rate limit exceeded. Please try again later.`,
         origin
       );
     }
@@ -121,7 +136,7 @@ export function handleAIError(
     ) {
       return createErrorResponse(
         ErrorCode.UNAUTHORIZED,
-        "Invalid API key. Please check your OpenRouter API key.",
+        `Invalid API key. Please check your ${providerName} API key.`,
         origin
       );
     }
@@ -129,7 +144,7 @@ export function handleAIError(
     if (message.includes("forbidden") || message.includes("403")) {
       return createErrorResponse(
         ErrorCode.FORBIDDEN,
-        "Access denied by AI provider. Your API key may not have access to this model.",
+        `Access denied by ${providerName}. Your API key may not have access to this resource.`,
         origin
       );
     }
@@ -137,7 +152,7 @@ export function handleAIError(
     // Generic AI error
     return createErrorResponse(
       ErrorCode.AI_ERROR,
-      `AI provider error: ${error.message}`,
+      `${providerName} error: ${error.message}`,
       origin
     );
   }
