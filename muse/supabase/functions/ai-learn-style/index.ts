@@ -1,0 +1,332 @@
+/**
+ * AI Learn Style Edge Function
+ *
+ * POST /ai-learn-style
+ *
+ * Analyzes document content to extract writing style preferences.
+ * Derived preferences are stored as "style" memories.
+ * Part of the Writer Memory Layer (MLP 1.5).
+ *
+ * Request Body:
+ * {
+ *   projectId: string,
+ *   documentId: string,
+ *   content: string,
+ *   maxFindings?: number  // Default 8
+ * }
+ *
+ * Response:
+ * { learned: Array<{ id: string, content: string }> }
+ */
+
+import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+import { generateText } from "https://esm.sh/ai@3.4.0";
+import { handleCorsPreFlight } from "../_shared/cors.ts";
+import {
+  createErrorResponse,
+  createSuccessResponse,
+  handleAIError,
+  validateRequestBody,
+  ErrorCode,
+} from "../_shared/errors.ts";
+import { getOpenRouterModel } from "../_shared/providers.ts";
+import { generateEmbedding, isDeepInfraConfigured } from "../_shared/deepinfra.ts";
+import { upsertPoints, isQdrantConfigured, type QdrantPoint } from "../_shared/qdrant.ts";
+import { buildMemoryPayload } from "../_shared/vectorPayload.ts";
+import { assertProjectAccess, ProjectAccessError } from "../_shared/projects.ts";
+import {
+  checkBillingAndGetKey,
+  createSupabaseClient,
+  recordAIRequest,
+  extractTokenUsage,
+} from "../_shared/billing.ts";
+
+// =============================================================================
+// Types
+// =============================================================================
+
+interface LearnStyleRequest {
+  projectId: string;
+  documentId: string;
+  content: string;
+  maxFindings?: number;
+}
+
+interface StyleFinding {
+  id: string;
+  content: string;
+}
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+const DEFAULT_MAX_FINDINGS = 8;
+const MAX_CONTENT_LENGTH = 50000;
+const MIN_CONTENT_LENGTH = 200;
+
+// =============================================================================
+// Prompt
+// =============================================================================
+
+const STYLE_EXTRACTION_PROMPT = `You are analyzing a piece of creative writing to extract the author's style preferences.
+
+Identify specific, actionable writing style patterns. Focus on:
+- Sentence structure preferences (length, complexity)
+- Dialogue style (punctuation, attribution patterns)
+- Description density and focus
+- Pacing and rhythm
+- Voice and tone characteristics
+- POV handling
+- Tense usage patterns
+- Any distinctive stylistic choices
+
+Output a JSON array of short, specific rules (1-2 sentences each). Each rule should be:
+- Observable in this specific text
+- Actionable for future writing
+- Specific (avoid generic advice)
+
+Format: ["rule 1", "rule 2", ...]
+
+Example output:
+["Prefers short, punchy sentences during action scenes", "Uses em-dashes for interruptions in dialogue", "Describes settings through character perception rather than omniscient narration"]
+
+IMPORTANT: Output ONLY the JSON array, no other text.`;
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Generate deterministic ID for style memory to avoid duplicates.
+ */
+async function generateStyleId(
+  projectId: string,
+  userId: string,
+  rule: string
+): Promise<string> {
+  const normalized = rule.toLowerCase().trim().replace(/\s+/g, " ");
+  const input = `${projectId}:${userId}:style:${normalized}`;
+
+  // Use SubtleCrypto for hashing
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  return hashHex.slice(0, 32);
+}
+
+/**
+ * Parse JSON array from LLM response.
+ */
+function parseStyleRules(response: string): string[] {
+  // Try to extract JSON array from response
+  const jsonMatch = response.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    console.warn("[ai-learn-style] No JSON array found in response");
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) {
+      console.warn("[ai-learn-style] Parsed result is not an array");
+      return [];
+    }
+
+    // Filter to strings only
+    return parsed
+      .filter((item): item is string => typeof item === "string")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && s.length < 500);
+  } catch (error) {
+    console.error("[ai-learn-style] Failed to parse JSON:", error);
+    return [];
+  }
+}
+
+// =============================================================================
+// Main Handler
+// =============================================================================
+
+serve(async (req) => {
+  const origin = req.headers.get("Origin");
+  const startTime = Date.now();
+
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return handleCorsPreFlight(req);
+  }
+
+  // Only accept POST
+  if (req.method !== "POST") {
+    return createErrorResponse(ErrorCode.BAD_REQUEST, "Method not allowed", origin);
+  }
+
+  // Check infrastructure
+  if (!isDeepInfraConfigured() || !isQdrantConfigured()) {
+    return createErrorResponse(
+      ErrorCode.INTERNAL_ERROR,
+      "Memory system not configured",
+      origin
+    );
+  }
+
+  const supabase = createSupabaseClient();
+
+  try {
+    // Check billing (requires API key for LLM call)
+    const billing = await checkBillingAndGetKey(req, supabase, {
+      endpoint: "agent",
+      allowAnonymousTrial: true,
+    });
+    if (!billing.canProceed || !billing.apiKey) {
+      return createErrorResponse(
+        ErrorCode.FORBIDDEN,
+        billing.error ?? "API key required for style learning",
+        origin,
+        billing.errorCode ? { code: billing.errorCode } : undefined
+      );
+    }
+
+    // Parse request body
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return createErrorResponse(ErrorCode.BAD_REQUEST, "Invalid JSON", origin);
+    }
+
+    // Validate required fields
+    const validation = validateRequestBody(body, ["projectId", "documentId", "content"]);
+    if (!validation.valid) {
+      return createErrorResponse(
+        ErrorCode.VALIDATION_ERROR,
+        `Missing required fields: ${validation.missing.join(", ")}`,
+        origin
+      );
+    }
+
+    const request = validation.data as unknown as LearnStyleRequest;
+
+    // Validate content length
+    if (request.content.length < MIN_CONTENT_LENGTH) {
+      return createErrorResponse(
+        ErrorCode.VALIDATION_ERROR,
+        `Content too short. Minimum ${MIN_CONTENT_LENGTH} characters needed for style analysis.`,
+        origin
+      );
+    }
+
+    if (request.content.length > MAX_CONTENT_LENGTH) {
+      return createErrorResponse(
+        ErrorCode.VALIDATION_ERROR,
+        `Content too long. Maximum ${MAX_CONTENT_LENGTH} characters.`,
+        origin
+      );
+    }
+
+    // Verify project access
+    const userId = billing.userId;
+    try {
+      await assertProjectAccess(supabase, request.projectId, userId);
+    } catch (error) {
+      if (error instanceof ProjectAccessError) {
+        return createErrorResponse(ErrorCode.FORBIDDEN, error.message, origin);
+      }
+      throw error;
+    }
+
+    const ownerId = userId ?? billing.anonDeviceId;
+    if (!ownerId) {
+      return createErrorResponse(
+        ErrorCode.FORBIDDEN,
+        "User identity required for style learning",
+        origin
+      );
+    }
+
+    const maxFindings = Math.min(
+      Math.max(1, request.maxFindings ?? DEFAULT_MAX_FINDINGS),
+      20
+    );
+
+    // Extract style with LLM
+    console.log(`[ai-learn-style] Analyzing ${request.content.length} chars`);
+
+    const model = getOpenRouterModel(billing.apiKey, "analysis");
+    const result = await generateText({
+      model,
+      system: STYLE_EXTRACTION_PROMPT,
+      prompt: `Analyze this text and extract up to ${maxFindings} style rules:\n\n${request.content.slice(0, 20000)}`,
+      temperature: 0.3,
+      maxTokens: 1024,
+    });
+
+    // Record usage
+    await recordAIRequest(supabase, billing, {
+      endpoint: "agent",
+      model: result.response?.modelId ?? "unknown",
+      modelType: "analysis",
+      usage: extractTokenUsage(result.usage),
+      latencyMs: Date.now() - startTime,
+      metadata: { operation: "learn-style" },
+    });
+
+    // Parse rules from response
+    const rules = parseStyleRules(result.text);
+    console.log(`[ai-learn-style] Extracted ${rules.length} style rules`);
+
+    if (rules.length === 0) {
+      return createSuccessResponse({ learned: [] }, origin);
+    }
+
+    // Create memory points for each rule
+    const learned: StyleFinding[] = [];
+    const points: QdrantPoint[] = [];
+
+    for (const rule of rules.slice(0, maxFindings)) {
+      // Generate deterministic ID
+      const memoryId = await generateStyleId(request.projectId, ownerId, rule);
+
+      // Generate embedding
+      const embedding = await generateEmbedding(rule);
+
+      // Build payload
+      const payload = buildMemoryPayload({
+        projectId: request.projectId,
+        memoryId,
+        category: "style",
+        scope: "user",
+        text: rule,
+        ownerId,
+        source: "ai",
+        confidence: 0.8,
+        documentId: request.documentId,
+      });
+
+      points.push({
+        id: memoryId,
+        vector: embedding,
+        payload: payload as unknown as Record<string, unknown>,
+      });
+
+      learned.push({
+        id: memoryId,
+        content: rule,
+      });
+    }
+
+    // Batch upsert to Qdrant
+    await upsertPoints(points);
+
+    console.log(`[ai-learn-style] Stored ${learned.length} style memories`);
+
+    return createSuccessResponse({ learned }, origin);
+  } catch (error) {
+    console.error("[ai-learn-style] Error:", error);
+    return handleAIError(error, origin, { operation: "learn-style" });
+  }
+});

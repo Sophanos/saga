@@ -23,7 +23,12 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { streamText, generateText } from "https://esm.sh/ai@3.4.0";
-import { handleCorsPreFlight, getStreamingHeaders } from "../_shared/cors.ts";
+import { handleCorsPreFlight } from "../_shared/cors.ts";
+import {
+  createSSEStream,
+  getStreamingHeaders,
+  type SSEStreamController,
+} from "../_shared/streaming.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
 import {
   createErrorResponse,
@@ -38,10 +43,19 @@ import {
 } from "../_shared/deepinfra.ts";
 import {
   searchPoints,
+  scrollPoints,
   isQdrantConfigured,
   QdrantError,
   type QdrantFilter,
 } from "../_shared/qdrant.ts";
+import {
+  getPayloadText,
+} from "../_shared/vectorPayload.ts";
+import {
+  retrieveRAGContext,
+  type RAGContext,
+  type RAGContextItem,
+} from "../_shared/rag.ts";
 import {
   CHAT_SYSTEM,
   CHAT_CONTEXT_TEMPLATE,
@@ -88,87 +102,210 @@ interface ChatRequest {
   stream?: boolean;
 }
 
-/**
- * Context item from RAG
- */
-interface ContextItem {
+// RAGContext and RAGContextItem types imported from ../shared/rag.ts
+
+// retrieveContext function extracted to ../shared/rag.ts as retrieveRAGContext
+
+// =============================================================================
+// Memory & Profile Context
+// =============================================================================
+
+interface MemoryRecord {
   id: string;
-  title: string;
-  type: string;
-  preview: string;
+  content: string;
+  category: string;
+  score?: number;
+}
+
+interface MemoryContext {
+  decisions: MemoryRecord[];
+  style: MemoryRecord[];
+  preferences: MemoryRecord[];
+  session: MemoryRecord[];
+}
+
+interface ProfileContext {
+  preferredGenre?: string;
+  namingCulture?: string;
+  namingStyle?: string;
+  logicStrictness?: string;
 }
 
 /**
- * RAG context
+ * Retrieve memory context for the request
  */
-interface RAGContext {
-  documents: ContextItem[];
-  entities: ContextItem[];
-}
-
-/**
- * Perform RAG retrieval using the last user message
- */
-async function retrieveContext(
+async function retrieveMemoryContext(
   query: string,
   projectId: string,
-  limit: number = 5
-): Promise<RAGContext> {
-  // Check if RAG is configured
-  if (!isDeepInfraConfigured() || !isQdrantConfigured()) {
-    console.log("[ai-chat] RAG not configured, skipping retrieval");
-    return { documents: [], entities: [] };
+  userId: string | null
+): Promise<MemoryContext> {
+  if (!isQdrantConfigured()) {
+    return { decisions: [], style: [], preferences: [], session: [] };
+  }
+
+  const result: MemoryContext = {
+    decisions: [],
+    style: [],
+    preferences: [],
+    session: [],
+  };
+
+  try {
+    // Retrieve project-scoped decisions
+    const decisionFilter: QdrantFilter = {
+      must: [
+        { key: "type", match: { value: "memory" } },
+        { key: "project_id", match: { value: projectId } },
+        { key: "category", match: { value: "decision" } },
+        { key: "scope", match: { value: "project" } },
+      ],
+    };
+
+    if (query && isDeepInfraConfigured()) {
+      const embedding = await generateEmbedding(query);
+      const decisions = await searchPoints(embedding, 5, decisionFilter);
+      result.decisions = decisions.map((p) => ({
+        id: String(p.id),
+        content: getPayloadText(p.payload),
+        category: "decision",
+        score: p.score,
+      }));
+    } else {
+      const decisions = await scrollPoints(decisionFilter, 5);
+      result.decisions = decisions.map((p) => ({
+        id: p.id,
+        content: getPayloadText(p.payload),
+        category: "decision",
+      }));
+    }
+
+    // Only retrieve user-scoped memories if we have a user
+    if (userId) {
+      // Retrieve style preferences
+      const styleFilter: QdrantFilter = {
+        must: [
+          { key: "type", match: { value: "memory" } },
+          { key: "project_id", match: { value: projectId } },
+          { key: "category", match: { value: "style" } },
+          { key: "owner_id", match: { value: userId } },
+        ],
+      };
+      const styleResults = await scrollPoints(styleFilter, 4);
+      result.style = styleResults.map((p) => ({
+        id: p.id,
+        content: getPayloadText(p.payload),
+        category: "style",
+      }));
+    }
+  } catch (error) {
+    console.error("[ai-chat] Memory retrieval error:", error);
+  }
+
+  return result;
+}
+
+/**
+ * Retrieve profile context from user preferences
+ */
+async function retrieveProfileContext(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  userId: string | null
+): Promise<ProfileContext | undefined> {
+  if (!userId) {
+    return undefined;
   }
 
   try {
-    // Generate embedding for the query
-    const queryEmbedding = await generateEmbedding(query);
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("preferences")
+      .eq("id", userId)
+      .single();
 
-    // Search Qdrant with project filter
-    const filter: QdrantFilter = {
-      must: [{ key: "project_id", match: { value: projectId } }],
-    };
-
-    const results = await searchPoints(queryEmbedding, limit * 2, filter);
-
-    // Transform results into context
-    const documents: ContextItem[] = [];
-    const entities: ContextItem[] = [];
-
-    for (const hit of results) {
-      const payload = hit.payload as Record<string, unknown>;
-      const type = payload.type as string;
-
-      const item: ContextItem = {
-        id: String(hit.id),
-        title: String(payload.title || "Untitled"),
-        type,
-        preview: String(payload.content_preview || ""),
-      };
-
-      if (type === "document") {
-        if (documents.length < limit) {
-          documents.push(item);
-        }
-      } else if (type === "entity") {
-        if (entities.length < limit) {
-          entities.push(item);
-        }
-      }
+    if (error || !data) {
+      return undefined;
     }
 
-    return { documents, entities };
+    const prefs = data.preferences as Record<string, unknown> | null;
+    const writing = prefs?.writing as Record<string, unknown> | undefined;
+
+    if (!writing) {
+      return undefined;
+    }
+
+    return {
+      preferredGenre: writing.preferredGenre as string | undefined,
+      namingCulture: writing.namingCulture as string | undefined,
+      namingStyle: writing.namingStyle as string | undefined,
+      logicStrictness: writing.logicStrictness as string | undefined,
+    };
   } catch (error) {
-    console.error("[ai-chat] RAG retrieval failed:", error);
-    return { documents: [], entities: [] };
+    console.error("[ai-chat] Profile retrieval error:", error);
+    return undefined;
   }
+}
+
+/**
+ * Format memory context for prompt injection
+ */
+function formatMemoryContext(memory: MemoryContext): string {
+  const sections: string[] = [];
+
+  if (memory.decisions.length > 0) {
+    const items = memory.decisions.map((m) => `- ${m.content}`).join("\n");
+    sections.push(`### Canon Decisions\n${items}`);
+  }
+
+  if (memory.style.length > 0) {
+    const items = memory.style.map((m) => `- ${m.content}`).join("\n");
+    sections.push(`### Writer Style\n${items}`);
+  }
+
+  return sections.length > 0 ? `## Remembered Context\n\n${sections.join("\n\n")}` : "";
+}
+
+/**
+ * Format profile context for prompt injection
+ */
+function formatProfileContext(profile: ProfileContext): string {
+  const parts: string[] = [];
+
+  if (profile.preferredGenre) {
+    parts.push(`- **Preferred Genre:** ${profile.preferredGenre}`);
+  }
+  if (profile.namingCulture) {
+    parts.push(`- **Naming Culture:** ${profile.namingCulture}`);
+  }
+
+  return parts.length > 0 ? `## Writer Preferences\n\n${parts.join("\n")}` : "";
 }
 
 /**
  * Build context string from RAG results
  */
-function buildContextString(context: RAGContext, mentions?: Mention[]): string {
+function buildContextString(
+  context: RAGContext,
+  mentions?: Mention[],
+  memoryContext?: MemoryContext,
+  profileContext?: ProfileContext
+): string {
   const parts: string[] = [];
+
+  // Add profile context first
+  if (profileContext) {
+    const profileStr = formatProfileContext(profileContext);
+    if (profileStr) {
+      parts.push(profileStr);
+    }
+  }
+
+  // Add memory context
+  if (memoryContext) {
+    const memoryStr = formatMemoryContext(memoryContext);
+    if (memoryStr) {
+      parts.push(memoryStr);
+    }
+  }
 
   // Add retrieved context
   if (context.documents.length > 0 || context.entities.length > 0) {
@@ -229,13 +366,17 @@ serve(async (req) => {
   const supabase = createSupabaseClient();
 
   try {
-    // Check billing and get API key
-    const billing = await checkBillingAndGetKey(req, supabase);
+    // Check billing and get API key (allow anonymous trial for chat)
+    const billing = await checkBillingAndGetKey(req, supabase, {
+      endpoint: "chat",
+      allowAnonymousTrial: true,
+    });
     if (!billing.canProceed) {
       return createErrorResponse(
         ErrorCode.FORBIDDEN,
         billing.error ?? "Unable to process request",
-        origin
+        origin,
+        billing.errorCode ? { code: billing.errorCode, anonTrialRemaining: billing.anonTrialRemaining } : undefined
       );
     }
 
@@ -296,14 +437,17 @@ serve(async (req) => {
       );
     }
 
-    // Perform RAG retrieval
-    const context = await retrieveContext(
-      lastUserMessage.content,
-      request.projectId
-    );
+    // Perform RAG and memory/profile retrieval in parallel
+    const [context, memoryContext, profileContext] = await Promise.all([
+      retrieveRAGContext(lastUserMessage.content, request.projectId, {
+        logPrefix: "[ai-chat]",
+      }),
+      retrieveMemoryContext(lastUserMessage.content, request.projectId, billing.userId),
+      retrieveProfileContext(supabase, billing.userId),
+    ]);
 
-    // Build context string
-    const contextString = buildContextString(context, request.mentions);
+    // Build context string with all contexts
+    const contextString = buildContextString(context, request.mentions, memoryContext, profileContext);
 
     // Build system prompt with context
     const systemPrompt = `${CHAT_SYSTEM}\n\n${contextString}`;
@@ -328,59 +472,45 @@ serve(async (req) => {
         maxTokens: 2048,
       });
 
-      // Create a readable stream for SSE
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        async start(controller) {
-          try {
-            // Send context metadata first
-            const contextEvent = `data: ${JSON.stringify({ type: "context", data: context })}\n\n`;
-            controller.enqueue(encoder.encode(contextEvent));
+      // Create SSE stream using shared utility
+      const stream = createSSEStream(async (sse: SSEStreamController) => {
+        try {
+          // Send context metadata first
+          sse.sendContext(context);
 
-            // Stream text chunks
-            for await (const chunk of result.textStream) {
-              const event = `data: ${JSON.stringify({ type: "delta", content: chunk })}\n\n`;
-              controller.enqueue(encoder.encode(event));
-            }
+          // Stream text chunks
+          for await (const chunk of result.textStream) {
+            sse.sendDelta(chunk);
+          }
 
-            // Fire-and-forget: don't block stream completion
-            result.usage.then((finalUsage) => {
-              recordAIRequest(supabase, billing, {
-                endpoint: "chat",
-                model: "stream",
-                modelType,
-                usage: extractTokenUsage(finalUsage),
-                latencyMs: Date.now() - startTime,
-                metadata: { stream: true },
-              }).catch((err) => console.error("[ai-chat] Failed to record usage:", err));
-            });
-
-            // Send done event
-            const doneEvent = `data: ${JSON.stringify({ type: "done" })}\n\n`;
-            controller.enqueue(encoder.encode(doneEvent));
-
-            controller.close();
-          } catch (error) {
-            console.error("[ai-chat] Streaming error:", error);
-            // Record failed request
-            await recordAIRequest(supabase, billing, {
+          // Fire-and-forget: don't block stream completion
+          result.usage.then((finalUsage) => {
+            recordAIRequest(supabase, billing, {
               endpoint: "chat",
               model: "stream",
               modelType,
-              usage: extractTokenUsage(undefined),
+              usage: extractTokenUsage(finalUsage),
               latencyMs: Date.now() - startTime,
-              success: false,
-              errorCode: "STREAM_ERROR",
-              errorMessage: error instanceof Error ? error.message : "Stream error",
-            });
-            const errorEvent = `data: ${JSON.stringify({
-              type: "error",
-              message: error instanceof Error ? error.message : "Unknown error",
-            })}\n\n`;
-            controller.enqueue(encoder.encode(errorEvent));
-            controller.close();
-          }
-        },
+              metadata: { stream: true },
+            }).catch((err) => console.error("[ai-chat] Failed to record usage:", err));
+          });
+
+          sse.complete();
+        } catch (error) {
+          console.error("[ai-chat] Streaming error:", error);
+          // Record failed request
+          await recordAIRequest(supabase, billing, {
+            endpoint: "chat",
+            model: "stream",
+            modelType,
+            usage: extractTokenUsage(undefined),
+            latencyMs: Date.now() - startTime,
+            success: false,
+            errorCode: "STREAM_ERROR",
+            errorMessage: error instanceof Error ? error.message : "Stream error",
+          });
+          sse.fail(error);
+        }
       });
 
       return new Response(stream, {

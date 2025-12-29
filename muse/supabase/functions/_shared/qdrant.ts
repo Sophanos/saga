@@ -43,6 +43,7 @@ export interface QdrantFilter {
  */
 export type QdrantCondition =
   | { key: string; match: { value: string | number | boolean } }
+  | { key: string; match: { any: Array<string | number | boolean> } }
   | { key: string; range: { gte?: number; lte?: number; gt?: number; lt?: number } }
   | { has_id: string[] };
 
@@ -254,4 +255,76 @@ export async function getCollectionInfo(
   );
 
   return response.result;
+}
+
+/**
+ * Scroll result from Qdrant (for listing without query vector)
+ */
+export interface QdrantScrollResult {
+  id: string;
+  payload: Record<string, unknown>;
+  vector?: number[];
+}
+
+/**
+ * Scroll points in Qdrant collection (list without query vector)
+ *
+ * Use this when you need to list/filter points without semantic search.
+ * Results are returned in arbitrary order unless you sort client-side.
+ *
+ * @param filter - Filter conditions
+ * @param limit - Maximum number of results
+ * @param config - Optional configuration override
+ */
+export async function scrollPoints(
+  filter: QdrantFilter,
+  limit: number = 20,
+  config?: Partial<QdrantConfig>
+): Promise<QdrantScrollResult[]> {
+  const envConfig = getQdrantConfig();
+  const finalConfig: QdrantConfig = { ...envConfig, ...config };
+
+  const body: Record<string, unknown> = {
+    filter,
+    limit,
+    with_payload: true,
+    with_vector: false,
+  };
+
+  const response = await qdrantRequest<{
+    result: { points: Array<{ id: string; payload: Record<string, unknown> }> };
+  }>(
+    finalConfig,
+    "POST",
+    `/collections/${finalConfig.collection}/points/scroll`,
+    body
+  );
+
+  return response.result.points.map((p) => ({
+    id: String(p.id),
+    payload: p.payload,
+  }));
+}
+
+/**
+ * Count points matching a filter
+ *
+ * @param filter - Filter conditions
+ * @param config - Optional configuration override
+ */
+export async function countPoints(
+  filter: QdrantFilter,
+  config?: Partial<QdrantConfig>
+): Promise<number> {
+  const envConfig = getQdrantConfig();
+  const finalConfig: QdrantConfig = { ...envConfig, ...config };
+
+  const response = await qdrantRequest<{ result: { count: number } }>(
+    finalConfig,
+    "POST",
+    `/collections/${finalConfig.collection}/points/count`,
+    { filter, exact: true }
+  );
+
+  return response.result.count;
 }

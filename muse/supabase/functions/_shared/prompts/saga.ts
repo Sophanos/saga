@@ -111,6 +111,32 @@ Consider this when responding.`;
 export const SAGA_NO_CONTEXT = `No specific context was retrieved for this query. You may still help with general writing questions or suggest using tools to build the world.`;
 
 /**
+ * Profile context template for writer preferences.
+ */
+export const SAGA_PROFILE_CONTEXT = `## Writer Preferences
+
+{profile}
+
+Tailor your responses to match these preferences when applicable.`;
+
+/**
+ * Memory context template for remembered information.
+ */
+export const SAGA_MEMORY_CONTEXT = `## Remembered Context
+
+### Canon Decisions (never contradict these)
+{decisions}
+
+### Writer Style Preferences (try to match these)
+{style}
+
+### Personal Preferences (avoid repeating rejected patterns)
+{preferences}
+
+### Session Continuity (current focus)
+{session}`;
+
+/**
  * Mode-specific addendums for specialized behaviors
  */
 export const SAGA_MODE_ADDENDUMS = {
@@ -171,20 +197,122 @@ interface RAGContext {
 }
 
 /**
+ * Memory record for context injection
+ */
+interface MemoryRecord {
+  id: string;
+  content: string;
+  category: string;
+  score?: number;
+}
+
+/**
+ * Grouped memory context
+ */
+interface MemoryContext {
+  decisions: MemoryRecord[];
+  style: MemoryRecord[];
+  preferences: MemoryRecord[];
+  session: MemoryRecord[];
+}
+
+/**
+ * Profile context from user preferences
+ */
+interface ProfileContext {
+  preferredGenre?: string;
+  namingCulture?: string;
+  namingStyle?: string;
+  logicStrictness?: string;
+}
+
+/**
+ * Memory limits for prompt injection
+ */
+const MEMORY_LIMITS = {
+  decisions: 8,
+  style: 6,
+  preferences: 6,
+  session: 3,
+};
+
+/**
+ * Format memory records for prompt injection
+ */
+function formatMemories(memories: MemoryRecord[], limit: number): string {
+  if (!memories || memories.length === 0) {
+    return "None recorded.";
+  }
+  return memories
+    .slice(0, limit)
+    .map((m) => `- ${m.content}`)
+    .join("\n");
+}
+
+/**
+ * Format profile context for prompt injection
+ */
+function formatProfile(profile: ProfileContext): string {
+  const parts: string[] = [];
+
+  if (profile.preferredGenre) {
+    parts.push(`- **Preferred Genre:** ${profile.preferredGenre}`);
+  }
+  if (profile.namingCulture) {
+    parts.push(`- **Naming Culture:** ${profile.namingCulture}`);
+  }
+  if (profile.namingStyle) {
+    parts.push(`- **Name Style:** ${profile.namingStyle}`);
+  }
+  if (profile.logicStrictness) {
+    parts.push(`- **Logic Strictness:** ${profile.logicStrictness}`);
+  }
+
+  return parts.length > 0 ? parts.join("\n") : "No preferences configured.";
+}
+
+/**
  * Build the full system prompt for a Saga request
  */
 export function buildSagaSystemPrompt(options: {
   mode?: SagaMode;
   ragContext?: RAGContext;
   editorContext?: EditorContext;
+  profileContext?: ProfileContext;
+  memoryContext?: MemoryContext;
 }): string {
-  const { mode, ragContext, editorContext } = options;
+  const { mode, ragContext, editorContext, profileContext, memoryContext } = options;
 
   let prompt = SAGA_SYSTEM;
 
   // Add mode-specific guidance
   if (mode && SAGA_MODE_ADDENDUMS[mode]) {
     prompt += "\n" + SAGA_MODE_ADDENDUMS[mode];
+  }
+
+  // Add profile context (early, before RAG/memory)
+  if (profileContext) {
+    const profileText = formatProfile(profileContext);
+    if (profileText !== "No preferences configured.") {
+      prompt += "\n\n" + SAGA_PROFILE_CONTEXT.replace("{profile}", profileText);
+    }
+  }
+
+  // Add memory context (before RAG for priority)
+  if (memoryContext) {
+    const hasMemories =
+      memoryContext.decisions?.length > 0 ||
+      memoryContext.style?.length > 0 ||
+      memoryContext.preferences?.length > 0 ||
+      memoryContext.session?.length > 0;
+
+    if (hasMemories) {
+      prompt += "\n\n" + SAGA_MEMORY_CONTEXT
+        .replace("{decisions}", formatMemories(memoryContext.decisions, MEMORY_LIMITS.decisions))
+        .replace("{style}", formatMemories(memoryContext.style, MEMORY_LIMITS.style))
+        .replace("{preferences}", formatMemories(memoryContext.preferences, MEMORY_LIMITS.preferences))
+        .replace("{session}", formatMemories(memoryContext.session, MEMORY_LIMITS.session));
+    }
   }
 
   // Add RAG context

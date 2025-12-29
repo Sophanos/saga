@@ -9,7 +9,11 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { streamText } from "https://esm.sh/ai@3.4.0";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
-import { requireApiKey } from "../_shared/api-key.ts";
+import {
+  createSSEStream,
+  getStreamingHeaders,
+  type SSEStreamController,
+} from "../_shared/streaming.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
 import {
   createErrorResponse,
@@ -23,9 +27,23 @@ import {
 } from "../_shared/deepinfra.ts";
 import {
   searchPoints,
+  scrollPoints,
   isQdrantConfigured,
   type QdrantFilter,
 } from "../_shared/qdrant.ts";
+import {
+  getProjectId,
+  getPayloadTitle,
+  getPayloadText,
+  getPayloadPreview,
+  getPayloadType,
+  getEntityType,
+  getMemoryCategory,
+} from "../_shared/vectorPayload.ts";
+import {
+  retrieveRAGContext,
+  type RAGContext,
+} from "../_shared/rag.ts";
 import { buildSagaSystemPrompt } from "../_shared/prompts/mod.ts";
 import { agentTools } from "../_shared/tools/index.ts";
 import {
@@ -35,6 +53,11 @@ import {
   executeGenerateTemplate,
   executeClarityCheck,
 } from "../_shared/saga/executors.ts";
+import {
+  checkBillingAndGetKey,
+  createSupabaseClient,
+  type BillingCheck,
+} from "../_shared/billing.ts";
 import type { SagaMode, EditorContext } from "../_shared/tools/types.ts";
 import {
   type EntityType,
@@ -68,6 +91,7 @@ interface SagaChatRequest {
   editorContext?: EditorContext;
   mode?: SagaMode;
   stream?: boolean;
+  conversationId?: string;
 }
 
 interface SagaExecuteToolRequest {
@@ -79,10 +103,7 @@ interface SagaExecuteToolRequest {
 
 type SagaRequest = SagaChatRequest | SagaExecuteToolRequest;
 
-interface RAGContext {
-  documents: Array<{ id: string; title: string; preview: string }>;
-  entities: Array<{ id: string; name: string; type: string; preview: string }>;
-}
+// RAGContext type imported from ../shared/rag.ts
 
 // =============================================================================
 // Constants
@@ -90,69 +111,181 @@ interface RAGContext {
 
 const MAX_HISTORY_MESSAGES = 20;
 
+// RAG retrieval extracted to ../shared/rag.ts as retrieveRAGContext
+
 // =============================================================================
-// RAG Context Retrieval
+// Memory Context Retrieval
 // =============================================================================
 
-async function retrieveContext(
+interface MemoryRecord {
+  id: string;
+  content: string;
+  category: string;
+  score?: number;
+}
+
+interface MemoryContext {
+  decisions: MemoryRecord[];
+  style: MemoryRecord[];
+  preferences: MemoryRecord[];
+  session: MemoryRecord[];
+}
+
+interface ProfileContext {
+  preferredGenre?: string;
+  namingCulture?: string;
+  namingStyle?: string;
+  logicStrictness?: string;
+}
+
+/**
+ * Retrieve memory context for the request
+ */
+async function retrieveMemoryContext(
   query: string,
   projectId: string,
-  limit: number = 5
-): Promise<RAGContext> {
-  if (!isDeepInfraConfigured() || !isQdrantConfigured()) {
-    console.log("[ai-saga] RAG not configured, skipping retrieval");
-    return { documents: [], entities: [] };
+  userId: string | null,
+  conversationId?: string
+): Promise<MemoryContext> {
+  if (!isQdrantConfigured()) {
+    return { decisions: [], style: [], preferences: [], session: [] };
+  }
+
+  const result: MemoryContext = {
+    decisions: [],
+    style: [],
+    preferences: [],
+    session: [],
+  };
+
+  try {
+    // Retrieve project-scoped decisions (shared canon)
+    const decisionFilter: QdrantFilter = {
+      must: [
+        { key: "type", match: { value: "memory" } },
+        { key: "project_id", match: { value: projectId } },
+        { key: "category", match: { value: "decision" } },
+        { key: "scope", match: { value: "project" } },
+      ],
+    };
+
+    // If we have a query, do semantic search; otherwise scroll recent
+    if (query && isDeepInfraConfigured()) {
+      const embedding = await generateEmbedding(query);
+      const decisions = await searchPoints(embedding, 8, decisionFilter);
+      result.decisions = decisions.map((p) => ({
+        id: String(p.id),
+        content: getPayloadText(p.payload),
+        category: "decision",
+        score: p.score,
+      }));
+    } else {
+      const decisions = await scrollPoints(decisionFilter, 8);
+      result.decisions = decisions.map((p) => ({
+        id: p.id,
+        content: getPayloadText(p.payload),
+        category: "decision",
+      }));
+    }
+
+    // Only retrieve user-scoped memories if we have a user
+    if (userId) {
+      // Retrieve style preferences
+      const styleFilter: QdrantFilter = {
+        must: [
+          { key: "type", match: { value: "memory" } },
+          { key: "project_id", match: { value: projectId } },
+          { key: "category", match: { value: "style" } },
+          { key: "owner_id", match: { value: userId } },
+        ],
+      };
+      const styleResults = await scrollPoints(styleFilter, 6);
+      result.style = styleResults.map((p) => ({
+        id: p.id,
+        content: getPayloadText(p.payload),
+        category: "style",
+      }));
+
+      // Retrieve preference memories
+      const prefFilter: QdrantFilter = {
+        must: [
+          { key: "type", match: { value: "memory" } },
+          { key: "project_id", match: { value: projectId } },
+          { key: "category", match: { value: "preference" } },
+          { key: "owner_id", match: { value: userId } },
+        ],
+      };
+      const prefResults = await scrollPoints(prefFilter, 6);
+      result.preferences = prefResults.map((p) => ({
+        id: p.id,
+        content: getPayloadText(p.payload),
+        category: "preference",
+      }));
+    }
+
+    // Retrieve session memories if we have a conversation ID
+    if (conversationId && userId) {
+      const sessionFilter: QdrantFilter = {
+        must: [
+          { key: "type", match: { value: "memory" } },
+          { key: "project_id", match: { value: projectId } },
+          { key: "category", match: { value: "session" } },
+          { key: "conversation_id", match: { value: conversationId } },
+        ],
+      };
+      const sessionResults = await scrollPoints(sessionFilter, 3);
+      result.session = sessionResults.map((p) => ({
+        id: p.id,
+        content: getPayloadText(p.payload),
+        category: "session",
+      }));
+    }
+  } catch (error) {
+    console.error("[ai-saga] Memory retrieval error:", error);
+  }
+
+  return result;
+}
+
+/**
+ * Retrieve profile context from user preferences
+ */
+async function retrieveProfileContext(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  userId: string | null
+): Promise<ProfileContext | undefined> {
+  if (!userId) {
+    return undefined;
   }
 
   try {
-    const embedding = await generateEmbedding(query);
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("preferences")
+      .eq("id", userId)
+      .single();
 
-    const filter: QdrantFilter = {
-      must: [{ key: "projectId", match: { value: projectId } }],
-    };
-
-    const results = await searchPoints("mythos-embeddings", embedding, limit, filter);
-
-    const documents: RAGContext["documents"] = [];
-    const entities: RAGContext["entities"] = [];
-
-    for (const point of results) {
-      const payload = point.payload;
-      if (payload.type === "document") {
-        documents.push({
-          id: payload.id as string,
-          title: payload.title as string,
-          preview: (payload.text as string).slice(0, 200),
-        });
-      } else if (payload.type === "entity") {
-        entities.push({
-          id: payload.id as string,
-          name: payload.title as string,
-          type: payload.entityType as string,
-          preview: (payload.text as string).slice(0, 200),
-        });
-      }
+    if (error || !data) {
+      return undefined;
     }
 
-    return { documents, entities };
+    const prefs = data.preferences as Record<string, unknown> | null;
+    const writing = prefs?.writing as Record<string, unknown> | undefined;
+
+    if (!writing) {
+      return undefined;
+    }
+
+    return {
+      preferredGenre: writing.preferredGenre as string | undefined,
+      namingCulture: writing.namingCulture as string | undefined,
+      namingStyle: writing.namingStyle as string | undefined,
+      logicStrictness: writing.logicStrictness as string | undefined,
+    };
   } catch (error) {
-    console.error("[ai-saga] RAG retrieval error:", error);
-    return { documents: [], entities: [] };
+    console.error("[ai-saga] Profile retrieval error:", error);
+    return undefined;
   }
-}
-
-// =============================================================================
-// Streaming Response Helpers
-// =============================================================================
-
-function getStreamingHeaders(origin: string | null): HeadersInit {
-  return {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-    "Access-Control-Allow-Origin": origin || "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-openrouter-key",
-  };
 }
 
 // =============================================================================
@@ -162,22 +295,33 @@ function getStreamingHeaders(origin: string | null): HeadersInit {
 async function handleChat(
   req: SagaChatRequest,
   apiKey: string,
-  origin: string | null
+  origin: string | null,
+  billing: BillingCheck,
+  supabase: ReturnType<typeof createSupabaseClient>
 ): Promise<Response> {
-  const { messages, projectId, mentions, editorContext, mode } = req;
+  const { messages, projectId, mentions, editorContext, mode, conversationId } = req;
 
   // Get last user message for RAG query
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
   const query = lastUserMessage?.content ?? "";
 
-  // Retrieve context
-  const ragContext = await retrieveContext(query, projectId);
+  // Retrieve all contexts in parallel
+  const [ragContext, memoryContext, profileContext] = await Promise.all([
+    retrieveRAGContext(query, projectId, {
+      logPrefix: "[ai-saga]",
+      excludeMemories: true,
+    }),
+    retrieveMemoryContext(query, projectId, billing.userId, conversationId),
+    retrieveProfileContext(supabase, billing.userId),
+  ]);
 
-  // Build system prompt
+  // Build system prompt with all contexts
   const systemPrompt = buildSagaSystemPrompt({
     mode,
     ragContext,
     editorContext,
+    profileContext,
+    memoryContext,
   });
 
   // Build messages array with sliding window
@@ -201,77 +345,37 @@ async function handleChat(
     maxSteps: 5,
   });
 
-  // Create streaming response
-  const encoder = new TextEncoder();
+  // Create SSE stream using shared utility
+  const stream = createSSEStream(async (sse: SSEStreamController) => {
+    // Send context metadata first
+    sse.sendContext(ragContext);
 
-  const readable = new ReadableStream({
-    async start(controller) {
-      try {
-        // Send context metadata first
-        const contextEvent = `data: ${JSON.stringify({
-          type: "context",
-          data: ragContext,
-        })}\n\n`;
-        controller.enqueue(encoder.encode(contextEvent));
+    // Use fullStream to get tool call IDs
+    const fullStream = result.fullStream;
 
-        // Use fullStream to get tool call IDs
-        const fullStream = result.fullStream;
+    for await (const part of fullStream) {
+      switch (part.type) {
+        case "text-delta":
+          sse.sendDelta(part.textDelta);
+          break;
 
-        for await (const part of fullStream) {
-          switch (part.type) {
-            case "text-delta": {
-              const deltaEvent = `data: ${JSON.stringify({
-                type: "delta",
-                content: part.textDelta,
-              })}\n\n`;
-              controller.enqueue(encoder.encode(deltaEvent));
-              break;
-            }
+        case "tool-call":
+          sse.sendTool(part.toolCallId, part.toolName, part.args);
+          break;
 
-            case "tool-call": {
-              const toolEvent = `data: ${JSON.stringify({
-                type: "tool",
-                toolCallId: part.toolCallId,
-                toolName: part.toolName,
-                args: part.args,
-              })}\n\n`;
-              controller.enqueue(encoder.encode(toolEvent));
-              break;
-            }
+        case "finish":
+          break;
 
-            case "finish":
-              break;
-
-            case "error": {
-              const errorEvent = `data: ${JSON.stringify({
-                type: "error",
-                message:
-                  part.error instanceof Error ? part.error.message : "Stream error",
-              })}\n\n`;
-              controller.enqueue(encoder.encode(errorEvent));
-              break;
-            }
-          }
-        }
-
-        // Send done event
-        const doneEvent = `data: ${JSON.stringify({ type: "done" })}\n\n`;
-        controller.enqueue(encoder.encode(doneEvent));
-
-        controller.close();
-      } catch (error) {
-        console.error("[ai-saga] Stream error:", error);
-        const errorEvent = `data: ${JSON.stringify({
-          type: "error",
-          message: error instanceof Error ? error.message : "Stream error",
-        })}\n\n`;
-        controller.enqueue(encoder.encode(errorEvent));
-        controller.close();
+        case "error":
+          sse.sendError(part.error);
+          break;
       }
-    },
+    }
+
+    sse.complete();
   });
 
-  return new Response(readable, {
+  return new Response(stream, {
     headers: getStreamingHeaders(origin),
   });
 }
@@ -415,10 +519,22 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   const origin = req.headers.get("Origin");
+  const supabase = createSupabaseClient();
 
   try {
-    // Get API key
-    const apiKey = requireApiKey(req);
+    // Check billing (allow anonymous trial)
+    const billing = await checkBillingAndGetKey(req, supabase, {
+      endpoint: "agent",
+      allowAnonymousTrial: true,
+    });
+    if (!billing.canProceed || !billing.apiKey) {
+      return createErrorResponse(
+        ErrorCode.FORBIDDEN,
+        billing.error ?? "API key required",
+        origin,
+        billing.errorCode ? { code: billing.errorCode } : undefined
+      );
+    }
 
     // Parse request body
     const body = (await req.json()) as SagaRequest;
@@ -434,7 +550,7 @@ serve(async (req: Request): Promise<Response> => {
           origin
         );
       }
-      return handleExecuteTool(body, apiKey, origin);
+      return handleExecuteTool(body, billing.apiKey, origin);
     } else {
       // Default to chat
       if (!body.messages || !body.projectId) {
@@ -445,7 +561,7 @@ serve(async (req: Request): Promise<Response> => {
           origin
         );
       }
-      return handleChat(body as SagaChatRequest, apiKey, origin);
+      return handleChat(body as SagaChatRequest, billing.apiKey, origin, billing, supabase);
     }
   } catch (error) {
     console.error("[ai-saga] Handler error:", error);

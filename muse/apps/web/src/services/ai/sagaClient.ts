@@ -8,6 +8,7 @@
  */
 
 import { ApiError, type ApiErrorCode } from "../api-client";
+import { API_TIMEOUTS, RETRY_CONFIG } from "../config";
 import type { ChatContext, ChatMention } from "../../stores";
 import type {
   ToolName,
@@ -39,7 +40,7 @@ const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "";
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  maxRetries = 3
+  maxRetries = RETRY_CONFIG.MAX_RETRIES
 ): Promise<Response> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -47,14 +48,22 @@ async function fetchWithRetry(
       // Retry on rate limit or server errors
       if (response.status === 429 || response.status >= 500) {
         if (attempt < maxRetries - 1) {
-          await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+          const delay = Math.min(
+            RETRY_CONFIG.BASE_DELAY_MS * Math.pow(RETRY_CONFIG.BACKOFF_MULTIPLIER, attempt),
+            RETRY_CONFIG.MAX_DELAY_MS
+          );
+          await new Promise(r => setTimeout(r, delay));
           continue;
         }
       }
       return response;
     } catch (error) {
       if (attempt === maxRetries - 1) throw error;
-      await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+      const delay = Math.min(
+        RETRY_CONFIG.BASE_DELAY_MS * Math.pow(RETRY_CONFIG.BACKOFF_MULTIPLIER, attempt),
+        RETRY_CONFIG.MAX_DELAY_MS
+      );
+      await new Promise(r => setTimeout(r, delay));
     }
   }
   throw new Error("Max retries exceeded");
@@ -90,6 +99,8 @@ export interface SagaChatPayload {
   mentions?: ChatMention[];
   editorContext?: EditorContext;
   mode?: SagaMode;
+  /** Conversation ID for session memory continuity */
+  conversationId?: string;
 }
 
 export interface ToolCallResult {
@@ -114,7 +125,10 @@ export interface SagaStreamEvent {
 
 export interface SagaStreamOptions {
   signal?: AbortSignal;
+  /** OpenRouter API key for BYOK mode */
   apiKey?: string;
+  /** Supabase auth token for per-user memory/profile */
+  authToken?: string;
   onContext?: (context: ChatContext) => void;
   onDelta?: (delta: string) => void;
   onTool?: (tool: ToolCallResult) => void;
@@ -125,16 +139,15 @@ export interface SagaStreamOptions {
 
 export interface ExecuteToolOptions {
   signal?: AbortSignal;
+  /** OpenRouter API key for BYOK mode */
   apiKey?: string;
+  /** Supabase auth token for per-user memory/profile */
+  authToken?: string;
 }
 
 // =============================================================================
 // Timeout Helpers
 // =============================================================================
-
-const SSE_READ_TIMEOUT_MS = 60000; // 60s for saga (longer operations)
-const SSE_CONNECTION_TIMEOUT_MS = 30000; // 30s for initial SSE connection
-const TOOL_EXECUTION_TIMEOUT_MS = 120000; // 2 min for tool execution
 
 /**
  * Create an AbortSignal that triggers on timeout OR user abort.
@@ -153,7 +166,7 @@ function createTimeoutSignal(timeoutMs: number, userSignal?: AbortSignal): Abort
 
 async function readWithTimeout<T>(
   reader: ReadableStreamDefaultReader<T>,
-  timeoutMs: number = SSE_READ_TIMEOUT_MS
+  timeoutMs: number = API_TIMEOUTS.SSE_READ_MS
 ) {
   return Promise.race([
     reader.read(),
@@ -197,7 +210,7 @@ export async function sendSagaChatStreaming(
   payload: SagaChatPayload,
   opts?: SagaStreamOptions
 ): Promise<void> {
-  const { signal, apiKey, onContext, onDelta, onTool, onProgress, onDone, onError } =
+  const { signal, apiKey, authToken, onContext, onDelta, onTool, onProgress, onDone, onError } =
     opts ?? {};
 
   const url = `${SUPABASE_URL}/functions/v1/ai-saga`;
@@ -210,12 +223,16 @@ export async function sendSagaChatStreaming(
     headers["x-openrouter-key"] = apiKey;
   }
 
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+
   try {
     const response = await fetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify({ kind: "chat", ...payload, stream: true }),
-      signal: createTimeoutSignal(SSE_CONNECTION_TIMEOUT_MS, signal),
+      signal: createTimeoutSignal(API_TIMEOUTS.SSE_CONNECTION_MS, signal),
     });
 
     if (!response.ok) {
@@ -377,7 +394,7 @@ async function executeSagaTool<T>(
   input: unknown,
   opts?: ExecuteToolOptions
 ): Promise<T> {
-  const { signal, apiKey } = opts ?? {};
+  const { signal, apiKey, authToken } = opts ?? {};
 
   const url = `${SUPABASE_URL}/functions/v1/ai-saga`;
 
@@ -389,11 +406,15 @@ async function executeSagaTool<T>(
     headers["x-openrouter-key"] = apiKey;
   }
 
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+
   const response = await fetchWithRetry(url, {
     method: "POST",
     headers,
     body: JSON.stringify({ kind: "execute_tool", toolName, input }),
-    signal: createTimeoutSignal(TOOL_EXECUTION_TIMEOUT_MS, signal),
+    signal: createTimeoutSignal(API_TIMEOUTS.TOOL_EXECUTION_MS, signal),
   });
 
   if (!response.ok) {

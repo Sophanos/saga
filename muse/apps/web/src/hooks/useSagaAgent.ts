@@ -9,9 +9,17 @@
  * - Handle @mentions for explicit context
  * - Support saga modes (onboarding, creation, editing, analysis)
  * - Integrate with existing tool lifecycle (accept/reject/execute)
+ *
+ * Built using createAgentHook factory for consistency with other agent hooks.
  */
 
 import { useCallback, useRef, useEffect } from "react";
+import {
+  generateMessageId,
+  createGetErrorMessage,
+  type BaseMessagePayload,
+  type ToolCallResult,
+} from "./createAgentHook";
 import {
   useMythosStore,
   type ChatMessage,
@@ -24,7 +32,6 @@ import {
   type SagaChatPayload,
   type SagaMode,
   type EditorContext,
-  type ToolCallResult,
 } from "../services/ai/sagaClient";
 import { useEditorChatContext } from "./useEditorChatContext";
 import { useApiKey } from "./useApiKey";
@@ -61,44 +68,18 @@ export interface UseSagaAgentResult {
 }
 
 /**
- * Generate a unique message ID
+ * Error message handler for Saga errors
  */
-function generateMessageId(): string {
-  return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-/**
- * Get user-friendly error message
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof SagaApiError) {
-    switch (error.sagaCode) {
-      case "UNAUTHORIZED":
-        return "Please configure your API key in settings.";
-      case "RATE_LIMITED":
-        return "Too many requests. Please wait a moment.";
-      case "ABORTED":
-        return ""; // Don't show error for aborted requests
-      case "VALIDATION_ERROR":
-        return error.message;
-      case "TOOL_ERROR":
-        return `Tool error: ${error.message}`;
-      case "TOOL_EXECUTION_ERROR":
-        return `Execution failed: ${error.message}`;
-      default:
-        return `Saga error: ${error.message}`;
-    }
-  }
-
-  if (error instanceof Error) {
-    if (error.name === "AbortError") {
-      return ""; // Don't show error for aborted requests
-    }
-    return `Saga error: ${error.message}`;
-  }
-
-  return "An unexpected error occurred.";
-}
+const getErrorMessage = createGetErrorMessage({
+  isApiError: (error): error is SagaApiError => error instanceof SagaApiError,
+  getErrorCode: (error) =>
+    error instanceof SagaApiError ? error.sagaCode : undefined,
+  errorPrefix: "Saga error",
+  errorCodeMessages: {
+    TOOL_ERROR: "Tool error occurred.",
+    TOOL_EXECUTION_ERROR: "Execution failed.",
+  },
+});
 
 /**
  * Hook for Saga AI agent functionality with tool proposals.
@@ -208,7 +189,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
       try {
         // Build messages array for API (excluding placeholder and tool messages)
         const currentMessages = useMythosStore.getState().chat.messages;
-        const apiMessages: SagaChatPayload["messages"] = currentMessages
+        const apiMessages: BaseMessagePayload[] = currentMessages
           .filter((m) => m.role !== "system" && !m.isStreaming && m.kind !== "tool")
           .map((m) => ({
             role: m.role as "user" | "assistant",
@@ -264,8 +245,8 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
               setChatError(message);
             }
             // Read current content from store to avoid stale closure
-            const currentMessages = useMythosStore.getState().chat.messages;
-            const currentMessage = currentMessages.find(m => m.id === assistantMessageId);
+            const currentMsgs = useMythosStore.getState().chat.messages;
+            const currentMessage = currentMsgs.find(m => m.id === assistantMessageId);
             updateChatMessage(assistantMessageId, {
               isStreaming: false,
               content: currentMessage?.content || "Sorry, I encountered an error.",

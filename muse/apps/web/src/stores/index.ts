@@ -1175,3 +1175,7 @@ export {
   useShowProjectSelector,
   useOpenNewProjectModal,
 } from "./navigation";
+
+// Re-export memory store
+export { useMemoryStore } from "./memory";
+export type { MemoryCacheState, ProjectMemoryCache } from "./memory";
