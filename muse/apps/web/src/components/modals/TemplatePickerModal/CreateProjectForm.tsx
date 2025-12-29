@@ -1,11 +1,10 @@
 import { useState, useCallback } from "react";
-import { FolderPlus, Feather, Building2, ChevronDown, ChevronUp, FileText } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import * as LucideIcons from "lucide-react";
+import { FolderPlus, Feather, Building2, ChevronDown, ChevronUp } from "lucide-react";
 import { Button, Input, FormField, TextArea } from "@mythos/ui";
 import { createProject, createDocument } from "@mythos/db";
 import { useProgressiveStore } from "@mythos/state";
 import type { ProjectTemplate } from "@mythos/core";
+import { getTemplateIcon } from "../../../utils/templateIcons";
 
 interface CreateProjectFormProps {
   template: ProjectTemplate;
@@ -15,15 +14,6 @@ interface CreateProjectFormProps {
 }
 
 const EMPTY_TIPTAP_DOC = { type: "doc", content: [{ type: "paragraph" }] };
-
-function getIcon(iconName: string): React.ReactNode {
-  const icons = LucideIcons as unknown as Record<string, LucideIcon>;
-  const Icon = icons[iconName];
-  if (Icon) {
-    return <Icon className="w-5 h-5" />;
-  }
-  return <FileText className="w-5 h-5" />;
-}
 
 export function CreateProjectForm({
   template,
@@ -102,7 +92,7 @@ export function CreateProjectForm({
       <div className="p-4 rounded-lg border border-mythos-text-muted/20 bg-mythos-bg-secondary/50">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-mythos-accent-cyan/10 text-mythos-accent-cyan">
-            {getIcon(template.icon)}
+            {getTemplateIcon(template.icon)}
           </div>
           <div className="flex-1">
             <h3 className="font-medium text-mythos-text-primary">{template.name}</h3>

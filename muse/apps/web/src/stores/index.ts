@@ -99,7 +99,7 @@ export type CanvasView = "editor" | "worldGraph";
 export type FormMode = "create" | "edit";
 
 // Template picker step type
-export type TemplatePickerStep = "start" | "browse" | "ai-builder" | "preview" | "create";
+export type TemplatePickerStep = "start" | "browse" | "ai-builder" | "create";
 
 export type ModalState =
   | { type: "settings" }
@@ -1166,3 +1166,10 @@ export const useRecentEntities = () =>
 // Re-export auth store
 export { useAuthStore } from "./auth";
 export type { AuthState } from "./auth";
+
+// Re-export navigation store
+export {
+  useNavigationStore,
+  useShowProjectSelector,
+  useOpenNewProjectModal,
+} from "./navigation";

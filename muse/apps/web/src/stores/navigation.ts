@@ -4,24 +4,52 @@
  */
 
 import { create } from "zustand";
+import { immer } from "zustand/middleware/immer";
 
 interface NavigationState {
   /** Signal to show project selector (clear current project) */
   showProjectSelector: boolean;
   /** Signal to open new project modal from project selector */
   openNewProjectModal: boolean;
+}
 
-  // Actions
+interface NavigationActions {
   requestProjectSelector: () => void;
   requestNewProject: () => void;
   clearNavigationRequest: () => void;
 }
 
-export const useNavigationStore = create<NavigationState>((set) => ({
-  showProjectSelector: false,
-  openNewProjectModal: false,
+type NavigationStore = NavigationState & NavigationActions;
 
-  requestProjectSelector: () => set({ showProjectSelector: true }),
-  requestNewProject: () => set({ showProjectSelector: true, openNewProjectModal: true }),
-  clearNavigationRequest: () => set({ showProjectSelector: false, openNewProjectModal: false }),
-}));
+export const useNavigationStore = create<NavigationStore>()(
+  immer((set) => ({
+    // Initial state
+    showProjectSelector: false,
+    openNewProjectModal: false,
+
+    // Actions
+    requestProjectSelector: () =>
+      set((state) => {
+        state.showProjectSelector = true;
+      }),
+
+    requestNewProject: () =>
+      set((state) => {
+        state.showProjectSelector = true;
+        state.openNewProjectModal = true;
+      }),
+
+    clearNavigationRequest: () =>
+      set((state) => {
+        state.showProjectSelector = false;
+        state.openNewProjectModal = false;
+      }),
+  }))
+);
+
+// Selectors
+export const useShowProjectSelector = () =>
+  useNavigationStore((s) => s.showProjectSelector);
+
+export const useOpenNewProjectModal = () =>
+  useNavigationStore((s) => s.openNewProjectModal);

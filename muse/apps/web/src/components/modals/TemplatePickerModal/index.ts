@@ -1,4 +1,4 @@
-export { TemplatePickerModal } from "./TemplatePickerModal";
+export { TemplatePickerModal, type TemplatePickerModalProps } from "./TemplatePickerModal";
 export { StartOptions } from "./StartOptions";
 export { TemplateGrid } from "./TemplateGrid";
 export { TemplateCard } from "./TemplateCard";

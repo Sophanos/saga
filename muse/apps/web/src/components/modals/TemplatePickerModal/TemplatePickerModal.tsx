@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { X, ChevronLeft } from "lucide-react";
 import { Button, Card, CardHeader, CardTitle, CardContent } from "@mythos/ui";
 import type { ProjectTemplate } from "@mythos/core";
@@ -9,7 +9,7 @@ import { CreateProjectForm } from "./CreateProjectForm";
 
 type Step = "start" | "browse" | "ai-builder" | "create";
 
-interface TemplatePickerModalProps {
+export interface TemplatePickerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated: (projectId: string) => void;
@@ -30,13 +30,16 @@ export function TemplatePickerModal({
   const [step, setStep] = useState<Step>("start");
   const [selectedTemplate, setSelectedTemplate] = useState<ProjectTemplate | null>(null);
   const [creationMode, setCreationMode] = useState<"gardener" | "architect">("gardener");
+  const modalRef = useRef<HTMLDivElement>(null);
 
-  // Reset state when modal opens
+  // Reset state when modal opens and focus the modal
   useEffect(() => {
     if (isOpen) {
       setStep("start");
       setSelectedTemplate(null);
       setCreationMode("gardener");
+      // Focus the modal for keyboard handling
+      modalRef.current?.focus();
     }
   }, [isOpen]);
 
@@ -87,6 +90,8 @@ export function TemplatePickerModal({
 
   return (
     <div
+      ref={modalRef}
+      tabIndex={-1}
       className="fixed inset-0 z-50 flex items-center justify-center"
       onKeyDown={handleKeyDown}
       role="dialog"

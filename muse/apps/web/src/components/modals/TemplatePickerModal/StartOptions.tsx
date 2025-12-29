@@ -6,26 +6,42 @@ interface StartOptionsProps {
   onAIBuilder: () => void;
 }
 
+// Static accent styles lookup - Tailwind JIT requires complete class names
+const ACCENT_STYLES = {
+  purple: {
+    hover: "hover:border-mythos-accent-purple/50 hover:bg-mythos-accent-purple/5",
+    iconBg: "group-hover:bg-mythos-accent-purple/10",
+  },
+  cyan: {
+    hover: "hover:border-mythos-accent-cyan/50 hover:bg-mythos-accent-cyan/5",
+    iconBg: "group-hover:bg-mythos-accent-cyan/10",
+  },
+  green: {
+    hover: "hover:border-mythos-accent-green/50 hover:bg-mythos-accent-green/5",
+    iconBg: "group-hover:bg-mythos-accent-green/10",
+  },
+} as const;
+
+type AccentKey = keyof typeof ACCENT_STYLES;
+
 interface OptionCardProps {
   icon: React.ReactNode;
   title: string;
   description: string;
-  accentColor: string;
+  accent: AccentKey;
   onClick: () => void;
   badge?: string;
 }
 
-function OptionCard({ icon, title, description, accentColor, onClick, badge }: OptionCardProps) {
+function OptionCard({ icon, title, description, accent, onClick, badge }: OptionCardProps) {
+  const styles = ACCENT_STYLES[accent];
+
   return (
     <button
       type="button"
       onClick={onClick}
       className={`relative p-5 rounded-lg border-2 transition-all text-left w-full
-        border-mythos-text-muted/30 hover:border-${accentColor}/50
-        hover:bg-${accentColor}/5 group`}
-      style={{
-        ["--hover-border" as string]: `var(--mythos-${accentColor})`,
-      }}
+        border-mythos-text-muted/30 ${styles.hover} group`}
     >
       {badge && (
         <span className="absolute top-3 right-3 text-[10px] font-medium px-1.5 py-0.5 rounded bg-mythos-accent-purple/20 text-mythos-accent-purple">
@@ -34,7 +50,7 @@ function OptionCard({ icon, title, description, accentColor, onClick, badge }: O
       )}
       <div className="flex items-start gap-4">
         <div
-          className={`p-2.5 rounded-lg bg-mythos-text-muted/10 group-hover:bg-${accentColor}/10`}
+          className={`p-2.5 rounded-lg bg-mythos-text-muted/10 ${styles.iconBg}`}
         >
           {icon}
         </div>
@@ -68,7 +84,7 @@ export function StartOptions({
           icon={<Sparkles className="w-5 h-5 text-mythos-accent-purple" />}
           title="Create with AI"
           description="Describe your story idea and let AI generate a custom template with entity types, relationships, and structure tailored to your vision."
-          accentColor="accent-purple"
+          accent="purple"
           onClick={onAIBuilder}
           badge="Coming Soon"
         />
@@ -78,7 +94,7 @@ export function StartOptions({
           icon={<LayoutGrid className="w-5 h-5 text-mythos-accent-cyan" />}
           title="Browse Templates"
           description="Choose from 14 genre-specific templates like Epic Fantasy, Sci-Fi, TTRPG Campaigns, Manga, Screenplays, and more."
-          accentColor="accent-cyan"
+          accent="cyan"
           onClick={onBrowseTemplates}
         />
 
@@ -87,7 +103,7 @@ export function StartOptions({
           icon={<Feather className="w-5 h-5 text-mythos-accent-green" />}
           title="Start Blank"
           description="Begin with a minimal setup and discover your world as you write. Perfect for gardeners who prefer organic development."
-          accentColor="accent-green"
+          accent="green"
           onClick={onStartBlank}
         />
       </div>

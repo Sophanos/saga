@@ -1,34 +1,23 @@
 import type { ProjectTemplate } from "@mythos/core";
-import type { LucideIcon } from "lucide-react";
-import * as LucideIcons from "lucide-react";
+import { getTemplateIcon } from "../../../utils/templateIcons";
 
 interface TemplateCardProps {
   template: ProjectTemplate;
   onClick: () => void;
 }
 
-// Get Lucide icon by name
-function getIcon(iconName: string): React.ReactNode {
-  const icons = LucideIcons as unknown as Record<string, LucideIcon>;
-  const Icon = icons[iconName];
-  if (Icon) {
-    return <Icon className="w-5 h-5" />;
-  }
-  return <LucideIcons.FileText className="w-5 h-5" />;
-}
-
-// Category badge colors
+// Category badge colors using mythos design tokens
 const CATEGORY_COLORS: Record<string, string> = {
-  fantasy: "bg-purple-500/20 text-purple-400",
-  scifi: "bg-cyan-500/20 text-cyan-400",
-  horror: "bg-red-500/20 text-red-400",
-  literary: "bg-amber-500/20 text-amber-400",
-  ttrpg: "bg-green-500/20 text-green-400",
-  manga: "bg-pink-500/20 text-pink-400",
-  visual: "bg-blue-500/20 text-blue-400",
-  screenplay: "bg-orange-500/20 text-orange-400",
-  serial: "bg-indigo-500/20 text-indigo-400",
-  custom: "bg-gray-500/20 text-gray-400",
+  fantasy: "bg-mythos-accent-purple/20 text-mythos-accent-purple",
+  scifi: "bg-mythos-accent-cyan/20 text-mythos-accent-cyan",
+  horror: "bg-mythos-accent-red/20 text-mythos-accent-red",
+  literary: "bg-mythos-accent-amber/20 text-mythos-accent-amber",
+  ttrpg: "bg-mythos-accent-green/20 text-mythos-accent-green",
+  manga: "bg-mythos-accent-purple/20 text-mythos-accent-purple",
+  visual: "bg-mythos-accent-cyan/20 text-mythos-accent-cyan",
+  screenplay: "bg-mythos-accent-amber/20 text-mythos-accent-amber",
+  serial: "bg-mythos-accent-purple/20 text-mythos-accent-purple",
+  custom: "bg-mythos-text-muted/20 text-mythos-text-muted",
 };
 
 export function TemplateCard({ template, onClick }: TemplateCardProps) {
@@ -45,7 +34,7 @@ export function TemplateCard({ template, onClick }: TemplateCardProps) {
       <div className="flex items-start gap-3">
         {/* Icon */}
         <div className="p-2 rounded-lg bg-mythos-text-muted/10 group-hover:bg-mythos-accent-cyan/10 text-mythos-text-muted group-hover:text-mythos-accent-cyan transition-colors">
-          {getIcon(template.icon)}
+          {getTemplateIcon(template.icon)}
         </div>
 
         <div className="flex-1 min-w-0">

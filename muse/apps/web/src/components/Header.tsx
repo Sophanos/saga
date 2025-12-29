@@ -67,6 +67,8 @@ export function Header() {
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            aria-haspopup="true"
+            aria-expanded={isDropdownOpen}
             className="flex items-center gap-1.5 text-sm text-mythos-text-secondary hover:text-mythos-text-primary transition-colors group"
           >
             <span>{project?.name ?? "Untitled Project"}</span>
