@@ -85,7 +85,7 @@ export default function SignInScreen() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [isEmailLoading, setIsEmailLoading] = useState(false);
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authMode, setAuthMode] = useState<"signin" | "signup" | "forgot">("signin");
 
   // Google OAuth configuration
   const [request, response, promptAsync] = Google.useAuthRequest({
@@ -303,12 +303,49 @@ export default function SignInScreen() {
     }
   };
 
+  // Handle password reset request
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      Alert.alert("Missing Email", "Please enter your email address");
+      return;
+    }
+
+    setIsEmailLoading(true);
+    try {
+      const supabase = getMobileSupabase();
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        // For mobile, we redirect to a web URL that handles the reset
+        redirectTo: "https://mythos.app/auth/callback",
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      Alert.alert(
+        "Check Your Email",
+        "We've sent you a password reset link. Please check your email to reset your password.",
+        [{ text: "OK", onPress: () => setAuthMode("signin") }]
+      );
+    } catch (err) {
+      console.error("[Auth] Password reset error:", err);
+      Alert.alert(
+        "Reset Failed",
+        err instanceof Error ? err.message : "Failed to send reset email"
+      );
+    } finally {
+      setIsEmailLoading(false);
+    }
+  };
+
   // Combined submit handler
   const handleEmailSubmit = () => {
     if (authMode === "signin") {
       handleEmailSignIn();
-    } else {
+    } else if (authMode === "signup") {
       handleEmailSignUp();
+    } else {
+      handleForgotPassword();
     }
   };
 
@@ -403,17 +440,32 @@ export default function SignInScreen() {
             className="h-12 px-4 rounded-xl border border-border bg-bg-secondary text-text-primary"
           />
 
-          {/* Password field */}
-          <TextInput
-            placeholder="Password"
-            placeholderTextColor="#71717a"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            editable={!isAnyLoading}
-            className="h-12 px-4 rounded-xl border border-border bg-bg-secondary text-text-primary"
-          />
+          {/* Password field (not shown in forgot mode) */}
+          {authMode !== "forgot" && (
+            <TextInput
+              placeholder="Password"
+              placeholderTextColor="#71717a"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              editable={!isAnyLoading}
+              className="h-12 px-4 rounded-xl border border-border bg-bg-secondary text-text-primary"
+            />
+          )}
+
+          {/* Forgot password link (signin mode only) */}
+          {authMode === "signin" && (
+            <Pressable
+              onPress={() => setAuthMode("forgot")}
+              disabled={isAnyLoading}
+              className="py-1"
+            >
+              <Text className="text-sm text-text-muted text-right">
+                Forgot password?
+              </Text>
+            </Pressable>
+          )}
 
           {/* Submit button */}
           <Pressable
@@ -427,7 +479,7 @@ export default function SignInScreen() {
               <ActivityIndicator size="small" color="#000" />
             ) : (
               <Text className="text-base font-medium text-black">
-                {authMode === "signin" ? "Sign in" : "Create account"}
+                {authMode === "signin" ? "Sign in" : authMode === "signup" ? "Create account" : "Send Reset Link"}
               </Text>
             )}
           </Pressable>
@@ -439,7 +491,9 @@ export default function SignInScreen() {
             className="py-2"
           >
             <Text className="text-sm text-text-muted text-center">
-              {authMode === "signin" ? (
+              {authMode === "forgot" ? (
+                <>Remember your password? <Text className="text-text-primary font-medium">Sign in</Text></>
+              ) : authMode === "signin" ? (
                 <>Don't have an account? <Text className="text-text-primary font-medium">Sign up</Text></>
               ) : (
                 <>Already have an account? <Text className="text-text-primary font-medium">Sign in</Text></>
