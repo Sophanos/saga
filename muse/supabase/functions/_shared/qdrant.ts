@@ -1,14 +1,35 @@
 /**
- * Qdrant REST API Helper for Supabase Edge Functions
+ * Qdrant REST API Helper for Supabase Edge Functions (MLP 2.x)
  *
  * Provides a thin wrapper around Qdrant's REST API for vector operations.
  * Uses server-side environment variables (not exposed to client).
+ *
+ * Features:
+ * - Automatic retry with exponential backoff
+ * - Configurable timeouts
+ * - Graceful degradation support
  */
+
+// =============================================================================
+// Constants
+// =============================================================================
 
 /**
  * Default collection name
  */
 const DEFAULT_COLLECTION = "saga_vectors";
+
+/**
+ * Default timeout in milliseconds
+ */
+const DEFAULT_TIMEOUT_MS = 8000;
+
+/**
+ * Default retry configuration
+ */
+const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_RETRY_BASE_DELAY_MS = 500;
+const DEFAULT_RETRY_MAX_DELAY_MS = 5000;
 
 /**
  * Qdrant point structure
@@ -71,6 +92,28 @@ export class QdrantError extends Error {
 }
 
 /**
+ * Retry configuration
+ */
+export interface QdrantRetryConfig {
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  timeoutMs: number;
+}
+
+/**
+ * Get retry configuration from environment
+ */
+function getRetryConfig(): QdrantRetryConfig {
+  return {
+    timeoutMs: parseInt(Deno.env.get("QDRANT_TIMEOUT_MS") ?? "", 10) || DEFAULT_TIMEOUT_MS,
+    maxRetries: parseInt(Deno.env.get("QDRANT_MAX_RETRIES") ?? "", 10) || DEFAULT_MAX_RETRIES,
+    baseDelayMs: parseInt(Deno.env.get("QDRANT_RETRY_BASE_DELAY_MS") ?? "", 10) || DEFAULT_RETRY_BASE_DELAY_MS,
+    maxDelayMs: DEFAULT_RETRY_MAX_DELAY_MS,
+  };
+}
+
+/**
  * Get Qdrant configuration from environment
  */
 export function getQdrantConfig(): QdrantConfig {
@@ -94,7 +137,52 @@ export function isQdrantConfigured(): boolean {
 }
 
 /**
- * Make a request to Qdrant API
+ * Check if an error is retryable
+ */
+function isRetryableError(error: unknown, statusCode?: number): boolean {
+  // Network errors are retryable
+  if (error instanceof TypeError) {
+    return true; // fetch network error
+  }
+
+  // Timeout/abort errors are retryable
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+
+  // Specific HTTP status codes are retryable
+  if (statusCode) {
+    return (
+      statusCode === 408 || // Request Timeout
+      statusCode === 429 || // Too Many Requests
+      statusCode >= 500 // Server errors
+    );
+  }
+
+  return false;
+}
+
+/**
+ * Calculate delay with exponential backoff and jitter
+ */
+function calculateBackoffDelay(attempt: number, config: QdrantRetryConfig): number {
+  // Exponential backoff: baseDelay * 2^attempt
+  const exponentialDelay = config.baseDelayMs * Math.pow(2, attempt);
+  // Add jitter (0-50% of delay)
+  const jitter = Math.random() * 0.5 * exponentialDelay;
+  // Cap at max delay
+  return Math.min(exponentialDelay + jitter, config.maxDelayMs);
+}
+
+/**
+ * Sleep for a specified duration
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Make a request to Qdrant API with retry logic
  */
 async function qdrantRequest<T>(
   config: QdrantConfig,
@@ -111,9 +199,91 @@ async function qdrantRequest<T>(
     headers["api-key"] = config.apiKey;
   }
 
-  // Create abort controller with timeout
+  const retryConfig = getRetryConfig();
+  let lastError: Error | null = null;
+  let lastStatusCode: number | undefined;
+
+  for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
+    // Create abort controller with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), retryConfig.timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      const data = await response.json();
+
+      if (!response.ok || data.status?.error) {
+        lastStatusCode = response.status;
+        const errorMessage = data.status?.error || `Qdrant API error: ${response.status}`;
+        const error = new QdrantError(errorMessage, response.status, data.status?.error);
+
+        // Check if retryable
+        if (attempt < retryConfig.maxRetries && isRetryableError(error, response.status)) {
+          const delay = calculateBackoffDelay(attempt, retryConfig);
+          console.warn(
+            `[qdrant] Request failed (attempt ${attempt + 1}/${retryConfig.maxRetries + 1}), ` +
+            `status=${response.status}, retrying in ${Math.round(delay)}ms...`
+          );
+          await sleep(delay);
+          continue;
+        }
+
+        throw error;
+      }
+
+      return data as T;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastError = error as Error;
+
+      // Check if retryable
+      if (attempt < retryConfig.maxRetries && isRetryableError(error, lastStatusCode)) {
+        const delay = calculateBackoffDelay(attempt, retryConfig);
+        console.warn(
+          `[qdrant] Request failed (attempt ${attempt + 1}/${retryConfig.maxRetries + 1}), ` +
+          `error=${(error as Error).message}, retrying in ${Math.round(delay)}ms...`
+        );
+        await sleep(delay);
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  // Should not reach here, but just in case
+  throw lastError ?? new QdrantError("Request failed after retries");
+}
+
+/**
+ * Make a request to Qdrant API without retries (for non-critical operations)
+ */
+async function qdrantRequestNoRetry<T>(
+  config: QdrantConfig,
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<T> {
+  const url = `${config.url}${path}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (config.apiKey) {
+    headers["api-key"] = config.apiKey;
+  }
+
+  const retryConfig = getRetryConfig();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+  const timeoutId = setTimeout(() => controller.abort(), retryConfig.timeoutMs);
 
   try {
     const response = await fetch(url, {
@@ -132,7 +302,7 @@ async function qdrantRequest<T>(
 
     return data as T;
   } finally {
-    clearTimeout(timeoutId); // Always clear timeout
+    clearTimeout(timeoutId);
   }
 }
 

@@ -1,8 +1,12 @@
 /**
- * @mythos/memory - Memory Cache Store
+ * @mythos/memory - Memory Cache Store (MLP 2.x)
  *
  * Platform-agnostic hot/warm cache for memories.
  * Uses zustand with a storage adapter pattern.
+ *
+ * MLP 2.x improvements:
+ * - Conversation-scoped session cache (isolated by conversationId)
+ * - Proper separation of session memories from other categories
  */
 
 import { create } from "zustand";
@@ -15,10 +19,12 @@ import type { MemoryRecord, MemoryCategory } from "./types";
 // =============================================================================
 
 export interface ProjectMemoryCache {
-  /** Most recently used memories */
+  /** Most recently used memories (excluding session) */
   recent: MemoryRecord[];
-  /** Memories organized by category */
-  byCategory: Partial<Record<MemoryCategory, MemoryRecord[]>>;
+  /** Memories organized by category (excluding session) */
+  byCategory: Partial<Record<Exclude<MemoryCategory, "session">, MemoryRecord[]>>;
+  /** Session memories by conversation ID */
+  sessionByConversation: Record<string, MemoryRecord[]>;
   /** Last cache update timestamp */
   updatedAt: string;
 }
@@ -33,26 +39,39 @@ export interface MemoryCacheState {
   /** Remove memories from the local cache */
   removeLocal: (projectId: string, memoryIds: string[]) => void;
 
-  /** Set entire category cache */
+  /** Set entire category cache (non-session categories only) */
   setCategoryCache: (
     projectId: string,
-    category: MemoryCategory,
+    category: Exclude<MemoryCategory, "session">,
     memories: MemoryRecord[]
   ) => void;
+
+  /** Set session cache for a specific conversation */
+  setSessionCache: (
+    projectId: string,
+    conversationId: string,
+    memories: MemoryRecord[]
+  ) => void;
+
+  /** Get session memories for a conversation */
+  getSession: (projectId: string, conversationId: string) => MemoryRecord[];
 
   /** Clear all caches for a project */
   invalidateProject: (projectId: string) => void;
 
+  /** Clear session cache for a specific conversation */
+  invalidateSession: (projectId: string, conversationId: string) => void;
+
   /** Clear all caches */
   clearAll: () => void;
 
-  /** Get memories for a project by category */
+  /** Get memories for a project by category (non-session) */
   getByCategory: (
     projectId: string,
-    category: MemoryCategory
+    category: Exclude<MemoryCategory, "session">
   ) => MemoryRecord[];
 
-  /** Get recent memories for a project */
+  /** Get recent memories for a project (non-session) */
   getRecent: (projectId: string) => MemoryRecord[];
 }
 
@@ -62,6 +81,8 @@ export interface MemoryCacheState {
 
 const MAX_RECENT_MEMORIES = 20;
 const MAX_CATEGORY_MEMORIES = 50;
+const MAX_SESSION_MEMORIES = 20;
+const MAX_CONVERSATIONS_PER_PROJECT = 10;
 const CACHE_TTL_DAYS = 7;
 
 // =============================================================================
@@ -72,6 +93,7 @@ function createEmptyProjectCache(): ProjectMemoryCache {
   return {
     recent: [],
     byCategory: {},
+    sessionByConversation: {},
     updatedAt: new Date().toISOString(),
   };
 }
@@ -96,6 +118,29 @@ function pruneExpiredCaches(
   return result;
 }
 
+/**
+ * Prune old conversations to limit memory usage.
+ * Keeps only the most recently updated conversations.
+ */
+function pruneOldConversations(
+  sessionByConversation: Record<string, MemoryRecord[]>
+): Record<string, MemoryRecord[]> {
+  const entries = Object.entries(sessionByConversation);
+  if (entries.length <= MAX_CONVERSATIONS_PER_PROJECT) {
+    return sessionByConversation;
+  }
+
+  // Sort by most recent memory in each conversation
+  const sorted = entries.sort((a, b) => {
+    const aLatest = a[1][0]?.createdAt ?? "";
+    const bLatest = b[1][0]?.createdAt ?? "";
+    return bLatest.localeCompare(aLatest);
+  });
+
+  // Keep only the most recent conversations
+  return Object.fromEntries(sorted.slice(0, MAX_CONVERSATIONS_PER_PROJECT));
+}
+
 // =============================================================================
 // Store Factory
 // =============================================================================
@@ -114,7 +159,43 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
             const projectCache =
               state.byProject[projectId] ?? createEmptyProjectCache();
 
-            // Update recent list
+            // Handle session memories separately
+            if (memory.category === "session") {
+              const conversationId = memory.metadata?.conversationId;
+              if (!conversationId) {
+                console.warn(
+                  "[memory-store] Session memory missing conversationId, skipping"
+                );
+                return state;
+              }
+
+              const existingSession =
+                projectCache.sessionByConversation[conversationId] ?? [];
+              const sessionWithoutThis = existingSession.filter(
+                (m) => m.id !== memory.id
+              );
+              const newSession = [memory, ...sessionWithoutThis].slice(
+                0,
+                MAX_SESSION_MEMORIES
+              );
+
+              return {
+                byProject: {
+                  ...state.byProject,
+                  [projectId]: {
+                    ...projectCache,
+                    sessionByConversation: pruneOldConversations({
+                      ...projectCache.sessionByConversation,
+                      [conversationId]: newSession,
+                    }),
+                    updatedAt: new Date().toISOString(),
+                  },
+                },
+              };
+            }
+
+            // Handle non-session memories
+            // Update recent list (exclude session memories)
             const recentWithoutThis = projectCache.recent.filter(
               (m) => m.id !== memory.id
             );
@@ -123,9 +204,9 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
               MAX_RECENT_MEMORIES
             );
 
-            // Update category cache
-            const categoryMemories =
-              projectCache.byCategory[memory.category] ?? [];
+            // Update category cache (exclude session)
+            const category = memory.category as Exclude<MemoryCategory, "session">;
+            const categoryMemories = projectCache.byCategory[category] ?? [];
             const categoryWithoutThis = categoryMemories.filter(
               (m) => m.id !== memory.id
             );
@@ -138,10 +219,11 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
               byProject: {
                 ...state.byProject,
                 [projectId]: {
+                  ...projectCache,
                   recent: newRecent,
                   byCategory: {
                     ...projectCache.byCategory,
-                    [memory.category]: newCategoryMemories,
+                    [category]: newCategoryMemories,
                   },
                   updatedAt: new Date().toISOString(),
                 },
@@ -163,12 +245,26 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
             );
 
             // Filter all category caches
-            const newByCategory: Partial<Record<MemoryCategory, MemoryRecord[]>> = {};
-            for (const [category, memories] of Object.entries(projectCache.byCategory)) {
+            const newByCategory: Partial<
+              Record<Exclude<MemoryCategory, "session">, MemoryRecord[]>
+            > = {};
+            for (const [category, memories] of Object.entries(
+              projectCache.byCategory
+            )) {
               if (memories) {
-                newByCategory[category as MemoryCategory] = memories.filter(
-                  (m) => !idsToRemove.has(m.id)
-                );
+                newByCategory[category as Exclude<MemoryCategory, "session">] =
+                  memories.filter((m) => !idsToRemove.has(m.id));
+              }
+            }
+
+            // Filter session caches
+            const newSessionByConversation: Record<string, MemoryRecord[]> = {};
+            for (const [convId, memories] of Object.entries(
+              projectCache.sessionByConversation
+            )) {
+              const filtered = memories.filter((m) => !idsToRemove.has(m.id));
+              if (filtered.length > 0) {
+                newSessionByConversation[convId] = filtered;
               }
             }
 
@@ -178,6 +274,7 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
                 [projectId]: {
                   recent: newRecent,
                   byCategory: newByCategory,
+                  sessionByConversation: newSessionByConversation,
                   updatedAt: new Date().toISOString(),
                 },
               },
@@ -206,10 +303,58 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
           });
         },
 
+        setSessionCache: (projectId, conversationId, memories) => {
+          set((state) => {
+            const projectCache =
+              state.byProject[projectId] ?? createEmptyProjectCache();
+
+            return {
+              byProject: {
+                ...state.byProject,
+                [projectId]: {
+                  ...projectCache,
+                  sessionByConversation: pruneOldConversations({
+                    ...projectCache.sessionByConversation,
+                    [conversationId]: memories.slice(0, MAX_SESSION_MEMORIES),
+                  }),
+                  updatedAt: new Date().toISOString(),
+                },
+              },
+            };
+          });
+        },
+
+        getSession: (projectId, conversationId) => {
+          const projectCache = get().byProject[projectId];
+          if (!projectCache) return [];
+          return projectCache.sessionByConversation[conversationId] ?? [];
+        },
+
         invalidateProject: (projectId) => {
           set((state) => {
             const { [projectId]: _, ...rest } = state.byProject;
             return { byProject: rest };
+          });
+        },
+
+        invalidateSession: (projectId, conversationId) => {
+          set((state) => {
+            const projectCache = state.byProject[projectId];
+            if (!projectCache) return state;
+
+            const { [conversationId]: _, ...restSessions } =
+              projectCache.sessionByConversation;
+
+            return {
+              byProject: {
+                ...state.byProject,
+                [projectId]: {
+                  ...projectCache,
+                  sessionByConversation: restSessions,
+                  updatedAt: new Date().toISOString(),
+                },
+              },
+            };
           });
         },
 

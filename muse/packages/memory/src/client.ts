@@ -14,6 +14,8 @@ import type {
   MemoryDeleteResponse,
   LearnStyleRequest,
   LearnStyleResponse,
+  MemoryWriteBatchRequest,
+  MemoryWriteBatchResponse,
 } from "./types";
 
 // =============================================================================
@@ -52,6 +54,12 @@ export interface MemoryClient {
     req: MemoryWriteRequest,
     opts?: { signal?: AbortSignal }
   ): Promise<MemoryRecord>;
+
+  /** Write multiple memories in a batch (MLP 2.x) */
+  writeBatch(
+    req: MemoryWriteBatchRequest,
+    opts?: { signal?: AbortSignal }
+  ): Promise<MemoryRecord[]>;
 
   /** Read memories by query or filter */
   read(
@@ -171,6 +179,16 @@ export function createMemoryClient(config: MemoryClientConfig): MemoryClient {
         opts
       );
       return response.memory;
+    },
+
+    async writeBatch(req, opts) {
+      const response = await makeRequest<MemoryWriteBatchResponse>(
+        config,
+        "ai-memory-write",
+        req,
+        opts
+      );
+      return response.memories;
     },
 
     async read(req, opts) {

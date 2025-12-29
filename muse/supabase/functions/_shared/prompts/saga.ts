@@ -10,6 +10,11 @@
  */
 
 import type { SagaMode, EditorContext } from "../tools/types.ts";
+import {
+  getMemoryBudgetConfig,
+  applyMemoryBudget,
+  type TokenBudgetConfig,
+} from "../tokens.ts";
 
 export const SAGA_SYSTEM = `You are Saga, the AI assistant for Mythos IDE - a creative writing tool that treats "story as code."
 
@@ -227,26 +232,56 @@ interface ProfileContext {
 }
 
 /**
- * Memory limits for prompt injection
+ * Token-based memory limits for prompt injection (MLP 2.x).
+ * Uses budget-aware selection instead of fixed counts.
  */
-const MEMORY_LIMITS = {
-  decisions: 8,
-  style: 6,
-  preferences: 6,
-  session: 3,
-};
+function getMemoryBudgets(): TokenBudgetConfig {
+  return getMemoryBudgetConfig();
+}
 
 /**
- * Format memory records for prompt injection
+ * Format memory records for prompt injection with token budgeting.
  */
-function formatMemories(memories: MemoryRecord[], limit: number): string {
+function formatMemoriesWithBudget(
+  memories: MemoryRecord[],
+  category: "decisions" | "style" | "preferences" | "session",
+  budgetConfig?: TokenBudgetConfig
+): string {
   if (!memories || memories.length === 0) {
     return "None recorded.";
   }
-  return memories
-    .slice(0, limit)
-    .map((m) => `- ${m.content}`)
-    .join("\n");
+
+  const contents = memories.map((m) => m.content);
+  const budgetedContents = applyMemoryBudget(category, contents, budgetConfig);
+
+  if (budgetedContents.length === 0) {
+    return "None recorded.";
+  }
+
+  return budgetedContents.map((c) => `- ${c}`).join("\n");
+}
+
+/**
+ * Convert profile preferences to style memory lines.
+ * This integrates profile as high-priority style entries.
+ */
+function profileToStyleMemoryLines(profile: ProfileContext): string[] {
+  const lines: string[] = [];
+
+  if (profile.preferredGenre) {
+    lines.push(`Preferred genre: ${profile.preferredGenre}`);
+  }
+  if (profile.namingCulture) {
+    lines.push(`Character naming culture: ${profile.namingCulture}`);
+  }
+  if (profile.namingStyle) {
+    lines.push(`Name style preference: ${profile.namingStyle}`);
+  }
+  if (profile.logicStrictness) {
+    lines.push(`World logic strictness: ${profile.logicStrictness}`);
+  }
+
+  return lines;
 }
 
 /**
@@ -272,7 +307,10 @@ function formatProfile(profile: ProfileContext): string {
 }
 
 /**
- * Build the full system prompt for a Saga request
+ * Build the full system prompt for a Saga request (MLP 2.x)
+ *
+ * Uses token-aware budgeting for memory injection and integrates
+ * profile preferences as high-priority style entries.
  */
 export function buildSagaSystemPrompt(options: {
   mode?: SagaMode;
@@ -290,28 +328,53 @@ export function buildSagaSystemPrompt(options: {
     prompt += "\n" + SAGA_MODE_ADDENDUMS[mode];
   }
 
-  // Add profile context (early, before RAG/memory)
-  if (profileContext) {
-    const profileText = formatProfile(profileContext);
-    if (profileText !== "No preferences configured.") {
-      prompt += "\n\n" + SAGA_PROFILE_CONTEXT.replace("{profile}", profileText);
-    }
-  }
+  // Get token budget configuration
+  const budgetConfig = getMemoryBudgets();
 
-  // Add memory context (before RAG for priority)
-  if (memoryContext) {
+  // Build memory context with profile integration
+  // Profile preferences are converted to style lines and prepended (high priority)
+  if (memoryContext || profileContext) {
+    // Prepare style memories with profile preferences prepended
+    let styleMemories = memoryContext?.style ?? [];
+    if (profileContext) {
+      const profileLines = profileToStyleMemoryLines(profileContext);
+      if (profileLines.length > 0) {
+        // Create pseudo-memory records for profile preferences
+        const profileRecords: MemoryRecord[] = profileLines.map((line, i) => ({
+          id: `profile-${i}`,
+          content: line,
+          category: "style",
+          score: 1.0, // High priority
+        }));
+        // Prepend profile to style (profile gets priority in budget)
+        styleMemories = [...profileRecords, ...styleMemories];
+      }
+    }
+
     const hasMemories =
-      memoryContext.decisions?.length > 0 ||
-      memoryContext.style?.length > 0 ||
-      memoryContext.preferences?.length > 0 ||
-      memoryContext.session?.length > 0;
+      memoryContext?.decisions?.length > 0 ||
+      styleMemories.length > 0 ||
+      memoryContext?.preferences?.length > 0 ||
+      memoryContext?.session?.length > 0;
 
     if (hasMemories) {
       prompt += "\n\n" + SAGA_MEMORY_CONTEXT
-        .replace("{decisions}", formatMemories(memoryContext.decisions, MEMORY_LIMITS.decisions))
-        .replace("{style}", formatMemories(memoryContext.style, MEMORY_LIMITS.style))
-        .replace("{preferences}", formatMemories(memoryContext.preferences, MEMORY_LIMITS.preferences))
-        .replace("{session}", formatMemories(memoryContext.session, MEMORY_LIMITS.session));
+        .replace(
+          "{decisions}",
+          formatMemoriesWithBudget(memoryContext?.decisions ?? [], "decisions", budgetConfig)
+        )
+        .replace(
+          "{style}",
+          formatMemoriesWithBudget(styleMemories, "style", budgetConfig)
+        )
+        .replace(
+          "{preferences}",
+          formatMemoriesWithBudget(memoryContext?.preferences ?? [], "preferences", budgetConfig)
+        )
+        .replace(
+          "{session}",
+          formatMemoriesWithBudget(memoryContext?.session ?? [], "session", budgetConfig)
+        );
     }
   }
 

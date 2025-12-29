@@ -20,6 +20,10 @@ export type {
   MemoryDeleteResponse,
   LearnStyleRequest,
   LearnStyleResponse,
+  // MLP 2.x batch operations
+  MemoryWriteItem,
+  MemoryWriteBatchRequest,
+  MemoryWriteBatchResponse,
 } from "@mythos/agent-protocol";
 
 export { getDefaultMemoryScope } from "@mythos/agent-protocol";

@@ -186,6 +186,46 @@ export interface MemoryDeleteResponse {
   deletedCount: number;
 }
 
+// =============================================================================
+// Batch Operations (MLP 2.x)
+// =============================================================================
+
+/**
+ * Single memory item for batch write operations.
+ */
+export interface MemoryWriteItem {
+  /** Memory category */
+  category: MemoryCategory;
+  /** Memory content */
+  content: string;
+  /** Visibility scope (defaults based on category) */
+  scope?: MemoryScope;
+  /** Conversation ID (required for conversation scope) */
+  conversationId?: string;
+  /** Additional metadata */
+  metadata?: Omit<MemoryMetadata, "conversationId">;
+  /** Optional deterministic ID for upsert */
+  id?: string;
+}
+
+/**
+ * Request to write multiple memories in a batch.
+ */
+export interface MemoryWriteBatchRequest {
+  /** Project ID */
+  projectId: string;
+  /** Array of memories to write */
+  memories: MemoryWriteItem[];
+}
+
+/**
+ * Response from batch memory write.
+ */
+export interface MemoryWriteBatchResponse {
+  /** Written memory records */
+  memories: MemoryRecord[];
+}
+
 /**
  * Request to learn writing style from content.
  */
