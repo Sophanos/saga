@@ -19,12 +19,12 @@ import {
   type ChatContext,
 } from "../stores";
 import {
-  sendChatMessageStreaming,
-  ChatApiError,
-  type ChatMessagePayload,
+  sendAgentMessageStreaming,
+  AgentApiError,
+  type AgentMessagePayload,
   type ToolCallResult,
 } from "../services/ai";
-import type { ChatToolInvocation } from "../stores";
+import type { ToolName } from "../stores";
 
 /**
  * Options for the useChatAgent hook
@@ -61,8 +61,8 @@ function generateMessageId(): string {
  * Get user-friendly error message
  */
 function getErrorMessage(error: unknown): string {
-  if (error instanceof ChatApiError) {
-    switch (error.code) {
+  if (error instanceof AgentApiError) {
+    switch (error.agentCode) {
       case "UNAUTHORIZED":
         return "Please configure your API key in settings.";
       case "RATE_LIMITED":
@@ -156,17 +156,17 @@ export function useChatAgent(options?: UseChatAgentOptions): UseChatAgentResult 
       setChatStreaming(true);
 
       try {
-        // Build messages array for API (excluding the placeholder)
+        // Build messages array for API (excluding the placeholder and tool messages)
         // Use getState() to get real-time messages including the one we just added
         const currentMessages = useMythosStore.getState().chat.messages;
-        const apiMessages: ChatMessagePayload[] = currentMessages
-          .filter((m) => m.role !== "system" && !m.isStreaming)
+        const apiMessages: AgentMessagePayload[] = currentMessages
+          .filter((m) => m.role !== "system" && !m.isStreaming && m.kind !== "tool")
           .map((m) => ({
             role: m.role as "user" | "assistant",
             content: m.content,
           }));
 
-        await sendChatMessageStreaming(
+        await sendAgentMessageStreaming(
           {
             messages: apiMessages,
             projectId,
@@ -181,15 +181,16 @@ export function useChatAgent(options?: UseChatAgentOptions): UseChatAgentResult 
               appendToChatMessage(assistantMessageId, delta);
             },
             onTool: (tool: ToolCallResult) => {
-              // Create a tool message to display in the UI via ToolResultCard
+              // Create a tool message with the stable toolCallId from the LLM
               const toolMessage: ChatMessage = {
-                id: generateMessageId(),
+                id: tool.toolCallId, // Use the stable ID from the LLM
                 role: "assistant",
                 content: "",
                 timestamp: new Date(),
                 kind: "tool",
                 tool: {
-                  toolName: tool.toolName as ChatToolInvocation["toolName"],
+                  toolCallId: tool.toolCallId,
+                  toolName: tool.toolName as ToolName,
                   args: tool.args,
                   status: "proposed",
                 },

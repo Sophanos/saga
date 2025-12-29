@@ -43,20 +43,29 @@ export interface AgentRequestPayload {
   stream?: boolean;
 }
 
+/**
+ * Tool call result with stable ID from the LLM.
+ */
 export interface ToolCallResult {
+  /** Stable ID from the LLM for tracking the tool call lifecycle */
+  toolCallId: string;
+  /** Name of the tool being called */
   toolName: string;
+  /** Tool-specific arguments */
   args: unknown;
 }
 
-export type AgentStreamEventType = "context" | "delta" | "tool" | "done" | "error";
+export type AgentStreamEventType = "context" | "delta" | "tool" | "progress" | "done" | "error";
 
 export interface AgentStreamEvent {
   type: AgentStreamEventType;
   content?: string;
   data?: ChatContext;
+  toolCallId?: string;
   toolName?: string;
   args?: unknown;
   message?: string;
+  progress?: { pct?: number; stage?: string };
 }
 
 export interface AgentStreamOptions {
@@ -65,6 +74,7 @@ export interface AgentStreamOptions {
   onContext?: (context: ChatContext) => void;
   onDelta?: (delta: string) => void;
   onTool?: (tool: ToolCallResult) => void;
+  onProgress?: (toolCallId: string, progress: { pct?: number; stage?: string }) => void;
   onDone?: () => void;
   onError?: (error: Error) => void;
 }
@@ -117,7 +127,7 @@ export async function sendAgentMessageStreaming(
   payload: AgentRequestPayload,
   opts?: AgentStreamOptions
 ): Promise<void> {
-  const { signal, apiKey, onContext, onDelta, onTool, onDone, onError } = opts ?? {};
+  const { signal, apiKey, onContext, onDelta, onTool, onProgress, onDone, onError } = opts ?? {};
 
   const url = `${SUPABASE_URL}/functions/v1/ai-agent`;
 
@@ -186,11 +196,18 @@ export async function sendAgentMessageStreaming(
             break;
 
           case "tool":
-            if (event.toolName) {
+            if (event.toolName && event.toolCallId) {
               onTool?.({
+                toolCallId: event.toolCallId,
                 toolName: event.toolName,
                 args: event.args,
               });
+            }
+            break;
+
+          case "progress":
+            if (event.toolCallId && event.progress) {
+              onProgress?.(event.toolCallId, event.progress);
             }
             break;
 

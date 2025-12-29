@@ -1,7 +1,5 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { streamText } from "https://esm.sh/ai@3.4.0";
-import { tool } from "https://esm.sh/ai@3.4.0";
-import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import { requireApiKey } from "../_shared/api-key.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
@@ -25,6 +23,7 @@ import {
   AGENT_CONTEXT_TEMPLATE,
   AGENT_EDITOR_CONTEXT,
 } from "../_shared/prompts/mod.ts";
+import { agentTools } from "../_shared/tools/index.ts";
 
 // =============================================================================
 // Types
@@ -67,85 +66,6 @@ interface RAGContext {
 // =============================================================================
 
 const MAX_HISTORY_MESSAGES = 20;
-
-// =============================================================================
-// Tool Definitions
-// =============================================================================
-
-const createEntityTool = tool({
-  description: "Propose creating a new entity (character, location, item, faction, or magic system) in the author's world",
-  parameters: z.object({
-    type: z.enum(["character", "location", "item", "faction", "magic_system"]),
-    name: z.string().describe("The name of the entity"),
-    aliases: z.array(z.string()).optional().describe("Alternative names or nicknames"),
-    notes: z.string().optional().describe("General notes about the entity"),
-    // Character-specific
-    archetype: z.string().optional().describe("Character archetype (hero, mentor, shadow, etc.)"),
-    backstory: z.string().optional().describe("Character's background story"),
-    goals: z.array(z.string()).optional().describe("Character's goals and motivations"),
-    fears: z.array(z.string()).optional().describe("Character's fears"),
-    // Location-specific
-    climate: z.string().optional().describe("Climate or weather of the location"),
-    atmosphere: z.string().optional().describe("Mood and feeling of the place"),
-    // Item-specific
-    category: z.enum(["weapon", "armor", "artifact", "consumable", "key", "other"]).optional(),
-    abilities: z.array(z.string()).optional().describe("Special abilities or properties"),
-    // Faction-specific
-    leader: z.string().optional().describe("Name of the faction leader"),
-    headquarters: z.string().optional().describe("Main base or location"),
-    factionGoals: z.array(z.string()).optional().describe("Faction's goals"),
-    // Magic System-specific
-    rules: z.array(z.string()).optional().describe("Rules of the magic system"),
-    limitations: z.array(z.string()).optional().describe("Limitations and costs"),
-  }),
-  execute: async (args) => {
-    // Tool returns the proposal data - client will handle actual creation
-    return {
-      toolName: "create_entity",
-      proposal: args,
-      message: `Proposed creating ${args.type}: "${args.name}"`,
-    };
-  },
-});
-
-const createRelationshipTool = tool({
-  description: "Propose creating a relationship between two entities",
-  parameters: z.object({
-    sourceName: z.string().describe("Name of the source entity"),
-    targetName: z.string().describe("Name of the target entity"),
-    type: z.enum([
-      "knows", "loves", "hates", "killed", "created", "owns", "guards",
-      "weakness", "strength", "parent_of", "child_of", "sibling_of",
-      "married_to", "allied_with", "enemy_of", "member_of", "rules", "serves"
-    ]),
-    bidirectional: z.boolean().optional().describe("Whether the relationship goes both ways"),
-    notes: z.string().optional().describe("Additional context about the relationship"),
-  }),
-  execute: async (args) => {
-    return {
-      toolName: "create_relationship",
-      proposal: args,
-      message: `Proposed relationship: ${args.sourceName} → ${args.type} → ${args.targetName}`,
-    };
-  },
-});
-
-const generateContentTool = tool({
-  description: "Generate creative content like backstories, descriptions, or dialogue",
-  parameters: z.object({
-    contentType: z.enum(["description", "backstory", "dialogue", "scene"]),
-    subject: z.string().describe("What the content is about"),
-    tone: z.string().optional().describe("Desired tone (dark, humorous, dramatic, etc.)"),
-    length: z.enum(["short", "medium", "long"]).optional(),
-  }),
-  execute: async (args) => {
-    return {
-      toolName: "generate_content",
-      request: args,
-      message: `Generating ${args.contentType} for: ${args.subject}`,
-    };
-  },
-});
 
 // =============================================================================
 // RAG Context Retrieval
@@ -319,15 +239,11 @@ serve(async (req: Request): Promise<Response> => {
     // Get model
     const model = getOpenRouterModel(apiKey, "chat");
 
-    // Stream response with tools
+    // Stream response with tools using modular registry
     const result = streamText({
       model,
       messages: apiMessages,
-      tools: {
-        create_entity: createEntityTool,
-        create_relationship: createRelationshipTool,
-        generate_content: generateContentTool,
-      },
+      tools: agentTools,
       maxSteps: 3, // Allow up to 3 tool calls
     });
 
@@ -342,24 +258,43 @@ serve(async (req: Request): Promise<Response> => {
           const contextEvent = `data: ${JSON.stringify({ type: "context", data: context })}\n\n`;
           controller.enqueue(encoder.encode(contextEvent));
 
-          // Stream text and tool results
-          for await (const chunk of result.textStream) {
-            const event = `data: ${JSON.stringify({ type: "delta", content: chunk })}\n\n`;
-            controller.enqueue(encoder.encode(event));
-          }
+          // Use fullStream to get tool call IDs
+          const fullStream = result.fullStream;
 
-          // Get final result for tool calls
-          const finalResult = await result;
-          
-          // Send any tool calls
-          if (finalResult.toolCalls && finalResult.toolCalls.length > 0) {
-            for (const toolCall of finalResult.toolCalls) {
-              const toolEvent = `data: ${JSON.stringify({
-                type: "tool",
-                toolName: toolCall.toolName,
-                args: toolCall.args,
-              })}\n\n`;
-              controller.enqueue(encoder.encode(toolEvent));
+          for await (const part of fullStream) {
+            switch (part.type) {
+              case "text-delta":
+                // Stream text chunks
+                const deltaEvent = `data: ${JSON.stringify({
+                  type: "delta",
+                  content: part.textDelta
+                })}\n\n`;
+                controller.enqueue(encoder.encode(deltaEvent));
+                break;
+
+              case "tool-call":
+                // Send tool call with stable ID from the LLM
+                const toolEvent = `data: ${JSON.stringify({
+                  type: "tool",
+                  toolCallId: part.toolCallId,
+                  toolName: part.toolName,
+                  args: part.args,
+                })}\n\n`;
+                controller.enqueue(encoder.encode(toolEvent));
+                break;
+
+              case "finish":
+                // Stream complete
+                break;
+
+              case "error":
+                // Handle stream errors
+                const errorEvent = `data: ${JSON.stringify({
+                  type: "error",
+                  message: part.error instanceof Error ? part.error.message : "Stream error",
+                })}\n\n`;
+                controller.enqueue(encoder.encode(errorEvent));
+                break;
             }
           }
 

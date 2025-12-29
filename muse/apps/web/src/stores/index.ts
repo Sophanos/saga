@@ -140,13 +140,79 @@ export interface ChatMention {
   name: string;
 }
 
-export type ToolInvocationStatus = "proposed" | "accepted" | "rejected" | "executed" | "failed";
+/**
+ * Status of a tool invocation throughout its lifecycle.
+ */
+export type ToolInvocationStatus =
+  | "proposed"     // LLM suggested this action, awaiting user decision
+  | "accepted"     // User accepted, execution starting
+  | "executing"    // Long-running operation in progress
+  | "executed"     // Successfully completed
+  | "rejected"     // User declined the proposal
+  | "failed"       // Execution failed
+  | "canceled";    // User or system canceled during execution
 
+/**
+ * Tool names supported by the agent system.
+ */
+export type ToolName =
+  | "create_entity"
+  | "update_entity"
+  | "delete_entity"
+  | "create_relationship"
+  | "update_relationship"
+  | "delete_relationship"
+  | "generate_content"
+  | "generate_image";  // future
+
+/**
+ * Artifact kinds that tools can produce.
+ */
+export type ToolArtifactKind = "image" | "link" | "diff" | "graph" | "file";
+
+/**
+ * An artifact produced by a tool execution.
+ */
+export interface ToolArtifact {
+  kind: ToolArtifactKind;
+  title?: string;
+  url?: string;
+  previewUrl?: string;
+  mimeType?: string;
+  data?: unknown;
+}
+
+/**
+ * Progress information for long-running tools.
+ */
+export interface ToolProgress {
+  pct?: number;
+  stage?: string;
+}
+
+/**
+ * A tool invocation attached to a chat message.
+ * Tracks the full lifecycle from proposal to execution.
+ */
 export interface ChatToolInvocation {
-  toolName: "create_entity" | "update_entity" | "create_relationship" | "generate_content";
+  /** Stable identifier from the LLM tool call */
+  toolCallId: string;
+  /** Which tool is being invoked */
+  toolName: ToolName;
+  /** Tool-specific arguments */
   args: unknown;
+  /** Current status in the lifecycle */
   status: ToolInvocationStatus;
+  /** Execution result (tool-specific) */
+  result?: unknown;
+  /** Artifacts produced by the tool */
+  artifacts?: ToolArtifact[];
+  /** Progress for long-running operations */
+  progress?: ToolProgress;
+  /** Error message if failed */
   error?: string;
+  /** Workflow grouping (for multi-tool operations) */
+  workflowId?: string;
 }
 
 export interface ChatMessage {
@@ -272,6 +338,7 @@ interface MythosStore {
   updateChatMessage: (id: string, updates: Partial<ChatMessage>) => void;
   appendToChatMessage: (id: string, content: string) => void;
   updateToolStatus: (messageId: string, status: ToolInvocationStatus, error?: string) => void;
+  updateToolInvocation: (messageId: string, patch: Partial<ChatToolInvocation>) => void;
   setChatStreaming: (streaming: boolean) => void;
   setChatError: (error: string | null) => void;
   setChatContext: (context: ChatContext | null) => void;
@@ -642,6 +709,13 @@ export const useMythosStore = create<MythosStore>()(
           if (error) {
             state.chat.messages[idx].tool!.error = error;
           }
+        }
+      }),
+  updateToolInvocation: (messageId, patch) =>
+      set((state) => {
+        const idx = state.chat.messages.findIndex((m) => m.id === messageId);
+        if (idx !== -1 && state.chat.messages[idx].tool) {
+          Object.assign(state.chat.messages[idx].tool!, patch);
         }
       }),
     setChatStreaming: (streaming) =>

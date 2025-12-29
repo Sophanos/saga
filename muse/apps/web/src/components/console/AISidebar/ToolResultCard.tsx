@@ -6,40 +6,35 @@ import {
   X,
   Loader2,
   AlertCircle,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import {
-  useMythosStore,
   type ChatToolInvocation,
   type ToolInvocationStatus,
 } from "../../../stores";
-import { useEntityPersistence } from "../../../hooks/useEntityPersistence";
-import { useRelationshipPersistence } from "../../../hooks/useRelationshipPersistence";
+import { useToolRuntime } from "../../../hooks/useToolRuntime";
+import { getToolLabel, getToolDanger, renderToolSummary } from "../../../tools";
 import { getEntityIconComponent } from "../../../utils/entityConfig";
-import type { EntityType, RelationType } from "@mythos/core";
-import { buildEntity, type EntityBuildData } from "@mythos/core";
+import type { EntityType } from "@mythos/core";
 
 interface ToolResultCardProps {
   messageId: string;
   tool: ChatToolInvocation;
 }
 
-// Tool action labels
-const TOOL_LABELS: Record<string, string> = {
-  create_entity: "Create Entity",
-  create_relationship: "Create Relationship",
-  generate_content: "Generate Content",
-  update_entity: "Update Entity",
-};
-
 function getStatusIcon(status: ToolInvocationStatus) {
   switch (status) {
     case "proposed":
       return null;
     case "accepted":
+    case "executing":
+      return <Loader2 className="w-3.5 h-3.5 text-mythos-accent-cyan animate-spin" />;
     case "executed":
       return <Check className="w-3.5 h-3.5 text-mythos-accent-green" />;
     case "rejected":
+    case "canceled":
       return <X className="w-3.5 h-3.5 text-mythos-text-muted" />;
     case "failed":
       return <AlertCircle className="w-3.5 h-3.5 text-mythos-accent-red" />;
@@ -53,11 +48,15 @@ function getStatusLabel(status: ToolInvocationStatus): string {
     case "proposed":
       return "Proposed";
     case "accepted":
-      return "Accepted";
+      return "Starting...";
+    case "executing":
+      return "Creating...";
     case "executed":
       return "Created";
     case "rejected":
       return "Rejected";
+    case "canceled":
+      return "Canceled";
     case "failed":
       return "Failed";
     default:
@@ -65,189 +64,115 @@ function getStatusLabel(status: ToolInvocationStatus): string {
   }
 }
 
-export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
-  const updateToolStatus = useMythosStore((s) => s.updateToolStatus);
-  const addEntity = useMythosStore((s) => s.addEntity);
-  const addRelationship = useMythosStore((s) => s.addRelationship);
-  const projectId = useMythosStore((s) => s.project.currentProject?.id);
-  const entities = useMythosStore((s) => s.world.entities);
+function getCardStyles(status: ToolInvocationStatus, danger: "safe" | "destructive" | "costly") {
+  if (status === "proposed") {
+    if (danger === "destructive") {
+      return "border-mythos-accent-red/30 bg-mythos-accent-red/5";
+    }
+    return "border-mythos-accent-purple/30 bg-mythos-accent-purple/5";
+  }
+  if (status === "executed") {
+    return "border-mythos-accent-green/30 bg-mythos-accent-green/5";
+  }
+  if (status === "failed") {
+    return "border-mythos-accent-red/30 bg-mythos-accent-red/5";
+  }
+  return "border-mythos-text-muted/20 bg-mythos-bg-tertiary/50";
+}
 
-  const { createEntity } = useEntityPersistence();
-  const { createRelationship } = useRelationshipPersistence();
+export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
+  const { acceptTool, rejectTool, retryTool, cancelTool } = useToolRuntime();
 
   const args = (tool.args ?? {}) as Record<string, unknown>;
   const getArg = <T,>(key: string, fallback?: T): T | undefined =>
-    args[key] as T | undefined ?? fallback;
+    (args[key] as T | undefined) ?? fallback;
+
   const isProposed = tool.status === "proposed";
-  const isProcessing = tool.status === "accepted";
+  const isExecuting = tool.status === "accepted" || tool.status === "executing";
+  const isFailed = tool.status === "failed";
+  const isCanceled = tool.status === "canceled";
+  const canRetry = isFailed || isCanceled;
+
+  const danger = getToolDanger(tool.toolName);
+  const label = getToolLabel(tool.toolName);
+  const summary = renderToolSummary(tool.toolName, tool.args);
 
   // Handle accepting the tool proposal
   const handleAccept = useCallback(async () => {
-    if (!projectId) return;
-
-    updateToolStatus(messageId, "accepted");
-
-    try {
-      if (tool.toolName === "create_entity") {
-        // Build entity data from tool args
-        const entityData: EntityBuildData = {
-          name: getArg<string>("name") ?? "Unnamed",
-          type: getArg<EntityType>("type") ?? "character",
-          aliases: getArg<string[]>("aliases"),
-          notes: getArg<string>("notes"),
-          // Character fields
-          archetype: getArg<string>("archetype") as EntityBuildData["archetype"],
-          backstory: getArg<string>("backstory"),
-          goals: getArg<string[]>("goals"),
-          fears: getArg<string[]>("fears"),
-          // Location fields
-          climate: getArg<string>("climate"),
-          atmosphere: getArg<string>("atmosphere"),
-          // Item fields
-          category: getArg<string>("category") as EntityBuildData["category"],
-          abilities: getArg<string[]>("abilities"),
-          // Faction fields
-          leader: getArg<string>("leader"),
-          headquarters: getArg<string>("headquarters"),
-          factionGoals: getArg<string[]>("factionGoals"),
-          // Magic system fields
-          rules: getArg<string[]>("rules"),
-          limitations: getArg<string[]>("limitations"),
-        };
-
-        // Build entity using the factory
-        const entity = buildEntity(entityData);
-
-        const result = await createEntity(entity, projectId);
-        if (result.data) {
-          addEntity(result.data);
-          updateToolStatus(messageId, "executed");
-        } else {
-          updateToolStatus(messageId, "failed", result.error ?? "Failed to create entity");
-        }
-      } else if (tool.toolName === "create_relationship") {
-        // Find entities by name
-        const sourceName = getArg<string>("sourceName") ?? "";
-        const targetName = getArg<string>("targetName") ?? "";
-        
-        let sourceId: string | null = null;
-        let targetId: string | null = null;
-
-        entities.forEach((entity) => {
-          if (entity.name.toLowerCase() === sourceName.toLowerCase()) {
-            sourceId = entity.id;
-          }
-          if (entity.name.toLowerCase() === targetName.toLowerCase()) {
-            targetId = entity.id;
-          }
-        });
-
-        if (!sourceId || !targetId) {
-          updateToolStatus(
-            messageId,
-            "failed",
-            `Could not find entities: ${!sourceId ? sourceName : ""} ${!targetId ? targetName : ""}`
-          );
-          return;
-        }
-
-        const relationship = {
-          id: crypto.randomUUID(),
-          sourceId,
-          targetId,
-          type: getArg<RelationType>("type") ?? "knows",
-          bidirectional: getArg<boolean>("bidirectional") ?? false,
-          notes: getArg<string>("notes"),
-          createdAt: new Date(),
-        };
-
-        const result = await createRelationship(relationship, projectId);
-        if (result.data) {
-          addRelationship(result.data);
-          updateToolStatus(messageId, "executed");
-        } else {
-          updateToolStatus(messageId, "failed", result.error ?? "Failed to create relationship");
-        }
-      } else {
-        // For other tools, just mark as executed
-        updateToolStatus(messageId, "executed");
-      }
-    } catch (error) {
-      updateToolStatus(
-        messageId,
-        "failed",
-        error instanceof Error ? error.message : "Unknown error"
-      );
-    }
-  }, [
-    messageId,
-    tool.toolName,
-    args,
-    projectId,
-    updateToolStatus,
-    createEntity,
-    createRelationship,
-    addEntity,
-    addRelationship,
-    entities,
-  ]);
+    await acceptTool(messageId);
+  }, [messageId, acceptTool]);
 
   // Handle rejecting the tool proposal
   const handleReject = useCallback(() => {
-    updateToolStatus(messageId, "rejected");
-  }, [messageId, updateToolStatus]);
+    rejectTool(messageId);
+  }, [messageId, rejectTool]);
+
+  // Handle canceling an executing tool
+  const handleCancel = useCallback(() => {
+    cancelTool(messageId);
+  }, [messageId, cancelTool]);
+
+  // Handle retrying a failed tool
+  const handleRetry = useCallback(async () => {
+    await retryTool(messageId);
+  }, [messageId, retryTool]);
 
   // Get icon based on tool type
   const getIcon = () => {
-    if (tool.toolName === "create_entity") {
+    if (tool.toolName === "create_entity" || tool.toolName === "update_entity") {
       const entityType = getArg<EntityType>("type") ?? "character";
       const Icon = getEntityIconComponent(entityType);
       return <Icon className="w-4 h-4" />;
     }
-    if (tool.toolName === "create_relationship") {
+    if (tool.toolName === "delete_entity") {
+      return <Trash2 className="w-4 h-4" />;
+    }
+    if (
+      tool.toolName === "create_relationship" ||
+      tool.toolName === "update_relationship" ||
+      tool.toolName === "delete_relationship"
+    ) {
       return <GitBranch className="w-4 h-4" />;
     }
     return <FileText className="w-4 h-4" />;
   };
 
-  // Build summary text
-  const getSummary = () => {
-    if (tool.toolName === "create_entity") {
-      return `${getArg<string>("type")}: "${getArg<string>("name")}"`;
+  // Get action button label based on tool type
+  const getActionLabel = () => {
+    if (tool.toolName.startsWith("delete_")) {
+      return "Delete";
     }
-    if (tool.toolName === "create_relationship") {
-      return `${getArg<string>("sourceName")} → ${getArg<string>("type")} → ${getArg<string>("targetName")}`;
+    if (tool.toolName.startsWith("update_")) {
+      return "Update";
     }
-    if (tool.toolName === "generate_content") {
-      return `${getArg<string>("contentType")}: ${getArg<string>("subject")}`;
-    }
-    return TOOL_LABELS[tool.toolName] ?? tool.toolName;
+    return "Create";
   };
 
   return (
     <div
       className={cn(
         "rounded-lg border p-3 my-2",
-        isProposed
-          ? "border-mythos-accent-purple/30 bg-mythos-accent-purple/5"
-          : tool.status === "executed"
-            ? "border-mythos-accent-green/30 bg-mythos-accent-green/5"
-            : tool.status === "failed"
-              ? "border-mythos-accent-red/30 bg-mythos-accent-red/5"
-              : "border-mythos-text-muted/20 bg-mythos-bg-tertiary/50"
+        getCardStyles(tool.status, danger)
       )}
     >
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
-        <div className="w-6 h-6 rounded bg-mythos-bg-tertiary flex items-center justify-center text-mythos-accent-purple">
+        <div
+          className={cn(
+            "w-6 h-6 rounded flex items-center justify-center",
+            danger === "destructive"
+              ? "bg-mythos-accent-red/20 text-mythos-accent-red"
+              : "bg-mythos-bg-tertiary text-mythos-accent-purple"
+          )}
+        >
           {getIcon()}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs font-medium text-mythos-text-primary truncate">
-            {TOOL_LABELS[tool.toolName] ?? tool.toolName}
+            {label}
           </div>
           <div className="text-[10px] text-mythos-text-muted truncate">
-            {getSummary()}
+            {summary}
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -274,21 +199,39 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
         </p>
       )}
 
+      {/* Progress for long-running operations */}
+      {tool.progress && (
+        <div className="mb-2">
+          {tool.progress.stage && (
+            <p className="text-xs text-mythos-text-muted mb-1">{tool.progress.stage}</p>
+          )}
+          {tool.progress.pct !== undefined && (
+            <div className="h-1 bg-mythos-bg-tertiary rounded-full overflow-hidden">
+              <div
+                className="h-full bg-mythos-accent-cyan transition-all"
+                style={{ width: `${tool.progress.pct}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Error message */}
       {tool.error && (
         <p className="text-xs text-mythos-accent-red mb-2">{tool.error}</p>
       )}
 
-      {/* Actions */}
+      {/* Actions for proposed state */}
       {isProposed && (
         <div className="flex items-center gap-2 mt-2">
           <Button
             size="sm"
             onClick={handleAccept}
+            variant={danger === "destructive" ? "destructive" : "default"}
             className="flex-1 h-7 text-xs gap-1"
           >
             <Check className="w-3 h-3" />
-            Create
+            {getActionLabel()}
           </Button>
           <Button
             variant="outline"
@@ -302,11 +245,32 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
         </div>
       )}
 
-      {/* Processing state */}
-      {isProcessing && (
-        <div className="flex items-center gap-2 mt-2 text-xs text-mythos-text-muted">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          Creating...
+      {/* Cancel button for executing state */}
+      {isExecuting && (
+        <div className="flex items-center gap-2 mt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCancel}
+            className="w-full h-7 text-xs gap-1"
+          >
+            <X className="w-3 h-3" />
+            Cancel
+          </Button>
+        </div>
+      )}
+
+      {/* Retry button for failed/canceled state */}
+      {canRetry && (
+        <div className="flex items-center gap-2 mt-2">
+          <Button
+            size="sm"
+            onClick={handleRetry}
+            className="w-full h-7 text-xs gap-1"
+          >
+            <RotateCcw className="w-3 h-3" />
+            Retry
+          </Button>
         </div>
       )}
     </div>
