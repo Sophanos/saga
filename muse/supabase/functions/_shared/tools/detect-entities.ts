@@ -5,7 +5,7 @@
  * Actual execution happens in ai-saga execute_tool path.
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { entityTypeSchema, analysisScopeSchema, type ToolExecuteResult } from "./types.ts";
 
@@ -41,8 +41,8 @@ export type DetectEntitiesArgs = z.infer<typeof detectEntitiesParameters>;
 export const detectEntitiesTool = tool({
   description:
     "Propose detecting and extracting entities (characters, locations, items, etc.) from narrative text",
-  parameters: detectEntitiesParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: detectEntitiesParameters,
+  execute: async (args) => {
     const scopeDesc = args.scope || "document";
     const typeFilter = args.entityTypes?.length
       ? ` (filtering: ${args.entityTypes.join(", ")})`
@@ -51,6 +51,6 @@ export const detectEntitiesTool = tool({
       toolName: "detect_entities",
       proposal: args,
       message: `Proposed entity detection on ${scopeDesc}${typeFilter}`,
-    };
+    } as ToolExecuteResult;
   },
 });

@@ -2,7 +2,7 @@
  * generate_content tool definition
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { contentTypeSchema, lengthSchema, type ToolExecuteResult } from "./types.ts";
 
@@ -17,12 +17,12 @@ export type GenerateContentArgs = z.infer<typeof generateContentParameters>;
 
 export const generateContentTool = tool({
   description: "Generate creative content like backstories, descriptions, dialogue, or scene drafts",
-  parameters: generateContentParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: generateContentParameters,
+  execute: async (args) => {
     return {
       toolName: "generate_content",
       proposal: args,
       message: `Generating ${args.contentType} for: ${args.subject}`,
-    };
+    } as ToolExecuteResult;
   },
 });

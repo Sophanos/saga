@@ -7,7 +7,7 @@
  * Actual execution happens in ai-saga execute_tool path.
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import {
   entityTypeSchema,
@@ -54,8 +54,8 @@ export type NameGeneratorArgs = z.infer<typeof nameGeneratorParameters>;
 export const nameGeneratorTool = tool({
   description:
     "Generate culturally-aware, genre-appropriate names for characters, locations, items, and other story entities. Provides meaning and pronunciation when applicable.",
-  parameters: nameGeneratorParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: nameGeneratorParameters,
+  execute: async (args) => {
     const count = args.count || 10;
     const culture = args.culture || "any";
     const entityType = args.entityType;
@@ -63,6 +63,6 @@ export const nameGeneratorTool = tool({
       toolName: "name_generator",
       proposal: args,
       message: `Generating ${count} ${culture} ${entityType} names`,
-    };
+    } as ToolExecuteResult;
   },
 });

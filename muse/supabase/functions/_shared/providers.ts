@@ -5,9 +5,9 @@
  * This is essential for BYOK support where each request may use a different key.
  */
 
-// Deno imports for ai-sdk
-import { createOpenAI } from "https://esm.sh/@ai-sdk/openai@1.0.0";
-import { createGoogleGenerativeAI } from "https://esm.sh/@ai-sdk/google@1.0.0";
+// Deno imports for ai-sdk v6
+import { createOpenAI } from "https://esm.sh/@ai-sdk/openai@3.0.0";
+import { createGoogleGenerativeAI } from "https://esm.sh/@ai-sdk/google@3.0.0";
 
 /**
  * Model type definitions matching the main application

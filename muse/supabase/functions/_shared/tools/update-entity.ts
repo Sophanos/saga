@@ -2,7 +2,7 @@
  * update_entity tool definition
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { entityTypeSchema, itemCategorySchema, type ToolExecuteResult } from "./types.ts";
 
@@ -38,8 +38,8 @@ export type UpdateEntityArgs = z.infer<typeof updateEntityParameters>;
 
 export const updateEntityTool = tool({
   description: "Propose updating an existing entity's properties. Use entityName to identify the entity (LLM doesn't have access to IDs).",
-  parameters: updateEntityParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: updateEntityParameters,
+  execute: async (args) => {
     const updatedFields = Object.keys(args.updates).filter(
       (k) => args.updates[k as keyof typeof args.updates] !== undefined
     );
@@ -47,6 +47,6 @@ export const updateEntityTool = tool({
       toolName: "update_entity",
       proposal: args,
       message: `Proposed updating ${args.entityType || "entity"} "${args.entityName}": ${updatedFields.join(", ")}`,
-    };
+    } as ToolExecuteResult;
   },
 });

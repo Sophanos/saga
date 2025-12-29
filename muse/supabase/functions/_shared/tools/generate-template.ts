@@ -5,7 +5,7 @@
  * Actual execution happens in ai-saga execute_tool path.
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { templateComplexitySchema, type ToolExecuteResult } from "./types.ts";
 
@@ -32,8 +32,8 @@ export type GenerateTemplateArgs = z.infer<typeof generateTemplateParameters>;
 export const generateTemplateTool = tool({
   description:
     "Propose generating a custom project template with entity types, relationship kinds, linter rules, and UI configuration tailored to the story",
-  parameters: generateTemplateParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: generateTemplateParameters,
+  execute: async (args) => {
     const preview =
       args.storyDescription.length > 60
         ? args.storyDescription.slice(0, 60) + "..."
@@ -43,6 +43,6 @@ export const generateTemplateTool = tool({
       toolName: "generate_template",
       proposal: args,
       message: `Proposed template generation for: "${preview}"${genreDesc}`,
-    };
+    } as ToolExecuteResult;
   },
 });

@@ -10,7 +10,7 @@
  * Actual execution happens in ai-saga execute_tool path.
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import {
   analysisScopeSchema,
@@ -41,14 +41,14 @@ export type CheckLogicArgs = z.infer<typeof checkLogicParameters>;
 export const checkLogicTool = tool({
   description:
     "Validate story logic against explicit rules and world state. Checks for magic rule violations, causality breaks, knowledge state violations, and power scaling issues. Only flags issues based on explicitly defined rules, not inferred constraints.",
-  parameters: checkLogicParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: checkLogicParameters,
+  execute: async (args) => {
     const scopeDesc = args.scope || "document";
     const focusDesc = args.focus?.join(", ") || "all areas";
     return {
       toolName: "check_logic",
       proposal: args,
       message: `Proposed logic check on ${scopeDesc} focusing on ${focusDesc}`,
-    };
+    } as ToolExecuteResult;
   },
 });

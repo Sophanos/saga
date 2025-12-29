@@ -251,7 +251,7 @@ serve(async (req) => {
 
     // Generate embeddings via DeepInfra
     const embeddingResult = await generateEmbeddings(inputsValidation.data, {
-      model: request.model,
+      embedModel: request.model,
       dimensions: request.dimensions,
     });
 

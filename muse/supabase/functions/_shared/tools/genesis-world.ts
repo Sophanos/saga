@@ -5,7 +5,7 @@
  * Actual execution happens in ai-saga execute_tool path.
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { genesisDetailLevelSchema, type ToolExecuteResult } from "./types.ts";
 
@@ -39,13 +39,13 @@ export type GenesisWorldArgs = z.infer<typeof genesisWorldParameters>;
 export const genesisWorldTool = tool({
   description:
     "Propose generating a complete world scaffold with entities, relationships, and optional story outline from a story description",
-  parameters: genesisWorldParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: genesisWorldParameters,
+  execute: async (args) => {
     const preview = args.prompt.length > 80 ? args.prompt.slice(0, 80) + "..." : args.prompt;
     return {
       toolName: "genesis_world",
       proposal: args,
       message: `Proposed world generation for: "${preview}"`,
-    };
+    } as ToolExecuteResult;
   },
 });

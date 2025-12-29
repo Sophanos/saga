@@ -2,7 +2,7 @@
  * delete_entity tool definition
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { entityTypeSchema, type ToolExecuteResult } from "./types.ts";
 
@@ -16,12 +16,12 @@ export type DeleteEntityArgs = z.infer<typeof deleteEntityParameters>;
 
 export const deleteEntityTool = tool({
   description: "Propose deleting an entity from the author's world. This is a destructive action that will remove the entity and its relationships.",
-  parameters: deleteEntityParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: deleteEntityParameters,
+  execute: async (args) => {
     return {
       toolName: "delete_entity",
       proposal: args,
       message: `Proposed deleting ${args.entityType || "entity"}: "${args.entityName}"${args.reason ? ` (${args.reason})` : ""}`,
-    };
+    } as ToolExecuteResult;
   },
 });

@@ -35,8 +35,8 @@ import {
 } from "../_shared/errors.ts";
 import {
   generateEmbedding,
+  rerankDocuments,
   DeepInfraError,
-  getDeepInfraConfig,
 } from "../_shared/deepinfra.ts";
 import {
   searchPoints,
@@ -88,23 +88,7 @@ interface SearchResponse {
 }
 
 /**
- * DeepInfra reranker request
- */
-interface RerankRequest {
-  queries: string[];
-  documents: string[];
-}
-
-/**
- * DeepInfra reranker response
- */
-interface RerankResponse {
-  scores: number[];
-  input_tokens: number;
-}
-
-/**
- * Rerank results using DeepInfra reranker
+ * Rerank results using DeepInfra reranker (via shared module)
  */
 async function rerankResults(
   query: string,
@@ -113,39 +97,17 @@ async function rerankResults(
 ): Promise<SemanticResult[]> {
   if (results.length === 0) return results;
 
-  const config = getDeepInfraConfig();
+  // Prepare documents for reranking
   const documents = results.map((r) => `${r.title}\n${r.preview || ""}`);
 
-  const rerankUrl = `${config.rerankUrl}/${config.rerankModel}`;
-  const response = await fetch(rerankUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      queries: [query],
-      documents,
-    } as RerankRequest),
-  });
+  // Use shared reranker
+  const { ranking } = await rerankDocuments(query, documents, { topN: topK });
 
-  if (!response.ok) {
-    console.warn("[ai-search] Reranker failed, returning vector scores only");
-    return results.slice(0, topK);
-  }
-
-  const data = (await response.json()) as RerankResponse;
-
-  // Attach rerank scores and sort
-  const reranked = results
-    .map((result, idx) => ({
-      ...result,
-      rerankScore: data.scores[idx] ?? 0,
-    }))
-    .sort((a, b) => (b.rerankScore ?? 0) - (a.rerankScore ?? 0))
-    .slice(0, topK);
-
-  return reranked;
+  // Map ranking back to SemanticResults with rerank scores
+  return ranking.map((item) => ({
+    ...results[item.originalIndex],
+    rerankScore: item.score,
+  }));
 }
 
 /**

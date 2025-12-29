@@ -5,7 +5,7 @@
  * Actual execution happens in ai-saga execute_tool path.
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { analysisScopeSchema, consistencyFocusSchema, type ToolExecuteResult } from "./types.ts";
 
@@ -28,14 +28,14 @@ export type CheckConsistencyArgs = z.infer<typeof checkConsistencyParameters>;
 export const checkConsistencyTool = tool({
   description:
     "Propose checking the narrative for consistency issues, contradictions, plot holes, and timeline errors",
-  parameters: checkConsistencyParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: checkConsistencyParameters,
+  execute: async (args) => {
     const scopeDesc = args.scope || "document";
     const focusDesc = args.focus?.length ? ` (focus: ${args.focus.join(", ")})` : "";
     return {
       toolName: "check_consistency",
       proposal: args,
       message: `Proposed consistency check on ${scopeDesc}${focusDesc}`,
-    };
+    } as ToolExecuteResult;
   },
 });

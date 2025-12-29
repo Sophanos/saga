@@ -5,7 +5,7 @@
  * Called from ai-saga endpoint when kind: "execute_tool".
  */
 
-import { generateText } from "https://esm.sh/ai@4.0.0";
+import { generateText } from "https://esm.sh/ai@6.0.0";
 import { getOpenRouterModel } from "../providers.ts";
 import {
   GENESIS_SYSTEM_PROMPT,
@@ -212,7 +212,7 @@ export async function executeGenesisWorld(
     model,
     system: GENESIS_SYSTEM_PROMPT,
     prompt: userPrompt,
-    maxTokens: 4096,
+    maxOutputTokens: 4096,
     temperature: 0.8,
   });
 
@@ -356,7 +356,7 @@ export async function executeDetectEntities(
     model,
     system: DETECT_SYSTEM,
     prompt: userPrompt,
-    maxTokens: 2048,
+    maxOutputTokens: 2048,
     temperature: 0.3,
   });
 
@@ -463,7 +463,7 @@ export async function executeCheckConsistency(
     model,
     system: CONSISTENCY_SYSTEM,
     prompt: userPrompt,
-    maxTokens: 2048,
+    maxOutputTokens: 2048,
     temperature: 0.3,
   });
 
@@ -582,7 +582,7 @@ export async function executeGenerateTemplate(
     model,
     system: TEMPLATE_SYSTEM,
     prompt: userPrompt,
-    maxTokens: 3000,
+    maxOutputTokens: 3000,
     temperature: 0.7,
   });
 
@@ -786,7 +786,7 @@ export async function executeClarityCheck(
     model,
     system: CLARITY_CHECK_SYSTEM,
     prompt: userPrompt,
-    maxTokens: 2048,
+    maxOutputTokens: 2048,
     temperature: 0.2,
   });
 
@@ -997,7 +997,7 @@ export async function executeCheckLogic(
     model,
     system: LOGIC_CHECK_SYSTEM,
     prompt: userPrompt,
-    maxTokens: 2048,
+    maxOutputTokens: 2048,
     temperature: 0.3,
   });
 
@@ -1104,7 +1104,7 @@ export async function executeNameGenerator(
     model,
     system: NAME_GENERATOR_SYSTEM,
     prompt: userPrompt,
-    maxTokens: 2048,
+    maxOutputTokens: 2048,
     temperature: 0.8,
   });
 

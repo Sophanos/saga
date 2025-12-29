@@ -2,7 +2,7 @@
  * create_relationship tool definition
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { relationTypeSchema, type ToolExecuteResult } from "./types.ts";
 
@@ -19,12 +19,12 @@ export type CreateRelationshipArgs = z.infer<typeof createRelationshipParameters
 
 export const createRelationshipTool = tool({
   description: "Propose creating a relationship between two entities in the author's world",
-  parameters: createRelationshipParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: createRelationshipParameters,
+  execute: async (args) => {
     return {
       toolName: "create_relationship",
       proposal: args,
       message: `Proposed relationship: ${args.sourceName} → ${args.type} → ${args.targetName}${args.bidirectional ? " (bidirectional)" : ""}`,
-    };
+    } as ToolExecuteResult;
   },
 });

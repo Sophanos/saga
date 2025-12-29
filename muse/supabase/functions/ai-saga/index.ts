@@ -7,7 +7,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { streamText } from "https://esm.sh/ai@4.0.0";
+import { streamText } from "https://esm.sh/ai@6.0.0";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import {
   createSSEStream,
@@ -183,11 +183,11 @@ async function handleChat(
     for await (const part of fullStream) {
       switch (part.type) {
         case "text-delta":
-          sse.sendDelta(part.textDelta);
+          sse.sendDelta(part.text);
           break;
 
         case "tool-call":
-          sse.sendTool(part.toolCallId, part.toolName, part.args);
+          sse.sendTool(part.toolCallId, part.toolName, part.input);
           break;
 
         case "finish":

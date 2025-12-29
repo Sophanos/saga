@@ -2,7 +2,7 @@
  * create_entity tool definition
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { entityTypeSchema, itemCategorySchema, type ToolExecuteResult } from "./types.ts";
 
@@ -35,12 +35,12 @@ export type CreateEntityArgs = z.infer<typeof createEntityParameters>;
 
 export const createEntityTool = tool({
   description: "Propose creating a new entity (character, location, item, faction, magic system, event, or concept) in the author's world",
-  parameters: createEntityParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: createEntityParameters,
+  execute: async (args) => {
     return {
       toolName: "create_entity",
       proposal: args,
       message: `Proposed creating ${args.type}: "${args.name}"`,
-    };
+    } as ToolExecuteResult;
   },
 });

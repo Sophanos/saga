@@ -2,7 +2,7 @@
  * delete_relationship tool definition
  */
 
-import { tool } from "https://esm.sh/ai@4.0.0";
+import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { relationTypeSchema, type ToolExecuteResult } from "./types.ts";
 
@@ -17,12 +17,12 @@ export type DeleteRelationshipArgs = z.infer<typeof deleteRelationshipParameters
 
 export const deleteRelationshipTool = tool({
   description: "Propose deleting a relationship between two entities",
-  parameters: deleteRelationshipParameters,
-  execute: async (args): Promise<ToolExecuteResult> => {
+  inputSchema: deleteRelationshipParameters,
+  execute: async (args) => {
     return {
       toolName: "delete_relationship",
       proposal: args,
       message: `Proposed deleting relationship: ${args.sourceName} → ${args.type} → ${args.targetName}${args.reason ? ` (${args.reason})` : ""}`,
-    };
+    } as ToolExecuteResult;
   },
 });
