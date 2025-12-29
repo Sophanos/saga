@@ -9,6 +9,13 @@ Mythos IDE is an AI-powered creative writing environment for fiction authors. It
 ## Commands
 
 ```bash
+# Task Tracking (beads)
+bd ready             # List tasks with no blockers
+bd create "Title" -p 1  # Create P1 task
+bd show <id>         # View task details
+bd update <id> -s in-progress  # Start task
+bd close <id>        # Complete task
+
 # Development
 bun install          # Install dependencies
 bun run dev          # Start all packages in dev mode (Turborepo)
