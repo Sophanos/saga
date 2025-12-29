@@ -1,13 +1,18 @@
 import { Command as CmdkCommand } from "cmdk";
+import { Lock } from "lucide-react";
 import { cn } from "@mythos/ui";
 import type { Command } from "../../commands";
 
 interface CommandItemProps {
   command: Command;
   onSelect: () => void;
+  /** Whether the command is locked (progressive disclosure) */
+  isLocked?: boolean;
+  /** Hint for unlocking this command */
+  unlockHint?: string;
 }
 
-export function CommandItem({ command, onSelect }: CommandItemProps) {
+export function CommandItem({ command, onSelect, isLocked, unlockHint }: CommandItemProps) {
   const Icon = command.icon;
 
   return (
@@ -19,27 +24,38 @@ export function CommandItem({ command, onSelect }: CommandItemProps) {
         "text-mythos-text-secondary",
         "data-[selected=true]:bg-mythos-bg-tertiary",
         "data-[selected=true]:text-mythos-text-primary",
-        "outline-none"
+        "outline-none",
+        isLocked && "opacity-50 cursor-not-allowed"
       )}
+      title={isLocked ? unlockHint : undefined}
     >
       {Icon && (
-        <div className="w-8 h-8 rounded-md bg-mythos-bg-tertiary flex items-center justify-center shrink-0">
+        <div className={cn(
+          "w-8 h-8 rounded-md bg-mythos-bg-tertiary flex items-center justify-center shrink-0",
+          isLocked && "bg-mythos-bg-tertiary/50"
+        )}>
           <Icon className="w-4 h-4 text-mythos-text-muted" />
         </div>
       )}
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium">{command.label}</div>
-        {command.description && (
+        {isLocked && unlockHint ? (
+          <div className="text-xs text-mythos-accent-amber/80 truncate">
+            {unlockHint}
+          </div>
+        ) : command.description ? (
           <div className="text-xs text-mythos-text-muted truncate">
             {command.description}
           </div>
-        )}
+        ) : null}
       </div>
-      {command.shortcut && (
+      {isLocked ? (
+        <Lock className="w-4 h-4 text-mythos-text-muted/50" />
+      ) : command.shortcut ? (
         <kbd className="px-2 py-1 text-[10px] font-mono bg-mythos-bg-primary/50 text-mythos-text-muted rounded border border-mythos-text-muted/20">
           {command.shortcut}
         </kbd>
-      )}
+      ) : null}
     </CmdkCommand.Item>
   );
 }

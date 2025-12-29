@@ -85,3 +85,14 @@ export {
   type ToolCallResult,
   type EditorContext as AgentEditorContext,
 } from "./agentClient";
+
+export {
+  runGenesisViaEdge,
+  GenesisApiError,
+  isGenesisApiError,
+  type GenesisRequestPayload,
+  type GenesisResponsePayload,
+  type GeneratedEntity,
+  type GenesisRequestOptions,
+  type GenesisApiErrorCode,
+} from "./genesisClient";

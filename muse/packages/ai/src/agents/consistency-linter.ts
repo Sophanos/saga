@@ -1,6 +1,29 @@
 import { NarrativeAgent, type AnalysisContext } from "./base";
 import { CONSISTENCY_LINTER_SYSTEM } from "../prompts/linter";
 
+/**
+ * Canon choice for resolving a contradiction
+ */
+export interface CanonChoice {
+  id: string;
+  label: string;
+  explanation: string;
+  entityName?: string;
+  propertyKey?: string;
+  value?: unknown;
+}
+
+/**
+ * Evidence of a contradiction
+ */
+export interface ContradictionEvidence {
+  line: number;
+  text: string;
+}
+
+/**
+ * A consistency issue found in the narrative
+ */
 export interface ConsistencyIssue {
   type: "character" | "world" | "plot" | "timeline";
   severity: "info" | "warning" | "error";
@@ -8,6 +31,12 @@ export interface ConsistencyIssue {
   message: string;
   suggestion: string;
   relatedLocations?: { line: number; text: string }[];
+  
+  // Contradiction-specific fields
+  isContradiction?: boolean;
+  canonQuestion?: string;
+  canonChoices?: CanonChoice[];
+  evidence?: ContradictionEvidence[];
 }
 
 export interface ConsistencyResult {

@@ -42,3 +42,17 @@ export {
   CHAT_NO_CONTEXT,
   CHAT_MENTION_CONTEXT,
 } from "./chat.ts";
+
+// Agent prompts (with tool calling)
+export {
+  AGENT_SYSTEM,
+  AGENT_CONTEXT_TEMPLATE,
+  AGENT_EDITOR_CONTEXT,
+} from "./agent.ts";
+
+// Genesis wizard prompts (world generation)
+export {
+  GENESIS_SYSTEM_PROMPT,
+  GENESIS_USER_TEMPLATE,
+  buildGenesisUserPrompt,
+} from "./genesis.ts";

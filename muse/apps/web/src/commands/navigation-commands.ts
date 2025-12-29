@@ -46,6 +46,7 @@ export const navigationCommands: Command[] = [
     category: "navigation",
     keywords: ["graph", "world", "visualization", "relationships", "network"],
     shortcut: "⌘G",
+    requiredModule: "world_graph",
     when: (ctx) => ctx.state.project.currentProject !== null,
     execute: (ctx) => {
       ctx.setCanvasView("worldGraph");
@@ -85,6 +86,7 @@ export const navigationCommands: Command[] = [
     category: "navigation",
     keywords: ["toggle", "manifest", "sidebar", "left", "panel"],
     shortcut: "⌘B",
+    requiredModule: "manifest",
     execute: (ctx) => {
       ctx.store.getState().toggleManifest();
     },
@@ -97,6 +99,7 @@ export const navigationCommands: Command[] = [
     category: "navigation",
     keywords: ["toggle", "console", "sidebar", "right", "panel"],
     shortcut: "⌘J",
+    requiredModule: "console",
     execute: (ctx) => {
       ctx.store.getState().toggleConsole();
     },

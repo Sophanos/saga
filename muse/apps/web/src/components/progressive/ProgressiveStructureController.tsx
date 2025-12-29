@@ -230,9 +230,53 @@ export function ProgressiveStructureController({
   ]);
 
   // ========================================================================
-  // Writing Time Tracking
+  // Writing Time Tracking with Enhanced Idle Detection
   // ========================================================================
 
+  // Track whether user has been active in the current interval
+  const isActiveRef = useRef<boolean>(false);
+
+  // Enhanced activity tracking with multiple event sources
+  useEffect(() => {
+    if (!editorInstance) return;
+
+    const markActive = () => {
+      lastActivityRef.current = Date.now();
+      isActiveRef.current = true;
+    };
+
+    // Type-safe editor interface
+    interface EditorWithEvents {
+      on?: (event: string, handler: () => void) => void;
+      off?: (event: string, handler: () => void) => void;
+      view?: { dom?: HTMLElement };
+    }
+    const editor = editorInstance as EditorWithEvents;
+
+    // Subscribe to multiple editor events for better activity detection
+    editor.on?.("update", markActive);
+    editor.on?.("selectionUpdate", markActive);
+
+    // Also track keyboard and mouse events on the editor element
+    const editorElement = editor.view?.dom;
+    if (editorElement) {
+      editorElement.addEventListener("keydown", markActive);
+      editorElement.addEventListener("mousedown", markActive);
+      editorElement.addEventListener("input", markActive);
+    }
+
+    return () => {
+      editor.off?.("update", markActive);
+      editor.off?.("selectionUpdate", markActive);
+      if (editorElement) {
+        editorElement.removeEventListener("keydown", markActive);
+        editorElement.removeEventListener("mousedown", markActive);
+        editorElement.removeEventListener("input", markActive);
+      }
+    };
+  }, [editorInstance]);
+
+  // Interval-based time accumulation with idle detection
   useEffect(() => {
     if (!projectId) return;
 
@@ -240,31 +284,20 @@ export function ProgressiveStructureController({
       const now = Date.now();
       const timeSinceActivity = now - lastActivityRef.current;
 
-      // Only count time if user was active recently
-      if (timeSinceActivity < IDLE_THRESHOLD) {
+      // Only count time if user was active recently and in this interval
+      if (timeSinceActivity < IDLE_THRESHOLD && isActiveRef.current) {
         addWritingTime(projectId, WRITING_TIME_INTERVAL / 1000);
+      }
+
+      // Reset active flag - will be set again by next activity
+      // If idle threshold exceeded, force reset
+      if (timeSinceActivity >= IDLE_THRESHOLD) {
+        isActiveRef.current = false;
       }
     }, WRITING_TIME_INTERVAL);
 
     return () => clearInterval(interval);
   }, [projectId, addWritingTime]);
-
-  // Track editor activity
-  useEffect(() => {
-    if (!editorInstance) return;
-
-    const handleUpdate = () => {
-      lastActivityRef.current = Date.now();
-    };
-
-    // Subscribe to editor updates
-    const editor = editorInstance as { on?: (event: string, handler: () => void) => void; off?: (event: string, handler: () => void) => void };
-    editor.on?.("update", handleUpdate);
-
-    return () => {
-      editor.off?.("update", handleUpdate);
-    };
-  }, [editorInstance]);
 
   // ========================================================================
   // Phase 4: Feature Unlock Suggestions

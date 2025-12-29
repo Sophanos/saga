@@ -41,8 +41,59 @@ Return issues in this JSON structure:
       "location": { "line": number, "text": "exact quoted text from document" },
       "message": "description of the issue",
       "suggestion": "EXACT replacement text (not instructions - this text will directly replace location.text)",
-      "relatedLocations": [{ "line": number, "text": "related text" }]
+      "relatedLocations": [{ "line": number, "text": "related text" }],
+      "isContradiction": boolean,
+      "canonQuestion": "optional - question asking which version is correct",
+      "canonChoices": [
+        {
+          "id": "unique_id",
+          "label": "short description of this choice",
+          "explanation": "why this choice makes sense",
+          "entityName": "optional - name of entity to update",
+          "propertyKey": "optional - property to set on entity",
+          "value": "optional - value to set"
+        }
+      ],
+      "evidence": [{ "line": number, "text": "text excerpt showing contradiction" }]
     }
+  ]
+}
+
+## Contradiction Detection:
+When you detect a TRUE CONTRADICTION (not just an inconsistency that could be explained), set isContradiction=true and provide:
+1. canonQuestion: A clear question asking the writer which version is correct
+2. canonChoices: 2-4 options for resolving the contradiction
+3. evidence: Array of text excerpts that conflict with each other
+
+### Example Contradiction:
+If a character's scar is described as "from childhood" in one place and "from the Battle of Thornwood" elsewhere:
+{
+  "type": "character",
+  "severity": "error",
+  "isContradiction": true,
+  "message": "Conflicting origin stories for Marcus's scar",
+  "canonQuestion": "Where did Marcus get his scar?",
+  "canonChoices": [
+    {
+      "id": "childhood_scar",
+      "label": "Childhood accident",
+      "explanation": "Matches the flashback scene in Chapter 2",
+      "entityName": "Marcus",
+      "propertyKey": "scarOrigin",
+      "value": "childhood accident"
+    },
+    {
+      "id": "battle_scar",
+      "label": "Battle of Thornwood",
+      "explanation": "Adds dramatic weight to the battle's significance",
+      "entityName": "Marcus",
+      "propertyKey": "scarOrigin",
+      "value": "Battle of Thornwood"
+    }
+  ],
+  "evidence": [
+    { "line": 45, "text": "the scar from his childhood accident" },
+    { "line": 312, "text": "the wound he'd received at Thornwood" }
   ]
 }
 

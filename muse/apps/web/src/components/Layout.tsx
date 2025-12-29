@@ -12,7 +12,7 @@ import { CommandPalette } from "./command-palette";
 import { ModalHost } from "./modals";
 import { ProgressiveNudge, ProgressiveStructureController } from "./progressive";
 import { useMythosStore } from "../stores";
-import { useGlobalShortcuts } from "../hooks";
+import { useGlobalShortcuts, useProgressiveLinter } from "../hooks";
 import { useProgressivePanelVisibility } from "@mythos/state";
 
 export function Layout() {
@@ -25,6 +25,9 @@ export function Layout() {
 
   // Enable global keyboard shortcuts
   useGlobalShortcuts();
+
+  // Progressive linter for Phase 2 → 3 transition (detects contradictions)
+  useProgressiveLinter();
 
   const handleClickOutside = () => {
     if (hudEntity) {

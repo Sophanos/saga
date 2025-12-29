@@ -16,6 +16,7 @@ export const aiCommands: Command[] = [
     category: "ai",
     keywords: ["chat", "ai", "ask", "question", "help", "assistant"],
     shortcut: "⌘/",
+    requiredModule: "console",
     when: (ctx) => ctx.state.project.currentProject !== null,
     execute: (ctx) => {
       ctx.setActiveTab("chat");
@@ -46,6 +47,7 @@ export const aiCommands: Command[] = [
     category: "ai",
     keywords: ["lint", "check", "consistency", "errors", "issues", "validate"],
     shortcut: "⌘⇧L",
+    requiredModule: "console",
     when: (ctx) => ctx.state.project.currentProject !== null,
     execute: (ctx) => {
       ctx.setActiveTab("linter");
@@ -60,6 +62,7 @@ export const aiCommands: Command[] = [
     icon: Brain,
     category: "ai",
     keywords: ["analyze", "style", "coach", "feedback", "pacing", "writing"],
+    requiredModule: "console",
     when: (ctx) => ctx.state.project.currentProject !== null,
     execute: (ctx) => {
       ctx.setActiveTab("coach");
@@ -72,6 +75,7 @@ export const aiCommands: Command[] = [
     icon: Zap,
     category: "ai",
     keywords: ["dynamics", "interactions", "relationships", "extract"],
+    requiredModule: "console",
     when: (ctx) => ctx.state.project.currentProject !== null,
     execute: (ctx) => {
       ctx.setActiveTab("dynamics");

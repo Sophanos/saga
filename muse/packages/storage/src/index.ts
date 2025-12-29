@@ -29,6 +29,96 @@ export function createStorage() {
 }
 
 /**
+ * StateStorage interface compatible with zustand persist
+ */
+export interface StateStorage {
+  getItem: (name: string) => string | null | Promise<string | null>;
+  setItem: (name: string, value: string) => void | Promise<void>;
+  removeItem: (name: string) => void | Promise<void>;
+}
+
+/**
+ * Create a zustand-compatible storage adapter
+ * Automatically detects platform and returns appropriate storage
+ *
+ * For web: Uses localStorage (synchronous)
+ * For native: Uses AsyncStorage (asynchronous)
+ */
+export function createStorageAdapter(): StateStorage {
+  // Check if we're in a browser environment
+  if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+    // Web: Return synchronous localStorage wrapper
+    return {
+      getItem: (name: string): string | null => {
+        try {
+          return localStorage.getItem(name);
+        } catch {
+          console.warn(`[Storage] Failed to get item: ${name}`);
+          return null;
+        }
+      },
+      setItem: (name: string, value: string): void => {
+        try {
+          localStorage.setItem(name, value);
+        } catch (error) {
+          console.warn(`[Storage] Failed to set item: ${name}`, error);
+        }
+      },
+      removeItem: (name: string): void => {
+        try {
+          localStorage.removeItem(name);
+        } catch {
+          console.warn(`[Storage] Failed to remove item: ${name}`);
+        }
+      },
+    };
+  }
+
+  // Native: Return AsyncStorage wrapper (lazy loaded)
+  let asyncStorageModule: typeof import("@react-native-async-storage/async-storage").default | null = null;
+
+  const getAsyncStorage = async () => {
+    if (!asyncStorageModule) {
+      try {
+        const module = await import("@react-native-async-storage/async-storage");
+        asyncStorageModule = module.default;
+      } catch (error) {
+        console.error("[Storage] AsyncStorage not available:", error);
+        throw new Error("AsyncStorage not available");
+      }
+    }
+    return asyncStorageModule;
+  };
+
+  return {
+    getItem: async (name: string): Promise<string | null> => {
+      try {
+        const storage = await getAsyncStorage();
+        return storage.getItem(name);
+      } catch {
+        return null;
+      }
+    },
+    setItem: async (name: string, value: string): Promise<void> => {
+      try {
+        const storage = await getAsyncStorage();
+        await storage.setItem(name, value);
+      } catch (error) {
+        console.warn(`[Storage] Failed to set item: ${name}`, error);
+      }
+    },
+    removeItem: async (name: string): Promise<void> => {
+      try {
+        const storage = await getAsyncStorage();
+        await storage.removeItem(name);
+      } catch {
+        console.warn(`[Storage] Failed to remove item: ${name}`);
+      }
+    },
+  };
+}
+
+/**
  * Helper to create typed storage with JSON serialization
  */
 export function createTypedStorage<T>(

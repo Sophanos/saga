@@ -137,3 +137,7 @@ export { useWorldGraph } from "./useWorldGraph";
 export { useGraphLayout, type LayoutAlgorithm, type LayoutDirection } from "./useGraphLayout";
 export { useToolRuntime } from "./useToolRuntime";
 export type { UseToolRuntimeResult, ToolRuntimeResult } from "./useToolRuntime";
+
+// Progressive linter (Phase 2 → 3 transition)
+export { useProgressiveLinter } from "./useProgressiveLinter";
+export type { UseProgressiveLinterOptions, UseProgressiveLinterResult } from "./useProgressiveLinter";

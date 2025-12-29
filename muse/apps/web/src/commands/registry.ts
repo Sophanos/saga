@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import type { Editor } from "@mythos/editor";
 import type { useMythosStore } from "../stores";
 import type { ModalState } from "../stores";
+import type { UIModuleId } from "@mythos/state";
 
 // Command categories
 export type CommandCategory = "entity" | "ai" | "navigation" | "general";
@@ -31,6 +32,34 @@ export interface Command {
   when?: (ctx: CommandContext) => boolean;
   /** Execute the command */
   execute: (ctx: CommandContext) => void | Promise<void>;
+  /** Required module for progressive disclosure (gardener mode) */
+  requiredModule?: UIModuleId;
+}
+
+// ============================================================================
+// Progressive Disclosure Helpers
+// ============================================================================
+
+/**
+ * Get unlock hint for a module
+ */
+export function getUnlockHint(module: UIModuleId): string {
+  switch (module) {
+    case "manifest":
+      return "Track entities in your story to unlock the Manifest";
+    case "console":
+      return "Resolve a consistency issue to unlock the Console";
+    case "world_graph":
+      return "Add 5+ characters to unlock the World Graph";
+    case "timeline":
+      return "Continue writing to unlock the Timeline";
+    case "hud":
+      return "Keep writing to unlock the HUD";
+    case "entity_mentions":
+      return "Track entities to unlock mentions";
+    default:
+      return "Keep writing to unlock this feature";
+  }
 }
 
 /**

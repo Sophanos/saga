@@ -1,15 +1,36 @@
-import { BookOpen, Settings, Sparkles, Play, FileDown, FileUp } from "lucide-react";
+import { BookOpen, Settings, Sparkles, Play, FileDown, FileUp, Clock } from "lucide-react";
 import { Button } from "@mythos/ui";
 import { ModeToggle } from "./ModeToggle";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { CollaboratorsBar } from "./collaboration/CollaboratorsBar";
 import { useApiKey } from "../hooks/useApiKey";
 import { useCurrentProject, useMythosStore } from "../stores";
+import { useActiveTotalWritingTime, useIsGardenerMode } from "@mythos/state";
+
+/**
+ * Format writing time in a human-readable format
+ */
+function formatWritingTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+  return "<1m";
+}
 
 export function Header() {
   const { hasKey } = useApiKey();
   const project = useCurrentProject();
   const openModal = useMythosStore((s) => s.openModal);
+  
+  // Progressive writing time (gardener mode only)
+  const writingTimeSec = useActiveTotalWritingTime();
+  const isGardener = useIsGardenerMode();
 
   return (
     <header className="h-12 border-b border-mythos-text-muted/20 bg-mythos-bg-secondary flex items-center justify-between px-4">
@@ -25,6 +46,20 @@ export function Header() {
         <span className="text-sm text-mythos-text-secondary">
           {project?.name ?? "Untitled Project"}
         </span>
+        
+        {/* Writing time indicator (gardener mode only) */}
+        {isGardener && writingTimeSec > 60 && (
+          <>
+            <span className="text-mythos-text-muted">|</span>
+            <div
+              className="flex items-center gap-1.5 text-xs text-mythos-text-muted"
+              title="Total writing time for this project"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>{formatWritingTime(writingTimeSec)}</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Actions */}
