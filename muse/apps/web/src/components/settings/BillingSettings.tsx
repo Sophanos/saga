@@ -3,7 +3,7 @@
  * Subscription management, usage dashboard, and billing mode toggle
  */
 
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   X,
   CreditCard,
@@ -107,7 +107,7 @@ interface TierCardProps {
   isLoading: boolean;
 }
 
-function TierCard({
+const TierCard = React.memo(function TierCard({
   tier,
   billingMode,
   isCurrent,
@@ -155,9 +155,9 @@ function TierCard({
         </div>
 
         <ul className="space-y-2">
-          {config.features.map((feature, i) => (
+          {config.features.map((feature) => (
             <li
-              key={i}
+              key={feature}
               className="flex items-center gap-2 text-sm text-mythos-text-muted"
             >
               <Check className="w-3 h-3 text-mythos-accent-green" />
@@ -185,7 +185,48 @@ function TierCard({
       </CardContent>
     </Card>
   );
-}
+});
+
+// Pure helper functions - moved outside component to avoid recreation on each render
+const getTierBadgeColor = (tier: BillingTier) => {
+  switch (tier) {
+    case "free":
+      return "bg-mythos-text-muted/20 text-mythos-text-muted";
+    case "pro":
+      return "bg-mythos-accent-cyan/20 text-mythos-accent-cyan";
+    case "pro_plus":
+      return "bg-mythos-accent-yellow/20 text-mythos-accent-yellow";
+    case "team":
+      return "bg-mythos-accent-purple/20 text-mythos-accent-purple";
+  }
+};
+
+const getModeIcon = (mode: BillingMode) => {
+  switch (mode) {
+    case "managed":
+      return <CreditCard className="w-4 h-4 text-mythos-accent-cyan" />;
+    case "byok":
+      return <Key className="w-4 h-4 text-mythos-accent-cyan" />;
+  }
+};
+
+const getModeLabel = (mode: BillingMode) => {
+  switch (mode) {
+    case "managed":
+      return "Managed";
+    case "byok":
+      return "BYOK";
+  }
+};
+
+const getModeDescription = (mode: BillingMode) => {
+  switch (mode) {
+    case "managed":
+      return "AI tokens included in your plan.";
+    case "byok":
+      return "Bring your own API key. 50% off subscription.";
+  }
+};
 
 export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
   const {
@@ -197,6 +238,8 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
     openCheckout,
     openPortal,
     switchBillingMode,
+    refresh,
+    clearError,
   } = useBilling();
 
   const { key: apiKey, saveKey, hasKey } = useApiKey();
@@ -204,6 +247,11 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
   const [byokKeyInput, setByokKeyInput] = useState(apiKey);
   const [showKey, setShowKey] = useState(false);
   const [activeTab, setActiveTab] = useState<"usage" | "plans">("usage");
+
+  // Sync byokKeyInput when apiKey changes externally
+  useEffect(() => {
+    setByokKeyInput(apiKey);
+  }, [apiKey]);
 
   const handleClose = useCallback(() => {
     setShowByokInput(false);
@@ -227,8 +275,10 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
   const handleByokSubmit = useCallback(async () => {
     if (byokKeyInput.trim()) {
       saveKey(byokKeyInput.trim());
-      await switchBillingMode("byok", byokKeyInput.trim());
-      setShowByokInput(false);
+      const success = await switchBillingMode("byok", byokKeyInput.trim());
+      if (success) {
+        setShowByokInput(false);
+      }
     }
   }, [byokKeyInput, saveKey, switchBillingMode]);
 
@@ -239,50 +289,16 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
     [openCheckout]
   );
 
-  const getTierBadgeColor = (tier: BillingTier) => {
-    switch (tier) {
-      case "free":
-        return "bg-mythos-text-muted/20 text-mythos-text-muted";
-      case "pro":
-        return "bg-mythos-accent-cyan/20 text-mythos-accent-cyan";
-      case "pro_plus":
-        return "bg-mythos-accent-yellow/20 text-mythos-accent-yellow";
-      case "team":
-        return "bg-mythos-accent-purple/20 text-mythos-accent-purple";
-    }
-  };
-
-  const getModeIcon = (mode: BillingMode) => {
-    switch (mode) {
-      case "managed":
-        return <CreditCard className="w-4 h-4 text-mythos-accent-cyan" />;
-      case "byok":
-        return <Key className="w-4 h-4 text-mythos-accent-cyan" />;
-    }
-  };
-
-  const getModeLabel = (mode: BillingMode) => {
-    switch (mode) {
-      case "managed":
-        return "Managed";
-      case "byok":
-        return "BYOK";
-    }
-  };
-
-  const getModeDescription = (mode: BillingMode) => {
-    switch (mode) {
-      case "managed":
-        return "AI tokens included in your plan.";
-      case "byok":
-        return "Bring your own API key. 50% off subscription.";
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="billing-modal-title"
+      onKeyDown={(e) => e.key === 'Escape' && handleClose()}
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-mythos-bg-primary/80 backdrop-blur-sm"
@@ -295,12 +311,13 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-mythos-accent-cyan" />
-              <CardTitle className="text-lg">Billing & Usage</CardTitle>
+              <CardTitle id="billing-modal-title" className="text-lg">Billing & Usage</CardTitle>
             </div>
             <Button
               variant="ghost"
               size="icon"
               onClick={handleClose}
+              aria-label="Close billing settings"
               className="h-8 w-8 text-mythos-text-muted hover:text-mythos-text-primary"
             >
               <X className="w-4 h-4" />
@@ -316,7 +333,13 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
           {error && (
             <div className="flex items-center gap-2 p-3 rounded-md bg-mythos-accent-red/10 border border-mythos-accent-red/30 text-mythos-accent-red text-sm">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{error}</span>
+              <span className="flex-1">{error}</span>
+              <Button variant="ghost" size="sm" onClick={refresh}>
+                Retry
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => clearError()}>
+                <X className="w-3 h-3" />
+              </Button>
             </div>
           )}
 
@@ -363,13 +386,15 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
 
           {/* Billing Mode Toggle */}
           <div className="space-y-3">
-            <h4 className="text-sm font-medium text-mythos-text-primary">
+            <h4 className="text-sm font-medium text-mythos-text-primary" id="billing-mode-label">
               Billing Mode
             </h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div role="radiogroup" aria-labelledby="billing-mode-label" className="grid grid-cols-2 gap-3">
               {(["managed", "byok"] as BillingMode[]).map((mode) => (
                 <button
                   key={mode}
+                  role="radio"
+                  aria-checked={billingMode === mode}
                   onClick={() => handleModeSwitch(mode)}
                   disabled={isLoading}
                   className={cn(
@@ -405,6 +430,7 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <Input
+                      aria-label="OpenRouter API key"
                       type={showKey ? "text" : "password"}
                       value={byokKeyInput}
                       onChange={(e) => setByokKeyInput(e.target.value)}
@@ -416,6 +442,7 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
                       variant="ghost"
                       size="icon"
                       onClick={() => setShowKey(!showKey)}
+                      aria-label={showKey ? "Hide API key" : "Show API key"}
                       className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
                     >
                       {showKey ? (
@@ -456,8 +483,12 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
           </div>
 
           {/* Tab Navigation */}
-          <div className="flex gap-1 p-1 rounded-lg bg-mythos-bg-tertiary/50">
+          <div role="tablist" aria-label="Billing sections" className="flex gap-1 p-1 rounded-lg bg-mythos-bg-tertiary/50">
             <button
+              role="tab"
+              aria-selected={activeTab === "usage"}
+              aria-controls="usage-panel"
+              id="usage-tab"
               onClick={() => setActiveTab("usage")}
               className={cn(
                 "flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors",
@@ -469,6 +500,10 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
               Usage
             </button>
             <button
+              role="tab"
+              aria-selected={activeTab === "plans"}
+              aria-controls="plans-panel"
+              id="plans-tab"
               onClick={() => setActiveTab("plans")}
               className={cn(
                 "flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors",
@@ -483,12 +518,14 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
 
           {/* Tab Content */}
           {activeTab === "usage" ? (
-            <UsageDashboard
-              usage={usage}
-              periodEnd={subscription.currentPeriodEnd ?? undefined}
-            />
+            <div role="tabpanel" id="usage-panel" aria-labelledby="usage-tab">
+              <UsageDashboard
+                usage={usage}
+                periodEnd={subscription.currentPeriodEnd ?? undefined}
+              />
+            </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div role="tabpanel" id="plans-panel" aria-labelledby="plans-tab" className="grid grid-cols-2 gap-4">
               {(["free", "pro", "pro_plus", "team"] as BillingTier[]).map(
                 (tier) => (
                   <TierCard

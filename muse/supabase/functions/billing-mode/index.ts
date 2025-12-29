@@ -33,6 +33,7 @@ import {
   validateRequestBody,
 } from "../_shared/errors.ts";
 import type { BillingMode } from "../_shared/billing.ts";
+import { getAuthenticatedUser, AuthenticatedUser } from "../_shared/auth.ts";
 
 /**
  * Billing mode request interface
@@ -59,41 +60,6 @@ const VALID_BILLING_MODES: BillingMode[] = ["managed", "byok"];
  * BYOK API key prefix for validation (OpenRouter format)
  */
 const BYOK_KEY_PREFIX = "sk-or-";
-
-/**
- * Get authenticated user from request
- */
-async function getAuthenticatedUser(req: Request) {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing Supabase environment variables");
-  }
-
-  const authHeader = req.headers.get("Authorization");
-
-  if (!authHeader) {
-    throw new Error("No authorization header");
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: { Authorization: authHeader },
-    },
-  });
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    throw new Error("Invalid or expired token");
-  }
-
-  return { user, supabase };
-}
 
 /**
  * Validate BYOK API key format
@@ -144,8 +110,22 @@ serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Missing Supabase environment variables");
+    }
+
+    const authHeader = req.headers.get("Authorization");
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: { Authorization: authHeader ?? "" },
+      },
+    });
+
     // Authenticate user
-    const { user, supabase } = await getAuthenticatedUser(req);
+    const user = await getAuthenticatedUser(supabase, authHeader);
 
     // Parse request body
     let body: unknown;

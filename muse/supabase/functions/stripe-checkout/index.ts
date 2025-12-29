@@ -8,8 +8,8 @@
  *
  * Request Body:
  * {
- *   tier: "pro" | "team",           // Subscription tier
- *   billingMode: "monthly" | "annual" // Billing frequency
+ *   tier: "pro" | "pro_plus" | "team",     // Subscription tier
+ *   billingInterval: "monthly" | "annual"  // Billing frequency
  * }
  *
  * Response:
@@ -33,6 +33,7 @@ import {
   ErrorCode,
   validateRequestBody,
 } from "../_shared/errors.ts";
+import { getAuthenticatedUser, AuthenticatedUser } from "../_shared/auth.ts";
 
 // Initialize Stripe
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
@@ -49,6 +50,10 @@ const PRICE_IDS: Record<string, Record<string, string>> = {
     monthly: Deno.env.get("STRIPE_PRICE_PRO_MONTHLY") ?? "",
     annual: Deno.env.get("STRIPE_PRICE_PRO_ANNUAL") ?? "",
   },
+  pro_plus: {
+    monthly: Deno.env.get("STRIPE_PRICE_PRO_PLUS_MONTHLY") ?? "",
+    annual: Deno.env.get("STRIPE_PRICE_PRO_PLUS_ANNUAL") ?? "",
+  },
   team: {
     monthly: Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY") ?? "",
     annual: Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL") ?? "",
@@ -59,43 +64,8 @@ const PRICE_IDS: Record<string, Record<string, string>> = {
  * Checkout request interface
  */
 interface CheckoutRequest {
-  tier: "pro" | "team";
-  billingMode: "monthly" | "annual";
-}
-
-/**
- * Get authenticated user from request
- */
-async function getAuthenticatedUser(req: Request) {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing Supabase environment variables");
-  }
-
-  const authHeader = req.headers.get("Authorization");
-
-  if (!authHeader) {
-    throw new Error("No authorization header");
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: { Authorization: authHeader },
-    },
-  });
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    throw new Error("Invalid or expired token");
-  }
-
-  return { user, supabase };
+  tier: "pro" | "pro_plus" | "team";
+  billingInterval: "monthly" | "annual";
 }
 
 /**
@@ -157,8 +127,22 @@ serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Missing Supabase environment variables");
+    }
+
+    const authHeader = req.headers.get("Authorization");
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: { Authorization: authHeader ?? "" },
+      },
+    });
+
     // Authenticate user
-    const { user, supabase } = await getAuthenticatedUser(req);
+    const user = await getAuthenticatedUser(supabase, authHeader);
 
     // Parse request body
     let body: unknown;
@@ -173,7 +157,7 @@ serve(async (req) => {
     }
 
     // Validate required fields
-    const validation = validateRequestBody(body, ["tier", "billingMode"]);
+    const validation = validateRequestBody(body, ["tier", "billingInterval"]);
     if (!validation.valid) {
       return createErrorResponse(
         ErrorCode.VALIDATION_ERROR,
@@ -185,30 +169,30 @@ serve(async (req) => {
     const request = validation.data as unknown as CheckoutRequest;
 
     // Validate tier
-    if (!["pro", "team"].includes(request.tier)) {
+    if (!["pro", "pro_plus", "team"].includes(request.tier)) {
       return createErrorResponse(
         ErrorCode.VALIDATION_ERROR,
-        "Invalid tier. Must be 'pro' or 'team'.",
+        "Invalid tier. Must be 'pro', 'pro_plus', or 'team'.",
         origin
       );
     }
 
-    // Validate billing mode
-    if (!["monthly", "annual"].includes(request.billingMode)) {
+    // Validate billing interval
+    if (!["monthly", "annual"].includes(request.billingInterval)) {
       return createErrorResponse(
         ErrorCode.VALIDATION_ERROR,
-        "Invalid billingMode. Must be 'monthly' or 'annual'.",
+        "Invalid billingInterval. Must be 'monthly' or 'annual'.",
         origin
       );
     }
 
     // Get the price ID
-    const priceId = PRICE_IDS[request.tier]?.[request.billingMode];
+    const priceId = PRICE_IDS[request.tier]?.[request.billingInterval];
 
     if (!priceId) {
       return createErrorResponse(
         ErrorCode.INTERNAL_ERROR,
-        "Price not configured for this tier and billing mode",
+        "Price not configured for this tier and billing interval",
         origin
       );
     }
@@ -239,14 +223,14 @@ serve(async (req) => {
       subscription_data: {
         metadata: {
           tier: request.tier,
-          billing_mode: request.billingMode,
+          billing_interval: request.billingInterval,
           user_id: user.id,
         },
       },
       metadata: {
         user_id: user.id,
         tier: request.tier,
-        billing_mode: request.billingMode,
+        billing_interval: request.billingInterval,
       },
     });
 

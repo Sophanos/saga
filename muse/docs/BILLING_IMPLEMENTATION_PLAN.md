@@ -680,19 +680,31 @@ if (wordsDelta !== 0) {
 
 ## Environment Variables
 
-Add to `.env`:
+The following environment variables must be configured for the billing system:
 
-```bash
-# Stripe
-STRIPE_SECRET_KEY=sk_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PRICE_PRO_MANAGED=price_...
-STRIPE_PRICE_PRO_BYOK=price_...
-STRIPE_PRICE_PRO_PLUS_MANAGED=price_...
-STRIPE_PRICE_PRO_PLUS_BYOK=price_...
-STRIPE_PRICE_TEAM_MANAGED=price_...
-STRIPE_PRICE_TEAM_BYOK=price_...
-```
+### Stripe Configuration
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `STRIPE_SECRET_KEY` | Stripe API secret key | Yes |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret | Yes |
+| `STRIPE_PRICE_PRO_MONTHLY` | Price ID for Pro tier monthly | Yes |
+| `STRIPE_PRICE_PRO_ANNUAL` | Price ID for Pro tier annual | Yes |
+| `STRIPE_PRICE_PRO_PLUS_MONTHLY` | Price ID for Pro+ tier monthly | Yes |
+| `STRIPE_PRICE_PRO_PLUS_ANNUAL` | Price ID for Pro+ tier annual | Yes |
+| `STRIPE_PRICE_TEAM_MONTHLY` | Price ID for Team tier monthly | Yes |
+| `STRIPE_PRICE_TEAM_ANNUAL` | Price ID for Team tier annual | Yes |
+
+### AI/API Configuration
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENROUTER_API_KEY` | OpenRouter API key for managed billing mode | Yes (for managed mode) |
+
+### Supabase Configuration
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `SUPABASE_URL` | Supabase project URL | Yes |
+| `SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key | Yes (for webhooks) |
 
 ---
 

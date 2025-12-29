@@ -31,6 +31,7 @@ import {
   createSuccessResponse,
   ErrorCode,
 } from "../_shared/errors.ts";
+import { getAuthenticatedUser, AuthenticatedUser } from "../_shared/auth.ts";
 
 // Initialize Stripe
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
@@ -43,41 +44,6 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
  */
 interface PortalRequest {
   returnUrl?: string;
-}
-
-/**
- * Get authenticated user from request
- */
-async function getAuthenticatedUser(req: Request) {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing Supabase environment variables");
-  }
-
-  const authHeader = req.headers.get("Authorization");
-
-  if (!authHeader) {
-    throw new Error("No authorization header");
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: { Authorization: authHeader },
-    },
-  });
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    throw new Error("Invalid or expired token");
-  }
-
-  return { user, supabase };
 }
 
 /**
@@ -119,8 +85,22 @@ serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Missing Supabase environment variables");
+    }
+
+    const authHeader = req.headers.get("Authorization");
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: { Authorization: authHeader ?? "" },
+      },
+    });
+
     // Authenticate user
-    const { user, supabase } = await getAuthenticatedUser(req);
+    const user = await getAuthenticatedUser(supabase, authHeader);
 
     // Parse request body (optional)
     let request: PortalRequest = {};

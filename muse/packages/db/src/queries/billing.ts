@@ -14,6 +14,7 @@ export type SubscriptionStatus =
   | "trialing"
   | "incomplete"
   | "incomplete_expired"
+  | "unpaid"
   | "paused";
 
 // Subscription types (matches subscriptions table schema)
@@ -92,8 +93,8 @@ export interface BillingContextRow {
   tier: SubscriptionTier;
   billing_mode: BillingMode;
   status: SubscriptionStatus;
-  period_start: string;
-  period_end: string;
+  period_start: string | null;
+  period_end: string | null;
   tokens_included: number;
   tokens_used: number;
   tokens_remaining: number;
@@ -119,8 +120,8 @@ export interface BillingContext {
   tier: SubscriptionTier;
   billingMode: BillingMode;
   status: SubscriptionStatus;
-  periodStart: string;
-  periodEnd: string;
+  periodStart: string | null;
+  periodEnd: string | null;
   tokensIncluded: number;
   tokensUsed: number;
   tokensRemaining: number;

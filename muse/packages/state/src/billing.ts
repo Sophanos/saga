@@ -79,6 +79,7 @@ export interface BillingActions {
   setBillingMode: (mode: BillingMode) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  clearError: () => void;
   refresh: () => void;
   reset: () => void;
 }
@@ -131,6 +132,8 @@ export function createBillingStore(storage: StorageAdapter) {
         setLoading: (isLoading) => set({ isLoading }),
 
         setError: (error) => set({ error, isLoading: false }),
+
+        clearError: () => set({ error: null }),
 
         refresh: () => set({ isLoading: true, error: null }),
 

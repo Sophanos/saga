@@ -37,6 +37,7 @@ import {
   createSuccessResponse,
   ErrorCode,
 } from "../_shared/errors.ts";
+import { getAuthenticatedUser, AuthenticatedUser } from "../_shared/auth.ts";
 
 /**
  * Subscription tier types
@@ -81,7 +82,7 @@ interface BillingContextRow {
   ai_coach_enabled: boolean;
   ai_detect_enabled: boolean;
   ai_search_enabled: boolean;
-  max_projects: number;
+  max_projects: number | null;
   is_over_limit: boolean;
 }
 
@@ -167,41 +168,6 @@ function mapStatus(status: string): SubscriptionStatus {
   return validStatuses.includes(normalized) ? normalized : "active";
 }
 
-/**
- * Get authenticated user from request
- */
-async function getAuthenticatedUser(req: Request) {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing Supabase environment variables");
-  }
-
-  const authHeader = req.headers.get("Authorization");
-
-  if (!authHeader) {
-    return { user: null, supabase: null };
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: { Authorization: authHeader },
-    },
-  });
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return { user: null, supabase: null };
-  }
-
-  return { user, supabase };
-}
-
 serve(async (req) => {
   const origin = req.headers.get("Origin");
 
@@ -220,12 +186,33 @@ serve(async (req) => {
   }
 
   try {
-    // Try to authenticate user
-    const { user, supabase } = await getAuthenticatedUser(req);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Missing Supabase environment variables");
+    }
+
+    const authHeader = req.headers.get("Authorization");
 
     // Return free tier defaults for unauthenticated users
-    if (!user || !supabase) {
+    if (!authHeader) {
       console.log("[billing-subscription] Unauthenticated user, returning free tier defaults");
+      return createSuccessResponse(FREE_TIER_DEFAULTS, origin);
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: { Authorization: authHeader },
+      },
+    });
+
+    // Try to authenticate user
+    let user: AuthenticatedUser;
+    try {
+      user = await getAuthenticatedUser(supabase, authHeader);
+    } catch {
+      console.log("[billing-subscription] Invalid auth, returning free tier defaults");
       return createSuccessResponse(FREE_TIER_DEFAULTS, origin);
     }
 

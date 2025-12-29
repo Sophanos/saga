@@ -21,6 +21,7 @@ import {
   type Subscription,
   type Usage,
 } from "@mythos/state";
+import { shallow } from "zustand/shallow";
 import { webStorage } from "@mythos/storage";
 
 // Create the billing store with web storage adapter
@@ -39,7 +40,7 @@ export const useBillingLoading = () =>
   useBillingLoadingSelector(useBillingStore);
 export const useBillingError = () => useBillingErrorSelector(useBillingStore);
 
-// Re-export types for convenience
+// Re-export types and utilities for convenience
 export type {
   BillingStore,
   BillingState,
@@ -49,3 +50,6 @@ export type {
   Subscription,
   Usage,
 };
+
+// Export shallow for custom selectors
+export { shallow };

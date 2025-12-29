@@ -49,21 +49,21 @@ function StatCard({ label, value, subtext, icon, className }: StatCardProps) {
   );
 }
 
+// Pure helper function - moved outside component to avoid recreation on each render
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+
 export function UsageDashboard({
   usage,
   periodStart,
   periodEnd,
   className,
 }: UsageDashboardProps) {
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
   // Calculate current period if not provided
   const now = new Date();
   const defaultPeriodStart = new Date(now.getFullYear(), now.getMonth(), 1);

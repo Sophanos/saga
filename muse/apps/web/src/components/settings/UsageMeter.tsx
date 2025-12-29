@@ -59,7 +59,14 @@ export function UsageMeter({
       </div>
 
       {/* Progress bar */}
-      <div className="h-2 w-full rounded-full bg-mythos-bg-tertiary overflow-hidden">
+      <div
+        role="progressbar"
+        aria-valuenow={Math.min(percentage, 100)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${label}: ${percentage.toFixed(0)}% used`}
+        className="h-2 w-full rounded-full bg-mythos-bg-tertiary overflow-hidden"
+      >
         <div
           className={cn(
             "h-full rounded-full transition-all duration-300",

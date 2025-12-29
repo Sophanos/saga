@@ -8,7 +8,7 @@ CREATE TYPE billing_mode AS ENUM ('managed', 'byok');
 CREATE TYPE subscription_tier AS ENUM ('free', 'pro', 'pro_plus', 'team');
 
 -- Subscription status enum
-CREATE TYPE subscription_status AS ENUM ('active', 'canceled', 'past_due', 'trialing', 'incomplete', 'incomplete_expired', 'paused');
+CREATE TYPE subscription_status AS ENUM ('active', 'canceled', 'past_due', 'trialing', 'incomplete', 'incomplete_expired', 'unpaid', 'paused');
 
 -- Subscriptions table
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -60,7 +60,11 @@ CREATE TABLE IF NOT EXISTS token_usage (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
 
   -- One usage record per user per period
-  UNIQUE(user_id, period_start, period_end)
+  UNIQUE(user_id, period_start, period_end),
+
+  -- Token values must be non-negative
+  CONSTRAINT tokens_included_positive CHECK (tokens_included >= 0),
+  CONSTRAINT tokens_used_positive CHECK (tokens_used >= 0)
 );
 
 -- Tier configuration table (stores tier allowances and pricing)
@@ -131,12 +135,10 @@ CREATE POLICY "Users can view own subscription"
 -- Only system can insert subscriptions (via Stripe webhooks)
 -- We use a service role key for this, so no INSERT policy for users
 
--- Users can view their own usage for self-service updates (tier changes)
--- Actual subscription management goes through Stripe
-CREATE POLICY "Users can update own subscription metadata"
-  ON subscriptions FOR UPDATE
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+-- NOTE: No UPDATE policy for subscriptions - all mutations go through:
+-- 1. Stripe webhooks (service role)
+-- 2. SECURITY DEFINER functions
+-- Users should NOT be able to modify their own tier, status, or billing_mode
 
 -- RLS Policies for token_usage
 
@@ -145,16 +147,12 @@ CREATE POLICY "Users can view own usage"
   ON token_usage FOR SELECT
   USING (auth.uid() = user_id);
 
--- System inserts usage records, but we allow user-context inserts via helper functions
-CREATE POLICY "Users can insert own usage"
-  ON token_usage FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
--- Users can update their own usage (for incrementing counters)
-CREATE POLICY "Users can update own usage"
-  ON token_usage FOR UPDATE
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+-- NOTE: No INSERT or UPDATE policies for token_usage - all mutations go through:
+-- 1. SECURITY DEFINER functions (get_or_create_usage_record, record_token_usage, record_words_written)
+-- 2. Service role (webhooks)
+-- Users should NOT be able to:
+-- - Create their own usage records (bypasses tier token allocation)
+-- - Reset tokens_used or inflate tokens_included
 
 -- RLS Policies for tier_config
 
@@ -226,19 +224,12 @@ BEGIN
 
   tier_tokens := COALESCE(tier_tokens, 0);
 
-  -- Try to get existing record
-  SELECT * INTO usage_record
-  FROM token_usage
-  WHERE user_id = p_user_id
-    AND period_start = period_s
-    AND period_end = period_e;
-
-  -- Create if not exists
-  IF usage_record IS NULL THEN
-    INSERT INTO token_usage (user_id, period_start, period_end, tokens_included)
-    VALUES (p_user_id, period_s, period_e, tier_tokens)
-    RETURNING * INTO usage_record;
-  END IF;
+  -- Get or create usage record atomically (handles concurrent requests)
+  INSERT INTO token_usage (user_id, period_start, period_end, tokens_included)
+  VALUES (p_user_id, period_s, period_e, tier_tokens)
+  ON CONFLICT (user_id, period_start, period_end)
+  DO UPDATE SET updated_at = NOW()
+  RETURNING * INTO usage_record;
 
   RETURN usage_record;
 END;
@@ -257,6 +248,11 @@ AS $$
 DECLARE
   usage_record token_usage;
 BEGIN
+  -- Validate call_type parameter
+  IF p_call_type NOT IN ('chat', 'lint', 'coach', 'detect', 'search') THEN
+    RAISE EXCEPTION 'Invalid call_type: %', p_call_type;
+  END IF;
+
   -- Get or create the usage record
   usage_record := get_or_create_usage_record(p_user_id);
 
@@ -332,7 +328,7 @@ RETURNS TABLE (
   is_over_limit BOOLEAN
 )
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
@@ -384,7 +380,7 @@ CREATE OR REPLACE FUNCTION can_use_ai_feature(
 )
 RETURNS BOOLEAN
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
@@ -470,3 +466,29 @@ ON CONFLICT (tier) DO UPDATE SET
   custom_models = EXCLUDED.custom_models,
   api_access = EXCLUDED.api_access,
   updated_at = NOW();
+
+-- ============================================================================
+-- DOWN MIGRATION (for rollback)
+-- ============================================================================
+-- To rollback this migration, run the following commands:
+--
+-- DROP TRIGGER IF EXISTS on_auth_user_created_subscription ON auth.users;
+-- DROP TRIGGER IF EXISTS update_tier_config_updated_at ON tier_config;
+-- DROP TRIGGER IF EXISTS update_token_usage_updated_at ON token_usage;
+-- DROP TRIGGER IF EXISTS update_subscriptions_updated_at ON subscriptions;
+--
+-- DROP FUNCTION IF EXISTS create_default_subscription();
+-- DROP FUNCTION IF EXISTS can_use_ai_feature(TEXT, UUID);
+-- DROP FUNCTION IF EXISTS get_billing_context(UUID);
+-- DROP FUNCTION IF EXISTS record_words_written(INTEGER, UUID);
+-- DROP FUNCTION IF EXISTS record_token_usage(INTEGER, TEXT, UUID);
+-- DROP FUNCTION IF EXISTS get_or_create_usage_record(UUID);
+-- DROP FUNCTION IF EXISTS update_billing_updated_at();
+--
+-- DROP TABLE IF EXISTS tier_config;
+-- DROP TABLE IF EXISTS token_usage;
+-- DROP TABLE IF EXISTS subscriptions;
+--
+-- DROP TYPE IF EXISTS subscription_status;
+-- DROP TYPE IF EXISTS subscription_tier;
+-- DROP TYPE IF EXISTS billing_mode;

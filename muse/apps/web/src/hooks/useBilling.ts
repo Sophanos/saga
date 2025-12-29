@@ -71,19 +71,20 @@ export function useBilling() {
   /**
    * Open Stripe Checkout for a specific tier
    * @param tier - The subscription tier to checkout: 'pro', 'pro_plus', or 'team'
+   * @param billingInterval - The billing frequency: 'monthly' or 'annual' (defaults to 'monthly')
    */
   const openCheckout = useCallback(
-    async (tier: BillingTier) => {
+    async (tier: BillingTier, billingInterval: "monthly" | "annual" = "monthly") => {
       store.setLoading(true);
       store.setError(null);
 
       try {
         const response = await callEdgeFunction<
-          { tier: BillingTier; billingMode: BillingMode },
+          { tier: BillingTier; billingInterval: "monthly" | "annual" },
           CheckoutResponse
         >("stripe-checkout", {
           tier,
-          billingMode,
+          billingInterval,
         });
 
         // Redirect to Stripe Checkout
@@ -95,7 +96,7 @@ export function useBilling() {
         store.setLoading(false);
       }
     },
-    [store, billingMode]
+    [store]
   );
 
   /**
@@ -128,9 +129,10 @@ export function useBilling() {
    * Switch between billing modes
    * @param mode - The billing mode: 'managed' (platform credits) or 'byok' (bring your own key)
    * @param byokKey - API key required when switching to 'byok' mode
+   * @returns true if successful, false otherwise
    */
   const switchBillingMode = useCallback(
-    async (mode: BillingMode, byokKey?: string) => {
+    async (mode: BillingMode, byokKey?: string): Promise<boolean> => {
       store.setLoading(true);
       store.setError(null);
 
@@ -142,13 +144,16 @@ export function useBilling() {
 
         if (response.success) {
           store.setBillingMode(response.billingMode);
+          return true;
         }
+        return false;
       } catch (err) {
         const message =
           err instanceof ApiError
             ? err.message
             : "Failed to switch billing mode";
         store.setError(message);
+        return false;
       } finally {
         store.setLoading(false);
       }
@@ -160,6 +165,11 @@ export function useBilling() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Expose clearError from store
+  const clearError = useCallback(() => {
+    store.clearError();
+  }, [store]);
 
   return {
     // State
@@ -174,6 +184,7 @@ export function useBilling() {
     openPortal,
     switchBillingMode,
     refresh,
+    clearError,
   };
 }
 

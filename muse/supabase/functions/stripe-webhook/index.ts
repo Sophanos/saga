@@ -26,12 +26,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import Stripe from "https://esm.sh/stripe@14.10.0?target=deno";
 
 // Initialize Stripe
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
+const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
+const STRIPE_WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET");
+
+if (!STRIPE_SECRET_KEY || !STRIPE_WEBHOOK_SECRET) {
+  throw new Error("Missing required Stripe environment variables");
+}
+
+const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: "2023-10-16",
   httpClient: Stripe.createFetchHttpClient(),
 });
 
-const WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
+const WEBHOOK_SECRET = STRIPE_WEBHOOK_SECRET;
 
 /**
  * Subscription status mapping from Stripe to our database
@@ -104,7 +111,9 @@ async function upsertSubscription(
     .single();
 
   if (!profile) {
-    console.error(`No profile found for customer: ${customerId}`);
+    // Log as warning - this is a business logic issue, not a system error
+    // Returning without throwing allows the webhook to return 200 and prevent retries
+    console.warn(`No profile found for customer: ${customerId}, event will not be retried`);
     return;
   }
 
@@ -293,7 +302,8 @@ async function verifyWebhookSignature(
       WEBHOOK_SECRET
     );
   } catch (err) {
-    console.error("Webhook signature verification failed:", err);
+    // Don't log the full error object which may contain sensitive data
+    console.error("Webhook signature verification failed");
     throw new Error("Invalid webhook signature");
   }
 }
@@ -316,6 +326,34 @@ serve(async (req) => {
 
     // Verify the webhook signature
     const event = await verifyWebhookSignature(payload, signature);
+
+    // Idempotency check - prevent duplicate processing of the same event
+    // NOTE: Requires a 'stripe_events' table with columns: id (uuid), event_id (text unique), created_at (timestamptz)
+    // CREATE TABLE stripe_events (
+    //   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    //   event_id text UNIQUE NOT NULL,
+    //   created_at timestamptz DEFAULT now()
+    // );
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: existingEvent } = await supabaseAdmin
+      .from('stripe_events')
+      .select('id')
+      .eq('event_id', event.id)
+      .single();
+
+    if (existingEvent) {
+      console.log(`Event ${event.id} already processed, skipping`);
+      return new Response(JSON.stringify({ received: true, duplicate: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Record event as being processed
+    await supabaseAdmin.from('stripe_events').insert({
+      event_id: event.id,
+      event_type: event.type
+    });
 
     console.log(`Received Stripe event: ${event.type}`);
 
@@ -366,6 +404,19 @@ serve(async (req) => {
     const message =
       error instanceof Error ? error.message : "Unknown error occurred";
 
+    // Check if this is a signature verification error (should return 400 to allow Stripe retry with correct signature)
+    const isSignatureError = message === "Invalid webhook signature";
+
+    // For business logic errors (not signature failures), return 200 to prevent retries
+    // Stripe will retry 4xx errors, but business logic errors won't resolve on retry
+    if (!isSignatureError) {
+      return new Response(JSON.stringify({ received: true, error: message }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Return 400 for signature errors - these may succeed on retry
     return new Response(JSON.stringify({ error: message }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
