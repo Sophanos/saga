@@ -590,9 +590,13 @@ export async function executeGenerateTemplate(
 }
 
 // =============================================================================
-// Clarity Check Types
+// Clarity Check Executor
 // =============================================================================
 
+// Clarity check types are defined inline for Deno edge function compatibility.
+// Type inference is used where possible; explicit types enable proper exports.
+
+/** Issue types detected by the clarity checker */
 export type ClarityIssueType =
   | "ambiguous_pronoun"
   | "unclear_antecedent"
@@ -600,6 +604,7 @@ export type ClarityIssueType =
   | "filler_word"
   | "dangling_modifier";
 
+/** Readability metrics computed deterministically (no LLM needed) */
 export interface ReadabilityMetrics {
   fleschKincaidGrade: number;
   fleschReadingEase: number;
@@ -609,6 +614,7 @@ export interface ReadabilityMetrics {
   longSentencePct?: number;
 }
 
+/** Individual clarity issue found in text */
 export interface ClarityCheckIssue {
   id: string;
   type: ClarityIssueType;
@@ -619,30 +625,12 @@ export interface ClarityCheckIssue {
   fix?: { oldText: string; newText: string };
 }
 
+/** Result of clarity check analysis */
 export interface ClarityCheckResult {
   metrics: ReadabilityMetrics;
   issues: ClarityCheckIssue[];
   summary?: string;
 }
-
-function parseTemplateResponse(response: string): GenerateTemplateResult {
-  const fallback: GenerateTemplateResult = {
-    template: {
-      name: "Custom Template",
-      description: "Failed to generate. Using defaults.",
-      category: "custom",
-      tags: [],
-      entityKinds: [],
-      relationshipKinds: [],
-      documentKinds: [{ kind: "chapter", label: "Chapter", allowChildren: true }],
-      uiModules: [{ module: "entity_panel", enabled: true, order: 1 }],
-      linterRules: [],
-    },
-  };
-
-// =============================================================================
-// Clarity Check Executor
-// =============================================================================
 
 /**
  * Compute readability metrics deterministically (no LLM needed).
@@ -703,31 +691,51 @@ function computeReadabilityMetrics(text: string): ReadabilityMetrics {
 }
 
 /**
- * Compute character offset positions for an issue based on line and text.
+ * Pre-computed line offset data for efficient position lookups.
+ * Computed once per document, reused for all issues.
+ */
+interface LineOffsetData {
+  lines: string[];
+  offsets: number[]; // Character offset where each line starts
+}
+
+/**
+ * Pre-compute line offsets for a document.
+ * This is O(n) but only runs once per clarity check.
+ */
+function computeLineOffsets(text: string): LineOffsetData {
+  const lines = text.split("\n");
+  const offsets: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    offsets.push(offset);
+    offset += line.length + 1; // +1 for newline
+  }
+  return { lines, offsets };
+}
+
+/**
+ * Compute character offset positions for an issue using pre-computed line data.
+ * This avoids O(n) split per issue, making it O(1) per issue after pre-computation.
  */
 function computePosition(
   text: string,
   issueText: string,
-  line?: number
+  line: number | undefined,
+  lineData: LineOffsetData
 ): { start: number; end: number } | undefined {
   if (!issueText) return undefined;
 
   // If we have a line number, try to find within that line first
-  if (line !== undefined && line > 0) {
-    const lines = text.split("\n");
-    let charOffset = 0;
-    for (let i = 0; i < line - 1 && i < lines.length; i++) {
-      charOffset += lines[i].length + 1; // +1 for newline
-    }
-    if (line <= lines.length) {
-      const lineText = lines[line - 1];
-      const localIndex = lineText.indexOf(issueText);
-      if (localIndex !== -1) {
-        return {
-          start: charOffset + localIndex,
-          end: charOffset + localIndex + issueText.length,
-        };
-      }
+  if (line !== undefined && line > 0 && line <= lineData.lines.length) {
+    const lineText = lineData.lines[line - 1];
+    const charOffset = lineData.offsets[line - 1];
+    const localIndex = lineText.indexOf(issueText);
+    if (localIndex !== -1) {
+      return {
+        start: charOffset + localIndex,
+        end: charOffset + localIndex + issueText.length,
+      };
     }
   }
 
@@ -797,6 +805,9 @@ function parseClarityResponse(
   originalText: string,
   maxIssues: number
 ): { issues: ClarityCheckIssue[]; summary?: string } {
+  // Pre-compute line offsets once for all issues (O(n) once vs O(n*issues) before)
+  const lineData = computeLineOffsets(originalText);
+
   return parseJsonFromLLMResponse(
     response,
     "clarity",
@@ -808,7 +819,7 @@ function parseClarityResponse(
           const i = issue as Record<string, unknown>;
           const issueText = (i.text as string) || "";
           const line = typeof i.line === "number" ? i.line : undefined;
-          const position = computePosition(originalText, issueText, line);
+          const position = computePosition(originalText, issueText, line, lineData);
 
           return {
             id: generateIssueId(i.type as string, line, issueText, idx),
@@ -829,6 +840,25 @@ function parseClarityResponse(
     { issues: [] }
   );
 }
+
+// =============================================================================
+// Parse Template Response
+// =============================================================================
+
+function parseTemplateResponse(response: string): GenerateTemplateResult {
+  const fallback: GenerateTemplateResult = {
+    template: {
+      name: "Custom Template",
+      description: "Failed to generate. Using defaults.",
+      category: "custom",
+      tags: [],
+      entityKinds: [],
+      relationshipKinds: [],
+      documentKinds: [{ kind: "chapter", label: "Chapter", allowChildren: true }],
+      uiModules: [{ module: "entity_panel", enabled: true, order: 1 }],
+      linterRules: [],
+    },
+  };
 
   return parseJsonFromLLMResponse(
     response,

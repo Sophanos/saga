@@ -10,6 +10,8 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useMythosStore, type ChatToolInvocation, type LinterIssue } from "../stores";
+import { useAnalysisStore } from "../stores/analysis";
+import type { StyleIssue, ReadabilityMetrics } from "@mythos/core";
 import { useEntityPersistence } from "./useEntityPersistence";
 import { useRelationshipPersistence } from "./useRelationshipPersistence";
 import { useApiKey } from "./useApiKey";
@@ -184,6 +186,14 @@ export function useToolRuntime(): UseToolRuntimeResult {
       setTemplateDraft: (draft: unknown) => {
         // TODO: Store template draft for review
         console.log("[useToolRuntime] Template draft:", draft);
+      },
+
+      setClarityIssues: (issues: StyleIssue[]) => {
+        useAnalysisStore.getState().setClarityIssues(issues);
+      },
+
+      setReadabilityMetrics: (metrics: ReadabilityMetrics | null) => {
+        useAnalysisStore.getState().setReadabilityMetrics(metrics);
       },
 
       onProgress: (progress) => {

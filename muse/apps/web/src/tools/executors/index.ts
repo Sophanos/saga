@@ -16,3 +16,4 @@ export { genesisWorldExecutor, type GenesisWorldExecutionResult } from "./genesi
 export { detectEntitiesExecutor, type DetectEntitiesExecutionResult } from "./detectEntities";
 export { checkConsistencyExecutor, type CheckConsistencyExecutionResult } from "./checkConsistency";
 export { generateTemplateExecutor, type GenerateTemplateExecutionResult } from "./generateTemplate";
+export { clarityCheckExecutor, type ClarityCheckExecutionResult } from "./clarityCheck";

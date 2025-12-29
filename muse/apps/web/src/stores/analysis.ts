@@ -422,8 +422,8 @@ export const useSelectedStyleIssueId = () =>
  * Get the selected style issue object
  */
 export const useSelectedStyleIssue = () =>
-  useAnalysisStore((state) =>
-    state.selectedStyleIssueId
-      ? state.issues.find((i) => i.id === state.selectedStyleIssueId) ?? null
-      : null
-  );
+  useAnalysisStore((state) => {
+    if (!state.selectedStyleIssueId) return null;
+    const allIssues = [...state.issues, ...state.clarityIssues];
+    return allIssues.find((i) => i.id === state.selectedStyleIssueId) ?? null;
+  });

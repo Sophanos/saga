@@ -22,7 +22,7 @@ import {
 /**
  * Result shape for the executor (what's shown in tool result UI)
  */
-interface ClarityCheckExecutionResult {
+export interface ClarityCheckExecutionResult {
   issuesFound: number;
   grade?: number;
   readingEase?: number;
@@ -66,6 +66,8 @@ export const clarityCheckExecutor: ToolDefinition<
     }
 
     try {
+      ctx.onProgress?.({ stage: "Analyzing clarity...", pct: 20 });
+
       // Execute the clarity check via saga API
       const result = await executeClarityCheck(
         {
@@ -77,6 +79,8 @@ export const clarityCheckExecutor: ToolDefinition<
           signal: ctx.signal,
         }
       );
+
+      ctx.onProgress?.({ stage: "Processing results...", pct: 80 });
 
       // Store clarity issues in the analysis store via context hooks
       if (ctx.setClarityIssues) {
@@ -100,6 +104,8 @@ export const clarityCheckExecutor: ToolDefinition<
 
       // Switch to coach tab to show results
       ctx.setActiveTab?.("coach");
+
+      ctx.onProgress?.({ stage: "Complete!", pct: 100 });
 
       return {
         success: true,
