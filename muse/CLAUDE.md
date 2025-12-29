@@ -58,9 +58,15 @@ bun run db:generate  # Regenerate Supabase types (requires SUPABASE_PROJECT_ID)
 **AI Agents**: Extend `NarrativeAgent` base class. Use `generateObject` from Vercel AI SDK with Zod schemas for structured responses. Providers: OpenRouter (primary), Gemini (fallback).
 
 **Zustand Stores** (`apps/web/src/stores/`):
-- Main store: project, document, world, editor, ui state
+- Main store: project, document, world, editor, linter, search, chat, ui state
 - `analysis.ts`: Writing metrics, style issues, insights
 - `dynamics.ts`: Entity interactions and event streams
+
+**RAG Chat System** (`apps/web/src/hooks/useChatAgent.ts`):
+- DeepInfra embeddings (Qwen3-Embedding-8B, 4096 dims) for query vectorization
+- Qdrant vector search for context retrieval
+- OpenRouter LLM for response generation with SSE streaming
+- Chat store slice for messages, streaming state, and context
 
 ## Environment Variables
 
@@ -68,6 +74,8 @@ Copy `.env.example` to `.env` and configure:
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY` - Database
 - `OPENROUTER_API_KEY` - Primary AI provider
 - `GOOGLE_GENERATIVE_AI_API_KEY` - Fallback AI provider (optional)
+- `DEEPINFRA_API_KEY` - Embeddings provider (Qwen3-Embedding-8B)
+- `QDRANT_URL`, `QDRANT_API_KEY` - Vector database for RAG
 
 ## Code Consolidation Patterns
 
@@ -95,6 +103,12 @@ Copy `.env.example` to `.env` and configure:
 ## Current State
 
 Phases 1-3 (Core Interactivity, Dynamics, Coach) are complete. Phase 4 (Auto-fix Linter integration) is partial - the ConsistencyLinter agent exists but is not wired to the UI (using mock data). See `ARCHITECTURE_REVIEW.md` for detailed gap analysis.
+
+**RAG & Search (Complete)**:
+- Semantic search via DeepInfra embeddings + Qdrant vector store
+- Auto-embedding on document/entity save (fire-and-forget)
+- RAG Chat with streaming responses in Console Chat tab
+- Search panel with scope filters (all/documents/entities)
 
 **Consolidation Status (Phase 1-2 Complete)**:
 - UI components consolidated to `@mythos/ui`

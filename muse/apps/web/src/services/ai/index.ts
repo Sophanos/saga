@@ -38,6 +38,7 @@ export {
 export {
   embedTextViaEdge,
   embedManyViaEdge,
+  deleteVectorsViaEdge,
   EmbeddingApiError,
   type EmbedRequestOptions,
   type EmbedResponse,
@@ -57,3 +58,16 @@ export {
   type SearchRequestOptions,
   type SearchApiErrorCode,
 } from "./searchClient";
+
+export {
+  sendChatMessage,
+  sendChatMessageStreaming,
+  ChatApiError,
+  type ChatMessagePayload,
+  type ChatRequestPayload,
+  type ChatResponsePayload,
+  type ChatStreamEvent,
+  type ChatStreamEventType,
+  type ChatRequestOptions,
+  type ChatStreamOptions,
+} from "./chatClient";

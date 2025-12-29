@@ -111,6 +111,50 @@ interface SearchState {
   source: { kind: "query" } | { kind: "entity"; entityId: string };
 }
 
+// Chat types
+export type ChatMessageRole = "user" | "assistant" | "system";
+
+export interface ChatMention {
+  type: "entity" | "document";
+  id: string;
+  name: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: ChatMessageRole;
+  content: string;
+  timestamp: Date;
+  /** Mentioned entity/document IDs for context */
+  mentions?: ChatMention[];
+  /** Whether this message is still being streamed */
+  isStreaming?: boolean;
+}
+
+export interface ChatContextItem {
+  id: string;
+  title: string;
+  type: string;
+  preview: string;
+}
+
+export interface ChatContext {
+  /** Retrieved documents from RAG */
+  documents: ChatContextItem[];
+  /** Retrieved entities from RAG */
+  entities: ChatContextItem[];
+}
+
+// Chat slice
+interface ChatState {
+  messages: ChatMessage[];
+  isStreaming: boolean;
+  error: string | null;
+  conversationId: string | null;
+  /** Last retrieved context for debugging/display */
+  lastContext: ChatContext | null;
+}
+
 // UI slice
 interface UIState {
   activeTab: ConsoleTab;
@@ -130,6 +174,7 @@ interface MythosStore {
   editor: EditorState;
   linter: LinterState;
   search: SearchState;
+  chat: ChatState;
   ui: UIState;
 
   // Project actions
@@ -186,6 +231,16 @@ interface MythosStore {
   setSearching: (isSearching: boolean) => void;
   setSearchError: (error: string | null) => void;
 
+  // Chat actions
+  addChatMessage: (message: ChatMessage) => void;
+  updateChatMessage: (id: string, updates: Partial<ChatMessage>) => void;
+  appendToChatMessage: (id: string, content: string) => void;
+  setChatStreaming: (streaming: boolean) => void;
+  setChatError: (error: string | null) => void;
+  setChatContext: (context: ChatContext | null) => void;
+  clearChat: () => void;
+  startNewConversation: () => void;
+
   // UI actions
   setActiveTab: (tab: ConsoleTab) => void;
   toggleManifest: () => void;
@@ -237,6 +292,13 @@ export const useMythosStore = create<MythosStore>()(
       error: null,
       lastRunAt: null,
       source: { kind: "query" },
+    },
+    chat: {
+      messages: [],
+      isStreaming: false,
+      error: null,
+      conversationId: null,
+      lastContext: null,
     },
     ui: {
       activeTab: "linter",
@@ -372,6 +434,12 @@ export const useMythosStore = create<MythosStore>()(
         state.search.error = null;
         state.search.lastRunAt = null;
         state.search.source = { kind: "query" };
+        // Clear chat
+        state.chat.messages = [];
+        state.chat.isStreaming = false;
+        state.chat.error = null;
+        state.chat.conversationId = null;
+        state.chat.lastContext = null;
         // Reset editor dirty state
         state.editor.isDirty = false;
       }),
@@ -491,6 +559,55 @@ export const useMythosStore = create<MythosStore>()(
       set((state) => {
         state.search.error = error;
         state.search.isSearching = false;
+      }),
+
+    // Chat actions
+    addChatMessage: (message) =>
+      set((state) => {
+        state.chat.messages.push(message);
+        state.chat.error = null;
+      }),
+    updateChatMessage: (id, updates) =>
+      set((state) => {
+        const idx = state.chat.messages.findIndex((m) => m.id === id);
+        if (idx !== -1) {
+          Object.assign(state.chat.messages[idx], updates);
+        }
+      }),
+    appendToChatMessage: (id, content) =>
+      set((state) => {
+        const idx = state.chat.messages.findIndex((m) => m.id === id);
+        if (idx !== -1) {
+          state.chat.messages[idx].content += content;
+        }
+      }),
+    setChatStreaming: (streaming) =>
+      set((state) => {
+        state.chat.isStreaming = streaming;
+      }),
+    setChatError: (error) =>
+      set((state) => {
+        state.chat.error = error;
+        state.chat.isStreaming = false;
+      }),
+    setChatContext: (context) =>
+      set((state) => {
+        state.chat.lastContext = context;
+      }),
+    clearChat: () =>
+      set((state) => {
+        state.chat.messages = [];
+        state.chat.error = null;
+        state.chat.isStreaming = false;
+        state.chat.lastContext = null;
+      }),
+    startNewConversation: () =>
+      set((state) => {
+        state.chat.messages = [];
+        state.chat.error = null;
+        state.chat.isStreaming = false;
+        state.chat.lastContext = null;
+        state.chat.conversationId = crypto.randomUUID();
       }),
 
     // UI actions
@@ -825,6 +942,52 @@ export const useSearchResultCount = () =>
   useMythosStore(
     (s) => s.search.results.documents.length + s.search.results.entities.length
   );
+
+// ============================================================================
+// Chat Selectors
+// ============================================================================
+
+/**
+ * Get all chat messages
+ */
+export const useChatMessages = () =>
+  useMythosStore(useShallow((s) => s.chat.messages));
+
+/**
+ * Get chat streaming state
+ */
+export const useIsChatStreaming = () =>
+  useMythosStore((s) => s.chat.isStreaming);
+
+/**
+ * Get chat error
+ */
+export const useChatError = () =>
+  useMythosStore((s) => s.chat.error);
+
+/**
+ * Get conversation ID
+ */
+export const useConversationId = () =>
+  useMythosStore((s) => s.chat.conversationId);
+
+/**
+ * Get last retrieved RAG context
+ */
+export const useChatContext = () =>
+  useMythosStore((s) => s.chat.lastContext);
+
+/**
+ * Get message count
+ */
+export const useChatMessageCount = () =>
+  useMythosStore((s) => s.chat.messages.length);
+
+/**
+ * Check if chat has any messages
+ */
+export const useHasChatMessages = () =>
+  useMythosStore((s) => s.chat.messages.length > 0);
 
 // Re-export auth store
 export { useAuthStore } from "./auth";

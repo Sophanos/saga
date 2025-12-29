@@ -34,3 +34,11 @@ export {
   ENTITY_DETECTOR_SYSTEM,
   ENTITY_DETECTOR_USER_TEMPLATE,
 } from "./entity-detector.ts";
+
+// Chat prompts
+export {
+  CHAT_SYSTEM,
+  CHAT_CONTEXT_TEMPLATE,
+  CHAT_NO_CONTEXT,
+  CHAT_MENTION_CONTEXT,
+} from "./chat.ts";

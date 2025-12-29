@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef, type KeyboardEvent } from "react";
 import {
   MessageSquare,
   Send,
@@ -6,6 +6,12 @@ import {
   TrendingUp,
   BarChart3,
   Search,
+  User,
+  Bot,
+  Square,
+  Trash2,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { Button, Input, ScrollArea } from "@mythos/ui";
 import { jumpToPosition } from "@mythos/editor";
@@ -14,46 +20,177 @@ import { CoachView } from "./CoachView";
 import { LinterView } from "./LinterView";
 import { AnalysisDashboard } from "./AnalysisDashboard";
 import { SearchPanel } from "./SearchPanel";
-import { useLinterIssueCounts, useMythosStore, useEditorInstance } from "../../stores";
+import {
+  useLinterIssueCounts,
+  useMythosStore,
+  useEditorInstance,
+  useChatMessages,
+  useIsChatStreaming,
+  useChatError,
+  type ChatMessage,
+} from "../../stores";
 import { useHistoryCount } from "../../stores/history";
 import { useLinterFixes } from "../../hooks/useLinterFixes";
+import { useChatAgent } from "../../hooks/useChatAgent";
+
+/**
+ * Single chat message bubble
+ */
+function ChatMessageBubble({ message }: { message: ChatMessage }) {
+  const isUser = message.role === "user";
+
+  return (
+    <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
+      {/* Avatar */}
+      <div
+        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+          isUser
+            ? "bg-mythos-accent-cyan/20"
+            : "bg-mythos-accent-purple/20"
+        }`}
+      >
+        {isUser ? (
+          <User className="w-4 h-4 text-mythos-accent-cyan" />
+        ) : (
+          <Bot className="w-4 h-4 text-mythos-accent-purple" />
+        )}
+      </div>
+
+      {/* Message content */}
+      <div className={`flex-1 max-w-[85%] ${isUser ? "text-right" : ""}`}>
+        <p className="text-xs text-mythos-text-muted mb-1">
+          {isUser ? "You" : "Mythos AI"}
+        </p>
+        <div
+          className={`inline-block px-3 py-2 rounded-lg text-sm ${
+            isUser
+              ? "bg-mythos-accent-cyan/10 text-mythos-text-primary"
+              : "bg-mythos-bg-tertiary text-mythos-text-secondary"
+          }`}
+        >
+          {message.content || (
+            <span className="flex items-center gap-2 text-mythos-text-muted">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Thinking...
+            </span>
+          )}
+          {message.isStreaming && message.content && (
+            <span className="inline-block w-1.5 h-4 ml-0.5 bg-mythos-accent-purple animate-pulse" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Welcome message when chat is empty
+ */
+function ChatWelcome() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center p-6">
+      <div className="w-12 h-12 rounded-full bg-mythos-accent-purple/20 flex items-center justify-center mb-4">
+        <MessageSquare className="w-6 h-6 text-mythos-accent-purple" />
+      </div>
+      <h3 className="text-lg font-medium text-mythos-text-primary mb-2">
+        Story Assistant
+      </h3>
+      <p className="text-sm text-mythos-text-muted max-w-sm">
+        Ask questions about your story, brainstorm ideas, or get help with your
+        writing. I'll use your world and characters to give relevant answers.
+      </p>
+    </div>
+  );
+}
 
 function ChatPanel() {
   const [input, setInput] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const messages = useChatMessages();
+  const isStreaming = useIsChatStreaming();
+  const error = useChatError();
+
+  const { sendMessage, stopStreaming, clearChat } = useChatAgent();
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const handleSend = useCallback(() => {
+    if (!input.trim() || isStreaming) return;
+    void sendMessage(input.trim());
+    setInput("");
+  }, [input, isStreaming, sendMessage]);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend]
+  );
 
   return (
     <>
-      <ScrollArea className="flex-1 p-3">
-        <div className="space-y-4">
-          <div className="flex gap-3">
-            <div className="w-8 h-8 rounded-full bg-mythos-accent-purple/20 flex items-center justify-center flex-shrink-0">
-              <MessageSquare className="w-4 h-4 text-mythos-accent-purple" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-mythos-text-muted mb-1">
-                Mythos AI
-              </p>
-              <p className="text-sm text-mythos-text-secondary">
-                I've analyzed your opening scene. Kael's entrance is strong, but
-                consider adding more sensory details about Valdris to establish
-                the atmosphere. Would you like suggestions for the city's
-                ambiance?
-              </p>
-            </div>
+      {/* Messages area */}
+      <ScrollArea className="flex-1" ref={scrollRef}>
+        {messages.length === 0 ? (
+          <ChatWelcome />
+        ) : (
+          <div className="p-3 space-y-4">
+            {messages.map((message) => (
+              <ChatMessageBubble key={message.id} message={message} />
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+
+      {/* Error display */}
+      {error && (
+        <div className="px-3 py-2 bg-mythos-accent-red/10 border-t border-mythos-accent-red/20">
+          <div className="flex items-center gap-2 text-sm text-mythos-accent-red">
+            <AlertCircle className="w-4 h-4" />
+            {error}
           </div>
         </div>
-      </ScrollArea>
+      )}
+
+      {/* Input area */}
       <div className="p-3 border-t border-mythos-text-muted/20">
         <div className="flex gap-2">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="Ask about your story..."
             className="flex-1"
+            disabled={isStreaming}
           />
-          <Button size="icon" variant="default">
-            <Send className="w-4 h-4" />
-          </Button>
+          {isStreaming ? (
+            <Button size="icon" variant="outline" onClick={stopStreaming}>
+              <Square className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              variant="default"
+              onClick={handleSend}
+              disabled={!input.trim()}
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          )}
+          {messages.length > 0 && !isStreaming && (
+            <Button size="icon" variant="ghost" onClick={clearChat}>
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          )}
         </div>
       </div>
     </>
