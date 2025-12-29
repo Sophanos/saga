@@ -1,15 +1,19 @@
 import { useState } from "react";
-import { BookOpen, Settings, Sparkles, Play, FileDown } from "lucide-react";
+import { BookOpen, Settings, Sparkles, Play, FileDown, FileUp } from "lucide-react";
 import { Button } from "@mythos/ui";
 import { ModeToggle } from "./ModeToggle";
 import { ApiKeySettings } from "./settings/ApiKeySettings";
 import { ExportModal } from "./modals/ExportModal";
+import { ImportModal } from "./modals/ImportModal";
+import { OfflineIndicator } from "./OfflineIndicator";
+import { CollaboratorsBar } from "./collaboration/CollaboratorsBar";
 import { useApiKey } from "../hooks/useApiKey";
 import { useCurrentProject } from "../stores";
 
 export function Header() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const { hasKey } = useApiKey();
   const project = useCurrentProject();
 
@@ -31,6 +35,12 @@ export function Header() {
 
       {/* Actions */}
       <div className="flex items-center gap-2">
+        {/* Collaboration & Status */}
+        <CollaboratorsBar />
+        <OfflineIndicator />
+        <div className="w-px h-6 bg-mythos-text-muted/20 mx-1" />
+        
+        {/* Tools */}
         <Button variant="ghost" size="sm" className="gap-2">
           <Sparkles className="w-4 h-4" />
           <span className="hidden sm:inline">Genesis</span>
@@ -38,6 +48,15 @@ export function Header() {
         <Button variant="ghost" size="sm" className="gap-2">
           <Play className="w-4 h-4" />
           <span className="hidden sm:inline">Run Linter</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-2"
+          onClick={() => setIsImportOpen(true)}
+        >
+          <FileUp className="w-4 h-4" />
+          <span className="hidden sm:inline">Import</span>
         </Button>
         <Button
           variant="ghost"
@@ -69,6 +88,12 @@ export function Header() {
       <ApiKeySettings
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* Import Modal */}
+      <ImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
       />
 
       {/* Export Modal */}

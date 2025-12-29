@@ -15,8 +15,12 @@
     "@mythos/core": "workspace:*",
     "@mythos/db": "workspace:*",
     "@mythos/editor": "workspace:*",
+    "@mythos/state": "workspace:*",
+    "@mythos/storage": "workspace:*",
     "@mythos/theme": "workspace:*",
     "@mythos/ui": "workspace:*",
+    "@supabase/auth-ui-react": "^0.4.7",
+    "@supabase/auth-ui-shared": "^0.1.8",
     "@tippyjs/react": "^4.2.6",
     "immer": "^10.1.1",
     "lucide-react": "^0.469.0",
@@ -27,6 +31,8 @@
     "zustand": "^5.0.2",
     "docx": "^8.5.0",
     "jszip": "^3.10.1",
+    "mammoth": "^1.8.0",
+    "marked": "^15.0.4",
     "pdfmake": "^0.2.10"
   },
   "devDependencies": {

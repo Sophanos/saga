@@ -78,3 +78,40 @@ export type {
   UseAnalysisHistorySyncOptions,
   UseAnalysisHistorySyncResult,
 } from "./useAnalysisHistorySync";
+
+// Auth sync
+export {
+  useSupabaseAuthSync,
+  signInWithGoogle,
+  signInWithApple,
+  signInWithEmail,
+  signUpWithEmail,
+  signOut,
+  updateProfile,
+} from "./useSupabaseAuthSync";
+
+// Online status
+export {
+  useOnlineStatus,
+  useIsOnline,
+  useOfflineIndicator,
+} from "./useOnlineStatus";
+export type {
+  UseOnlineStatusOptions,
+  UseOnlineStatusResult,
+} from "./useOnlineStatus";
+
+// Collaboration
+export { useCollaboration } from "./useCollaboration";
+export type {
+  CollaborationConnectionStatus,
+  UseCollaborationResult,
+} from "./useCollaboration";
+
+// Story export
+export { useStoryExporter } from "./useStoryExporter";
+export type { UseStoryExporterResult } from "./useStoryExporter";
+
+// Story import
+export { useStoryImporter } from "./useStoryImporter";
+export type { UseStoryImporterResult } from "./useStoryImporter";
