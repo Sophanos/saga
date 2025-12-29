@@ -92,14 +92,13 @@ CREATE INDEX IF NOT EXISTS idx_memories_deleted
   WHERE deleted_at IS NOT NULL;
 
 -- Recency queries
-CREATE INDEX IF NOT EXISTS idx_memories_project_created 
-  ON memories(project_id, created_at DESC) 
+CREATE INDEX IF NOT EXISTS idx_memories_project_created
+  ON memories(project_id, created_at DESC)
   WHERE deleted_at IS NULL;
 
--- Vector similarity search (pgvector HNSW for better performance)
-CREATE INDEX IF NOT EXISTS idx_memories_embedding 
-  ON memories USING hnsw (embedding vector_cosine_ops)
-  WITH (m = 16, ef_construction = 64);
+-- Note: No vector index for 4096-dim embeddings (HNSW limited to 2000 dims).
+-- Postgres vector search is only used as fallback when Qdrant is unavailable.
+-- Sequential scan is acceptable for the fallback use case.
 
 -- =============================================================================
 -- RLS Policies
