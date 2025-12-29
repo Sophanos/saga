@@ -12,6 +12,7 @@ import {
   ChevronRight,
 } from "lucide-react-native";
 import { useState } from "react";
+import { useSupabaseAuthSync } from "../lib/useSupabaseAuthSync";
 
 // ============================================
 // SETTINGS SCREEN
@@ -20,6 +21,7 @@ import { useState } from "react";
 export default function SettingsScreen() {
   const [darkMode, setDarkMode] = useState(true);
   const [notifications, setNotifications] = useState(true);
+  const { signOut } = useSupabaseAuthSync();
 
   return (
     <SafeAreaView className="flex-1 bg-mythos-bg-primary">
@@ -107,7 +109,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Sign Out */}
-        <Pressable className="flex-row items-center justify-center gap-2 py-4">
+        <Pressable onPress={signOut} className="flex-row items-center justify-center gap-2 py-4">
           <LogOut size={18} color="#f87171" />
           <Text className="text-base text-mythos-accent-red">Sign Out</Text>
         </Pressable>

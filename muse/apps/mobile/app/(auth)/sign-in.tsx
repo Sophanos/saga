@@ -15,6 +15,8 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  TextInput,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -77,6 +79,13 @@ export default function SignInScreen() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isAppleLoading, setIsAppleLoading] = useState(false);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
+
+  // Email/password form state
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [isEmailLoading, setIsEmailLoading] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
 
   // Google OAuth configuration
   const [request, response, promptAsync] = Google.useAuthRequest({
@@ -213,7 +222,97 @@ export default function SignInScreen() {
     }
   };
 
-  const isAnyLoading = isGoogleLoading || isAppleLoading;
+  // Handle email sign-in
+  const handleEmailSignIn = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Missing Fields", "Please enter both email and password");
+      return;
+    }
+
+    setIsEmailLoading(true);
+    try {
+      const supabase = getMobileSupabase();
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.session) {
+        console.log("[Auth] Email sign-in successful");
+      }
+    } catch (err) {
+      console.error("[Auth] Email sign-in error:", err);
+      Alert.alert(
+        "Sign-In Failed",
+        err instanceof Error ? err.message : "Failed to sign in with email"
+      );
+    } finally {
+      setIsEmailLoading(false);
+    }
+  };
+
+  // Handle email sign-up
+  const handleEmailSignUp = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Missing Fields", "Please enter both email and password");
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert("Invalid Password", "Password must be at least 6 characters");
+      return;
+    }
+
+    setIsEmailLoading(true);
+    try {
+      const supabase = getMobileSupabase();
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            name: name.trim() || undefined,
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.session) {
+        console.log("[Auth] Email sign-up successful");
+      } else if (data.user && !data.session) {
+        Alert.alert(
+          "Check Your Email",
+          "We've sent you a confirmation link. Please check your email to complete sign-up."
+        );
+      }
+    } catch (err) {
+      console.error("[Auth] Email sign-up error:", err);
+      Alert.alert(
+        "Sign-Up Failed",
+        err instanceof Error ? err.message : "Failed to sign up"
+      );
+    } finally {
+      setIsEmailLoading(false);
+    }
+  };
+
+  // Combined submit handler
+  const handleEmailSubmit = () => {
+    if (authMode === "signin") {
+      handleEmailSignIn();
+    } else {
+      handleEmailSignUp();
+    }
+  };
+
+  const isAnyLoading = isGoogleLoading || isAppleLoading || isEmailLoading;
 
   return (
     <SafeAreaView className="flex-1 bg-bg-primary">
@@ -261,10 +360,98 @@ export default function SignInScreen() {
           )}
         </Animated.View>
 
-        {/* Terms */}
+        {/* Divider */}
+        <Animated.View
+          entering={FadeInDown.delay(150).duration(500)}
+          className="flex-row items-center my-6"
+        >
+          <View className="flex-1 h-px bg-border" />
+          <Text className="px-4 text-xs text-text-muted uppercase">
+            or continue with email
+          </Text>
+          <View className="flex-1 h-px bg-border" />
+        </Animated.View>
+
+        {/* Email/Password Form */}
         <Animated.View
           entering={FadeInDown.delay(200).duration(500)}
-          className="mt-8"
+          className="gap-4"
+        >
+          {/* Name field (signup only) */}
+          {authMode === "signup" && (
+            <TextInput
+              placeholder="Your name"
+              placeholderTextColor="#71717a"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              editable={!isAnyLoading}
+              className="h-12 px-4 rounded-xl border border-border bg-bg-secondary text-text-primary"
+            />
+          )}
+
+          {/* Email field */}
+          <TextInput
+            placeholder="Email address"
+            placeholderTextColor="#71717a"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            editable={!isAnyLoading}
+            className="h-12 px-4 rounded-xl border border-border bg-bg-secondary text-text-primary"
+          />
+
+          {/* Password field */}
+          <TextInput
+            placeholder="Password"
+            placeholderTextColor="#71717a"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+            editable={!isAnyLoading}
+            className="h-12 px-4 rounded-xl border border-border bg-bg-secondary text-text-primary"
+          />
+
+          {/* Submit button */}
+          <Pressable
+            onPress={handleEmailSubmit}
+            disabled={isAnyLoading}
+            className={`h-12 rounded-xl bg-white items-center justify-center ${
+              isAnyLoading ? "opacity-50" : "active:opacity-80"
+            }`}
+          >
+            {isEmailLoading ? (
+              <ActivityIndicator size="small" color="#000" />
+            ) : (
+              <Text className="text-base font-medium text-black">
+                {authMode === "signin" ? "Sign in" : "Create account"}
+              </Text>
+            )}
+          </Pressable>
+
+          {/* Mode toggle */}
+          <Pressable
+            onPress={() => setAuthMode(authMode === "signin" ? "signup" : "signin")}
+            disabled={isAnyLoading}
+            className="py-2"
+          >
+            <Text className="text-sm text-text-muted text-center">
+              {authMode === "signin" ? (
+                <>Don't have an account? <Text className="text-text-primary font-medium">Sign up</Text></>
+              ) : (
+                <>Already have an account? <Text className="text-text-primary font-medium">Sign in</Text></>
+              )}
+            </Text>
+          </Pressable>
+        </Animated.View>
+
+        {/* Terms */}
+        <Animated.View
+          entering={FadeInDown.delay(250).duration(500)}
+          className="mt-6"
         >
           <Text className="text-xs text-text-muted text-center leading-relaxed">
             By continuing, you agree to our Terms of Service and Privacy Policy
