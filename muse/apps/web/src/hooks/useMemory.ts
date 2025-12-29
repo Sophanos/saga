@@ -115,9 +115,12 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
   }, [projectId, getRecent]);
 
   // Get memories by category
+  // Note: Session memories are conversation-scoped and require getSession(projectId, conversationId)
   const byCategory = useCallback(
     (category: MemoryCategory): MemoryRecord[] => {
       if (!projectId) return [];
+      // Session memories are handled separately via store.getSession()
+      if (category === "session") return [];
       return getByCategory(projectId, category);
     },
     [projectId, getByCategory]
@@ -166,9 +169,12 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
       try {
         const memories = await client.read({ ...params, projectId });
 
-        // Update cache by category
+        // Update cache by category (session memories excluded - they're conversation-scoped)
         if (params?.["categories"]?.length === 1) {
-          setCategoryCache(projectId, params["categories"][0], memories);
+          const cat = params["categories"][0];
+          if (cat !== "session") {
+            setCategoryCache(projectId, cat, memories);
+          }
         } else {
           // Group and cache by category
           const grouped = new Map<MemoryCategory, MemoryRecord[]>();
@@ -178,7 +184,10 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
             grouped.set(mem.category, list);
           }
           for (const [cat, mems] of grouped) {
-            setCategoryCache(projectId, cat, mems);
+            // Skip session - it's conversation-scoped and handled separately
+            if (cat !== "session") {
+              setCategoryCache(projectId, cat, mems);
+            }
           }
         }
 
