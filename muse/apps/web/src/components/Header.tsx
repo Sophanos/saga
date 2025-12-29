@@ -1,13 +1,17 @@
 import { useState } from "react";
-import { BookOpen, Settings, Sparkles, Play } from "lucide-react";
+import { BookOpen, Settings, Sparkles, Play, FileDown } from "lucide-react";
 import { Button } from "@mythos/ui";
 import { ModeToggle } from "./ModeToggle";
 import { ApiKeySettings } from "./settings/ApiKeySettings";
+import { ExportModal } from "./modals/ExportModal";
 import { useApiKey } from "../hooks/useApiKey";
+import { useCurrentProject } from "../stores";
 
 export function Header() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const { hasKey } = useApiKey();
+  const project = useCurrentProject();
 
   return (
     <header className="h-12 border-b border-mythos-text-muted/20 bg-mythos-bg-secondary flex items-center justify-between px-4">
@@ -21,7 +25,7 @@ export function Header() {
         </div>
         <span className="text-mythos-text-muted">|</span>
         <span className="text-sm text-mythos-text-secondary">
-          Untitled Project
+          {project?.name ?? "Untitled Project"}
         </span>
       </div>
 
@@ -34,6 +38,15 @@ export function Header() {
         <Button variant="ghost" size="sm" className="gap-2">
           <Play className="w-4 h-4" />
           <span className="hidden sm:inline">Run Linter</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-2"
+          onClick={() => setIsExportOpen(true)}
+        >
+          <FileDown className="w-4 h-4" />
+          <span className="hidden sm:inline">Export</span>
         </Button>
         <div className="w-px h-6 bg-mythos-text-muted/20 mx-1" />
         <ModeToggle />
@@ -56,6 +69,12 @@ export function Header() {
       <ApiKeySettings
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
       />
     </header>
   );
