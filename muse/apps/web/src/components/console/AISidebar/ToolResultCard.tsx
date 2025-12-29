@@ -8,6 +8,11 @@ import {
   AlertCircle,
   RotateCcw,
   Trash2,
+  Sparkles,
+  ScanSearch,
+  ShieldCheck,
+  LayoutTemplate,
+  Wand2,
 } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import {
@@ -129,6 +134,7 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
 
   // Get icon based on tool type
   const getIcon = () => {
+    // Core entity/relationship tools
     if (tool.toolName === "create_entity" || tool.toolName === "update_entity") {
       const entityType = getArg<EntityType>("type") ?? "character";
       const Icon = getEntityIconComponent(entityType);
@@ -144,11 +150,44 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
     ) {
       return <GitBranch className="w-4 h-4" />;
     }
+    if (tool.toolName === "generate_content") {
+      return <Wand2 className="w-4 h-4" />;
+    }
+    // Saga unified agent tools
+    if (tool.toolName === "genesis_world") {
+      return <Sparkles className="w-4 h-4" />;
+    }
+    if (tool.toolName === "detect_entities") {
+      return <ScanSearch className="w-4 h-4" />;
+    }
+    if (tool.toolName === "check_consistency") {
+      return <ShieldCheck className="w-4 h-4" />;
+    }
+    if (tool.toolName === "generate_template") {
+      return <LayoutTemplate className="w-4 h-4" />;
+    }
     return <FileText className="w-4 h-4" />;
   };
 
   // Get action button label based on tool type
   const getActionLabel = () => {
+    // Saga unified agent tools
+    if (tool.toolName === "genesis_world") {
+      return "Generate";
+    }
+    if (tool.toolName === "detect_entities") {
+      return "Detect";
+    }
+    if (tool.toolName === "check_consistency") {
+      return "Check";
+    }
+    if (tool.toolName === "generate_template") {
+      return "Generate";
+    }
+    if (tool.toolName === "generate_content") {
+      return "Generate";
+    }
+    // Core entity/relationship tools
     if (tool.toolName.startsWith("delete_")) {
       return "Delete";
     }

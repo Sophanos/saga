@@ -7,6 +7,13 @@
  * locations, items, and other story elements in narrative text.
  * Supports BYOK (Bring Your Own Key) via x-openrouter-key header.
  *
+ * @deprecated This is a legacy endpoint. New features should use the unified
+ * ai-saga endpoint with the detect_entities tool. This endpoint is maintained
+ * for backward compatibility with existing client code.
+ *
+ * Migration path:
+ *   POST /ai-saga { kind: "execute_tool", toolName: "detect_entities", input: {...} }
+ *
  * Request Body:
  * {
  *   text: string,                 // The text to analyze for entities
@@ -655,6 +662,17 @@ serve(async (req) => {
 
     return createSuccessResponse(detectionResult, origin);
   } catch (error) {
+    // Record failed request
+    await recordAIRequest(supabase, billing, {
+      endpoint: "detect",
+      model: "unknown",
+      modelType,
+      usage: extractTokenUsage(undefined),
+      latencyMs: Date.now() - startTime,
+      success: false,
+      errorCode: "AI_ERROR",
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+    });
     // Handle AI provider errors
     return handleAIError(error, origin);
   }

@@ -6,6 +6,13 @@
  * Analyzes narrative content for consistency issues using the ConsistencyLinter agent.
  * Supports BYOK (Bring Your Own Key) via x-openrouter-key header.
  *
+ * @deprecated This is a legacy endpoint. New features should use the unified
+ * ai-saga endpoint with the check_consistency tool. This endpoint is maintained
+ * for backward compatibility with existing client code.
+ *
+ * Migration path:
+ *   POST /ai-saga { kind: "execute_tool", toolName: "check_consistency", input: {...} }
+ *
  * Request Body:
  * {
  *   documentContent: string,      // The document text to analyze
@@ -207,6 +214,17 @@ serve(async (req) => {
 
     return createSuccessResponse(issues, origin);
   } catch (error) {
+    // Record failed request
+    await recordAIRequest(supabase, billing, {
+      endpoint: "lint",
+      model: "unknown",
+      modelType,
+      usage: extractTokenUsage(undefined),
+      latencyMs: Date.now() - startTime,
+      success: false,
+      errorCode: "AI_ERROR",
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+    });
     // Handle AI provider errors
     return handleAIError(error, origin);
   }

@@ -1,8 +1,15 @@
 /**
  * AI Genesis Edge Function
- * 
+ *
  * Generates story world scaffolding from a concept prompt.
  * Used in Architect mode project creation.
+ *
+ * @deprecated This is a legacy endpoint. New features should use the unified
+ * ai-saga endpoint with the genesis_world tool. This endpoint is maintained
+ * for backward compatibility with existing client code.
+ *
+ * Migration path:
+ *   POST /ai-saga { kind: "execute_tool", toolName: "genesis_world", input: {...} }
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";

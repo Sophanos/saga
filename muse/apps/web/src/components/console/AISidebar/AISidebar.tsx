@@ -8,7 +8,7 @@ import {
   useChatError,
   type ChatMention,
 } from "../../../stores";
-import { useChatAgent } from "../../../hooks/useChatAgent";
+import { useSagaAgent } from "../../../hooks/useSagaAgent";
 import { useEditorSelection } from "../../../hooks/useEditorSelection";
 import { ContextBar } from "./ContextBar";
 import { QuickActions } from "./QuickActions";
@@ -28,7 +28,7 @@ export function AISidebar({ className }: AISidebarProps) {
   const isStreaming = useIsChatStreaming();
   const error = useChatError();
 
-  const { sendMessage, stopStreaming, clearChat } = useChatAgent();
+  const { sendMessage, stopStreaming, clearChat } = useSagaAgent({ mode: "editing" });
 
   // Get current document and editor for context
   const currentDocument = useMythosStore((s) => s.document.currentDocument);

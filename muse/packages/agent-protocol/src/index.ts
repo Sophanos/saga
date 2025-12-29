@@ -21,7 +21,12 @@ export type ToolName =
   | "update_relationship"
   | "delete_relationship"
   | "generate_content"
-  | "generate_image"; // future
+  | "generate_image"
+  // Saga unified agent tools
+  | "genesis_world"
+  | "detect_entities"
+  | "check_consistency"
+  | "generate_template";
 
 /**
  * Entity types that can be created/updated
@@ -344,6 +349,87 @@ export interface GenerateImageArgs {
   entityId?: string; // Link result to an entity
 }
 
+// =============================================================================
+// Saga Tool Arguments
+// =============================================================================
+
+/**
+ * Complexity level for template generation.
+ */
+export type TemplateComplexity = "simple" | "standard" | "complex";
+
+/**
+ * Detail level for world generation.
+ */
+export type GenesisDetailLevel = "minimal" | "standard" | "detailed";
+
+/**
+ * Scope for entity detection or consistency checking.
+ */
+export type AnalysisScope = "selection" | "document" | "project";
+
+/**
+ * Arguments for genesis_world tool.
+ * Generates a complete world scaffold from a story description.
+ */
+export interface GenesisWorldArgs {
+  /** Story/world description from user */
+  prompt: string;
+  /** Optional genre hint */
+  genre?: string;
+  /** Target number of entities to generate (3-50) */
+  entityCount?: number;
+  /** How detailed the generation should be */
+  detailLevel?: GenesisDetailLevel;
+  /** Whether to include a story outline */
+  includeOutline?: boolean;
+}
+
+/**
+ * Arguments for detect_entities tool.
+ * Extracts entities from narrative text.
+ */
+export interface DetectEntitiesArgs {
+  /** Scope of detection */
+  scope?: AnalysisScope;
+  /** Text to analyze (optional - client can supply at execution) */
+  text?: string;
+  /** Minimum confidence threshold (0-1) */
+  minConfidence?: number;
+  /** Maximum entities to return */
+  maxEntities?: number;
+  /** Filter to specific entity types */
+  entityTypes?: EntityType[];
+}
+
+/**
+ * Arguments for check_consistency tool.
+ * Checks narrative for contradictions and plot holes.
+ */
+export interface CheckConsistencyArgs {
+  /** Scope of consistency check */
+  scope?: AnalysisScope;
+  /** Text to analyze (optional - client can supply at execution) */
+  text?: string;
+  /** Focus areas for the check */
+  focus?: ("character" | "world" | "plot" | "timeline")[];
+}
+
+/**
+ * Arguments for generate_template tool.
+ * Creates a custom project template from story description.
+ */
+export interface GenerateTemplateArgs {
+  /** Story/world description */
+  storyDescription: string;
+  /** Genre hints to guide template generation */
+  genreHints?: string[];
+  /** Complexity level */
+  complexity?: TemplateComplexity;
+  /** Base template to inherit from */
+  baseTemplateId?: string;
+}
+
 /**
  * Map of tool names to their argument types.
  */
@@ -356,6 +442,11 @@ export interface ToolArgsMap {
   delete_relationship: DeleteRelationshipArgs;
   generate_content: GenerateContentArgs;
   generate_image: GenerateImageArgs;
+  // Saga tools
+  genesis_world: GenesisWorldArgs;
+  detect_entities: DetectEntitiesArgs;
+  check_consistency: CheckConsistencyArgs;
+  generate_template: GenerateTemplateArgs;
 }
 
 // =============================================================================
@@ -415,6 +506,203 @@ export interface GenerateImageResult {
   entityId?: string;
 }
 
+// =============================================================================
+// Saga Tool Results
+// =============================================================================
+
+/**
+ * A generated entity from genesis_world.
+ */
+export interface GenesisEntity {
+  tempId: string;
+  name: string;
+  type: EntityType;
+  description?: string;
+  properties?: Record<string, unknown>;
+}
+
+/**
+ * A generated relationship from genesis_world.
+ */
+export interface GenesisRelationship {
+  sourceTempId: string;
+  targetTempId: string;
+  type: RelationType;
+  notes?: string;
+}
+
+/**
+ * An outline item from genesis_world.
+ */
+export interface GenesisOutlineItem {
+  title: string;
+  summary: string;
+  order: number;
+}
+
+/**
+ * Result of genesis_world tool.
+ */
+export interface GenesisWorldResult {
+  worldSummary: string;
+  genre?: string;
+  entities: GenesisEntity[];
+  relationships: GenesisRelationship[];
+  outline?: GenesisOutlineItem[];
+}
+
+/**
+ * A detected entity occurrence.
+ */
+export interface EntityOccurrence {
+  startOffset: number;
+  endOffset: number;
+  matchedText: string;
+  context: string;
+}
+
+/**
+ * A detected entity from detect_entities.
+ */
+export interface DetectedEntity {
+  tempId: string;
+  name: string;
+  type: EntityType;
+  confidence: number;
+  occurrences: EntityOccurrence[];
+  suggestedAliases?: string[];
+  suggestedProperties?: Record<string, unknown>;
+}
+
+/**
+ * A warning from entity detection.
+ */
+export interface DetectionWarning {
+  type: "ambiguous" | "low_confidence" | "possible_duplicate";
+  message: string;
+  entityTempId?: string;
+}
+
+/**
+ * Result of detect_entities tool.
+ */
+export interface DetectEntitiesResult {
+  entities: DetectedEntity[];
+  warnings?: DetectionWarning[];
+}
+
+/**
+ * A consistency issue location.
+ */
+export interface IssueLocation {
+  documentId?: string;
+  line?: number;
+  startOffset?: number;
+  endOffset?: number;
+  text: string;
+}
+
+/**
+ * A consistency issue from check_consistency.
+ */
+export interface ConsistencyIssue {
+  id: string;
+  type: "contradiction" | "timeline" | "character" | "world" | "plot_hole";
+  severity: "error" | "warning" | "info";
+  message: string;
+  suggestion?: string;
+  locations: IssueLocation[];
+  entityIds?: string[];
+}
+
+/**
+ * Result of check_consistency tool.
+ */
+export interface CheckConsistencyResult {
+  issues: ConsistencyIssue[];
+  summary?: string;
+}
+
+/**
+ * A custom entity kind definition for templates.
+ */
+export interface TemplateEntityKind {
+  kind: string;
+  label: string;
+  labelPlural: string;
+  category: "agent" | "place" | "object" | "system" | "organization" | "temporal" | "abstract";
+  color: string;
+  icon: string;
+  fields: Array<{
+    id: string;
+    label: string;
+    kind: "string" | "text" | "number" | "boolean" | "enum" | "tags" | "entity_ref";
+    description?: string;
+  }>;
+}
+
+/**
+ * A custom relationship kind definition for templates.
+ */
+export interface TemplateRelationshipKind {
+  kind: string;
+  label: string;
+  category: "interpersonal" | "familial" | "power" | "ability" | "custom";
+}
+
+/**
+ * A document kind definition for templates.
+ */
+export interface TemplateDocumentKind {
+  kind: string;
+  label: string;
+  allowChildren?: boolean;
+}
+
+/**
+ * A linter rule definition for templates.
+ */
+export interface TemplateLinterRule {
+  id: string;
+  label: string;
+  description: string;
+  defaultSeverity: "error" | "warning" | "info";
+  category: "character" | "world" | "plot" | "timeline" | "style";
+}
+
+/**
+ * A UI module configuration for templates.
+ */
+export interface TemplateUIModule {
+  module: string;
+  enabled: boolean;
+  order?: number;
+}
+
+/**
+ * The generated template draft from generate_template.
+ */
+export interface TemplateDraft {
+  name: string;
+  description: string;
+  category: string;
+  tags: string[];
+  baseTemplateId?: string;
+  entityKinds: TemplateEntityKind[];
+  relationshipKinds: TemplateRelationshipKind[];
+  documentKinds: TemplateDocumentKind[];
+  uiModules: TemplateUIModule[];
+  linterRules: TemplateLinterRule[];
+}
+
+/**
+ * Result of generate_template tool.
+ */
+export interface GenerateTemplateResult {
+  template: TemplateDraft;
+  suggestedStarterEntities?: GenesisEntity[];
+}
+
 /**
  * Map of tool names to their result types.
  */
@@ -427,6 +715,11 @@ export interface ToolResultsMap {
   delete_relationship: DeleteEntityResult; // Same shape
   generate_content: GenerateContentResult;
   generate_image: GenerateImageResult;
+  // Saga tools
+  genesis_world: GenesisWorldResult;
+  detect_entities: DetectEntitiesResult;
+  check_consistency: CheckConsistencyResult;
+  generate_template: GenerateTemplateResult;
 }
 
 // =============================================================================

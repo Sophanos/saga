@@ -9,10 +9,12 @@
  */
 
 import { useCallback, useRef } from "react";
-import { useMythosStore, type ChatToolInvocation } from "../stores";
+import { useMythosStore, type ChatToolInvocation, type LinterIssue } from "../stores";
 import { useEntityPersistence } from "./useEntityPersistence";
 import { useRelationshipPersistence } from "./useRelationshipPersistence";
+import { useApiKey } from "./useApiKey";
 import { getTool, type ToolExecutionContext, type ToolExecutionResult } from "../tools";
+import type { Editor } from "@mythos/editor";
 
 /**
  * Result of a tool runtime operation.
@@ -52,6 +54,9 @@ export function useToolRuntime(): UseToolRuntimeResult {
   const updateToolStatus = useMythosStore((s) => s.updateToolStatus);
   const updateToolInvocation = useMythosStore((s) => s.updateToolInvocation);
 
+  // Get API key for saga tools
+  const { key: apiKey } = useApiKey();
+
   // Persistence hooks
   const {
     createEntity,
@@ -75,13 +80,15 @@ export function useToolRuntime(): UseToolRuntimeResult {
    * Build execution context with all dependencies.
    * Reads fresh state from store at execution time to avoid stale closures.
    * @param signal Optional AbortSignal for cancellation support
+   * @param messageId Optional message ID for progress updates
    */
-  const buildContext = useCallback((signal?: AbortSignal): ToolExecutionContext | null => {
+  const buildContext = useCallback((signal?: AbortSignal, messageId?: string): ToolExecutionContext | null => {
     // Read fresh state at execution time to avoid stale closures
     const state = useMythosStore.getState();
     const projectId = state.project.currentProject?.id;
     const entities = state.world.entities;
     const relationships = state.world.relationships;
+    const editorInstance = state.editor.editorInstance as Editor | null;
 
     if (!projectId) return null;
 
@@ -121,15 +128,67 @@ export function useToolRuntime(): UseToolRuntimeResult {
       addRelationship: (rel) => useMythosStore.getState().addRelationship(rel),
       removeEntity: (id) => useMythosStore.getState().removeEntity(id),
       removeRelationship: (id) => useMythosStore.getState().removeRelationship(id),
+
+      // ==========================================================================
+      // Saga Tool Extensions
+      // ==========================================================================
+
+      apiKey: apiKey ?? undefined,
+
+      getDocumentText: () => {
+        if (!editorInstance) return "";
+        return editorInstance.getText();
+      },
+
+      getSelectionText: () => {
+        if (!editorInstance) return undefined;
+        const { from, to } = editorInstance.state.selection;
+        if (from === to) return undefined;
+        return editorInstance.state.doc.textBetween(from, to);
+      },
+
+      setLinterIssues: (issues: unknown[]) => {
+        useMythosStore.getState().setLinterIssues(issues as LinterIssue[]);
+      },
+
+      setActiveTab: (tab) => {
+        useMythosStore.getState().setActiveTab(tab);
+      },
+
+      setDetectedEntities: (_entities: unknown[]) => {
+        // Store detected entities for review (could be stored in a separate slice)
+        // For now, this is a placeholder for modal trigger
+        console.log("[useToolRuntime] Detected entities:", _entities);
+      },
+
+      showEntitySuggestionModal: (detectedEntities: unknown[]) => {
+        // TODO: Implement entity suggestion modal
+        // For now, log and potentially open modal via store
+        console.log("[useToolRuntime] Show entity suggestion modal:", detectedEntities);
+      },
+
+      setTemplateDraft: (draft: unknown) => {
+        // TODO: Store template draft for review
+        console.log("[useToolRuntime] Template draft:", draft);
+      },
+
+      onProgress: (progress) => {
+        // Update tool progress in the store
+        if (messageId) {
+          updateToolInvocation(messageId, { progress });
+        }
+      },
     };
   }, [
-    // Only persistence hooks needed - state is read fresh at execution time
+    // Only persistence hooks and apiKey needed - state is read fresh at execution time
+    apiKey,
     createEntity,
     persistUpdateEntity,
     deleteEntity,
     createRelationship,
     persistUpdateRelationship,
     deleteRelationship,
+    updateToolInvocation,
   ]);
 
   /**
@@ -174,8 +233,8 @@ export function useToolRuntime(): UseToolRuntimeResult {
       const abortController = new AbortController();
       abortControllerRef.current.set(messageId, abortController);
 
-      // Build context with abort signal
-      const ctx = buildContext(abortController.signal);
+      // Build context with abort signal and messageId for progress updates
+      const ctx = buildContext(abortController.signal, messageId);
       if (!ctx) {
         abortControllerRef.current.delete(messageId);
         updateToolStatus(messageId, "failed", "No project selected");

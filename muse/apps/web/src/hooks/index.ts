@@ -144,3 +144,7 @@ export type { UseToolRuntimeResult, ToolRuntimeResult } from "./useToolRuntime";
 // Progressive linter (Phase 2 → 3 transition)
 export { useProgressiveLinter } from "./useProgressiveLinter";
 export type { UseProgressiveLinterOptions, UseProgressiveLinterResult } from "./useProgressiveLinter";
+
+// Saga AI Agent
+export { useSagaAgent } from "./useSagaAgent";
+export type { UseSagaAgentOptions, UseSagaAgentResult } from "./useSagaAgent";

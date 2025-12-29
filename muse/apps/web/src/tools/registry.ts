@@ -5,8 +5,9 @@
  * Maps tool names to their executors, UI metadata, and handlers.
  */
 
-import type { ToolName } from "../stores";
+import type { ToolName } from "@mythos/agent-protocol";
 import type { ToolDefinition, ToolDangerLevel } from "./types";
+// Core tools
 import { createEntityExecutor } from "./executors/createEntity";
 import { updateEntityExecutor } from "./executors/updateEntity";
 import { deleteEntityExecutor } from "./executors/deleteEntity";
@@ -14,6 +15,11 @@ import { createRelationshipExecutor } from "./executors/createRelationship";
 import { updateRelationshipExecutor } from "./executors/updateRelationship";
 import { deleteRelationshipExecutor } from "./executors/deleteRelationship";
 import { generateContentExecutor } from "./executors/generateContent";
+// Saga tools
+import { genesisWorldExecutor } from "./executors/genesisWorld";
+import { detectEntitiesExecutor } from "./executors/detectEntities";
+import { checkConsistencyExecutor } from "./executors/checkConsistency";
+import { generateTemplateExecutor } from "./executors/generateTemplate";
 
 // =============================================================================
 // Tool Registry
@@ -23,6 +29,7 @@ import { generateContentExecutor } from "./executors/generateContent";
  * Registry of all tool definitions by name.
  */
 export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
+  // Core entity/relationship tools
   create_entity: createEntityExecutor as ToolDefinition<unknown, unknown>,
   update_entity: updateEntityExecutor as ToolDefinition<unknown, unknown>,
   delete_entity: deleteEntityExecutor as ToolDefinition<unknown, unknown>,
@@ -30,6 +37,11 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   update_relationship: updateRelationshipExecutor as ToolDefinition<unknown, unknown>,
   delete_relationship: deleteRelationshipExecutor as ToolDefinition<unknown, unknown>,
   generate_content: generateContentExecutor as ToolDefinition<unknown, unknown>,
+  // Saga unified agent tools
+  genesis_world: genesisWorldExecutor as ToolDefinition<unknown, unknown>,
+  detect_entities: detectEntitiesExecutor as ToolDefinition<unknown, unknown>,
+  check_consistency: checkConsistencyExecutor as ToolDefinition<unknown, unknown>,
+  generate_template: generateTemplateExecutor as ToolDefinition<unknown, unknown>,
 };
 
 /**

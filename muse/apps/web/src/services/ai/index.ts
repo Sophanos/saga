@@ -96,3 +96,23 @@ export {
   type GenesisRequestOptions,
   type GenesisApiErrorCode,
 } from "./genesisClient";
+
+// Saga unified AI agent
+export {
+  sendSagaChatStreaming,
+  executeGenesisWorld,
+  executeDetectEntities,
+  executeCheckConsistency,
+  executeGenerateTemplate,
+  SagaApiError,
+  type SagaApiErrorCode,
+  type SagaMode,
+  type SagaChatPayload,
+  type SagaMessagePayload,
+  type SagaStreamEvent,
+  type SagaStreamEventType,
+  type SagaStreamOptions,
+  type ToolCallResult as SagaToolCallResult,
+  type EditorContext as SagaEditorContext,
+  type ExecuteToolOptions,
+} from "./sagaClient";

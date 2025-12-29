@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   BookOpen,
   Lightbulb,
+  ScanSearch,
+  LayoutTemplate,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@mythos/ui";
@@ -26,6 +28,12 @@ const QUICK_ACTIONS: QuickAction[] = [
     prompt: "Describe what's happening in the selected text in vivid detail.",
   },
   {
+    id: "detect-entities",
+    label: "Detect Entities",
+    icon: ScanSearch,
+    prompt: "Analyze the current document and detect all characters, locations, items, and other story elements that should be tracked as entities.",
+  },
+  {
     id: "create-character",
     label: "Create Character",
     icon: User,
@@ -41,7 +49,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     id: "check-consistency",
     label: "Consistency",
     icon: AlertTriangle,
-    prompt: "Review the current content for consistency issues. Check for contradictions in character details, timeline problems, or world-building inconsistencies.",
+    prompt: "Check the current document for contradictions, plot holes, and timeline issues. Look for inconsistencies in character details and world-building.",
   },
   {
     id: "backstory",
@@ -49,6 +57,12 @@ const QUICK_ACTIONS: QuickAction[] = [
     icon: BookOpen,
     requiresSelection: true,
     prompt: "Generate a compelling backstory for the character or element in the selected text.",
+  },
+  {
+    id: "build-world",
+    label: "Build World",
+    icon: LayoutTemplate,
+    prompt: "Help me expand my story world. Generate entities, relationships, and story structure based on what I've written so far.",
   },
   {
     id: "brainstorm",

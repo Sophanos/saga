@@ -38,6 +38,29 @@ export interface ToolExecutionContext {
   addRelationship: (relationship: Relationship) => void;
   removeEntity: (id: string) => void;
   removeRelationship: (id: string) => void;
+
+  // ==========================================================================
+  // Saga Tool Extensions (optional - for genesis, detect, lint, template)
+  // ==========================================================================
+
+  /** API key for AI operations (BYOK) */
+  apiKey?: string;
+  /** Get the current document's text content */
+  getDocumentText?: () => string;
+  /** Get the current selection text */
+  getSelectionText?: () => string | undefined;
+  /** Set linter issues in the store */
+  setLinterIssues?: (issues: unknown[]) => void;
+  /** Set the active console tab */
+  setActiveTab?: (tab: "chat" | "linter" | "search" | "dynamics" | "coach") => void;
+  /** Set detected entities for review */
+  setDetectedEntities?: (entities: unknown[]) => void;
+  /** Show entity suggestion modal */
+  showEntitySuggestionModal?: (entities: unknown[]) => void;
+  /** Set template draft for review */
+  setTemplateDraft?: (draft: unknown) => void;
+  /** Progress callback for long-running operations */
+  onProgress?: (progress: { pct?: number; stage?: string }) => void;
 }
 
 // =============================================================================

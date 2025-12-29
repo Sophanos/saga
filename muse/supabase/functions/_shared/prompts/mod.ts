@@ -56,3 +56,13 @@ export {
   GENESIS_USER_TEMPLATE,
   buildGenesisUserPrompt,
 } from "./genesis.ts";
+
+// Saga unified agent prompts
+export {
+  SAGA_SYSTEM,
+  SAGA_CONTEXT_TEMPLATE,
+  SAGA_EDITOR_CONTEXT,
+  SAGA_NO_CONTEXT,
+  SAGA_MODE_ADDENDUMS,
+  buildSagaSystemPrompt,
+} from "./saga.ts";

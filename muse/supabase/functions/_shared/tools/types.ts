@@ -85,6 +85,22 @@ export const lengthSchema = z.enum(["short", "medium", "long"]);
 export type Length = z.infer<typeof lengthSchema>;
 
 // =============================================================================
+// Saga Tool Schemas
+// =============================================================================
+
+export const genesisDetailLevelSchema = z.enum(["minimal", "standard", "detailed"]);
+export type GenesisDetailLevel = z.infer<typeof genesisDetailLevelSchema>;
+
+export const analysisScopeSchema = z.enum(["selection", "document", "project"]);
+export type AnalysisScope = z.infer<typeof analysisScopeSchema>;
+
+export const templateComplexitySchema = z.enum(["simple", "standard", "complex"]);
+export type TemplateComplexity = z.infer<typeof templateComplexitySchema>;
+
+export const consistencyFocusSchema = z.enum(["character", "world", "plot", "timeline"]);
+export type ConsistencyFocus = z.infer<typeof consistencyFocusSchema>;
+
+// =============================================================================
 // Tool Result Interface
 // =============================================================================
 

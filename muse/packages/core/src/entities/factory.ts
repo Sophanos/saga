@@ -14,6 +14,9 @@ import type {
   Faction,
   JungianArchetype,
   Trait,
+  Relationship,
+  RelationType,
+  PropertyValue,
 } from "./types";
 
 // ============================================================================
@@ -268,4 +271,67 @@ export function getTypeSpecificUpdates(
     default:
       return baseUpdates;
   }
+}
+
+// ============================================================================
+// Relationship Factory
+// ============================================================================
+
+/**
+ * Input data for building a relationship.
+ */
+export interface RelationshipBuildData {
+  sourceId: string;
+  targetId: string;
+  type: RelationType;
+  bidirectional?: boolean;
+  strength?: number;
+  metadata?: Record<string, PropertyValue>;
+  notes?: string;
+}
+
+/**
+ * Options for relationship building
+ */
+export interface RelationshipBuildOptions {
+  /** Relationship ID (defaults to crypto.randomUUID()) */
+  id?: string;
+  /** Creation timestamp (defaults to now) */
+  createdAt?: Date;
+}
+
+/**
+ * Build a complete Relationship from input data.
+ *
+ * @param data - Relationship data including source, target, and type
+ * @param options - Optional configuration (id, timestamp)
+ * @returns A fully constructed Relationship
+ *
+ * @example
+ * ```ts
+ * const relationship = buildRelationship({
+ *   sourceId: "char-1",
+ *   targetId: "char-2",
+ *   type: "ally",
+ *   notes: "They fought together in the war.",
+ * });
+ * ```
+ */
+export function buildRelationship(
+  data: RelationshipBuildData,
+  options: RelationshipBuildOptions = {}
+): Relationship {
+  const { id = crypto.randomUUID(), createdAt = new Date() } = options;
+
+  return {
+    id,
+    sourceId: data.sourceId,
+    targetId: data.targetId,
+    type: data.type,
+    bidirectional: data.bidirectional ?? false,
+    strength: data.strength,
+    metadata: data.metadata,
+    notes: data.notes,
+    createdAt,
+  };
 }
