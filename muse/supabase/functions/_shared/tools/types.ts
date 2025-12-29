@@ -175,6 +175,5 @@ export interface EditorContext {
 export interface ToolExecuteResult {
   toolName: string;
   proposal?: unknown;
-  request?: unknown;
   message: string;
 }

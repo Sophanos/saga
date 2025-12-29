@@ -10,6 +10,7 @@ import {
 } from "../../../stores";
 import { useSagaAgent } from "../../../hooks/useSagaAgent";
 import { useEditorSelection } from "../../../hooks/useEditorSelection";
+import { useApiKey } from "../../../hooks/useApiKey";
 import { ContextBar } from "./ContextBar";
 import { QuickActions } from "./QuickActions";
 import { ChatMessages } from "./ChatMessages";
@@ -17,10 +18,11 @@ import { ChatInput } from "./ChatInput";
 import type { Editor } from "@mythos/editor";
 import type { Capability, CapabilityContext } from "@mythos/capabilities";
 import {
-  isPromptCapability,
-  isToolCapability,
-  isUIActionCapability,
-} from "@mythos/capabilities";
+  invokeCapability,
+  type CapabilityInvokerContext,
+  type ConsoleTab,
+  type ModalType,
+} from "../../../ai/invokeCapability";
 
 interface AISidebarProps {
   className?: string;
@@ -46,6 +48,9 @@ export function AISidebar({ className }: AISidebarProps) {
   // Get selection text from editor (properly reactive via selectionUpdate events)
   const selectionText = useEditorSelection(editorInstance);
 
+  // Get API key status for capability filtering
+  const { hasKey: hasApiKey } = useApiKey();
+
   // Build capability context
   const capabilityContext: CapabilityContext = useMemo(
     () => ({
@@ -66,28 +71,22 @@ export function AISidebar({ className }: AISidebarProps) {
     [sendMessage]
   );
 
-  // Handle capability invocation
+  // Handle capability invocation using centralized invoker
   const handleCapabilityInvoke = useCallback(
     async (capability: Capability) => {
-      if (isPromptCapability(capability)) {
-        // Build and send the prompt
-        const prompt = capability.buildPrompt(capabilityContext);
-        sendMessage(prompt, []);
-      } else if (isToolCapability(capability)) {
-        // For tools, send a message asking the AI to run the tool
-        // The AI will propose the tool which the user can then accept
-        const toolLabel = capability.label;
-        sendMessage(`Run ${toolLabel} on the current document.`, []);
-      } else if (isUIActionCapability(capability)) {
-        // Handle UI actions
-        const action = capability.action;
-        if (action.type === "open_console_tab") {
-          setActiveTab(action.tab as "chat" | "linter" | "search" | "dynamics" | "coach");
-        } else if (action.type === "open_modal") {
-          const modalPayload = action.payload as Record<string, unknown> | undefined;
-          openModal({ type: action.modal as "profile" | "settings", ...modalPayload });
-        }
-      }
+      const invokerContext: CapabilityInvokerContext = {
+        capabilityContext,
+        setActiveTab: (tab: ConsoleTab) => setActiveTab(tab),
+        openModal: (modal: ModalType, payload?: unknown) => {
+          const modalPayload = payload as Record<string, unknown> | undefined;
+          // Cast to satisfy ModalState discriminated union
+          openModal({ type: modal, ...modalPayload } as Parameters<typeof openModal>[0]);
+        },
+        sendChatPrompt: (prompt: string) => sendMessage(prompt, []),
+        // Note: invokeTool is not provided here since QuickActions
+        // triggers tool execution via chat prompts, not direct invocation
+      };
+      await invokeCapability(capability, invokerContext);
     },
     [capabilityContext, sendMessage, setActiveTab, openModal]
   );
@@ -143,6 +142,7 @@ export function AISidebar({ className }: AISidebarProps) {
       {messages.length === 0 && (
         <QuickActions
           hasSelection={!!selectionText}
+          hasApiKey={hasApiKey}
           onInvoke={handleCapabilityInvoke}
         />
       )}

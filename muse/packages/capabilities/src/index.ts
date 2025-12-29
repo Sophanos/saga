@@ -34,6 +34,13 @@ export {
   searchCapabilities,
 } from "./registry";
 
+// Icons
+export {
+  CAPABILITY_ICON_MAP,
+  getCapabilityIcon,
+  type LucideIcon,
+} from "./icons";
+
 // Re-export preferences from agent-protocol for convenience
 export type {
   WritingPreferences,

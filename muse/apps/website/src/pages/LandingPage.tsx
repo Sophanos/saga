@@ -1,10 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { BookOpen, Check, Plus, ArrowUp, FileText, X } from "lucide-react";
+import { BookOpen, Check, Plus, ArrowUp, FileText, X, Shield, Wand2, BookMarked, Users, Gamepad2, PenTool, Brain } from "lucide-react";
 
 /**
  * Landing Page - Cursor.ai inspired minimal design
  * Almost monochrome with subtle borders
+ *
+ * Key messaging:
+ * - "Your story's database that organizes itself"
+ * - NOT a text generator (addresses AI skepticism)
+ * - Built for writers tracking complex worlds
  */
 
 export function LandingPage() {
@@ -13,7 +18,9 @@ export function LandingPage() {
       <Navbar />
       <Hero />
       <LiveStats />
+      <NotATextGenerator />
       <Features />
+      <BuiltFor />
       <Pricing />
       <Footer />
       <FloatingChatBar />
@@ -50,11 +57,14 @@ function Navbar() {
 
         {/* CTA */}
         <div className="flex items-center gap-3">
+          <a href="/try" className="text-sm text-text-secondary hover:text-text-primary transition-colors">
+            Try Demo
+          </a>
           <a href="/login" className="text-sm text-text-secondary hover:text-text-primary transition-colors">
             Sign in
           </a>
           <a href="/signup" className="btn btn-secondary">
-            Download
+            Get Started
           </a>
         </div>
       </div>
@@ -68,17 +78,17 @@ function Navbar() {
 
 function Hero() {
   return (
-    <section id="hero-section" className="relative pt-20 px-6 pb-40">
+    <section id="hero-section" className="relative pt-24 px-6 pb-56">
       {/* Headline */}
-      <div className="max-w-4xl mx-auto text-center mb-8">
+      <div className="max-w-4xl mx-auto text-center mb-12">
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-3xl md:text-4xl lg:text-5xl font-medium leading-[1.1] tracking-tight mb-3"
+          className="text-3xl md:text-4xl lg:text-5xl font-medium leading-[1.1] tracking-tight mb-4"
         >
-          Built to make you{" "}
-          <span className="text-text-secondary">extraordinarily productive</span>
+          Your story's database{" "}
+          <span className="text-text-secondary">that organizes itself</span>
         </motion.h1>
         <motion.p
           initial={{ opacity: 0, y: 20 }}
@@ -86,7 +96,7 @@ function Hero() {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="text-base md:text-lg text-text-muted"
         >
-          Mythos is the best way to write fiction with AI.
+          Built to organize your world, refine your craft, and share your story.
         </motion.p>
       </div>
 
@@ -94,7 +104,7 @@ function Hero() {
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.2 }}
+        transition={{ duration: 0.8, delay: 0.3 }}
         className="max-w-5xl mx-auto w-full"
       >
         <AppPreview />
@@ -310,7 +320,12 @@ function FloatingChatBar() {
 
   const handleSubmit = () => {
     if (hasContent) {
-      window.location.href = "/signup";
+      // Redirect to try page with content in session storage
+      sessionStorage.setItem("mythos_trial_draft", inputValue);
+      if (files.length > 0) {
+        sessionStorage.setItem("mythos_trial_files", JSON.stringify(files.map(f => f.name)));
+      }
+      window.location.href = "/try";
     }
   };
 
@@ -459,30 +474,30 @@ function FloatingChatBar() {
 
 function LiveStats() {
   const [stats, setStats] = useState({
-    chapters: 1247,
-    worlds: 89,
-    characters: 3421,
-    inconsistencies: 156,
+    entitiesExtracted: 12847,
+    plotHolesCaught: 1563,
+    worldsOrganized: 234,
+    hourssSaved: 4721,
   });
 
   // Simulate live updates
   useEffect(() => {
     const interval = setInterval(() => {
       setStats(prev => ({
-        chapters: prev.chapters + Math.floor(Math.random() * 3),
-        worlds: prev.worlds + (Math.random() > 0.7 ? 1 : 0),
-        characters: prev.characters + Math.floor(Math.random() * 5),
-        inconsistencies: prev.inconsistencies + Math.floor(Math.random() * 2),
+        entitiesExtracted: prev.entitiesExtracted + Math.floor(Math.random() * 8),
+        plotHolesCaught: prev.plotHolesCaught + Math.floor(Math.random() * 2),
+        worldsOrganized: prev.worldsOrganized + (Math.random() > 0.8 ? 1 : 0),
+        hourssSaved: prev.hourssSaved + Math.floor(Math.random() * 3),
       }));
     }, 3000);
     return () => clearInterval(interval);
   }, []);
 
   const statItems = [
-    { label: "Chapters written today", value: stats.chapters, suffix: "" },
-    { label: "Worlds built", value: stats.worlds, suffix: "" },
-    { label: "Characters brought to life", value: stats.characters, suffix: "" },
-    { label: "Plot holes caught", value: stats.inconsistencies, suffix: "" },
+    { label: "Characters & items auto-extracted", value: stats.entitiesExtracted, suffix: "", highlight: true },
+    { label: "Contradictions caught", value: stats.plotHolesCaught, suffix: "", highlight: true },
+    { label: "Worlds organized", value: stats.worldsOrganized, suffix: "" },
+    { label: "Hours of manual work saved", value: stats.hourssSaved, suffix: "+" },
   ];
 
   return (
@@ -498,7 +513,7 @@ function LiveStats() {
               transition={{ duration: 0.4, delay: i * 0.1 }}
               className="text-center"
             >
-              <div className="text-2xl md:text-3xl font-medium text-text-primary tabular-nums">
+              <div className={`text-2xl md:text-3xl font-medium tabular-nums ${stat.highlight ? 'text-cyan-400' : 'text-text-primary'}`}>
                 {stat.value.toLocaleString()}{stat.suffix}
               </div>
               <div className="text-xs md:text-sm text-text-muted mt-1">
@@ -508,8 +523,61 @@ function LiveStats() {
           ))}
         </div>
         <p className="text-center text-xs text-text-muted/60 mt-6">
-          Live stats from writers using Mythos right now
+          Real metrics from writers using Mythos
         </p>
+      </div>
+    </section>
+  );
+}
+
+// ============================================
+// NOT A TEXT GENERATOR (Addresses AI skepticism)
+// ============================================
+
+function NotATextGenerator() {
+  return (
+    <section className="py-16 px-6 border-t border-border">
+      <div className="max-w-4xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+          className="relative rounded-xl border border-border bg-bg-secondary/30 p-8 md:p-10"
+        >
+          {/* Accent line */}
+          <div className="absolute top-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent" />
+
+          <div className="flex items-start gap-4">
+            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-medium mb-2">
+                Not a text generator. <span className="text-text-muted">An organizational tool with AI superpowers.</span>
+              </h3>
+              <p className="text-sm text-text-secondary leading-relaxed mb-4">
+                We know writers are skeptical of AI — and rightfully so. Mythos doesn't write your story.
+                It tracks what <em>you</em> wrote, catches <em>your</em> contradictions, and organizes <em>your</em> world.
+                You always have final say. Every AI suggestion requires your approval.
+              </p>
+              <div className="flex flex-wrap gap-4 text-xs text-text-muted">
+                <span className="flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  AI extracts entities you wrote
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  Suggestions require approval
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  Never claims authorship
+                </span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
       </div>
     </section>
   );
@@ -521,16 +589,28 @@ function LiveStats() {
 
 const FEATURES = [
   {
-    title: "AI Writing Coach",
-    description: "Real-time feedback on tension, pacing, and show-don't-tell. Improve your prose as you write.",
+    icon: Wand2,
+    title: "Throw in info. AI sorts it automatically.",
+    description: "Paste 10,000 words. Watch characters, locations, and items appear in your sidebar — extracted, organized, linked. Zero manual data entry.",
+    highlight: "Entity auto-detection",
   },
   {
-    title: "World Graph",
-    description: "Track characters, locations, and relationships like code variables. Never lose a plot thread.",
+    icon: Shield,
+    title: "Catch contradictions before readers do.",
+    description: "Blue eyes in chapter 3, brown in chapter 12? The consistency linter catches it. Timeline conflicts, character inconsistencies, plot holes — found and flagged.",
+    highlight: "Consistency linting",
   },
   {
-    title: "Consistency Linter",
-    description: "Catch contradictions automatically. Blue eyes in chapter 3, brown in chapter 12? We find it.",
+    icon: BookMarked,
+    title: "Your master document, always organized.",
+    description: "Visual World Graph shows all your characters, locations, and their relationships. Export a complete series bible with one click.",
+    highlight: "World Graph + Export",
+  },
+  {
+    icon: Brain,
+    title: "Write your story. We remember your world.",
+    description: "AI remembers your characters, your decisions, your style. Ask 'What happened to Marcus?' and get answers from your own manuscript.",
+    highlight: "RAG-powered chat",
   },
 ];
 
@@ -538,9 +618,12 @@ function Features() {
   return (
     <section id="features" className="py-24 px-6 border-t border-border">
       <div className="max-w-5xl mx-auto">
-        <h2 className="text-2xl font-medium mb-12">Features</h2>
+        <div className="text-center mb-12">
+          <h2 className="text-2xl font-medium mb-3">Built for writers who track complex worlds</h2>
+          <p className="text-text-muted">From the Discord feedback of fiction writers who needed better tools</p>
+        </div>
 
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-2 gap-6">
           {FEATURES.map((feature, i) => (
             <motion.div
               key={feature.title}
@@ -548,10 +631,83 @@ function Features() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.4, delay: i * 0.1 }}
+              className="group p-6 rounded-xl border border-border bg-bg-secondary/20 hover:bg-bg-secondary/40 transition-colors"
             >
-              <h3 className="font-medium mb-2">{feature.title}</h3>
-              <p className="text-sm text-text-secondary leading-relaxed">
-                {feature.description}
+              <div className="flex items-start gap-4">
+                <div className="p-2 rounded-lg bg-bg-tertiary text-text-muted group-hover:text-text-primary transition-colors">
+                  <feature.icon className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] uppercase tracking-wider text-cyan-400/80 font-medium">
+                      {feature.highlight}
+                    </span>
+                  </div>
+                  <h3 className="font-medium mb-2 text-text-primary">{feature.title}</h3>
+                  <p className="text-sm text-text-secondary leading-relaxed">
+                    {feature.description}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ============================================
+// BUILT FOR
+// ============================================
+
+const AUDIENCES = [
+  {
+    icon: PenTool,
+    title: "Fiction Writers",
+    description: "Epic fantasy with 50+ characters? Mystery with intricate timelines? We track it all.",
+  },
+  {
+    icon: Gamepad2,
+    title: "TTRPG Game Masters",
+    description: "D&D campaigns, homebrew worlds, session notes. DM Mode shows stats and secrets.",
+  },
+  {
+    icon: BookOpen,
+    title: "Manga & Comic Writers",
+    description: "Visual novels, webtoons, storyboards. Character sheets and world bibles built-in.",
+  },
+  {
+    icon: Users,
+    title: "Writing Teams",
+    description: "Collaborate on shared worlds. Real-time sync, comments, and activity feeds.",
+  },
+];
+
+function BuiltFor() {
+  return (
+    <section className="py-20 px-6 border-t border-border">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-12">
+          <h2 className="text-2xl font-medium mb-3">Built for anyone with "too many characters to remember"</h2>
+        </div>
+
+        <div className="grid md:grid-cols-4 gap-6">
+          {AUDIENCES.map((audience, i) => (
+            <motion.div
+              key={audience.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: i * 0.1 }}
+              className="text-center"
+            >
+              <div className="inline-flex p-3 rounded-xl bg-bg-secondary border border-border mb-4">
+                <audience.icon className="w-5 h-5 text-text-muted" />
+              </div>
+              <h3 className="font-medium mb-1 text-sm">{audience.title}</h3>
+              <p className="text-xs text-text-muted leading-relaxed">
+                {audience.description}
               </p>
             </motion.div>
           ))}

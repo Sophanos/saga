@@ -61,7 +61,7 @@ export const nameGeneratorTool = tool({
     const entityType = args.entityType;
     return {
       toolName: "name_generator",
-      request: args,
+      proposal: args,
       message: `Generating ${count} ${culture} ${entityType} names`,
     };
   },

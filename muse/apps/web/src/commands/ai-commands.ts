@@ -1,46 +1,21 @@
-import {
-  MessageSquare,
-  Sparkles,
-  AlertTriangle,
-  Zap,
-  Brain,
-  Eye,
-  Scale,
-  Wand2,
-  ScanSearch,
-  Globe,
-  User,
-  type LucideIcon,
-} from "lucide-react";
 import type { Command } from "./registry";
 import {
   getCapabilitiesForSurface,
-  isPromptCapability,
-  isToolCapability,
-  isUIActionCapability,
+  getCapabilityIcon,
   type Capability,
 } from "@mythos/capabilities";
-
-// Icon mapping from string names to Lucide components
-const ICON_MAP: Record<string, LucideIcon> = {
-  MessageSquare,
-  Sparkles,
-  AlertTriangle,
-  Zap,
-  Brain,
-  Eye,
-  Scale,
-  Wand2,
-  ScanSearch,
-  Globe,
-  User,
-};
+import {
+  invokeCapability,
+  type CapabilityInvokerContext,
+  type ConsoleTab,
+  type ModalType,
+} from "../ai/invokeCapability";
 
 /**
  * Convert a Capability to a Command.
  */
 function capabilityToCommand(capability: Capability): Command {
-  const Icon = ICON_MAP[capability.icon];
+  const Icon = getCapabilityIcon(capability.icon);
 
   const command: Command = {
     id: capability.id,
@@ -63,29 +38,22 @@ function capabilityToCommand(capability: Capability): Command {
       return true;
     },
     execute: async (ctx) => {
-      if (isPromptCapability(capability)) {
-        // Build prompt and switch to chat (prompt will be sent by user clicking in chat)
-        // For now, just switch to chat tab
-        ctx.setActiveTab("chat");
-      } else if (isToolCapability(capability)) {
-        // For tools invoked via command palette, switch to chat or linter
-        // The actual tool execution happens in the chat context
-        if (capability.toolName === "check_consistency" || capability.toolName === "check_logic") {
-          ctx.setActiveTab("linter");
-        } else if (capability.toolName === "clarity_check") {
-          ctx.setActiveTab("linter");
-        } else {
-          ctx.setActiveTab("chat");
-        }
-      } else if (isUIActionCapability(capability)) {
-        const action = capability.action;
-        if (action.type === "open_console_tab") {
-          ctx.setActiveTab(action.tab);
-        } else if (action.type === "open_modal") {
-          const modalPayload = action.payload as Record<string, unknown> | undefined;
-          ctx.openModal({ type: action.modal as "profile" | "settings", ...modalPayload });
-        }
-      }
+      // Build invoker context for navigation-only mode (no sendChatPrompt/invokeTool)
+      const invokerContext: CapabilityInvokerContext = {
+        capabilityContext: {
+          hasProject: ctx.state.project.currentProject !== null,
+          selectionText: ctx.selectedText ?? undefined,
+          documentTitle: ctx.state.document.currentDocument?.title,
+        },
+        setActiveTab: (tab: ConsoleTab) => ctx.setActiveTab(tab),
+        openModal: (modal: ModalType, payload?: unknown) => {
+          const modalPayload = payload as Record<string, unknown> | undefined;
+          // Cast to satisfy ModalState discriminated union
+          ctx.openModal({ type: modal, ...modalPayload } as Parameters<typeof ctx.openModal>[0]);
+        },
+        // No sendChatPrompt/invokeTool - command palette only navigates
+      };
+      await invokeCapability(capability, invokerContext);
     },
   };
 

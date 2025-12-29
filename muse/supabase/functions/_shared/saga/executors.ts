@@ -11,7 +11,7 @@ import {
   GENESIS_SYSTEM_PROMPT,
   buildGenesisUserPrompt,
 } from "../prompts/mod.ts";
-import { CLARITY_CHECK_SYSTEM } from "../prompts/clarity.ts";
+import { CLARITY_CHECK_SYSTEM, QUICK_CLARITY_PROMPT } from "../prompts/clarity.ts";
 
 // =============================================================================
 // Input Validation
@@ -778,7 +778,7 @@ export async function executeClarityCheck(
   const metrics = computeReadabilityMetrics(input.text);
 
   const truncatedText = truncateText(input.text);
-  const userPrompt = `Analyze this text for clarity issues (max ${maxIssues} issues):\n\n"${truncatedText}"`;
+  const userPrompt = `${QUICK_CLARITY_PROMPT}\n\nAnalyze this text (max ${maxIssues} issues):\n\n"${truncatedText}"`;
 
   console.log("[saga/clarity] Checking clarity of text length:", input.text.length);
 

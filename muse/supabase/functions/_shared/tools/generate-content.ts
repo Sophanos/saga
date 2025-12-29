@@ -21,7 +21,7 @@ export const generateContentTool = tool({
   execute: async (args): Promise<ToolExecuteResult> => {
     return {
       toolName: "generate_content",
-      request: args,
+      proposal: args,
       message: `Generating ${args.contentType} for: ${args.subject}`,
     };
   },

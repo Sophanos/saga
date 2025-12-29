@@ -1,55 +1,21 @@
 import { useMemo } from "react";
-import {
-  Sparkles,
-  User,
-  GitBranch,
-  AlertTriangle,
-  BookOpen,
-  Lightbulb,
-  ScanSearch,
-  LayoutTemplate,
-  Eye,
-  Scale,
-  Wand2,
-  MessageSquare,
-  Brain,
-  Zap,
-  Globe,
-  type LucideIcon,
-} from "lucide-react";
 import { cn } from "@mythos/ui";
 import {
   getCapabilitiesForSurface,
+  getCapabilityIcon,
   type Capability,
 } from "@mythos/capabilities";
 
-// Icon mapping from string names to Lucide components
-const ICON_MAP: Record<string, LucideIcon> = {
-  Sparkles,
-  User,
-  GitBranch,
-  AlertTriangle,
-  BookOpen,
-  Lightbulb,
-  ScanSearch,
-  LayoutTemplate,
-  Eye,
-  Scale,
-  Wand2,
-  MessageSquare,
-  Brain,
-  Zap,
-  Globe,
-};
-
 interface QuickActionsProps {
   hasSelection: boolean;
+  hasApiKey: boolean;
   onInvoke: (capability: Capability) => void;
   className?: string;
 }
 
 export function QuickActions({
   hasSelection,
+  hasApiKey,
   onInvoke,
   className,
 }: QuickActionsProps) {
@@ -59,13 +25,17 @@ export function QuickActions({
     []
   );
 
-  // Filter by selection requirement
+  // Filter by selection and API key requirements
   const availableCapabilities = useMemo(
     () =>
-      capabilities.filter(
-        (cap) => !cap.requiresSelection || hasSelection
-      ),
-    [capabilities, hasSelection]
+      capabilities.filter((cap) => {
+        // Check selection requirement
+        if (cap.requiresSelection && !hasSelection) return false;
+        // Check API key requirement
+        if (cap.requiresApiKey && !hasApiKey) return false;
+        return true;
+      }),
+    [capabilities, hasSelection, hasApiKey]
   );
 
   return (
@@ -75,7 +45,7 @@ export function QuickActions({
       </div>
       <div className="grid grid-cols-2 gap-1.5">
         {availableCapabilities.map((capability) => {
-          const Icon = ICON_MAP[capability.icon] ?? Sparkles;
+          const Icon = getCapabilityIcon(capability.icon);
           return (
             <button
               key={capability.id}
