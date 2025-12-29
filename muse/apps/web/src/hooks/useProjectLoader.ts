@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useMythosStore } from "../stores";
+import { useProgressiveStore } from "@mythos/state";
 import {
   getProject,
   getDocuments,
@@ -154,6 +155,19 @@ export function useProjectLoader(
 
         // Track the loaded project ID for reloading
         loadedProjectIdRef.current = id;
+
+        // Initialize progressive state for this project
+        // For legacy projects without progressive state, default to architect mode (full features)
+        const progressive = useProgressiveStore.getState();
+        progressive.setActiveProject(id);
+        progressive.ensureProject(id, {
+          creationMode: "architect",
+          phase: 4,
+          entityMentionCounts: {},
+          unlockedModules: { editor: true, manifest: true, console: true, world_graph: true },
+          totalWritingTimeSec: 0,
+          neverAsk: {},
+        });
 
         setProjectLoading(false);
       } catch (err) {

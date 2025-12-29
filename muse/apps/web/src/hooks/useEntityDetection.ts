@@ -19,6 +19,7 @@ import { useMythosStore, useEntities } from "../stores";
 import { useApiKey } from "./useApiKey";
 import { useEntityMarks } from "./useEntityMarks";
 import { detectEntitiesViaEdge, DetectApiError } from "../services/ai";
+import { useProgressiveStore } from "@mythos/state";
 
 /**
  * Generate a simple UUID v4
@@ -43,6 +44,13 @@ export interface UseEntityDetectionOptions {
   enabled?: boolean;
   /** Editor instance for applying EntityMarks */
   editor?: Editor | null;
+  /** Whether to auto-open modal on detection (default: true) */
+  autoOpenModal?: boolean;
+  /** Callback when detection completes (for progressive disclosure) */
+  onDetectionComplete?: (
+    result: { entities: DetectedEntity[]; warnings: DetectionWarning[] },
+    meta: { source: "paste" | "threshold" | "manual" }
+  ) => void;
 }
 
 /**
@@ -83,10 +91,11 @@ export interface UseEntityDetectionResult {
 /**
  * Default detection options
  */
-const DEFAULT_OPTIONS: Omit<Required<UseEntityDetectionOptions>, "editor"> = {
+const DEFAULT_OPTIONS: Omit<Required<UseEntityDetectionOptions>, "editor" | "onDetectionComplete"> = {
   minLength: 100,
   detectionOptions: {},
   enabled: true,
+  autoOpenModal: true,
 };
 
 /**
@@ -139,9 +148,11 @@ function convertToEntity(
 export function useEntityDetection(
   options: UseEntityDetectionOptions = {}
 ): UseEntityDetectionResult {
-  const { minLength, detectionOptions, enabled, editor } = {
+  const { minLength, detectionOptions, enabled, editor, autoOpenModal, onDetectionComplete } = {
     ...DEFAULT_OPTIONS,
     editor: null,
+    autoOpenModal: true,
+    onDetectionComplete: undefined,
     ...options,
   };
 
@@ -223,10 +234,25 @@ export function useEntityDetection(
         // Update state with results
         setDetectedEntities(result.entities);
         setWarnings(result.warnings);
-        setStats(result.stats);
+        setStats(result.stats ?? null);
 
-        // Auto-open modal if entities were detected
-        if (result.entities.length > 0) {
+        // Store pending entities in progressive store for nudges
+        const progressive = useProgressiveStore.getState();
+        progressive.setPendingDetectedEntities(
+          result.entities.map((e) => ({
+            tempId: e.tempId,
+            name: e.name,
+            type: e.type,
+            confidence: e.confidence,
+            occurrences: e.occurrences.length,
+          }))
+        );
+
+        // Call detection complete callback if provided
+        onDetectionComplete?.(result, { source: "manual" });
+
+        // Auto-open modal if entities were detected (unless disabled)
+        if (autoOpenModal && result.entities.length > 0) {
           setIsModalOpen(true);
         }
       } catch (err) {

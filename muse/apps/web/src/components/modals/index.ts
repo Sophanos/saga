@@ -17,3 +17,9 @@ export {
   ImportModal,
   type ImportModalProps,
 } from "./ImportModal";
+export {
+  ConsistencyChoiceModal,
+  type ConsistencyChoiceModalProps,
+  type CanonChoice,
+  type ConsistencyIssueWithChoices,
+} from "./ConsistencyChoiceModal";

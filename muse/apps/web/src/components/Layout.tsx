@@ -10,13 +10,18 @@ import { Header } from "./Header";
 import { AsciiHud } from "./hud/AsciiHud";
 import { CommandPalette } from "./command-palette";
 import { ModalHost } from "./modals";
+import { ProgressiveNudge, ProgressiveStructureController } from "./progressive";
 import { useMythosStore } from "../stores";
 import { useGlobalShortcuts } from "../hooks";
+import { useProgressivePanelVisibility } from "@mythos/state";
 
 export function Layout() {
   const hudEntity = useMythosStore((state) => state.ui.hudEntity);
   const hudPosition = useMythosStore((state) => state.ui.hudPosition);
   const showHud = useMythosStore((state) => state.showHud);
+
+  // Progressive panel visibility (gardener mode hides panels until unlocked)
+  const { showManifest, showConsole } = useProgressivePanelVisibility();
 
   // Enable global keyboard shortcuts
   useGlobalShortcuts();
@@ -31,34 +36,40 @@ export function Layout() {
     <div className="flex flex-col h-full" onClick={handleClickOutside}>
       <Header />
       <PanelGroup direction="horizontal" className="flex-1">
-        {/* Left Pane: The Manifest */}
-        <Panel
-          defaultSize={20}
-          minSize={15}
-          maxSize={35}
-          className="bg-mythos-bg-secondary"
-        >
-          <Manifest />
-        </Panel>
-
-        <PanelResizeHandle className="w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-cyan/30 transition-colors" />
+        {/* Left Pane: The Manifest (hidden in gardener mode until unlocked) */}
+        {showManifest && (
+          <>
+            <Panel
+              defaultSize={20}
+              minSize={15}
+              maxSize={35}
+              className="bg-mythos-bg-secondary"
+            >
+              <Manifest />
+            </Panel>
+            <PanelResizeHandle className="w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-cyan/30 transition-colors" />
+          </>
+        )}
 
         {/* Center Pane: The Canvas */}
-        <Panel defaultSize={55} minSize={30} className="bg-mythos-bg-primary">
+        <Panel defaultSize={showManifest && showConsole ? 55 : showManifest || showConsole ? 75 : 100} minSize={30} className="bg-mythos-bg-primary">
           <Canvas />
         </Panel>
 
-        <PanelResizeHandle className="w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-cyan/30 transition-colors" />
-
-        {/* Right Pane: The Console */}
-        <Panel
-          defaultSize={25}
-          minSize={20}
-          maxSize={40}
-          className="bg-mythos-bg-secondary"
-        >
-          <Console />
-        </Panel>
+        {/* Right Pane: The Console (hidden in gardener mode until unlocked) */}
+        {showConsole && (
+          <>
+            <PanelResizeHandle className="w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-cyan/30 transition-colors" />
+            <Panel
+              defaultSize={25}
+              minSize={20}
+              maxSize={40}
+              className="bg-mythos-bg-secondary"
+            >
+              <Console />
+            </Panel>
+          </>
+        )}
       </PanelGroup>
 
       {/* ASCII HUD overlay */}
@@ -75,6 +86,12 @@ export function Layout() {
 
       {/* Global Modal Host */}
       <ModalHost />
+
+      {/* Progressive Structure Controller (manages phase transitions) */}
+      <ProgressiveStructureController />
+
+      {/* Progressive Nudge (shows subtle prompts) */}
+      <ProgressiveNudge />
     </div>
   );
 }

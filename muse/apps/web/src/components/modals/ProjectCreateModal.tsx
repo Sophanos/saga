@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { X, FolderPlus } from "lucide-react";
+import { X, FolderPlus, Feather, Building2 } from "lucide-react";
 import {
   Button,
   Card,
@@ -14,17 +14,20 @@ import {
   TextArea,
 } from "@mythos/ui";
 import { createProject, createDocument } from "@mythos/db";
+import { useProgressiveStore } from "@mythos/state";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 type Genre = "fantasy" | "scifi" | "literary" | "mystery" | "romance" | "horror" | "thriller";
+type CreationMode = "architect" | "gardener";
 
 interface ProjectFormData {
   name: string;
   description: string;
   genre: Genre | "";
+  creationMode: CreationMode;
 }
 
 interface ProjectCreateModalProps {
@@ -57,6 +60,7 @@ const initialFormData: ProjectFormData = {
   name: "",
   description: "",
   genre: "",
+  creationMode: "gardener",
 };
 
 export function ProjectCreateModal({
@@ -124,6 +128,20 @@ export function ProjectCreateModal({
           order_index: 0,
           word_count: 0,
         });
+
+        // Initialize progressive state for this project
+        const progressive = useProgressiveStore.getState();
+        progressive.ensureProject(project.id, {
+          creationMode: formData.creationMode,
+          phase: formData.creationMode === "gardener" ? 1 : 4,
+          entityMentionCounts: {},
+          unlockedModules: formData.creationMode === "gardener"
+            ? { editor: true }
+            : { editor: true, manifest: true, console: true, world_graph: true },
+          totalWritingTimeSec: 0,
+          neverAsk: {},
+        });
+        progressive.setActiveProject(project.id);
 
         onCreated(project.id);
       } catch (error) {
@@ -201,6 +219,71 @@ export function ProjectCreateModal({
                 disabled={isSubmitting}
               />
             </FormField>
+
+            {/* Creation Mode Toggle */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-mythos-text-primary">
+                How do you want to start?
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => updateFormData({ creationMode: "gardener" })}
+                  disabled={isSubmitting}
+                  className={`p-3 rounded-lg border-2 transition-all text-left ${
+                    formData.creationMode === "gardener"
+                      ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10"
+                      : "border-mythos-text-muted/30 hover:border-mythos-text-muted/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Feather className={`w-4 h-4 ${
+                      formData.creationMode === "gardener"
+                        ? "text-mythos-accent-cyan"
+                        : "text-mythos-text-muted"
+                    }`} />
+                    <span className={`font-medium text-sm ${
+                      formData.creationMode === "gardener"
+                        ? "text-mythos-text-primary"
+                        : "text-mythos-text-secondary"
+                    }`}>
+                      Start Writing
+                    </span>
+                  </div>
+                  <p className="text-xs text-mythos-text-muted">
+                    Dive in and discover your world as you write
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateFormData({ creationMode: "architect" })}
+                  disabled={isSubmitting}
+                  className={`p-3 rounded-lg border-2 transition-all text-left ${
+                    formData.creationMode === "architect"
+                      ? "border-mythos-accent-purple bg-mythos-accent-purple/10"
+                      : "border-mythos-text-muted/30 hover:border-mythos-text-muted/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Building2 className={`w-4 h-4 ${
+                      formData.creationMode === "architect"
+                        ? "text-mythos-accent-purple"
+                        : "text-mythos-text-muted"
+                    }`} />
+                    <span className={`font-medium text-sm ${
+                      formData.creationMode === "architect"
+                        ? "text-mythos-text-primary"
+                        : "text-mythos-text-secondary"
+                    }`}>
+                      Build Your World
+                    </span>
+                  </div>
+                  <p className="text-xs text-mythos-text-muted">
+                    Plan your world structure before writing
+                  </p>
+                </button>
+              </div>
+            </div>
 
             {/* Genre */}
             <FormField label="Genre">
