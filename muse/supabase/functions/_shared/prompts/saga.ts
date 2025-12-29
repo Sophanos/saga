@@ -9,6 +9,8 @@
  * - General chat with entity CRUD
  */
 
+import type { SagaMode, EditorContext } from "../tools/types.ts";
+
 export const SAGA_SYSTEM = `You are Saga, the AI assistant for Mythos IDE - a creative writing tool that treats "story as code."
 
 You help fiction writers build worlds, track entities, and maintain story consistency.
@@ -161,18 +163,20 @@ The author wants feedback. Focus on:
 };
 
 /**
+ * RAG context for system prompt building
+ */
+interface RAGContext {
+  documents: Array<{ id: string; title: string; preview: string }>;
+  entities: Array<{ id: string; name: string; type: string; preview: string }>;
+}
+
+/**
  * Build the full system prompt for a Saga request
  */
 export function buildSagaSystemPrompt(options: {
-  mode?: "onboarding" | "creation" | "editing" | "analysis";
-  ragContext?: {
-    documents: Array<{ id: string; title: string; preview: string }>;
-    entities: Array<{ id: string; name: string; type: string; preview: string }>;
-  };
-  editorContext?: {
-    documentTitle?: string;
-    selectionText?: string;
-  };
+  mode?: SagaMode;
+  ragContext?: RAGContext;
+  editorContext?: EditorContext;
 }): string {
   const { mode, ragContext, editorContext } = options;
 

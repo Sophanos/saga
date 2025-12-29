@@ -8,7 +8,7 @@
  * allowing tools to be executed from any surface (chat, command palette, etc.)
  */
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useMythosStore, type ChatToolInvocation, type LinterIssue } from "../stores";
 import { useEntityPersistence } from "./useEntityPersistence";
 import { useRelationshipPersistence } from "./useRelationshipPersistence";
@@ -75,6 +75,20 @@ export function useToolRuntime(): UseToolRuntimeResult {
 
   // Track which tools are currently executing (prevents double-execution race condition)
   const executingRef = useRef<Set<string>>(new Set());
+
+  // Cleanup effect: abort all in-flight controllers on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      // Abort all in-flight AbortControllers
+      abortControllerRef.current.forEach((controller) => {
+        controller.abort();
+      });
+      // Clear the Map
+      abortControllerRef.current.clear();
+      // Clear the executing Set
+      executingRef.current.clear();
+    };
+  }, []);
 
   /**
    * Build execution context with all dependencies.

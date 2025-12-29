@@ -101,6 +101,29 @@ export const consistencyFocusSchema = z.enum(["character", "world", "plot", "tim
 export type ConsistencyFocus = z.infer<typeof consistencyFocusSchema>;
 
 // =============================================================================
+// Saga Mode and Editor Context
+// (Aligned with @mythos/agent-protocol)
+// =============================================================================
+
+/**
+ * Mode context for Saga AI interactions.
+ * Determines which system prompt addendum is applied.
+ */
+export const sagaModeSchema = z.enum(["onboarding", "creation", "editing", "analysis"]);
+export type SagaMode = z.infer<typeof sagaModeSchema>;
+
+/**
+ * Editor context sent with Saga requests.
+ * Provides information about the user's current editing state.
+ */
+export interface EditorContext {
+  /** Title of the currently open document */
+  documentTitle?: string;
+  /** Currently selected text in the editor */
+  selectionText?: string;
+}
+
+// =============================================================================
 // Tool Result Interface
 // =============================================================================
 

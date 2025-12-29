@@ -13,13 +13,29 @@ import {
 } from "../prompts/mod.ts";
 
 // =============================================================================
+// Input Validation
+// =============================================================================
+
+const MAX_INPUT_LENGTH = 50000;
+
+function truncateText(text: string): string {
+  return text.length > MAX_INPUT_LENGTH
+    ? text.slice(0, MAX_INPUT_LENGTH) + "...[truncated]"
+    : text;
+}
+import {
+  type EntityType,
+  type RelationType,
+} from "../tools/types.ts";
+
+// =============================================================================
 // Types (aligned with @mythos/agent-protocol)
 // =============================================================================
 
 export interface GenesisEntity {
   tempId: string;
   name: string;
-  type: string;
+  type: EntityType;
   description?: string;
   properties?: Record<string, unknown>;
 }
@@ -27,7 +43,7 @@ export interface GenesisEntity {
 export interface GenesisRelationship {
   sourceTempId: string;
   targetTempId: string;
-  type: string;
+  type: RelationType;
   notes?: string;
 }
 
@@ -48,7 +64,7 @@ export interface GenesisWorldResult {
 export interface DetectedEntity {
   tempId: string;
   name: string;
-  type: string;
+  type: EntityType;
   confidence: number;
   occurrences: Array<{
     startOffset: number;
@@ -140,6 +156,32 @@ export interface GenerateTemplateResult {
 }
 
 // =============================================================================
+// Shared JSON Parsing Utility
+// =============================================================================
+
+/**
+ * Generic JSON parser for LLM responses.
+ * Extracts JSON from text, parses it, and transforms the result.
+ */
+function parseJsonFromLLMResponse<T>(
+  response: string,
+  toolName: string,
+  transformer: (parsed: Record<string, unknown>) => T,
+  fallback: T
+): T {
+  try {
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return transformer(parsed);
+    }
+  } catch (error) {
+    console.error(`[saga/${toolName}] Parse error:`, error);
+  }
+  return fallback;
+}
+
+// =============================================================================
 // Genesis World Executor
 // =============================================================================
 
@@ -177,77 +219,83 @@ export async function executeGenesisWorld(
 }
 
 function parseGenesisResponse(response: string, genre?: string): GenesisWorldResult {
-  try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
+  const fallback: GenesisWorldResult = {
+    worldSummary: "Failed to generate world. Please try again.",
+    genre,
+    entities: [],
+    relationships: [],
+  };
 
+  return parseJsonFromLLMResponse(
+    response,
+    "genesis",
+    (parsed) => {
       // Build relationships from entity relationships
       const relationships: GenesisRelationship[] = [];
       const entityMap = new Map<string, string>();
 
       // Validate and normalize entities
-      const entities: GenesisEntity[] = (parsed.entities || [])
-        .filter((e: Record<string, unknown>) => e && typeof e.name === "string" && typeof e.type === "string")
-        .map((e: Record<string, unknown>, idx: number) => {
+      const entities: GenesisEntity[] = (parsed.entities as unknown[] || [])
+        .filter((e: unknown) => {
+          const entity = e as Record<string, unknown>;
+          return entity && typeof entity.name === "string" && typeof entity.type === "string";
+        })
+        .map((e: unknown, idx: number) => {
+          const entity = e as Record<string, unknown>;
           const tempId = `temp_${idx}`;
-          entityMap.set(e.name as string, tempId);
+          entityMap.set(entity.name as string, tempId);
           return {
             tempId,
-            name: e.name as string,
-            type: e.type as string,
-            description: (e.description as string) ?? "",
-            properties: (e.properties as Record<string, unknown>) ?? {},
+            name: entity.name as string,
+            type: entity.type as string,
+            description: (entity.description as string) ?? "",
+            properties: (entity.properties as Record<string, unknown>) ?? {},
           };
         });
 
       // Extract relationships from entity definitions
-      for (const rawEntity of parsed.entities || []) {
-        if (rawEntity.relationships && Array.isArray(rawEntity.relationships)) {
-          const sourceTempId = entityMap.get(rawEntity.name);
+      for (const rawEntity of (parsed.entities as unknown[]) || []) {
+        const entity = rawEntity as Record<string, unknown>;
+        if (entity.relationships && Array.isArray(entity.relationships)) {
+          const sourceTempId = entityMap.get(entity.name as string);
           if (!sourceTempId) continue;
 
-          for (const rel of rawEntity.relationships) {
-            const targetTempId = entityMap.get(rel.targetName);
+          for (const rel of entity.relationships as Record<string, unknown>[]) {
+            const targetTempId = entityMap.get(rel.targetName as string);
             if (!targetTempId) continue;
 
             relationships.push({
               sourceTempId,
               targetTempId,
-              type: rel.type || "knows",
-              notes: rel.description,
+              type: (rel.type as string) || "knows",
+              notes: rel.description as string | undefined,
             });
           }
         }
       }
 
       // Parse outline
-      const outline: GenesisOutlineItem[] = (parsed.outline || []).map(
-        (o: Record<string, unknown>, idx: number) => ({
-          title: (o.title as string) || `Part ${idx + 1}`,
-          summary: (o.summary as string) || "",
-          order: idx,
-        })
+      const outline: GenesisOutlineItem[] = (parsed.outline as unknown[] || []).map(
+        (o: unknown, idx: number) => {
+          const item = o as Record<string, unknown>;
+          return {
+            title: (item.title as string) || `Part ${idx + 1}`,
+            summary: (item.summary as string) || "",
+            order: idx,
+          };
+        }
       );
 
       return {
-        worldSummary: parsed.worldSummary || "A world waiting to be explored.",
+        worldSummary: (parsed.worldSummary as string) || "A world waiting to be explored.",
         genre,
         entities,
         relationships,
         outline: outline.length > 0 ? outline : undefined,
       };
-    }
-  } catch (error) {
-    console.error("[saga/genesis] Parse error:", error);
-  }
-
-  return {
-    worldSummary: "Failed to generate world. Please try again.",
-    genre,
-    entities: [],
-    relationships: [],
-  };
+    },
+    fallback
+  );
 }
 
 // =============================================================================
@@ -292,7 +340,8 @@ export async function executeDetectEntities(
 ): Promise<DetectEntitiesResult> {
   const model = getOpenRouterModel(apiKey, "analysis");
 
-  let userPrompt = `Analyze this text and extract entities:\n\n"${input.text}"`;
+  const truncatedText = truncateText(input.text);
+  let userPrompt = `Analyze this text and extract entities:\n\n"${truncatedText}"`;
   if (input.entityTypes?.length) {
     userPrompt += `\n\nFocus on these entity types: ${input.entityTypes.join(", ")}`;
   }
@@ -314,36 +363,35 @@ export async function executeDetectEntities(
 }
 
 function parseDetectResponse(response: string, minConfidence: number): DetectEntitiesResult {
-  try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      const entities: DetectedEntity[] = (parsed.entities || [])
-        .filter((e: Record<string, unknown>) => {
-          const conf = (e.confidence as number) ?? 0.5;
+  return parseJsonFromLLMResponse(
+    response,
+    "detect",
+    (parsed) => {
+      const entities: DetectedEntity[] = (parsed.entities as unknown[] || [])
+        .filter((e: unknown) => {
+          const entity = e as Record<string, unknown>;
+          const conf = (entity.confidence as number) ?? 0.5;
           return conf >= minConfidence;
         })
-        .map((e: Record<string, unknown>, idx: number) => ({
-          tempId: `detected_${idx}`,
-          name: e.name as string,
-          type: e.type as string,
-          confidence: (e.confidence as number) ?? 0.5,
-          occurrences: Array.isArray(e.occurrences) ? e.occurrences : [],
-          suggestedAliases: e.suggestedAliases as string[] | undefined,
-          suggestedProperties: e.suggestedProperties as Record<string, unknown> | undefined,
-        }));
-
+        .map((e: unknown, idx: number) => {
+          const entity = e as Record<string, unknown>;
+          return {
+            tempId: `detected_${idx}`,
+            name: entity.name as string,
+            type: entity.type as string,
+            confidence: (entity.confidence as number) ?? 0.5,
+            occurrences: Array.isArray(entity.occurrences) ? entity.occurrences : [],
+            suggestedAliases: entity.suggestedAliases as string[] | undefined,
+            suggestedProperties: entity.suggestedProperties as Record<string, unknown> | undefined,
+          };
+        });
       return {
         entities,
-        warnings: parsed.warnings,
+        warnings: parsed.warnings as DetectEntitiesResult["warnings"],
       };
-    }
-  } catch (error) {
-    console.error("[saga/detect] Parse error:", error);
-  }
-
-  return { entities: [] };
+    },
+    { entities: [] }
+  );
 }
 
 // =============================================================================
@@ -388,7 +436,8 @@ export async function executeCheckConsistency(
 ): Promise<CheckConsistencyResult> {
   const model = getOpenRouterModel(apiKey, "analysis");
 
-  let userPrompt = `Analyze this text for consistency issues:\n\n"${input.text}"`;
+  const truncatedText = truncateText(input.text);
+  let userPrompt = `Analyze this text for consistency issues:\n\n"${truncatedText}"`;
   if (input.focus?.length) {
     userPrompt += `\n\nFocus on: ${input.focus.join(", ")}`;
   }
@@ -421,33 +470,31 @@ export async function executeCheckConsistency(
 }
 
 function parseConsistencyResponse(response: string): CheckConsistencyResult {
-  try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      const issues: ConsistencyIssue[] = (parsed.issues || []).map(
-        (issue: Record<string, unknown>, idx: number) => ({
-          id: (issue.id as string) || `issue_${idx}`,
-          type: issue.type as ConsistencyIssue["type"],
-          severity: issue.severity as ConsistencyIssue["severity"],
-          message: (issue.message as string) || "Unknown issue",
-          suggestion: issue.suggestion as string | undefined,
-          locations: Array.isArray(issue.locations) ? issue.locations : [],
-          entityIds: issue.entityIds as string[] | undefined,
-        })
+  return parseJsonFromLLMResponse(
+    response,
+    "consistency",
+    (parsed) => {
+      const issues: ConsistencyIssue[] = (parsed.issues as unknown[] || []).map(
+        (issue: unknown, idx: number) => {
+          const i = issue as Record<string, unknown>;
+          return {
+            id: (i.id as string) || `issue_${idx}`,
+            type: i.type as ConsistencyIssue["type"],
+            severity: i.severity as ConsistencyIssue["severity"],
+            message: (i.message as string) || "Unknown issue",
+            suggestion: i.suggestion as string | undefined,
+            locations: Array.isArray(i.locations) ? i.locations : [],
+            entityIds: i.entityIds as string[] | undefined,
+          };
+        }
       );
-
       return {
         issues,
         summary: parsed.summary as string | undefined,
       };
-    }
-  } catch (error) {
-    console.error("[saga/consistency] Parse error:", error);
-  }
-
-  return { issues: [] };
+    },
+    { issues: [] }
+  );
 }
 
 // =============================================================================
@@ -542,41 +589,7 @@ export async function executeGenerateTemplate(
 }
 
 function parseTemplateResponse(response: string): GenerateTemplateResult {
-  try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      // Ensure template has required fields
-      const template: TemplateDraft = {
-        name: parsed.template?.name || "Custom Template",
-        description: parsed.template?.description || "",
-        category: parsed.template?.category || "custom",
-        tags: parsed.template?.tags || [],
-        entityKinds: parsed.template?.entityKinds || [],
-        relationshipKinds: parsed.template?.relationshipKinds || [],
-        documentKinds: parsed.template?.documentKinds || [
-          { kind: "chapter", label: "Chapter", allowChildren: true },
-          { kind: "scene", label: "Scene", allowChildren: false },
-        ],
-        uiModules: parsed.template?.uiModules || [
-          { module: "entity_panel", enabled: true, order: 1 },
-          { module: "world_graph", enabled: true, order: 2 },
-        ],
-        linterRules: parsed.template?.linterRules || [],
-      };
-
-      return {
-        template,
-        suggestedStarterEntities: parsed.suggestedStarterEntities,
-      };
-    }
-  } catch (error) {
-    console.error("[saga/template] Parse error:", error);
-  }
-
-  // Return minimal template
-  return {
+  const fallback: GenerateTemplateResult = {
     template: {
       name: "Custom Template",
       description: "Failed to generate. Using defaults.",
@@ -589,4 +602,34 @@ function parseTemplateResponse(response: string): GenerateTemplateResult {
       linterRules: [],
     },
   };
+
+  return parseJsonFromLLMResponse(
+    response,
+    "template",
+    (parsed) => {
+      const t = parsed.template as Record<string, unknown> | undefined;
+      const template: TemplateDraft = {
+        name: (t?.name as string) || "Custom Template",
+        description: (t?.description as string) || "",
+        category: (t?.category as string) || "custom",
+        tags: (t?.tags as string[]) || [],
+        entityKinds: (t?.entityKinds as TemplateDraft["entityKinds"]) || [],
+        relationshipKinds: (t?.relationshipKinds as TemplateDraft["relationshipKinds"]) || [],
+        documentKinds: (t?.documentKinds as TemplateDraft["documentKinds"]) || [
+          { kind: "chapter", label: "Chapter", allowChildren: true },
+          { kind: "scene", label: "Scene", allowChildren: false },
+        ],
+        uiModules: (t?.uiModules as TemplateDraft["uiModules"]) || [
+          { module: "entity_panel", enabled: true, order: 1 },
+          { module: "world_graph", enabled: true, order: 2 },
+        ],
+        linterRules: (t?.linterRules as TemplateDraft["linterRules"]) || [],
+      };
+      return {
+        template,
+        suggestedStarterEntities: parsed.suggestedStarterEntities as GenesisEntity[] | undefined,
+      };
+    },
+    fallback
+  );
 }

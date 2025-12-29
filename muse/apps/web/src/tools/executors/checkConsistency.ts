@@ -6,7 +6,7 @@
 
 import type { CheckConsistencyArgs } from "@mythos/agent-protocol";
 import { executeCheckConsistency } from "../../services/ai/sagaClient";
-import type { ToolDefinition, ToolExecutionResult } from "../types";
+import { resolveTextFromContext, type ToolDefinition, type ToolExecutionResult } from "../types";
 
 export interface CheckConsistencyExecutionResult {
   issuesFound: number;
@@ -34,18 +34,11 @@ export const checkConsistencyExecutor: ToolDefinition<CheckConsistencyArgs, Chec
     }
 
     // Resolve text based on scope
-    let text = args.text;
-    if (!text) {
-      if (args.scope === "selection") {
-        text = ctx.getSelectionText?.();
-      } else {
-        text = ctx.getDocumentText?.();
-      }
+    const textResult = resolveTextFromContext(args, ctx, "consistency check");
+    if (!textResult.success) {
+      return { success: false, error: textResult.error };
     }
-
-    if (!text) {
-      return { success: false, error: "No text available for consistency check" };
-    }
+    const { text } = textResult;
 
     try {
       ctx.onProgress?.({ stage: "Analyzing consistency...", pct: 20 });

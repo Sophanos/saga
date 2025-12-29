@@ -6,6 +6,27 @@
  */
 
 // =============================================================================
+// Saga Modes and Context
+// =============================================================================
+
+/**
+ * Mode context for Saga AI interactions.
+ * Determines which system prompt addendum is applied.
+ */
+export type SagaMode = "onboarding" | "creation" | "editing" | "analysis";
+
+/**
+ * Editor context sent with Saga requests.
+ * Provides information about the user's current editing state.
+ */
+export interface EditorContext {
+  /** Title of the currently open document */
+  documentTitle?: string;
+  /** Currently selected text in the editor */
+  selectionText?: string;
+}
+
+// =============================================================================
 // Tool Names
 // =============================================================================
 

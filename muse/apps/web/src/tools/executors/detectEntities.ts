@@ -6,7 +6,7 @@
 
 import type { DetectEntitiesArgs } from "@mythos/agent-protocol";
 import { executeDetectEntities } from "../../services/ai/sagaClient";
-import type { ToolDefinition, ToolExecutionResult } from "../types";
+import { resolveTextFromContext, type ToolDefinition, type ToolExecutionResult } from "../types";
 
 export interface DetectEntitiesExecutionResult {
   entitiesDetected: number;
@@ -33,18 +33,11 @@ export const detectEntitiesExecutor: ToolDefinition<DetectEntitiesArgs, DetectEn
     }
 
     // Resolve text based on scope
-    let text = args.text;
-    if (!text) {
-      if (args.scope === "selection") {
-        text = ctx.getSelectionText?.();
-      } else {
-        text = ctx.getDocumentText?.();
-      }
+    const textResult = resolveTextFromContext(args, ctx, "entity detection");
+    if (!textResult.success) {
+      return { success: false, error: textResult.error };
     }
-
-    if (!text) {
-      return { success: false, error: "No text available for entity detection" };
-    }
+    const { text } = textResult;
 
     try {
       ctx.onProgress?.({ stage: "Analyzing text...", pct: 20 });

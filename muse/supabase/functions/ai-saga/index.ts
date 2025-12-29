@@ -34,6 +34,11 @@ import {
   executeCheckConsistency,
   executeGenerateTemplate,
 } from "../_shared/saga/executors.ts";
+import type { SagaMode, EditorContext } from "../_shared/tools/types.ts";
+import {
+  type EntityType,
+  type ConsistencyFocus,
+} from "../_shared/tools/types.ts";
 
 // =============================================================================
 // Types
@@ -52,12 +57,7 @@ interface Mention {
   name: string;
 }
 
-interface EditorContext {
-  documentTitle?: string;
-  selectionText?: string;
-}
-
-type SagaMode = "onboarding" | "creation" | "editing" | "analysis";
+// EditorContext and SagaMode imported from ../shared/tools/types.ts
 
 interface SagaChatRequest {
   kind?: "chat";
@@ -309,7 +309,7 @@ async function handleExecuteTool(
           text: string;
           minConfidence?: number;
           maxEntities?: number;
-          entityTypes?: string[];
+          entityTypes?: EntityType[];
         };
         if (!typedInput.text) {
           return createErrorResponse(
@@ -326,11 +326,11 @@ async function handleExecuteTool(
       case "check_consistency": {
         const typedInput = input as {
           text: string;
-          focus?: string[];
+          focus?: ConsistencyFocus[];
           entities?: Array<{
             id: string;
             name: string;
-            type: string;
+            type: EntityType;
             properties?: Record<string, unknown>;
           }>;
         };

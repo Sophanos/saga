@@ -3,7 +3,7 @@
  */
 
 import type { Entity, Relationship, EntityType, RelationType } from "@mythos/core";
-import type { ToolName, ToolArtifact, ToolDangerLevel } from "@mythos/agent-protocol";
+import type { ToolName, ToolArtifact, ToolDangerLevel, AnalysisScope } from "@mythos/agent-protocol";
 
 // Re-export for backwards compatibility
 export type { ToolDangerLevel };
@@ -192,4 +192,38 @@ export function resolveRelationship(
   }
 
   return { found: true, relationship: rel, sourceId, targetId };
+}
+
+// =============================================================================
+// Text Resolution
+// =============================================================================
+
+/**
+ * Result of text resolution - either success with text or failure with error.
+ */
+export type TextResolutionResult =
+  | { success: true; text: string }
+  | { success: false; error: string };
+
+/**
+ * Resolve text from context based on scope.
+ * Falls back to document text if no explicit text or selection.
+ */
+export function resolveTextFromContext(
+  args: { text?: string; scope?: AnalysisScope },
+  ctx: ToolExecutionContext,
+  operationName: string
+): TextResolutionResult {
+  let text = args.text;
+  if (!text) {
+    if (args.scope === "selection") {
+      text = ctx.getSelectionText?.();
+    } else {
+      text = ctx.getDocumentText?.();
+    }
+  }
+  if (!text) {
+    return { success: false, error: `No text available for ${operationName}` };
+  }
+  return { success: true, text };
 }

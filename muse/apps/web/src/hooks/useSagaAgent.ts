@@ -263,9 +263,12 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
             if (message) {
               setChatError(message);
             }
+            // Read current content from store to avoid stale closure
+            const currentMessages = useMythosStore.getState().chat.messages;
+            const currentMessage = currentMessages.find(m => m.id === assistantMessageId);
             updateChatMessage(assistantMessageId, {
               isStreaming: false,
-              content: assistantMessage.content || "Sorry, I encountered an error.",
+              content: currentMessage?.content || "Sorry, I encountered an error.",
             });
             setChatStreaming(false);
           },
