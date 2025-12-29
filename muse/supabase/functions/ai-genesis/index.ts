@@ -89,7 +89,7 @@ serve(async (req) => {
     if (!validation.valid) {
       return createErrorResponse(
         ErrorCode.VALIDATION_ERROR,
-        validation.error!,
+        `Missing required fields: ${validation.missing.join(", ")}`,
         origin
       );
     }
@@ -120,8 +120,8 @@ serve(async (req) => {
       includeOutline: body.preferences?.includeOutline ?? true,
     });
 
-    // Get model
-    const model = getOpenRouterModel(apiKey, "chat");
+    // Get model - using "creative" for world generation
+    const model = getOpenRouterModel(apiKey, "creative");
 
     console.log("[ai-genesis] Generating world from prompt:", body.prompt.slice(0, 50) + "...");
 

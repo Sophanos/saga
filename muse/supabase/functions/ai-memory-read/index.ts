@@ -37,7 +37,6 @@ import {
   isQdrantConfigured,
   QdrantError,
   type QdrantFilter,
-  type QdrantCondition,
 } from "../_shared/qdrant.ts";
 import { assertProjectAccess, ProjectAccessError } from "../_shared/projects.ts";
 import {
@@ -51,12 +50,17 @@ import {
   VALID_CATEGORIES,
   VALID_SCOPES,
 } from "../_shared/memory/types.ts";
+import { buildMemoryFilter } from "../_shared/memory/filters.ts";
 import {
   getMemoryPolicyConfig,
   isMemoryExpired,
   calculateCombinedScore,
   type MemoryPolicyConfig,
 } from "../_shared/memoryPolicy.ts";
+import {
+  parseFullMemoryFromPayload,
+  type ScoredMemoryRecord,
+} from "../_shared/memory/parsers.ts";
 
 // =============================================================================
 // Types
@@ -72,11 +76,6 @@ interface MemoryReadRequest {
   recencyWeight?: number;
 }
 
-// Extended MemoryRecord with score for search results
-interface ScoredMemoryRecord extends MemoryRecord {
-  score?: number;
-}
-
 // =============================================================================
 // Constants
 // =============================================================================
@@ -88,37 +87,6 @@ const DEFAULT_RECENCY_WEIGHT = 0.2;
 // =============================================================================
 // Helpers
 // =============================================================================
-
-/**
- * Parse memory record from Qdrant payload.
- */
-function parseMemoryFromPayload(
-  id: string,
-  payload: Record<string, unknown>,
-  score?: number
-): ScoredMemoryRecord {
-  return {
-    id,
-    projectId: String(payload.project_id ?? ""),
-    category: String(payload.category ?? "preference") as MemoryCategory,
-    scope: String(payload.scope ?? "user") as MemoryScope,
-    ownerId: payload.owner_id ? String(payload.owner_id) : undefined,
-    content: String(payload.text ?? ""),
-    metadata: {
-      source: payload.source,
-      confidence: payload.confidence,
-      entityIds: payload.entity_ids,
-      documentId: payload.document_id,
-      conversationId: payload.conversation_id,
-      toolCallId: payload.tool_call_id,
-      toolName: payload.tool_name,
-      expiresAt: payload.expires_at,
-    },
-    createdAt: String(payload.created_at ?? new Date().toISOString()),
-    updatedAt: payload.updated_at ? String(payload.updated_at) : undefined,
-    score,
-  };
-}
 
 /**
  * Parse memory record from Postgres row.
@@ -151,6 +119,7 @@ function parseMemoryFromRow(row: Record<string, unknown>): ScoredMemoryRecord {
 
 /**
  * Build filter conditions for Qdrant memory query.
+ * Delegates to the shared buildMemoryFilter for consistency.
  */
 function buildQdrantFilter(params: {
   projectId: string;
@@ -159,38 +128,13 @@ function buildQdrantFilter(params: {
   ownerId?: string;
   conversationId?: string;
 }): QdrantFilter {
-  const must: QdrantCondition[] = [
-    { key: "type", match: { value: "memory" } },
-    { key: "project_id", match: { value: params.projectId } },
-  ];
-
-  // Category filter
-  if (params.categories && params.categories.length > 0) {
-    if (params.categories.length === 1) {
-      must.push({ key: "category", match: { value: params.categories[0] } });
-    } else {
-      must.push({ key: "category", match: { any: params.categories } });
-    }
-  }
-
-  // Scope filter
-  if (params.scope) {
-    must.push({ key: "scope", match: { value: params.scope } });
-
-    // For conversation scope, also filter by conversation
-    if (params.scope === "conversation" && params.conversationId) {
-      must.push({ key: "conversation_id", match: { value: params.conversationId } });
-    }
-  }
-
-  // Always filter by owner for non-project scopes to prevent privacy leaks
-  if (params.ownerId) {
-    if (params.scope !== "project") {
-      must.push({ key: "owner_id", match: { value: params.ownerId } });
-    }
-  }
-
-  return { must };
+  return buildMemoryFilter({
+    projectId: params.projectId,
+    categories: params.categories,
+    scope: params.scope,
+    ownerId: params.ownerId,
+    conversationId: params.conversationId,
+  });
 }
 
 /**
@@ -247,7 +191,7 @@ async function queryQdrant(params: {
   const results = await searchPoints(embedding, params.limit * 2, params.filter);
 
   const memories = results.map((result) =>
-    parseMemoryFromPayload(String(result.id), result.payload, result.score)
+    parseFullMemoryFromPayload(String(result.id), result.payload, result.score)
   );
 
   return filterAndScoreMemories(memories, params.recencyWeight)
@@ -266,7 +210,7 @@ async function scrollQdrant(params: {
   const results = await scrollPoints(params.filter, params.limit * 2);
 
   const memories = results.map((result) =>
-    parseMemoryFromPayload(result.id, result.payload)
+    parseFullMemoryFromPayload(result.id, result.payload)
   );
 
   return filterAndScoreMemories(memories, params.recencyWeight)

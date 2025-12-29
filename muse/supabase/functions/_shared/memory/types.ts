@@ -82,9 +82,9 @@ export interface MemoryDeleteRequest {
 // Memory context for AI prompts (string arrays for simple injection)
 export interface MemoryContext {
   decisions: string[];
-  styleRules: string[];
+  style: string[];
   preferences: string[];
-  sessionContext: string[];
+  session: string[];
 }
 
 // Profile context for AI prompts

@@ -144,7 +144,7 @@ function formatProfileContext(profile: ProfileContext): string {
 function buildContextString(
   context: RAGContext,
   mentions?: Mention[],
-  memoryContext?: MemoryContext,
+  memoryContext?: RetrievedMemoryContext,
   profileContext?: ProfileContext
 ): string {
   const parts: string[] = [];

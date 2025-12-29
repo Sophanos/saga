@@ -39,6 +39,7 @@ import {
   createSupabaseClient,
   recordAIRequest,
   extractTokenUsage,
+  type BillingCheck,
 } from "../_shared/billing.ts";
 
 /**
@@ -282,10 +283,12 @@ serve(async (req) => {
   }
 
   const supabase = createSupabaseClient();
+  const modelType = "fast";
+  let billing: BillingCheck | undefined;
 
   try {
     // Check billing and get API key
-    const billing = await checkBillingAndGetKey(req, supabase);
+    billing = await checkBillingAndGetKey(req, supabase);
     if (!billing.canProceed) {
       return createErrorResponse(
         ErrorCode.FORBIDDEN,
@@ -340,7 +343,6 @@ serve(async (req) => {
     }
 
     // Get the model (fast type for real-time extraction)
-    const modelType = "fast";
     const model = getOpenRouterModel(billing.apiKey!, modelType);
 
     // Build the prompt
@@ -376,17 +378,19 @@ serve(async (req) => {
 
     return createSuccessResponse(dynamicsResult, origin);
   } catch (error) {
-    // Record failed request
-    await recordAIRequest(supabase, billing, {
-      endpoint: "dynamics",
-      model: "unknown",
-      modelType,
-      usage: extractTokenUsage(undefined),
-      latencyMs: Date.now() - startTime,
-      success: false,
-      errorCode: "AI_ERROR",
-      errorMessage: error instanceof Error ? error.message : "Unknown error",
-    });
+    // Record failed request if billing was successfully obtained
+    if (billing) {
+      await recordAIRequest(supabase, billing, {
+        endpoint: "dynamics",
+        model: "unknown",
+        modelType,
+        usage: extractTokenUsage(undefined),
+        latencyMs: Date.now() - startTime,
+        success: false,
+        errorCode: "AI_ERROR",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
     // Handle AI provider errors
     return handleAIError(error, origin);
   }

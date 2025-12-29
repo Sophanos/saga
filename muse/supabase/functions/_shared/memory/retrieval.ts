@@ -19,19 +19,25 @@ import {
   scrollPoints,
   isQdrantConfigured,
   QdrantError,
-  type QdrantFilter,
 } from "../qdrant.ts";
-import { getPayloadText } from "../vectorPayload.ts";
+import { parseMemoryFromPayload } from "./parsers.ts";
 import {
   isMemoryExpired,
-  getMemoryPolicyConfig,
 } from "../memoryPolicy.ts";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import type {
   RetrievedMemoryContext,
   RetrievedMemoryRecord,
   RetrievalLimits,
   ProfileContext,
+  MemoryCategory,
 } from "./types.ts";
+import {
+  buildDecisionFilter,
+  buildStyleFilter,
+  buildPreferenceFilter,
+  buildSessionFilter,
+} from "./filters.ts";
 
 // =============================================================================
 // Default Limits
@@ -68,6 +74,7 @@ function filterExpired(memories: RetrievedMemoryRecord[]): RetrievedMemoryRecord
   const nowMs = Date.now();
   return memories.filter((m) => {
     // Check if payload has expires_at
+    // deno-lint-ignore no-explicit-any
     const payload = (m as any).payload;
     const expiresAtTs = payload?.expires_at_ts ?? payload?.expires_at
       ? new Date(payload.expires_at).getTime()
@@ -84,20 +91,185 @@ function filterExpired(memories: RetrievedMemoryRecord[]): RetrievedMemoryRecord
 }
 
 /**
- * Parse memory from Qdrant result.
+ * Parse memory from Postgres search_memories result.
  */
-function parseMemoryFromPayload(
-  id: string,
-  payload: Record<string, unknown>,
-  score?: number
-): RetrievedMemoryRecord {
+function parseMemoryFromPostgres(row: {
+  id: string;
+  content: string;
+  category: string;
+  created_at: string;
+  similarity: number;
+}): RetrievedMemoryRecord {
   return {
-    id,
-    content: getPayloadText(payload),
-    category: String(payload.category ?? "preference"),
-    score,
-    createdAt: payload.created_at as string | undefined,
+    id: row.id,
+    content: row.content,
+    category: row.category,
+    score: row.similarity,
+    createdAt: row.created_at,
   };
+}
+
+// =============================================================================
+// Postgres Fallback Retrieval
+// =============================================================================
+
+/**
+ * Retrieve memories from Postgres using the search_memories RPC function.
+ * Used as fallback when Qdrant is unavailable.
+ */
+async function retrieveMemoriesFromPostgres(
+  // deno-lint-ignore no-explicit-any
+  supabaseClient: SupabaseClient<any, any, any>,
+  embedding: number[] | null,
+  projectId: string,
+  categories: MemoryCategory[],
+  scope: string | null,
+  ownerId: string | null,
+  conversationId: string | null,
+  limit: number,
+  logPrefix: string
+): Promise<RetrievedMemoryRecord[]> {
+  // If no embedding available, we can't do semantic search in Postgres
+  if (!embedding) {
+    console.log(`${logPrefix} No embedding available for Postgres fallback search`);
+    return [];
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('search_memories', {
+      query_embedding: embedding,
+      match_count: limit * 2, // Fetch extra to account for filtering
+      project_filter: projectId,
+      category_filter: categories,
+      scope_filter: scope,
+      owner_filter: ownerId,
+      conversation_filter: conversationId,
+    });
+
+    if (error) {
+      console.warn(`${logPrefix} Postgres search_memories error: ${error.message}`);
+      return [];
+    }
+
+    if (!data || !Array.isArray(data)) {
+      return [];
+    }
+
+    // Map results to RetrievedMemoryRecord format
+    const memories = data.map(parseMemoryFromPostgres);
+
+    // Filter expired and limit results
+    return filterExpired(memories).slice(0, limit);
+  } catch (error) {
+    console.warn(`${logPrefix} Postgres fallback error:`, error);
+    return [];
+  }
+}
+
+/**
+ * Retrieve all memory context from Postgres as fallback.
+ */
+async function retrieveMemoryContextFromPostgres(
+  // deno-lint-ignore no-explicit-any
+  supabaseClient: SupabaseClient<any, any, any>,
+  query: string,
+  projectId: string,
+  ownerId: string | null,
+  conversationId: string | undefined,
+  limits: RetrievalLimits,
+  logPrefix: string
+): Promise<RetrievedMemoryContext> {
+  const result: RetrievedMemoryContext = {
+    decisions: [],
+    style: [],
+    preferences: [],
+    session: [],
+  };
+
+  // Generate embedding for semantic search if we have a query
+  let embedding: number[] | null = null;
+  if (query && isDeepInfraConfigured()) {
+    try {
+      embedding = await generateEmbedding(query);
+    } catch (error) {
+      console.warn(`${logPrefix} Failed to generate embedding for Postgres fallback: ${error}`);
+    }
+  }
+
+  // If no embedding, we can't search
+  if (!embedding) {
+    console.log(`${logPrefix} No embedding available, Postgres fallback unavailable`);
+    return result;
+  }
+
+  console.log(`${logPrefix} Using Postgres fallback for memory retrieval`);
+
+  // Retrieve project-scoped decisions
+  if (limits.decisions > 0) {
+    result.decisions = await retrieveMemoriesFromPostgres(
+      supabaseClient,
+      embedding,
+      projectId,
+      ['decision'],
+      'project',
+      null, // decisions don't require owner filter
+      null,
+      limits.decisions,
+      logPrefix
+    );
+  }
+
+  // Only retrieve user-scoped memories if we have a valid owner ID
+  if (ownerId && ownerId.length > 0) {
+    // Retrieve style preferences
+    if (limits.style > 0) {
+      result.style = await retrieveMemoriesFromPostgres(
+        supabaseClient,
+        embedding,
+        projectId,
+        ['style'],
+        'user',
+        ownerId,
+        null,
+        limits.style,
+        logPrefix
+      );
+    }
+
+    // Retrieve preference memories
+    if (limits.preferences > 0) {
+      result.preferences = await retrieveMemoriesFromPostgres(
+        supabaseClient,
+        embedding,
+        projectId,
+        ['preference'],
+        'user',
+        ownerId,
+        null,
+        limits.preferences,
+        logPrefix
+      );
+    }
+
+    // Retrieve session memories
+    if (conversationId && limits.session > 0) {
+      result.session = await retrieveMemoriesFromPostgres(
+        supabaseClient,
+        embedding,
+        projectId,
+        ['session'],
+        'conversation',
+        ownerId,
+        conversationId,
+        limits.session,
+        logPrefix
+      );
+    }
+  } else {
+    console.log(`${logPrefix} No owner ID, skipping user/conversation-scoped memories (Postgres fallback)`);
+  }
+
+  return result;
 }
 
 // =============================================================================
@@ -106,6 +278,7 @@ function parseMemoryFromPayload(
 
 /**
  * Retrieve memory context from Qdrant for the given project/user/conversation.
+ * Falls back to Postgres when Qdrant is unavailable.
  *
  * Fetches:
  * - Project-scoped decisions (shared canon)
@@ -119,6 +292,7 @@ function parseMemoryFromPayload(
  * @param conversationId - Optional conversation ID for session memories
  * @param limits - Configurable limits per category (defaults to SAGA limits)
  * @param logPrefix - Prefix for error logging (e.g., "[ai-saga]")
+ * @param supabaseClient - Optional Supabase client for Postgres fallback
  */
 export async function retrieveMemoryContext(
   query: string,
@@ -126,7 +300,9 @@ export async function retrieveMemoryContext(
   ownerId: string | null,
   conversationId?: string,
   limits: RetrievalLimits = DEFAULT_SAGA_LIMITS,
-  logPrefix: string = "[memory]"
+  logPrefix: string = "[memory]",
+  // deno-lint-ignore no-explicit-any
+  supabaseClient?: SupabaseClient<any, any, any>
 ): Promise<RetrievedMemoryContext> {
   const result: RetrievedMemoryContext = {
     decisions: [],
@@ -135,23 +311,28 @@ export async function retrieveMemoryContext(
     session: [],
   };
 
-  // If Qdrant is not configured, try Postgres fallback
+  // If Qdrant is not configured, try Postgres fallback first
   if (!isQdrantConfigured()) {
-    console.log(`${logPrefix} Qdrant not configured, memory context unavailable`);
+    console.log(`${logPrefix} Qdrant not configured, trying Postgres fallback`);
+    if (supabaseClient) {
+      return await retrieveMemoryContextFromPostgres(
+        supabaseClient,
+        query,
+        projectId,
+        ownerId,
+        conversationId,
+        limits,
+        logPrefix
+      );
+    }
+    console.log(`${logPrefix} No Supabase client provided, memory context unavailable`);
     return result;
   }
 
   try {
     // Retrieve project-scoped decisions (shared canon) - visible to all with project access
     if (limits.decisions > 0) {
-      const decisionFilter: QdrantFilter = {
-        must: [
-          { key: "type", match: { value: "memory" } },
-          { key: "project_id", match: { value: projectId } },
-          { key: "category", match: { value: "decision" } },
-          { key: "scope", match: { value: "project" } },
-        ],
-      };
+      const decisionFilter = buildDecisionFilter(projectId);
 
       // If we have a query, do semantic search; otherwise scroll recent
       if (query && isDeepInfraConfigured()) {
@@ -168,20 +349,12 @@ export async function retrieveMemoryContext(
       }
     }
 
-    // Only retrieve user-scoped memories if we have an owner ID
+    // Only retrieve user-scoped memories if we have a valid owner ID
     // This enforces proper isolation - anonymous users without device ID cannot see user-scoped memories
-    if (ownerId) {
+    if (ownerId && ownerId.length > 0) {
       // Retrieve style preferences (user scope)
       if (limits.style > 0) {
-        const styleFilter: QdrantFilter = {
-          must: [
-            { key: "type", match: { value: "memory" } },
-            { key: "project_id", match: { value: projectId } },
-            { key: "category", match: { value: "style" } },
-            { key: "scope", match: { value: "user" } },
-            { key: "owner_id", match: { value: ownerId } },
-          ],
-        };
+        const styleFilter = buildStyleFilter(projectId, ownerId);
         const styleResults = await scrollPoints(styleFilter, limits.style * 2);
         result.style = filterExpired(
           styleResults.map((p) => parseMemoryFromPayload(p.id, p.payload))
@@ -190,15 +363,7 @@ export async function retrieveMemoryContext(
 
       // Retrieve preference memories (user scope)
       if (limits.preferences > 0) {
-        const prefFilter: QdrantFilter = {
-          must: [
-            { key: "type", match: { value: "memory" } },
-            { key: "project_id", match: { value: projectId } },
-            { key: "category", match: { value: "preference" } },
-            { key: "scope", match: { value: "user" } },
-            { key: "owner_id", match: { value: ownerId } },
-          ],
-        };
+        const prefFilter = buildPreferenceFilter(projectId, ownerId);
         const prefResults = await scrollPoints(prefFilter, limits.preferences * 2);
         result.preferences = filterExpired(
           prefResults.map((p) => parseMemoryFromPayload(p.id, p.payload))
@@ -208,16 +373,7 @@ export async function retrieveMemoryContext(
       // Retrieve session memories - MUST include all isolation fields
       // Filter: (projectId, ownerId, conversationId, category=session, scope=conversation)
       if (conversationId && limits.session > 0) {
-        const sessionFilter: QdrantFilter = {
-          must: [
-            { key: "type", match: { value: "memory" } },
-            { key: "project_id", match: { value: projectId } },
-            { key: "category", match: { value: "session" } },
-            { key: "scope", match: { value: "conversation" } },
-            { key: "owner_id", match: { value: ownerId } },
-            { key: "conversation_id", match: { value: conversationId } },
-          ],
-        };
+        const sessionFilter = buildSessionFilter(projectId, ownerId, conversationId);
         const sessionResults = await scrollPoints(sessionFilter, limits.session * 2);
         result.session = filterExpired(
           sessionResults.map((p) => parseMemoryFromPayload(p.id, p.payload))
@@ -227,11 +383,26 @@ export async function retrieveMemoryContext(
       console.log(`${logPrefix} No owner ID, skipping user/conversation-scoped memories`);
     }
   } catch (error) {
+    // On Qdrant failure, try Postgres fallback
     if (error instanceof QdrantError) {
-      console.warn(`${logPrefix} Qdrant error, memory context unavailable: ${error.message}`);
+      console.warn(`${logPrefix} Qdrant error, trying Postgres fallback: ${error.message}`);
     } else {
-      console.error(`${logPrefix} Memory retrieval error:`, error);
+      console.error(`${logPrefix} Memory retrieval error, trying Postgres fallback:`, error);
     }
+
+    // Attempt Postgres fallback if client is available
+    if (supabaseClient) {
+      return await retrieveMemoryContextFromPostgres(
+        supabaseClient,
+        query,
+        projectId,
+        ownerId,
+        conversationId,
+        limits,
+        logPrefix
+      );
+    }
+    console.warn(`${logPrefix} No Supabase client provided, memory context unavailable`);
   }
 
   return result;
@@ -242,22 +413,6 @@ export async function retrieveMemoryContext(
 // =============================================================================
 
 /**
- * Supabase client interface for profile retrieval
- */
-interface SupabaseClient {
-  from(table: string): {
-    select(columns: string): {
-      eq(column: string, value: string): {
-        single(): Promise<{
-          data: { preferences: Record<string, unknown> | null } | null;
-          error: Error | null;
-        }>;
-      };
-    };
-  };
-}
-
-/**
  * Retrieve profile context from user preferences in Supabase.
  *
  * @param supabase - Supabase client instance
@@ -265,7 +420,8 @@ interface SupabaseClient {
  * @param logPrefix - Prefix for error logging
  */
 export async function retrieveProfileContext(
-  supabase: SupabaseClient,
+  // deno-lint-ignore no-explicit-any
+  supabase: SupabaseClient<any, any, any>,
   userId: string | null,
   logPrefix: string = "[memory]"
 ): Promise<ProfileContext | undefined> {

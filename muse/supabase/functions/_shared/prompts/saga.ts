@@ -10,6 +10,12 @@
  */
 
 import type { SagaMode, EditorContext } from "../tools/types.ts";
+import type { RAGContext } from "../rag.ts";
+import type {
+  RetrievedMemoryContext,
+  RetrievedMemoryRecord,
+  ProfileContext,
+} from "../memory/types.ts";
 import {
   getMemoryBudgetConfig,
   applyMemoryBudget,
@@ -193,43 +199,9 @@ The author wants feedback. Focus on:
 - Prioritize actionable suggestions`,
 };
 
-/**
- * RAG context for system prompt building
- */
-interface RAGContext {
-  documents: Array<{ id: string; title: string; preview: string }>;
-  entities: Array<{ id: string; name: string; type: string; preview: string }>;
-}
-
-/**
- * Memory record for context injection
- */
-interface MemoryRecord {
-  id: string;
-  content: string;
-  category: string;
-  score?: number;
-}
-
-/**
- * Grouped memory context
- */
-interface MemoryContext {
-  decisions: MemoryRecord[];
-  style: MemoryRecord[];
-  preferences: MemoryRecord[];
-  session: MemoryRecord[];
-}
-
-/**
- * Profile context from user preferences
- */
-interface ProfileContext {
-  preferredGenre?: string;
-  namingCulture?: string;
-  namingStyle?: string;
-  logicStrictness?: string;
-}
+// Types imported from canonical sources:
+// - RAGContext from ../rag.ts
+// - RetrievedMemoryContext, RetrievedMemoryRecord, ProfileContext from ./memory/types.ts
 
 /**
  * Token-based memory limits for prompt injection (MLP 2.x).
@@ -243,7 +215,7 @@ function getMemoryBudgets(): TokenBudgetConfig {
  * Format memory records for prompt injection with token budgeting.
  */
 function formatMemoriesWithBudget(
-  memories: MemoryRecord[],
+  memories: RetrievedMemoryRecord[],
   category: "decisions" | "style" | "preferences" | "session",
   budgetConfig?: TokenBudgetConfig
 ): string {
@@ -317,7 +289,7 @@ export function buildSagaSystemPrompt(options: {
   ragContext?: RAGContext;
   editorContext?: EditorContext;
   profileContext?: ProfileContext;
-  memoryContext?: MemoryContext;
+  memoryContext?: RetrievedMemoryContext;
 }): string {
   const { mode, ragContext, editorContext, profileContext, memoryContext } = options;
 
@@ -340,7 +312,7 @@ export function buildSagaSystemPrompt(options: {
       const profileLines = profileToStyleMemoryLines(profileContext);
       if (profileLines.length > 0) {
         // Create pseudo-memory records for profile preferences
-        const profileRecords: MemoryRecord[] = profileLines.map((line, i) => ({
+        const profileRecords: RetrievedMemoryRecord[] = profileLines.map((line, i) => ({
           id: `profile-${i}`,
           content: line,
           category: "style",
@@ -352,10 +324,10 @@ export function buildSagaSystemPrompt(options: {
     }
 
     const hasMemories =
-      memoryContext?.decisions?.length > 0 ||
+      (memoryContext?.decisions?.length ?? 0) > 0 ||
       styleMemories.length > 0 ||
-      memoryContext?.preferences?.length > 0 ||
-      memoryContext?.session?.length > 0;
+      (memoryContext?.preferences?.length ?? 0) > 0 ||
+      (memoryContext?.session?.length ?? 0) > 0;
 
     if (hasMemories) {
       prompt += "\n\n" + SAGA_MEMORY_CONTEXT
@@ -384,7 +356,7 @@ export function buildSagaSystemPrompt(options: {
       ? ragContext.documents.map(d => `- **${d.title}**: ${d.preview}`).join("\n")
       : "None retrieved.";
     const entitiesText = ragContext.entities.length > 0
-      ? ragContext.entities.map(e => `- **${e.name}** (${e.type}): ${e.preview}`).join("\n")
+      ? ragContext.entities.map(e => `- **${e.title}** (${e.type}): ${e.preview}`).join("\n")
       : "None retrieved.";
 
     prompt += "\n\n" + SAGA_CONTEXT_TEMPLATE

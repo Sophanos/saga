@@ -73,6 +73,12 @@ export interface MemoryCacheState {
 
   /** Get recent memories for a project (non-session) */
   getRecent: (projectId: string) => MemoryRecord[];
+
+  /** Prune expired caches (call periodically or on memory pressure) */
+  pruneExpired: () => void;
+
+  /** Last prune timestamp (internal) */
+  lastPruneTime: number;
 }
 
 // =============================================================================
@@ -83,7 +89,9 @@ const MAX_RECENT_MEMORIES = 20;
 const MAX_CATEGORY_MEMORIES = 50;
 const MAX_SESSION_MEMORIES = 20;
 const MAX_CONVERSATIONS_PER_PROJECT = 10;
+const MAX_PROJECTS_IN_CACHE = 20;
 const CACHE_TTL_DAYS = 7;
+const AUTO_PRUNE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 // =============================================================================
 // Helpers
@@ -141,6 +149,26 @@ function pruneOldConversations(
   return Object.fromEntries(sorted.slice(0, MAX_CONVERSATIONS_PER_PROJECT));
 }
 
+/**
+ * Prune old projects to limit memory usage.
+ * Keeps only the most recently updated projects.
+ */
+function pruneOldProjects(
+  byProject: Record<string, ProjectMemoryCache>
+): Record<string, ProjectMemoryCache> {
+  const entries = Object.entries(byProject);
+  if (entries.length <= MAX_PROJECTS_IN_CACHE) {
+    return byProject;
+  }
+
+  // Sort by most recently updated
+  const sorted = entries.sort((a, b) => {
+    return b[1].updatedAt.localeCompare(a[1].updatedAt);
+  });
+
+  return Object.fromEntries(sorted.slice(0, MAX_PROJECTS_IN_CACHE));
+}
+
 // =============================================================================
 // Store Factory
 // =============================================================================
@@ -153,8 +181,18 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
     persist(
       (set, get) => ({
         byProject: {},
+        lastPruneTime: 0,
 
         upsertLocal: (projectId, memory) => {
+          // Check if we should auto-prune (every 5 minutes)
+          const now = Date.now();
+          const lastPrune = get().lastPruneTime;
+          if (now - lastPrune > AUTO_PRUNE_INTERVAL_MS) {
+            set((state) => ({
+              byProject: pruneOldProjects(pruneExpiredCaches(state.byProject)),
+              lastPruneTime: now,
+            }));
+          }
           set((state) => {
             const projectCache =
               state.byProject[projectId] ?? createEmptyProjectCache();
@@ -179,18 +217,20 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
                 MAX_SESSION_MEMORIES
               );
 
-              return {
-                byProject: {
-                  ...state.byProject,
-                  [projectId]: {
-                    ...projectCache,
-                    sessionByConversation: pruneOldConversations({
-                      ...projectCache.sessionByConversation,
-                      [conversationId]: newSession,
-                    }),
-                    updatedAt: new Date().toISOString(),
-                  },
+              const updatedByProject = {
+                ...state.byProject,
+                [projectId]: {
+                  ...projectCache,
+                  sessionByConversation: pruneOldConversations({
+                    ...projectCache.sessionByConversation,
+                    [conversationId]: newSession,
+                  }),
+                  updatedAt: new Date().toISOString(),
                 },
+              };
+
+              return {
+                byProject: pruneOldProjects(updatedByProject),
               };
             }
 
@@ -215,19 +255,21 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
               MAX_CATEGORY_MEMORIES
             );
 
-            return {
-              byProject: {
-                ...state.byProject,
-                [projectId]: {
-                  ...projectCache,
-                  recent: newRecent,
-                  byCategory: {
-                    ...projectCache.byCategory,
-                    [category]: newCategoryMemories,
-                  },
-                  updatedAt: new Date().toISOString(),
+            const updatedByProject = {
+              ...state.byProject,
+              [projectId]: {
+                ...projectCache,
+                recent: newRecent,
+                byCategory: {
+                  ...projectCache.byCategory,
+                  [category]: newCategoryMemories,
                 },
+                updatedAt: new Date().toISOString(),
               },
+            };
+
+            return {
+              byProject: pruneOldProjects(updatedByProject),
             };
           });
         },
@@ -372,6 +414,13 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
           const projectCache = get().byProject[projectId];
           if (!projectCache) return [];
           return projectCache.recent;
+        },
+
+        pruneExpired: () => {
+          set((state) => ({
+            byProject: pruneOldProjects(pruneExpiredCaches(state.byProject)),
+            lastPruneTime: Date.now(),
+          }));
         },
       }),
       {

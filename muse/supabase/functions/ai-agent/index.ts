@@ -163,7 +163,7 @@ serve(async (req: Request): Promise<Response> => {
       projectId,
       mentions,
       editorContext,
-      stream = true,
+      stream: shouldStream = true,
     } = body as AgentRequest;
 
     // Get last user message for RAG query
@@ -206,8 +206,8 @@ serve(async (req: Request): Promise<Response> => {
       ...recentMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
     ];
 
-    // Get model
-    const modelType = "chat";
+    // Get model - using "analysis" for deep understanding in agent interactions
+    const modelType = "analysis";
     const model = getOpenRouterModel(billing.apiKey!, modelType);
 
     // Stream response with tools using modular registry
@@ -219,7 +219,7 @@ serve(async (req: Request): Promise<Response> => {
     });
 
     // Create SSE stream using shared utility
-    const stream = createSSEStream(async (sse: SSEStreamController) => {
+    const sseStream = createSSEStream(async (sse: SSEStreamController) => {
       try {
         // Send context metadata first
         sse.sendContext(context);
@@ -276,7 +276,7 @@ serve(async (req: Request): Promise<Response> => {
       }
     });
 
-    return new Response(stream, {
+    return new Response(sseStream, {
       headers: getStreamingHeaders(origin),
     });
   } catch (error) {
