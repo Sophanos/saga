@@ -3,6 +3,8 @@ import { Layout } from "./components/Layout";
 import { ProjectSelectorScreen } from "./components/projects";
 import { TemplatePickerModal } from "./components/modals";
 import { AuthScreen, AuthCallback } from "./components/auth";
+import { InviteAcceptPage } from "./components/collaboration";
+import { LAST_PROJECT_KEY, PENDING_INVITE_TOKEN_KEY } from "./constants/storageKeys";
 import { LandingPage } from "@mythos/website/pages";
 import { useProjects } from "./hooks/useProjects";
 import { useProjectLoader } from "./hooks/useProjectLoader";
@@ -10,7 +12,7 @@ import { useSupabaseAuthSync } from "./hooks/useSupabaseAuthSync";
 import { useAuthStore } from "./stores/auth";
 import { useNavigationStore } from "./stores/navigation";
 
-const LAST_PROJECT_KEY = "mythos:lastProjectId";
+
 
 /**
  * Loading screen shown while checking auth state
@@ -171,11 +173,23 @@ function App() {
   const signOut = useAuthStore((state) => state.signOut);
 
   // State for showing auth screen vs landing page
-  const [showAuth, setShowAuth] = useState(false);
+  // Initialize based on URL path to support direct navigation
+  const [showAuth, setShowAuth] = useState(() => {
+    const path = window.location.pathname;
+    return path === "/login" || path === "/signup";
+  });
 
   // Check if we're on the auth callback route
   const isAuthCallback = window.location.pathname === "/auth/callback" ||
     window.location.search.includes("code=");
+
+  // Check if we're on an invite route
+  const pathname = window.location.pathname;
+  const inviteMatch = pathname.match(/^\/invite\/([^/]+)$/);
+  const inviteTokenFromPath = inviteMatch?.[1] ?? null;
+  const pendingInviteToken = sessionStorage.getItem(PENDING_INVITE_TOKEN_KEY);
+  const inviteToken = inviteTokenFromPath ?? pendingInviteToken;
+  const isInviteRoute = Boolean(inviteToken);
 
   // Sync Supabase auth with Zustand store
   useSupabaseAuthSync({
@@ -195,6 +209,11 @@ function App() {
   // Handle OAuth callback
   if (isAuthCallback) {
     return <AuthCallback onComplete={() => window.location.href = "/"} />;
+  }
+
+  // Handle invitation acceptance route
+  if (isInviteRoute && inviteToken) {
+    return <InviteAcceptPage token={inviteToken} />;
   }
 
   // Show landing or auth screen if not authenticated
