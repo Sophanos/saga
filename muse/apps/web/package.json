@@ -13,6 +13,7 @@
   "dependencies": {
     "@mythos/agent-protocol": "workspace:*",
     "@mythos/ai": "workspace:*",
+    "@mythos/capabilities": "workspace:*",
     "@mythos/core": "workspace:*",
     "@mythos/db": "workspace:*",
     "@mythos/editor": "workspace:*",

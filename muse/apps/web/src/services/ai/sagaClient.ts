@@ -21,6 +21,10 @@ import type {
   GenerateTemplateResult,
   ClarityCheckArgs,
   ClarityCheckResult,
+  CheckLogicArgs,
+  CheckLogicResult,
+  NameGeneratorArgs,
+  NameGeneratorResult,
   SagaMode,
   EditorContext,
   AgentStreamEventType,
@@ -463,4 +467,41 @@ export async function executeClarityCheck(
   opts?: ExecuteToolOptions
 ): Promise<ClarityCheckResult> {
   return executeSagaTool<ClarityCheckResult>("clarity_check", input, opts);
+}
+
+/**
+ * Execute check_logic tool.
+ * Validates story logic against explicit rules and world state.
+ */
+export async function executeCheckLogic(
+  input: CheckLogicArgs & {
+    text: string;
+    magicSystems?: Array<{
+      id: string;
+      name: string;
+      rules: string[];
+      limitations: string[];
+      costs?: string[];
+    }>;
+    characters?: Array<{
+      id: string;
+      name: string;
+      powerLevel?: number;
+      knowledge?: string[];
+    }>;
+  },
+  opts?: ExecuteToolOptions
+): Promise<CheckLogicResult> {
+  return executeSagaTool<CheckLogicResult>("check_logic", input, opts);
+}
+
+/**
+ * Execute name_generator tool.
+ * Generates culturally-aware, genre-appropriate names.
+ */
+export async function executeNameGenerator(
+  input: NameGeneratorArgs,
+  opts?: ExecuteToolOptions
+): Promise<NameGeneratorResult> {
+  return executeSagaTool<NameGeneratorResult>("name_generator", input, opts);
 }

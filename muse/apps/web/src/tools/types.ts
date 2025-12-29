@@ -3,7 +3,7 @@
  */
 
 import type { Entity, Relationship, EntityType, RelationType, StyleIssue, ReadabilityMetrics } from "@mythos/core";
-import type { ToolName, ToolArtifact, ToolDangerLevel, AnalysisScope } from "@mythos/agent-protocol";
+import type { ToolName, ToolArtifact, ToolDangerLevel, AnalysisScope, WritingPreferences } from "@mythos/agent-protocol";
 
 // Re-export for backwards compatibility
 export type { ToolDangerLevel };
@@ -70,6 +70,15 @@ export interface ToolExecutionContext {
   setClarityIssues?: (issues: StyleIssue[]) => void;
   /** Set readability metrics in the analysis store */
   setReadabilityMetrics?: (metrics: ReadabilityMetrics) => void;
+
+  // ==========================================================================
+  // Preferences Extensions
+  // ==========================================================================
+
+  /** User's writing preferences */
+  preferences?: WritingPreferences;
+  /** Current project genre */
+  genre?: string;
 }
 
 // =============================================================================

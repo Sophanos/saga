@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { Trash2 } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import {
@@ -15,6 +15,12 @@ import { QuickActions } from "./QuickActions";
 import { ChatMessages } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 import type { Editor } from "@mythos/editor";
+import type { Capability, CapabilityContext } from "@mythos/capabilities";
+import {
+  isPromptCapability,
+  isToolCapability,
+  isUIActionCapability,
+} from "@mythos/capabilities";
 
 interface AISidebarProps {
   className?: string;
@@ -32,10 +38,25 @@ export function AISidebar({ className }: AISidebarProps) {
 
   // Get current document and editor for context
   const currentDocument = useMythosStore((s) => s.document.currentDocument);
+  const currentProject = useMythosStore((s) => s.project.currentProject);
   const editorInstance = useMythosStore((s) => s.editor.editorInstance) as Editor | null;
+  const setActiveTab = useMythosStore((s) => s.setActiveTab);
+  const openModal = useMythosStore((s) => s.openModal);
 
   // Get selection text from editor (properly reactive via selectionUpdate events)
   const selectionText = useEditorSelection(editorInstance);
+
+  // Build capability context
+  const capabilityContext: CapabilityContext = useMemo(
+    () => ({
+      hasProject: !!currentProject,
+      selectionText: selectionText ?? undefined,
+      documentTitle: currentDocument?.title,
+      // Genre would come from template, will fallback to user preferences
+      genre: undefined,
+    }),
+    [currentProject, selectionText, currentDocument?.title]
+  );
 
   // Handle message send
   const handleSend = useCallback(
@@ -45,12 +66,30 @@ export function AISidebar({ className }: AISidebarProps) {
     [sendMessage]
   );
 
-  // Handle quick action
-  const handleQuickAction = useCallback(
-    (prompt: string) => {
-      sendMessage(prompt, []);
+  // Handle capability invocation
+  const handleCapabilityInvoke = useCallback(
+    async (capability: Capability) => {
+      if (isPromptCapability(capability)) {
+        // Build and send the prompt
+        const prompt = capability.buildPrompt(capabilityContext);
+        sendMessage(prompt, []);
+      } else if (isToolCapability(capability)) {
+        // For tools, send a message asking the AI to run the tool
+        // The AI will propose the tool which the user can then accept
+        const toolLabel = capability.label;
+        sendMessage(`Run ${toolLabel} on the current document.`, []);
+      } else if (isUIActionCapability(capability)) {
+        // Handle UI actions
+        const action = capability.action;
+        if (action.type === "open_console_tab") {
+          setActiveTab(action.tab as "chat" | "linter" | "search" | "dynamics" | "coach");
+        } else if (action.type === "open_modal") {
+          const modalPayload = action.payload as Record<string, unknown> | undefined;
+          openModal({ type: action.modal as "profile" | "settings", ...modalPayload });
+        }
+      }
     },
-    [sendMessage]
+    [capabilityContext, sendMessage, setActiveTab, openModal]
   );
 
   // Handle clear selection (for context bar)
@@ -104,7 +143,7 @@ export function AISidebar({ className }: AISidebarProps) {
       {messages.length === 0 && (
         <QuickActions
           hasSelection={!!selectionText}
-          onAction={handleQuickAction}
+          onInvoke={handleCapabilityInvoke}
         />
       )}
 

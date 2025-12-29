@@ -10,6 +10,7 @@ import {
   Calendar,
   Plus,
   Save,
+  Loader2,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -44,6 +45,9 @@ import {
   getEntityLabel,
   type EntityIconName,
 } from "@mythos/core";
+import { executeNameGenerator } from "../../services/ai/sagaClient";
+import { useAuthStore } from "../../stores/auth";
+import type { NameCulture, NameStyle } from "@mythos/agent-protocol";
 
 // ============================================================================
 // Types
@@ -706,13 +710,52 @@ export function EntityFormModal({
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Name generation state
+  const [isGeneratingNames, setIsGeneratingNames] = useState(false);
+  const [generatedNames, setGeneratedNames] = useState<string[]>([]);
+  const user = useAuthStore((state) => state.user);
+
   // Reset form when modal opens with different entity/mode
   useEffect(() => {
     if (isOpen) {
       setFormData(getInitialFormData(mode, entityType, entity));
       setErrors({});
+      setGeneratedNames([]);
     }
   }, [isOpen, mode, entityType, entity]);
+
+  // Generate names using AI
+  const handleGenerateNames = useCallback(async () => {
+    setIsGeneratingNames(true);
+    setGeneratedNames([]);
+    try {
+      const prefs = user?.preferences?.writing;
+      const result = await executeNameGenerator({
+        entityType: formData.type,
+        count: 5,
+        culture: (prefs?.namingCulture as NameCulture) || undefined,
+        style: (prefs?.namingStyle as NameStyle) || "standard",
+        avoid: formData.aliases.length > 0 ? formData.aliases : undefined,
+      });
+      setGeneratedNames(result.names.map((n) => n.name));
+    } catch (error) {
+      console.error("[EntityFormModal] Name generation failed:", error);
+    } finally {
+      setIsGeneratingNames(false);
+    }
+  }, [formData.type, formData.aliases, user?.preferences?.writing]);
+
+  // Select a generated name
+  const handleSelectName = useCallback((name: string) => {
+    setFormData((prev) => ({ ...prev, name }));
+    setGeneratedNames([]);
+    // Clear name error
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next["name"];
+      return next;
+    });
+  }, []);
 
   const updateFormData = useCallback((updates: Partial<EntityFormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }));
@@ -823,12 +866,49 @@ export function EntityFormModal({
                 {/* Base Fields */}
                 <div className="grid grid-cols-1 gap-4">
                   <FormField label="Name" required error={errors["name"]}>
-                    <Input
-                      value={formData.name}
-                      onChange={(e) => updateFormData({ name: e.target.value })}
-                      placeholder={`Enter ${formData.type.replace("_", " ")} name...`}
-                      autoFocus
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        value={formData.name}
+                        onChange={(e) => updateFormData({ name: e.target.value })}
+                        placeholder={`Enter ${formData.type.replace("_", " ")} name...`}
+                        autoFocus
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={handleGenerateNames}
+                        disabled={isGeneratingNames}
+                        title="Generate name suggestions"
+                        className="shrink-0"
+                      >
+                        {isGeneratingNames ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Wand2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                    {/* Generated name suggestions */}
+                    {generatedNames.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {generatedNames.map((name, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => handleSelectName(name)}
+                            className={cn(
+                              "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+                              "bg-mythos-accent-cyan/10 text-mythos-accent-cyan",
+                              "hover:bg-mythos-accent-cyan/20 border border-mythos-accent-cyan/30"
+                            )}
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </FormField>
 
                   <StringListField

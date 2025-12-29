@@ -101,6 +101,51 @@ export const consistencyFocusSchema = z.enum(["character", "world", "plot", "tim
 export type ConsistencyFocus = z.infer<typeof consistencyFocusSchema>;
 
 // =============================================================================
+// check_logic Tool Schemas
+// =============================================================================
+
+export const logicFocusSchema = z.enum([
+  "magic_rules",
+  "causality",
+  "knowledge_state",
+  "power_scaling",
+]);
+export type LogicFocus = z.infer<typeof logicFocusSchema>;
+
+export const logicStrictnessSchema = z.enum(["strict", "balanced", "lenient"]);
+export type LogicStrictness = z.infer<typeof logicStrictnessSchema>;
+
+export const logicViolationTypeSchema = z.enum([
+  "magic_rule_violation",
+  "causality_break",
+  "knowledge_violation",
+  "power_scaling_violation",
+]);
+export type LogicViolationType = z.infer<typeof logicViolationTypeSchema>;
+
+// =============================================================================
+// name_generator Tool Schemas
+// =============================================================================
+
+export const nameCultureSchema = z.enum([
+  "western",
+  "norse",
+  "japanese",
+  "chinese",
+  "arabic",
+  "slavic",
+  "celtic",
+  "latin",
+  "indian",
+  "african",
+  "custom",
+]);
+export type NameCulture = z.infer<typeof nameCultureSchema>;
+
+export const nameStyleSchema = z.enum(["short", "standard", "long"]);
+export type NameStyle = z.infer<typeof nameStyleSchema>;
+
+// =============================================================================
 // Saga Mode and Editor Context
 // (Aligned with @mythos/agent-protocol)
 // =============================================================================

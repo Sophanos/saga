@@ -21,6 +21,8 @@ import { detectEntitiesExecutor } from "./executors/detectEntities";
 import { checkConsistencyExecutor } from "./executors/checkConsistency";
 import { generateTemplateExecutor } from "./executors/generateTemplate";
 import { clarityCheckExecutor } from "./executors/clarityCheck";
+import { checkLogicExecutor } from "./executors/checkLogic";
+import { nameGeneratorExecutor } from "./executors/nameGenerator";
 
 // =============================================================================
 // Tool Registry
@@ -44,6 +46,8 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   check_consistency: checkConsistencyExecutor as ToolDefinition<unknown, unknown>,
   generate_template: generateTemplateExecutor as ToolDefinition<unknown, unknown>,
   clarity_check: clarityCheckExecutor as ToolDefinition<unknown, unknown>,
+  check_logic: checkLogicExecutor as ToolDefinition<unknown, unknown>,
+  name_generator: nameGeneratorExecutor as ToolDefinition<unknown, unknown>,
 };
 
 /**

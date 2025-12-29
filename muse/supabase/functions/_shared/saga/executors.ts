@@ -890,3 +890,253 @@ function parseTemplateResponse(response: string): GenerateTemplateResult {
     fallback
   );
 }
+
+// =============================================================================
+// Check Logic Executor
+// =============================================================================
+
+import { LOGIC_CHECK_SYSTEM, LOGIC_CHECK_PROMPT } from "../prompts/logic.ts";
+
+export type LogicViolationType =
+  | "magic_rule_violation"
+  | "causality_break"
+  | "knowledge_violation"
+  | "power_scaling_violation";
+
+export interface ViolatedRule {
+  source: "magic_system" | "power_scaling" | "knowledge_state" | "causality";
+  ruleText: string;
+  sourceEntityId?: string;
+  sourceEntityName?: string;
+}
+
+export interface LogicIssue {
+  id: string;
+  type: LogicViolationType;
+  severity: "error" | "warning" | "info";
+  message: string;
+  violatedRule?: ViolatedRule;
+  suggestion?: string;
+  locations: Array<{
+    documentId?: string;
+    line?: number;
+    startOffset?: number;
+    endOffset?: number;
+    text: string;
+  }>;
+  entityIds?: string[];
+}
+
+export interface CheckLogicResult {
+  issues: LogicIssue[];
+  summary?: string;
+}
+
+export async function executeCheckLogic(
+  input: {
+    text: string;
+    focus?: string[];
+    strictness?: "strict" | "balanced" | "lenient";
+    magicSystems?: Array<{
+      id: string;
+      name: string;
+      rules: string[];
+      limitations: string[];
+      costs?: string[];
+    }>;
+    characters?: Array<{
+      id: string;
+      name: string;
+      powerLevel?: number;
+      knowledge?: string[];
+    }>;
+    preferences?: Record<string, unknown>;
+  },
+  apiKey: string
+): Promise<CheckLogicResult> {
+  const model = getOpenRouterModel(apiKey, "analysis");
+  const strictness = input.strictness ?? "balanced";
+
+  // Build magic systems context
+  let magicSystemsContext = "No magic systems defined.";
+  if (input.magicSystems?.length) {
+    magicSystemsContext = input.magicSystems
+      .map((ms) => {
+        const parts = [`**${ms.name}**:`];
+        if (ms.rules.length) parts.push(`  Rules: ${ms.rules.join("; ")}`);
+        if (ms.limitations.length) parts.push(`  Limitations: ${ms.limitations.join("; ")}`);
+        if (ms.costs?.length) parts.push(`  Costs: ${ms.costs.join("; ")}`);
+        return parts.join("\n");
+      })
+      .join("\n\n");
+  }
+
+  // Build characters context
+  let charactersContext = "No character data provided.";
+  if (input.characters?.length) {
+    charactersContext = input.characters
+      .map((c) => {
+        const parts = [`**${c.name}**:`];
+        if (c.powerLevel !== undefined) parts.push(`  Power Level: ${c.powerLevel}`);
+        if (c.knowledge?.length) parts.push(`  Known Facts: ${c.knowledge.join("; ")}`);
+        return parts.join("\n");
+      })
+      .join("\n\n");
+  }
+
+  const truncatedText = truncateText(input.text);
+  const userPrompt = LOGIC_CHECK_PROMPT
+    .replace("{strictness}", strictness)
+    .replace("{magicSystems}", magicSystemsContext)
+    .replace("{characters}", charactersContext)
+    .replace("{text}", truncatedText);
+
+  console.log("[saga/logic] Checking logic of text length:", input.text.length);
+
+  const { text: responseText } = await generateText({
+    model,
+    system: LOGIC_CHECK_SYSTEM,
+    prompt: userPrompt,
+    maxTokens: 2048,
+    temperature: 0.3,
+  });
+
+  return parseLogicResponse(responseText);
+}
+
+function parseLogicResponse(response: string): CheckLogicResult {
+  return parseJsonFromLLMResponse(
+    response,
+    "logic",
+    (parsed) => {
+      const issues: LogicIssue[] = (parsed.issues as unknown[] || []).map(
+        (issue: unknown, idx: number) => {
+          const i = issue as Record<string, unknown>;
+          return {
+            id: (i.id as string) || `logic_${idx}`,
+            type: i.type as LogicViolationType,
+            severity: i.severity as LogicIssue["severity"],
+            message: (i.message as string) || "Unknown logic issue",
+            violatedRule: i.violatedRule as ViolatedRule | undefined,
+            suggestion: i.suggestion as string | undefined,
+            locations: Array.isArray(i.locations) ? i.locations : [],
+            entityIds: i.entityIds as string[] | undefined,
+          };
+        }
+      );
+      return {
+        issues,
+        summary: parsed.summary as string | undefined,
+      };
+    },
+    { issues: [] }
+  );
+}
+
+// =============================================================================
+// Name Generator Executor
+// =============================================================================
+
+import { NAME_GENERATOR_SYSTEM, NAME_GENERATOR_PROMPT } from "../prompts/names.ts";
+
+export type NameCulture =
+  | "western"
+  | "norse"
+  | "japanese"
+  | "chinese"
+  | "arabic"
+  | "slavic"
+  | "celtic"
+  | "latin"
+  | "indian"
+  | "african"
+  | "custom";
+
+export interface GeneratedName {
+  name: string;
+  meaning?: string;
+  pronunciation?: string;
+  notes?: string;
+}
+
+export interface NameGeneratorResult {
+  names: GeneratedName[];
+  genre?: string;
+  culture?: NameCulture;
+}
+
+export async function executeNameGenerator(
+  input: {
+    entityType: string;
+    genre?: string;
+    culture?: string;
+    count?: number;
+    seed?: string;
+    avoid?: string[];
+    tone?: string;
+    style?: string;
+    preferences?: Record<string, unknown>;
+  },
+  apiKey: string
+): Promise<NameGeneratorResult> {
+  const model = getOpenRouterModel(apiKey, "creative");
+  const count = input.count ?? 10;
+  const culture = input.culture ?? "any";
+  const genre = input.genre ?? "fantasy";
+  const style = input.style ?? "standard";
+  const tone = input.tone ?? "neutral";
+  const seed = input.seed ?? "";
+  const avoid = input.avoid?.join(", ") ?? "";
+
+  const userPrompt = NAME_GENERATOR_PROMPT
+    .replace("{count}", String(count))
+    .replace("{entityType}", input.entityType)
+    .replace("{genre}", genre)
+    .replace("{culture}", culture)
+    .replace("{style}", style)
+    .replace("{tone}", tone)
+    .replace("{seed}", seed || "No specific context")
+    .replace("{avoid}", avoid || "None");
+
+  console.log("[saga/names] Generating", count, culture, input.entityType, "names");
+
+  const { text: responseText } = await generateText({
+    model,
+    system: NAME_GENERATOR_SYSTEM,
+    prompt: userPrompt,
+    maxTokens: 2048,
+    temperature: 0.8,
+  });
+
+  return parseNameGeneratorResponse(responseText, genre, culture);
+}
+
+function parseNameGeneratorResponse(
+  response: string,
+  genre?: string,
+  culture?: string
+): NameGeneratorResult {
+  return parseJsonFromLLMResponse(
+    response,
+    "names",
+    (parsed) => {
+      const names: GeneratedName[] = (parsed.names as unknown[] || []).map(
+        (name: unknown) => {
+          const n = name as Record<string, unknown>;
+          return {
+            name: (n.name as string) || "Unknown",
+            meaning: n.meaning as string | undefined,
+            pronunciation: n.pronunciation as string | undefined,
+            notes: n.notes as string | undefined,
+          };
+        }
+      );
+      return {
+        names,
+        genre: (parsed.genre as string) ?? genre,
+        culture: (parsed.culture as NameCulture) ?? culture,
+      };
+    },
+    { names: [], genre, culture: culture as NameCulture }
+  );
+}

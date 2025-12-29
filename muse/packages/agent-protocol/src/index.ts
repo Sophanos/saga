@@ -48,7 +48,9 @@ export type ToolName =
   | "detect_entities"
   | "check_consistency"
   | "generate_template"
-  | "clarity_check";
+  | "clarity_check"
+  | "check_logic"
+  | "name_generator";
 
 /**
  * Entity types that can be created/updated
@@ -465,6 +467,87 @@ export interface ClarityCheckArgs {
   maxIssues?: number;
 }
 
+// =============================================================================
+// check_logic Tool Types
+// =============================================================================
+
+/**
+ * Focus areas for logic checking.
+ */
+export type LogicFocus =
+  | "magic_rules"
+  | "causality"
+  | "knowledge_state"
+  | "power_scaling";
+
+/**
+ * Strictness level for logic checking.
+ */
+export type LogicStrictness = "strict" | "balanced" | "lenient";
+
+/**
+ * Arguments for check_logic tool.
+ * Validates story logic against explicit rules and world state.
+ */
+export interface CheckLogicArgs {
+  /** Scope of logic check */
+  scope?: AnalysisScope;
+  /** Text to analyze (optional - client supplies at execution if scope-based) */
+  text?: string;
+  /** Focus areas for the check (default: all) */
+  focus?: LogicFocus[];
+  /** How strict the validation should be (default: balanced) */
+  strictness?: LogicStrictness;
+}
+
+// =============================================================================
+// name_generator Tool Types
+// =============================================================================
+
+/**
+ * Cultural inspiration for name generation.
+ */
+export type NameCulture =
+  | "western"
+  | "norse"
+  | "japanese"
+  | "chinese"
+  | "arabic"
+  | "slavic"
+  | "celtic"
+  | "latin"
+  | "indian"
+  | "african"
+  | "custom";
+
+/**
+ * Style preference for generated names.
+ */
+export type NameStyle = "short" | "standard" | "long";
+
+/**
+ * Arguments for name_generator tool.
+ * Generates culturally-aware, genre-appropriate names.
+ */
+export interface NameGeneratorArgs {
+  /** Type of entity to name */
+  entityType: EntityType;
+  /** Genre context for name style */
+  genre?: string;
+  /** Cultural inspiration for names */
+  culture?: NameCulture;
+  /** Number of names to generate (default: 10) */
+  count?: number;
+  /** Seed text for context (entity notes, description) */
+  seed?: string;
+  /** Names to avoid (existing entities) */
+  avoid?: string[];
+  /** Optional tone for the names */
+  tone?: string;
+  /** Style preference for name length */
+  style?: NameStyle;
+}
+
 /**
  * Map of tool names to their argument types.
  */
@@ -483,6 +566,8 @@ export interface ToolArgsMap {
   check_consistency: CheckConsistencyArgs;
   generate_template: GenerateTemplateArgs;
   clarity_check: ClarityCheckArgs;
+  check_logic: CheckLogicArgs;
+  name_generator: NameGeneratorArgs;
 }
 
 // =============================================================================
@@ -799,6 +884,95 @@ export interface ClarityCheckResult {
   summary?: string;
 }
 
+// =============================================================================
+// check_logic Tool Results
+// =============================================================================
+
+/**
+ * Type of logic violation detected.
+ */
+export type LogicViolationType =
+  | "magic_rule_violation"
+  | "causality_break"
+  | "knowledge_violation"
+  | "power_scaling_violation";
+
+/**
+ * Source of a violated rule.
+ */
+export interface ViolatedRule {
+  /** Type of rule source */
+  source: "magic_system" | "power_scaling" | "knowledge_state" | "causality";
+  /** The rule text that was violated */
+  ruleText: string;
+  /** ID of the entity defining the rule */
+  sourceEntityId?: string;
+  /** Name of the entity defining the rule */
+  sourceEntityName?: string;
+}
+
+/**
+ * A logic issue detected in the narrative.
+ */
+export interface LogicIssue {
+  /** Unique identifier */
+  id: string;
+  /** Type of logic violation */
+  type: LogicViolationType;
+  /** Issue severity */
+  severity: "error" | "warning" | "info";
+  /** Human-readable message */
+  message: string;
+  /** The rule that was violated (if applicable) */
+  violatedRule?: ViolatedRule;
+  /** Suggested fix */
+  suggestion?: string;
+  /** Locations in the text where the issue occurs */
+  locations: IssueLocation[];
+  /** Entity IDs involved in the issue */
+  entityIds?: string[];
+}
+
+/**
+ * Result of check_logic tool.
+ */
+export interface CheckLogicResult {
+  /** Detected logic issues */
+  issues: LogicIssue[];
+  /** Summary of the analysis */
+  summary?: string;
+}
+
+// =============================================================================
+// name_generator Tool Results
+// =============================================================================
+
+/**
+ * A generated name with metadata.
+ */
+export interface GeneratedName {
+  /** The generated name */
+  name: string;
+  /** Meaning or etymology of the name */
+  meaning?: string;
+  /** Pronunciation guide */
+  pronunciation?: string;
+  /** Additional notes about the name */
+  notes?: string;
+}
+
+/**
+ * Result of name_generator tool.
+ */
+export interface NameGeneratorResult {
+  /** Generated names */
+  names: GeneratedName[];
+  /** Genre used for generation */
+  genre?: string;
+  /** Culture used for generation */
+  culture?: NameCulture;
+}
+
 /**
  * Map of tool names to their result types.
  */
@@ -817,6 +991,8 @@ export interface ToolResultsMap {
   check_consistency: CheckConsistencyResult;
   generate_template: GenerateTemplateResult;
   clarity_check: ClarityCheckResult;
+  check_logic: CheckLogicResult;
+  name_generator: NameGeneratorResult;
 }
 
 // =============================================================================
@@ -859,4 +1035,30 @@ export interface ToolMetadata {
   description: string;
   requiresConfirmation: boolean;
   danger: ToolDangerLevel;
+}
+
+// =============================================================================
+// Preferences
+// =============================================================================
+
+/**
+ * User preferences for writing/AI behavior.
+ * Stored in profile.preferences.writing
+ */
+export interface WritingPreferences {
+  /** Preferred genre for suggestions and generation */
+  preferredGenre?: string;
+  /** Default naming culture for name generation */
+  namingCulture?: NameCulture;
+  /** Default name length style */
+  namingStyle?: NameStyle;
+  /** Default strictness for logic checking */
+  logicStrictness?: LogicStrictness;
+}
+
+/**
+ * Full profile preferences object (namespaced).
+ */
+export interface ProfilePreferences {
+  writing?: WritingPreferences;
 }

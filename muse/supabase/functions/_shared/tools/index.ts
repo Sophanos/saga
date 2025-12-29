@@ -20,6 +20,8 @@ export { detectEntitiesTool, detectEntitiesParameters, type DetectEntitiesArgs }
 export { checkConsistencyTool, checkConsistencyParameters, type CheckConsistencyArgs } from "./check-consistency.ts";
 export { generateTemplateTool, generateTemplateParameters, type GenerateTemplateArgs } from "./generate-template.ts";
 export { clarityCheckTool, clarityCheckParameters, type ClarityCheckArgs } from "./clarity-check.ts";
+export { checkLogicTool, checkLogicParameters, type CheckLogicArgs } from "./check-logic.ts";
+export { nameGeneratorTool, nameGeneratorParameters, type NameGeneratorArgs } from "./name-generator.ts";
 
 // Export types
 export * from "./types.ts";
@@ -39,6 +41,8 @@ import { detectEntitiesTool } from "./detect-entities.ts";
 import { checkConsistencyTool } from "./check-consistency.ts";
 import { generateTemplateTool } from "./generate-template.ts";
 import { clarityCheckTool } from "./clarity-check.ts";
+import { checkLogicTool } from "./check-logic.ts";
+import { nameGeneratorTool } from "./name-generator.ts";
 
 /**
  * All agent tools bundled for streamText() usage.
@@ -76,6 +80,8 @@ export const sagaTools = {
   check_consistency: checkConsistencyTool,
   generate_template: generateTemplateTool,
   clarity_check: clarityCheckTool,
+  check_logic: checkLogicTool,
+  name_generator: nameGeneratorTool,
 } as const;
 
 /**

@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useMythosStore, useModal } from "../../stores";
 import { useEntityPersistence } from "../../hooks/useEntityPersistence";
 import { ApiKeySettings } from "../settings/ApiKeySettings";
+import { ProfileSettings } from "../settings/ProfileSettings";
 import { ExportModal } from "./ExportModal";
 import { ImportModal } from "./ImportModal";
 import { EntityFormModal, type EntityFormData } from "./EntityFormModal";
@@ -92,6 +93,9 @@ export function ModalHost() {
 
     case "inviteMember":
       return <InviteMemberModal isOpen={true} onClose={closeModal} />;
+
+    case "profile":
+      return <ProfileSettings isOpen={true} onClose={closeModal} />;
 
     default:
       return null;

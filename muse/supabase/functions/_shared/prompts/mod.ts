@@ -66,3 +66,21 @@ export {
   SAGA_MODE_ADDENDUMS,
   buildSagaSystemPrompt,
 } from "./saga.ts";
+
+// Clarity check prompts
+export {
+  CLARITY_CHECK_SYSTEM,
+  QUICK_CLARITY_PROMPT,
+} from "./clarity.ts";
+
+// Logic check prompts
+export {
+  LOGIC_CHECK_SYSTEM,
+  LOGIC_CHECK_PROMPT,
+} from "./logic.ts";
+
+// Name generator prompts
+export {
+  NAME_GENERATOR_SYSTEM,
+  NAME_GENERATOR_PROMPT,
+} from "./names.ts";

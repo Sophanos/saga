@@ -329,7 +329,7 @@ export async function resetPasswordForEmail(
  */
 export async function updateProfile(
   userId: string,
-  updates: { name?: string; avatar_url?: string }
+  updates: { name?: string; avatar_url?: string; preferences?: Record<string, unknown> }
 ): Promise<{ error: Error | null }> {
   try {
     const supabase = getSupabaseClient();

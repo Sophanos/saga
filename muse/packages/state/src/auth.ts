@@ -6,12 +6,14 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { StorageAdapter } from "@mythos/storage";
+import type { ProfilePreferences } from "@mythos/agent-protocol";
 
 export interface User {
   id: string;
   email: string;
   name?: string;
   avatarUrl?: string;
+  preferences?: ProfilePreferences;
 }
 
 export interface AuthState {

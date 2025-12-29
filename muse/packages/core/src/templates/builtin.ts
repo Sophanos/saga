@@ -2091,3 +2091,17 @@ export function searchTemplates(query: string): ProjectTemplate[] {
       t.tags.some((tag) => tag.includes(q))
   );
 }
+
+/** Get all unique genres across all templates */
+export function getAllTemplateGenres(): string[] {
+  const genres = new Set<string>();
+  for (const template of BUILTIN_TEMPLATES) {
+    if (template.defaultGenre) {
+      genres.add(template.defaultGenre);
+    }
+    if (template.suggestedGenres) {
+      template.suggestedGenres.forEach((g) => genres.add(g));
+    }
+  }
+  return Array.from(genres).sort();
+}

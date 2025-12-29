@@ -41,3 +41,21 @@ export {
   GENESIS_SYSTEM,
   STYLE_GUIDE_SYSTEM,
 } from "./genesis";
+
+// Clarity prompts
+export {
+  CLARITY_CHECK_SYSTEM,
+  QUICK_CLARITY_PROMPT,
+} from "./clarity";
+
+// Logic check prompts
+export {
+  LOGIC_CHECK_SYSTEM,
+  LOGIC_CHECK_PROMPT,
+} from "./logic";
+
+// Name generator prompts
+export {
+  NAME_GENERATOR_SYSTEM,
+  NAME_GENERATOR_PROMPT,
+} from "./names";

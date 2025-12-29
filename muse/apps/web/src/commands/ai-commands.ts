@@ -5,95 +5,100 @@ import {
   Zap,
   Brain,
   Eye,
+  Scale,
+  Wand2,
+  ScanSearch,
+  Globe,
+  User,
+  type LucideIcon,
 } from "lucide-react";
 import type { Command } from "./registry";
+import {
+  getCapabilitiesForSurface,
+  isPromptCapability,
+  isToolCapability,
+  isUIActionCapability,
+  type Capability,
+} from "@mythos/capabilities";
 
-export const aiCommands: Command[] = [
-  {
-    id: "ai.chat",
-    label: "Ask AI About Story",
-    description: "Open AI chat to ask questions about your story",
-    icon: MessageSquare,
+// Icon mapping from string names to Lucide components
+const ICON_MAP: Record<string, LucideIcon> = {
+  MessageSquare,
+  Sparkles,
+  AlertTriangle,
+  Zap,
+  Brain,
+  Eye,
+  Scale,
+  Wand2,
+  ScanSearch,
+  Globe,
+  User,
+};
+
+/**
+ * Convert a Capability to a Command.
+ */
+function capabilityToCommand(capability: Capability): Command {
+  const Icon = ICON_MAP[capability.icon];
+
+  const command: Command = {
+    id: capability.id,
+    label: capability.label,
+    description: capability.description,
+    icon: Icon,
     category: "ai",
-    keywords: ["chat", "ai", "ask", "question", "help", "assistant"],
-    shortcut: "⌘/",
-    requiredModule: "console",
-    when: (ctx) => ctx.state.project.currentProject !== null,
-    execute: (ctx) => {
-      ctx.setActiveTab("chat");
+    keywords: capability.keywords ?? [],
+    shortcut: capability.shortcut,
+    requiredModule: capability.requiresProject ? "console" : undefined,
+    when: (ctx) => {
+      // Check project requirement
+      if (capability.requiresProject && ctx.state.project.currentProject === null) {
+        return false;
+      }
+      // Check selection requirement
+      if (capability.requiresSelection && (!ctx.selectedText || ctx.selectedText.length === 0)) {
+        return false;
+      }
+      return true;
     },
-  },
-  {
-    id: "ai.detect-entities",
-    label: "Detect Entities in Selection",
-    description: "Use AI to detect and suggest entities from selected text",
-    icon: Sparkles,
-    category: "ai",
-    keywords: ["detect", "entity", "extract", "selection", "ai"],
-    when: (ctx) => 
-      ctx.state.project.currentProject !== null && 
-      ctx.selectedText !== null && 
-      ctx.selectedText.length > 0,
-    execute: (ctx) => {
-      // This will be implemented with AI detection
-      // For now, switch to chat tab
-      ctx.setActiveTab("chat");
+    execute: async (ctx) => {
+      if (isPromptCapability(capability)) {
+        // Build prompt and switch to chat (prompt will be sent by user clicking in chat)
+        // For now, just switch to chat tab
+        ctx.setActiveTab("chat");
+      } else if (isToolCapability(capability)) {
+        // For tools invoked via command palette, switch to chat or linter
+        // The actual tool execution happens in the chat context
+        if (capability.toolName === "check_consistency" || capability.toolName === "check_logic") {
+          ctx.setActiveTab("linter");
+        } else if (capability.toolName === "clarity_check") {
+          ctx.setActiveTab("linter");
+        } else {
+          ctx.setActiveTab("chat");
+        }
+      } else if (isUIActionCapability(capability)) {
+        const action = capability.action;
+        if (action.type === "open_console_tab") {
+          ctx.setActiveTab(action.tab);
+        } else if (action.type === "open_modal") {
+          const modalPayload = action.payload as Record<string, unknown> | undefined;
+          ctx.openModal({ type: action.modal as "profile" | "settings", ...modalPayload });
+        }
+      }
     },
-  },
-  {
-    id: "ai.lint",
-    label: "Check Story Consistency",
-    description: "Run AI linter to check for consistency issues",
-    icon: AlertTriangle,
-    category: "ai",
-    keywords: ["lint", "check", "consistency", "errors", "issues", "validate"],
-    shortcut: "⌘⇧L",
-    requiredModule: "console",
-    when: (ctx) => ctx.state.project.currentProject !== null,
-    execute: (ctx) => {
-      ctx.setActiveTab("linter");
-      // Trigger linter run via store action
-      ctx.state.linter.isRunning = false; // Will trigger a new run
-    },
-  },
-  {
-    id: "ai.analyze",
-    label: "Analyze Writing Style",
-    description: "Get AI feedback on pacing, show-don't-tell, and more",
-    icon: Brain,
-    category: "ai",
-    keywords: ["analyze", "style", "coach", "feedback", "pacing", "writing"],
-    requiredModule: "console",
-    when: (ctx) => ctx.state.project.currentProject !== null,
-    execute: (ctx) => {
-      ctx.setActiveTab("coach");
-    },
-  },
-  {
-    id: "ai.dynamics",
-    label: "Extract Entity Dynamics",
-    description: "Analyze interactions and relationships between entities",
-    icon: Zap,
-    category: "ai",
-    keywords: ["dynamics", "interactions", "relationships", "extract"],
-    requiredModule: "console",
-    when: (ctx) => ctx.state.project.currentProject !== null,
-    execute: (ctx) => {
-      ctx.setActiveTab("dynamics");
-    },
-  },
-  {
-    id: "ai.clarity-check",
-    label: "Check Clarity",
-    description: "Find ambiguous pronouns, clichés, filler words, and readability issues",
-    icon: Eye,
-    category: "ai",
-    keywords: ["clarity", "clear", "pronoun", "cliche", "filler", "readability", "check"],
-    requiredModule: "console",
-    when: (ctx) => ctx.state.project.currentProject !== null,
-    execute: (ctx) => {
-      // Switch to chat tab and let user invoke via quick action or chat
-      ctx.setActiveTab("chat");
-    },
-  },
-];
+  };
+
+  return command;
+}
+
+/**
+ * Generate AI commands from the capability registry.
+ */
+function generateAICommands(): Command[] {
+  const capabilities = getCapabilitiesForSurface("command_palette");
+  return capabilities.map(capabilityToCommand);
+}
+
+// Export the generated commands
+export const aiCommands: Command[] = generateAICommands();
