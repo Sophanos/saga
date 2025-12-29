@@ -166,12 +166,10 @@ function isRetryableError(error: unknown, statusCode?: number): boolean {
  * Calculate delay with exponential backoff and jitter
  */
 function calculateBackoffDelay(attempt: number, config: QdrantRetryConfig): number {
-  // Exponential backoff: baseDelay * 2^attempt
   const exponentialDelay = config.baseDelayMs * Math.pow(2, attempt);
-  // Add jitter (0-50% of delay)
-  const jitter = Math.random() * 0.5 * exponentialDelay;
-  // Cap at max delay
-  return Math.min(exponentialDelay + jitter, config.maxDelayMs);
+  const cappedDelay = Math.min(exponentialDelay, config.maxDelayMs);
+  // Full jitter: random value between 0 and cappedDelay
+  return Math.random() * cappedDelay;
 }
 
 /**
@@ -506,4 +504,33 @@ export async function countPoints(
   );
 
   return response.result.count;
+}
+
+/**
+ * Health check for Qdrant connection.
+ * Returns status and basic metrics.
+ */
+export async function healthCheck(
+  config?: Partial<QdrantConfig>
+): Promise<{
+  healthy: boolean;
+  status?: string;
+  vectorsCount?: number;
+  pointsCount?: number;
+  error?: string;
+}> {
+  try {
+    const info = await getCollectionInfo(config);
+    return {
+      healthy: true,
+      status: info.status as string,
+      vectorsCount: info.vectors_count as number,
+      pointsCount: info.points_count as number,
+    };
+  } catch (error) {
+    return {
+      healthy: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
 }
