@@ -116,7 +116,7 @@ RETURNS BOOLEAN
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER SET search_path = public
-AS $
+AS $$
 DECLARE
   v_user_id UUID := auth.uid();
   v_has_project_access BOOLEAN;
@@ -125,23 +125,23 @@ BEGIN
   SELECT EXISTS (
     SELECT 1 FROM projects WHERE id = p_project_id AND user_id = v_user_id
     UNION
-    SELECT 1 FROM project_collaborators 
+    SELECT 1 FROM project_collaborators
     WHERE project_id = p_project_id AND user_id = v_user_id
   ) INTO v_has_project_access;
-  
+
   IF NOT v_has_project_access THEN
     RETURN FALSE;
   END IF;
-  
+
   -- Project scope is visible to all with project access
   IF p_scope = 'project' THEN
     RETURN TRUE;
   END IF;
-  
+
   -- User/conversation scope requires ownership match
   RETURN p_owner_id = v_user_id::TEXT;
 END;
-$;
+$$;
 
 -- SELECT policy: Users can view memories they have access to
 CREATE POLICY "Users can view accessible memories"
@@ -161,12 +161,12 @@ CREATE POLICY "Users can view accessible memories"
 CREATE OR REPLACE FUNCTION update_memory_timestamp()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $
+AS $$
 BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
-$;
+$$;
 
 DROP TRIGGER IF EXISTS update_memories_timestamp ON memories;
 CREATE TRIGGER update_memories_timestamp
@@ -203,7 +203,7 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER SET search_path = public
-AS $
+AS $$
 BEGIN
   RETURN QUERY
   SELECT
@@ -227,7 +227,7 @@ BEGIN
   ORDER BY m.embedding <=> query_embedding
   LIMIT match_count;
 END;
-$;
+$$;
 
 -- =============================================================================
 -- Memory Cleanup Functions
@@ -241,7 +241,7 @@ CREATE OR REPLACE FUNCTION mark_expired_memories()
 RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = public
-AS $
+AS $$
 DECLARE
   v_count INTEGER;
 BEGIN
@@ -250,11 +250,11 @@ BEGIN
   WHERE deleted_at IS NULL
     AND expires_at IS NOT NULL
     AND expires_at < NOW();
-  
+
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
 END;
-$;
+$$;
 
 /**
  * Hard delete memories that have been soft-deleted for > retention_days.
@@ -264,18 +264,18 @@ CREATE OR REPLACE FUNCTION purge_deleted_memories(retention_days INTEGER DEFAULT
 RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = public
-AS $
+AS $$
 DECLARE
   v_count INTEGER;
 BEGIN
   DELETE FROM memories
   WHERE deleted_at IS NOT NULL
     AND deleted_at < NOW() - (retention_days || ' days')::INTERVAL;
-  
+
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
 END;
-$;
+$$;
 
 /**
  * Get memories pending Qdrant sync (for retry queue).
@@ -291,13 +291,13 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 SECURITY DEFINER SET search_path = public
-AS $
+AS $$
   SELECT id, content, embedding, qdrant_sync_status, created_at
   FROM memories
   WHERE deleted_at IS NULL
     AND qdrant_sync_status IN ('pending', 'error')
-  ORDER BY 
+  ORDER BY
     CASE WHEN qdrant_sync_status = 'pending' THEN 0 ELSE 1 END,
     created_at ASC
   LIMIT batch_size;
-$;
+$$;
