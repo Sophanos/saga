@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Zap,
   Brain,
+  Eye,
 } from "lucide-react";
 import type { Command } from "./registry";
 
@@ -79,6 +80,20 @@ export const aiCommands: Command[] = [
     when: (ctx) => ctx.state.project.currentProject !== null,
     execute: (ctx) => {
       ctx.setActiveTab("dynamics");
+    },
+  },
+  {
+    id: "ai.clarity-check",
+    label: "Check Clarity",
+    description: "Find ambiguous pronouns, clichés, filler words, and readability issues",
+    icon: Eye,
+    category: "ai",
+    keywords: ["clarity", "clear", "pronoun", "cliche", "filler", "readability", "check"],
+    requiredModule: "console",
+    when: (ctx) => ctx.state.project.currentProject !== null,
+    execute: (ctx) => {
+      // Switch to chat tab and let user invoke via quick action or chat
+      ctx.setActiveTab("chat");
     },
   },
 ];

@@ -47,7 +47,8 @@ export type ToolName =
   | "genesis_world"
   | "detect_entities"
   | "check_consistency"
-  | "generate_template";
+  | "generate_template"
+  | "clarity_check";
 
 /**
  * Entity types that can be created/updated
@@ -452,6 +453,19 @@ export interface GenerateTemplateArgs {
 }
 
 /**
+ * Arguments for clarity_check tool.
+ * Checks prose for word/phrase-level clarity issues.
+ */
+export interface ClarityCheckArgs {
+  /** Scope of clarity check */
+  scope?: AnalysisScope;
+  /** Text to analyze (optional - client supplies at execution if scope-based) */
+  text?: string;
+  /** Maximum number of issues to return (default 25) */
+  maxIssues?: number;
+}
+
+/**
  * Map of tool names to their argument types.
  */
 export interface ToolArgsMap {
@@ -468,6 +482,7 @@ export interface ToolArgsMap {
   detect_entities: DetectEntitiesArgs;
   check_consistency: CheckConsistencyArgs;
   generate_template: GenerateTemplateArgs;
+  clarity_check: ClarityCheckArgs;
 }
 
 // =============================================================================
@@ -725,6 +740,66 @@ export interface GenerateTemplateResult {
 }
 
 /**
+ * Readability metrics from clarity analysis.
+ */
+export interface ReadabilityMetrics {
+  /** Flesch-Kincaid grade level (e.g., 8.6 = 8th grade) */
+  fleschKincaidGrade: number;
+  /** Flesch Reading Ease score (0-100, higher = easier) */
+  fleschReadingEase: number;
+  /** Total number of sentences */
+  sentenceCount: number;
+  /** Total number of words */
+  wordCount: number;
+  /** Average words per sentence */
+  avgWordsPerSentence: number;
+  /** Percentage of sentences considered "long" (>25 words) */
+  longSentencePct?: number;
+}
+
+/**
+ * Clarity issue type for word/phrase-level problems.
+ */
+export type ClarityIssueType =
+  | "ambiguous_pronoun"
+  | "unclear_antecedent"
+  | "cliche"
+  | "filler_word"
+  | "dangling_modifier";
+
+/**
+ * A clarity issue detected in the text.
+ */
+export interface ClarityCheckIssue {
+  /** Unique identifier */
+  id: string;
+  /** Type of clarity issue */
+  type: ClarityIssueType;
+  /** The problematic text snippet */
+  text: string;
+  /** Line number where the issue occurs */
+  line?: number;
+  /** Character position range */
+  position?: { start: number; end: number };
+  /** Suggested improvement */
+  suggestion: string;
+  /** Optional fix that can be applied */
+  fix?: { oldText: string; newText: string };
+}
+
+/**
+ * Result of clarity_check tool.
+ */
+export interface ClarityCheckResult {
+  /** Readability metrics */
+  metrics: ReadabilityMetrics;
+  /** Detected clarity issues */
+  issues: ClarityCheckIssue[];
+  /** Summary of the analysis */
+  summary?: string;
+}
+
+/**
  * Map of tool names to their result types.
  */
 export interface ToolResultsMap {
@@ -741,6 +816,7 @@ export interface ToolResultsMap {
   detect_entities: DetectEntitiesResult;
   check_consistency: CheckConsistencyResult;
   generate_template: GenerateTemplateResult;
+  clarity_check: ClarityCheckResult;
 }
 
 // =============================================================================

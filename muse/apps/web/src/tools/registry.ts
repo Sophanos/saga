@@ -20,6 +20,7 @@ import { genesisWorldExecutor } from "./executors/genesisWorld";
 import { detectEntitiesExecutor } from "./executors/detectEntities";
 import { checkConsistencyExecutor } from "./executors/checkConsistency";
 import { generateTemplateExecutor } from "./executors/generateTemplate";
+import { clarityCheckExecutor } from "./executors/clarityCheck";
 
 // =============================================================================
 // Tool Registry
@@ -42,6 +43,7 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   detect_entities: detectEntitiesExecutor as ToolDefinition<unknown, unknown>,
   check_consistency: checkConsistencyExecutor as ToolDefinition<unknown, unknown>,
   generate_template: generateTemplateExecutor as ToolDefinition<unknown, unknown>,
+  clarity_check: clarityCheckExecutor as ToolDefinition<unknown, unknown>,
 };
 
 /**

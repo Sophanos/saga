@@ -202,9 +202,80 @@
   background-color: rgba(236, 72, 153, 0.1);
 }
 
+/* =============================================================================
+   Clarity Issue Decorations
+   Visual underlines for clarity check issues
+   ============================================================================= */
+
+/* Ambiguous pronoun - orange */
+.style-ambiguous-pronoun {
+  text-decoration-color: rgba(249, 115, 22, 0.85);
+}
+
+.style-ambiguous-pronoun:hover {
+  background-color: rgba(249, 115, 22, 0.1);
+}
+
+/* Unclear antecedent - rose */
+.style-unclear-antecedent {
+  text-decoration-color: rgba(244, 63, 94, 0.85);
+}
+
+.style-unclear-antecedent:hover {
+  background-color: rgba(244, 63, 94, 0.1);
+}
+
+/* Cliché - yellow */
+.style-cliche {
+  text-decoration-color: rgba(234, 179, 8, 0.85);
+}
+
+.style-cliche:hover {
+  background-color: rgba(234, 179, 8, 0.1);
+}
+
+/* Filler word - slate */
+.style-filler-word {
+  text-decoration-color: rgba(100, 116, 139, 0.85);
+}
+
+.style-filler-word:hover {
+  background-color: rgba(100, 116, 139, 0.1);
+}
+
+/* Dangling modifier - teal */
+.style-dangling-modifier {
+  text-decoration-color: rgba(20, 184, 166, 0.85);
+}
+
+.style-dangling-modifier:hover {
+  background-color: rgba(20, 184, 166, 0.1);
+}
+
 /* Selected style issue highlight */
 .style-selected {
   background-color: rgba(34, 211, 238, 0.12);
   border-radius: 3px;
   box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.25);
+}
+
+/* =============================================================================
+   Website Landing Page Styles
+   Component classes used by @mythos/website LandingPage
+   ============================================================================= */
+
+.card {
+  @apply bg-bg-secondary border border-border rounded-lg;
+}
+
+.btn {
+  @apply px-4 py-2 rounded-full font-medium transition-colors text-sm;
+}
+
+.btn-primary {
+  @apply bg-white text-bg-primary hover:bg-white/90;
+}
+
+.btn-secondary {
+  @apply bg-bg-secondary border border-border hover:border-border-hover text-text-primary;
 }

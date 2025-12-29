@@ -1,5 +1,18 @@
 import { useRef, useEffect } from "react";
-import { AlertTriangle, Pencil, RefreshCcw, Copy, CheckCircle2, ArrowRight, Wand2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Pencil,
+  RefreshCcw,
+  Copy,
+  CheckCircle2,
+  ArrowRight,
+  Wand2,
+  HelpCircle,
+  Link2,
+  Quote,
+  Eraser,
+  AlignLeft,
+} from "lucide-react";
 import { cn, Button } from "@mythos/ui";
 import { useStyleIssues, useSelectedStyleIssueId } from "../../stores/analysis";
 import type { StyleIssue } from "@mythos/core";
@@ -8,6 +21,7 @@ const issueTypeConfig: Record<
   StyleIssue["type"],
   { label: string; bgClass: string; textClass: string; icon: typeof AlertTriangle }
 > = {
+  // Coach style issues
   telling: {
     label: "Telling",
     bgClass: "bg-mythos-accent-amber/20",
@@ -31,6 +45,37 @@ const issueTypeConfig: Record<
     bgClass: "bg-pink-500/20",
     textClass: "text-pink-400",
     icon: Copy,
+  },
+  // Clarity issues
+  ambiguous_pronoun: {
+    label: "Ambiguous",
+    bgClass: "bg-orange-500/20",
+    textClass: "text-orange-400",
+    icon: HelpCircle,
+  },
+  unclear_antecedent: {
+    label: "Unclear Ref",
+    bgClass: "bg-rose-500/20",
+    textClass: "text-rose-400",
+    icon: Link2,
+  },
+  cliche: {
+    label: "Cliché",
+    bgClass: "bg-yellow-500/20",
+    textClass: "text-yellow-400",
+    icon: Quote,
+  },
+  filler_word: {
+    label: "Filler",
+    bgClass: "bg-slate-500/20",
+    textClass: "text-slate-400",
+    icon: Eraser,
+  },
+  dangling_modifier: {
+    label: "Dangling",
+    bgClass: "bg-teal-500/20",
+    textClass: "text-teal-400",
+    icon: AlignLeft,
   },
 };
 

@@ -7,6 +7,7 @@ import {
   Lightbulb,
   ScanSearch,
   LayoutTemplate,
+  Eye,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@mythos/ui";
@@ -69,6 +70,12 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: "Next Steps",
     icon: Lightbulb,
     prompt: "Based on the current story, suggest 3-5 possible directions for what could happen next. Consider character arcs, plot tension, and thematic elements.",
+  },
+  {
+    id: "clarity-check",
+    label: "Clarity Check",
+    icon: Eye,
+    prompt: "Run a clarity_check on the current document. Flag ambiguous pronouns, unclear antecedents, clichés, filler/weasel words, and dangling modifiers. Include readability metrics.",
   },
 ];
 

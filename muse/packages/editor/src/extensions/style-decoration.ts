@@ -42,10 +42,17 @@ const styleDecorationPluginKey = new PluginKey<StyleDecorationPluginState>(
  * Map StyleIssueType to CSS class suffix
  */
 const TYPE_CLASS_MAP: Record<StyleIssueType, string> = {
+  // Coach style issues
   telling: "style-telling",
   passive: "style-passive",
   adverb: "style-adverb",
   repetition: "style-repetition",
+  // Clarity issues
+  ambiguous_pronoun: "style-ambiguous-pronoun",
+  unclear_antecedent: "style-unclear-antecedent",
+  cliche: "style-cliche",
+  filler_word: "style-filler-word",
+  dangling_modifier: "style-dangling-modifier",
 };
 
 /**
@@ -55,6 +62,51 @@ const TYPE_CLASS_MAP: Record<StyleIssueType, string> = {
  * This properly handles multi-block documents by walking the document structure
  * and accounting for block boundaries in position calculations.
  */
+/**
+ * Convert a character offset to a ProseMirror document position.
+ * This properly handles multi-block documents.
+ */
+function charOffsetToDocPos(
+  doc: ProseMirrorNode,
+  charOffset: number
+): number {
+  // Build a map of character offsets to positions
+  let currentOffset = 0;
+  let result = 1; // Default to start of document
+
+  doc.descendants((node, pos) => {
+    if (node.isText && node.text) {
+      const textLength = node.text.length;
+      if (currentOffset + textLength > charOffset) {
+        // The offset is within this text node
+        result = pos + (charOffset - currentOffset);
+        return false; // Stop traversal
+      }
+      currentOffset += textLength;
+    }
+    return true;
+  });
+
+  return Math.min(result, doc.content.size);
+}
+
+/**
+ * Verify that a position range in the document matches the expected text.
+ */
+function verifyPositionText(
+  doc: ProseMirrorNode,
+  from: number,
+  to: number,
+  expectedText: string
+): boolean {
+  try {
+    const actualText = doc.textBetween(from, to, "");
+    return actualText === expectedText;
+  } catch {
+    return false;
+  }
+}
+
 function findTextPositions(
   doc: ProseMirrorNode,
   searchText: string
@@ -147,11 +199,32 @@ function createDecorations(
   for (const issue of issues) {
     // Use fix.oldText if available, otherwise use issue.text
     const searchText = issue.fix?.oldText ?? issue.text;
-    const positions = findTextPositions(doc, searchText);
+    let from: number | undefined;
+    let to: number | undefined;
 
-    // Create a decoration for the first occurrence
-    if (positions.length > 0) {
-      const { from, to } = positions[0];
+    // Try to use position offsets if available (more accurate for repeated text)
+    if (issue.position?.start !== undefined && issue.position?.end !== undefined) {
+      const posFrom = charOffsetToDocPos(doc, issue.position.start);
+      const posTo = charOffsetToDocPos(doc, issue.position.end);
+
+      // Verify the text at this position matches
+      if (verifyPositionText(doc, posFrom, posTo, searchText)) {
+        from = posFrom;
+        to = posTo;
+      }
+    }
+
+    // Fallback to text search if position-based lookup failed
+    if (from === undefined || to === undefined) {
+      const positions = findTextPositions(doc, searchText);
+      if (positions.length > 0) {
+        from = positions[0].from;
+        to = positions[0].to;
+      }
+    }
+
+    // Create decoration if we found a valid position
+    if (from !== undefined && to !== undefined) {
       const typeClass = TYPE_CLASS_MAP[issue.type] ?? "style-telling";
       const isSelected = issue.id === selectedIssueId;
 
@@ -340,11 +413,29 @@ export const StyleDecoration = Extension.create<StyleDecorationOptions>({
 
           // Find the position of the issue in the document
           const searchText = issue.fix?.oldText ?? issue.text;
-          const positions = findTextPositions(state.doc, searchText);
+          let from: number | undefined;
+          let to: number | undefined;
 
-          if (positions.length > 0) {
-            const { from, to } = positions[0];
+          // Try position-based lookup first
+          if (issue.position?.start !== undefined && issue.position?.end !== undefined) {
+            const posFrom = charOffsetToDocPos(state.doc, issue.position.start);
+            const posTo = charOffsetToDocPos(state.doc, issue.position.end);
+            if (verifyPositionText(state.doc, posFrom, posTo, searchText)) {
+              from = posFrom;
+              to = posTo;
+            }
+          }
 
+          // Fallback to text search
+          if (from === undefined || to === undefined) {
+            const positions = findTextPositions(state.doc, searchText);
+            if (positions.length > 0) {
+              from = positions[0].from;
+              to = positions[0].to;
+            }
+          }
+
+          if (from !== undefined && to !== undefined) {
             // Focus and scroll to the position
             editor.commands.focus();
             editor.commands.setTextSelection({ from, to });

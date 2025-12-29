@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { RefreshCw, Lightbulb, Zap, BookOpen } from "lucide-react";
+import { RefreshCw, Lightbulb, Zap, BookOpen, GraduationCap } from "lucide-react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
 import { TensionGraph } from "./TensionGraph";
 import { SensoryHeatmap } from "./SensoryHeatmap";
@@ -15,6 +15,7 @@ import {
   useInsights,
   useAnalysisStore,
   useStyleIssues,
+  useReadabilityMetrics,
 } from "../../stores/analysis";
 import type { StyleIssue } from "@mythos/core";
 
@@ -135,6 +136,104 @@ function AnalyzingBadge() {
     <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-mythos-accent-cyan/10 text-mythos-accent-cyan text-xs">
       <RefreshCw className="w-3 h-3 animate-spin" />
       <span>Analyzing...</span>
+    </div>
+  );
+}
+
+/**
+ * Readability metrics panel
+ */
+function ReadabilityPanel() {
+  const metrics = useReadabilityMetrics();
+
+  if (!metrics) {
+    return null;
+  }
+
+  // Convert grade level to label
+  const getGradeLabel = (grade: number): string => {
+    if (grade < 6) return "Elementary";
+    if (grade < 9) return "Middle School";
+    if (grade < 12) return "High School";
+    if (grade < 16) return "College";
+    return "Graduate";
+  };
+
+  // Color code reading ease
+  const getEaseColor = (ease: number): string => {
+    if (ease >= 60) return "text-green-400";
+    if (ease >= 40) return "text-mythos-accent-amber";
+    return "text-mythos-accent-red";
+  };
+
+  return (
+    <div className="p-3 rounded-md bg-mythos-bg-tertiary/30 border border-mythos-text-muted/10">
+      <div className="flex items-center gap-2 mb-3">
+        <GraduationCap className="w-4 h-4 text-mythos-accent-purple" />
+        <span className="text-sm font-medium text-mythos-text-primary">
+          Readability
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {/* Grade Level */}
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase tracking-wider text-mythos-text-muted mb-1">
+            Grade Level
+          </span>
+          <div className="flex items-baseline gap-1">
+            <span className="text-lg font-semibold text-mythos-text-primary">
+              {metrics.fleschKincaidGrade.toFixed(1)}
+            </span>
+            <span className="text-xs text-mythos-text-muted">
+              ({getGradeLabel(metrics.fleschKincaidGrade)})
+            </span>
+          </div>
+        </div>
+
+        {/* Reading Ease */}
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase tracking-wider text-mythos-text-muted mb-1">
+            Reading Ease
+          </span>
+          <div className="flex items-baseline gap-1">
+            <span className={`text-lg font-semibold ${getEaseColor(metrics.fleschReadingEase)}`}>
+              {metrics.fleschReadingEase.toFixed(0)}
+            </span>
+            <span className="text-xs text-mythos-text-muted">/100</span>
+          </div>
+        </div>
+
+        {/* Words per Sentence */}
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase tracking-wider text-mythos-text-muted mb-1">
+            Avg Words/Sentence
+          </span>
+          <span className="text-sm text-mythos-text-secondary">
+            {metrics.avgWordsPerSentence.toFixed(1)}
+          </span>
+        </div>
+
+        {/* Word Count */}
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase tracking-wider text-mythos-text-muted mb-1">
+            Word Count
+          </span>
+          <span className="text-sm text-mythos-text-secondary">
+            {metrics.wordCount.toLocaleString()}
+          </span>
+        </div>
+      </div>
+
+      {/* Long Sentence Warning */}
+      {metrics.longSentencePct !== undefined && metrics.longSentencePct > 20 && (
+        <div className="mt-3 p-2 rounded bg-mythos-accent-amber/10 border border-mythos-accent-amber/20">
+          <p className="text-xs text-mythos-accent-amber">
+            {metrics.longSentencePct.toFixed(0)}% of sentences are long (&gt;25 words).
+            Consider breaking them up for better readability.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -361,6 +460,11 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
           {/* Insights Section */}
           <section>
             <InsightsPanel />
+          </section>
+
+          {/* Readability Section */}
+          <section>
+            <ReadabilityPanel />
           </section>
 
           {/* Style Issues Section */}

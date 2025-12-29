@@ -19,6 +19,7 @@ export { genesisWorldTool, genesisWorldParameters, type GenesisWorldArgs } from 
 export { detectEntitiesTool, detectEntitiesParameters, type DetectEntitiesArgs } from "./detect-entities.ts";
 export { checkConsistencyTool, checkConsistencyParameters, type CheckConsistencyArgs } from "./check-consistency.ts";
 export { generateTemplateTool, generateTemplateParameters, type GenerateTemplateArgs } from "./generate-template.ts";
+export { clarityCheckTool, clarityCheckParameters, type ClarityCheckArgs } from "./clarity-check.ts";
 
 // Export types
 export * from "./types.ts";
@@ -37,6 +38,7 @@ import { genesisWorldTool } from "./genesis-world.ts";
 import { detectEntitiesTool } from "./detect-entities.ts";
 import { checkConsistencyTool } from "./check-consistency.ts";
 import { generateTemplateTool } from "./generate-template.ts";
+import { clarityCheckTool } from "./clarity-check.ts";
 
 /**
  * All agent tools bundled for streamText() usage.
@@ -73,6 +75,7 @@ export const sagaTools = {
   detect_entities: detectEntitiesTool,
   check_consistency: checkConsistencyTool,
   generate_template: generateTemplateTool,
+  clarity_check: clarityCheckTool,
 } as const;
 
 /**

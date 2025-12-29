@@ -7,6 +7,11 @@ import {
   Copy,
   CheckCircle2,
   Layers,
+  HelpCircle,
+  Link2,
+  Quote,
+  Eraser,
+  AlignLeft,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -54,6 +59,7 @@ const STYLE_TYPE_CONFIG: Record<
     icon: LucideIcon;
   }
 > = {
+  // Coach style issues
   telling: {
     label: "Telling",
     bgClass: "bg-mythos-accent-amber/20",
@@ -77,6 +83,37 @@ const STYLE_TYPE_CONFIG: Record<
     bgClass: "bg-pink-500/20",
     textClass: "text-pink-400",
     icon: Copy,
+  },
+  // Clarity issues
+  ambiguous_pronoun: {
+    label: "Ambiguous Pronoun",
+    bgClass: "bg-orange-500/20",
+    textClass: "text-orange-400",
+    icon: HelpCircle,
+  },
+  unclear_antecedent: {
+    label: "Unclear Reference",
+    bgClass: "bg-rose-500/20",
+    textClass: "text-rose-400",
+    icon: Link2,
+  },
+  cliche: {
+    label: "Cliché",
+    bgClass: "bg-yellow-500/20",
+    textClass: "text-yellow-400",
+    icon: Quote,
+  },
+  filler_word: {
+    label: "Filler Word",
+    bgClass: "bg-slate-500/20",
+    textClass: "text-slate-400",
+    icon: Eraser,
+  },
+  dangling_modifier: {
+    label: "Dangling Modifier",
+    bgClass: "bg-teal-500/20",
+    textClass: "text-teal-400",
+    icon: AlignLeft,
   },
 };
 
@@ -130,7 +167,8 @@ export function StyleFixPreviewModal({
   const hasFix = Boolean(issue.fix);
   const before = issue.fix?.oldText ?? issue.text;
   const after = issue.fix?.newText ?? "";
-  const canShowDiff = hasFix && before && after;
+  // Fix: allow showing diff even when after is empty (for filler word removals)
+  const canShowDiff = hasFix && typeof before === "string" && typeof after === "string";
 
   return (
     <div

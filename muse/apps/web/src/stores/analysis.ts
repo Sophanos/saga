@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { SceneMetrics, StyleIssue } from "@mythos/core";
+import type { SceneMetrics, StyleIssue, ReadabilityMetrics } from "@mythos/core";
 
 /**
  * Analysis store state interface
@@ -8,8 +8,12 @@ import type { SceneMetrics, StyleIssue } from "@mythos/core";
 interface AnalysisState {
   /** Current scene metrics from the writing coach */
   metrics: SceneMetrics | null;
-  /** List of detected style issues */
+  /** List of detected style issues (from coach) */
   issues: StyleIssue[];
+  /** List of clarity issues (from clarity_check tool) */
+  clarityIssues: StyleIssue[];
+  /** Readability metrics from clarity analysis */
+  readabilityMetrics: ReadabilityMetrics | null;
   /** AI-generated insights about the writing */
   insights: string[];
   /** Whether analysis is currently running */
@@ -42,6 +46,12 @@ interface AnalysisActions {
   clearAnalysis: () => void;
   /** Dismiss a specific style issue by id */
   dismissStyleIssue: (issueId: string) => void;
+  /** Set clarity issues */
+  setClarityIssues: (issues: StyleIssue[]) => void;
+  /** Set readability metrics */
+  setReadabilityMetrics: (metrics: ReadabilityMetrics | null) => void;
+  /** Clear all clarity data */
+  clearClarity: () => void;
   /** Update all analysis data at once */
   updateAnalysis: (data: {
     metrics: SceneMetrics;
@@ -90,6 +100,8 @@ export const useAnalysisStore = create<AnalysisStore>()(
     // Initial state
     metrics: null,
     issues: [],
+    clarityIssues: [],
+    readabilityMetrics: null,
     insights: [],
     isAnalyzing: false,
     lastAnalyzedAt: null,
@@ -140,6 +152,8 @@ export const useAnalysisStore = create<AnalysisStore>()(
       set((state) => {
         state.metrics = null;
         state.issues = [];
+        state.clarityIssues = [];
+        state.readabilityMetrics = null;
         state.insights = [];
         state.lastAnalyzedAt = null;
         state.error = null;
@@ -149,10 +163,15 @@ export const useAnalysisStore = create<AnalysisStore>()(
 
     dismissStyleIssue: (issueId) =>
       set((state) => {
+        // Remove from both issues and clarityIssues
+        const inIssues = state.issues.some((i) => i.id === issueId);
+        const inClarity = state.clarityIssues.some((i) => i.id === issueId);
+
         // If dismissing the selected issue, advance to nearest neighbor or clear
         if (state.selectedStyleIssueId === issueId) {
-          const currentIndex = state.issues.findIndex((i) => i.id === issueId);
-          const newIssues = state.issues.filter((i) => i.id !== issueId);
+          const allIssues = [...state.issues, ...state.clarityIssues];
+          const currentIndex = allIssues.findIndex((i) => i.id === issueId);
+          const newIssues = allIssues.filter((i) => i.id !== issueId);
           if (newIssues.length > 0) {
             // Select the next issue, or the previous if we were at the end
             const nextIndex = Math.min(currentIndex, newIssues.length - 1);
@@ -161,7 +180,36 @@ export const useAnalysisStore = create<AnalysisStore>()(
             state.selectedStyleIssueId = null;
           }
         }
-        state.issues = state.issues.filter((i) => i.id !== issueId);
+
+        if (inIssues) {
+          state.issues = state.issues.filter((i) => i.id !== issueId);
+        }
+        if (inClarity) {
+          state.clarityIssues = state.clarityIssues.filter((i) => i.id !== issueId);
+        }
+      }),
+
+    setClarityIssues: (issues) =>
+      set((state) => {
+        state.clarityIssues = issues;
+        // Clear selection if the selected issue no longer exists in combined list
+        if (
+          state.selectedStyleIssueId &&
+          ![...state.issues, ...issues].some((i) => i.id === state.selectedStyleIssueId)
+        ) {
+          state.selectedStyleIssueId = null;
+        }
+      }),
+
+    setReadabilityMetrics: (metrics) =>
+      set((state) => {
+        state.readabilityMetrics = metrics;
+      }),
+
+    clearClarity: () =>
+      set((state) => {
+        state.clarityIssues = [];
+        state.readabilityMetrics = null;
       }),
 
     updateAnalysis: (data) =>
@@ -195,11 +243,12 @@ export const useAnalysisStore = create<AnalysisStore>()(
       }),
 
     selectNextStyleIssue: () => {
-      const { issues, selectedStyleIssueId } = get();
-      if (issues.length === 0) return;
+      const { issues, clarityIssues, selectedStyleIssueId } = get();
+      const allIssues = [...issues, ...clarityIssues];
+      if (allIssues.length === 0) return;
 
       // Sort issues by line (document order)
-      const sortedIssues = [...issues].sort(
+      const sortedIssues = [...allIssues].sort(
         (a, b) => (a.line ?? 0) - (b.line ?? 0)
       );
 
@@ -222,11 +271,12 @@ export const useAnalysisStore = create<AnalysisStore>()(
     },
 
     selectPreviousStyleIssue: () => {
-      const { issues, selectedStyleIssueId } = get();
-      if (issues.length === 0) return;
+      const { issues, clarityIssues, selectedStyleIssueId } = get();
+      const allIssues = [...issues, ...clarityIssues];
+      if (allIssues.length === 0) return;
 
       // Sort issues by line (document order)
-      const sortedIssues = [...issues].sort(
+      const sortedIssues = [...allIssues].sort(
         (a, b) => (a.line ?? 0) - (b.line ?? 0)
       );
 
@@ -292,8 +342,17 @@ export const useShowDontTellGrade = () =>
 /**
  * Get style issues
  */
+/**
+ * Get combined style issues (coach + clarity)
+ */
 export const useStyleIssues = () =>
-  useAnalysisStore((state) => state.issues);
+  useAnalysisStore((state) => [...state.issues, ...state.clarityIssues]);
+
+/**
+ * Get readability metrics from clarity analysis
+ */
+export const useReadabilityMetrics = () =>
+  useAnalysisStore((state) => state.readabilityMetrics);
 
 /**
  * Get insights
@@ -328,9 +387,21 @@ export const useTotalSensoryCount = () =>
  */
 export const useIssueCountByType = () =>
   useAnalysisStore((state) => {
-    const counts = { telling: 0, passive: 0, adverb: 0, repetition: 0 };
-    state.issues.forEach((issue) => {
-      counts[issue.type]++;
+    const counts: Record<string, number> = {
+      telling: 0,
+      passive: 0,
+      adverb: 0,
+      repetition: 0,
+      ambiguous_pronoun: 0,
+      unclear_antecedent: 0,
+      cliche: 0,
+      filler_word: 0,
+      dangling_modifier: 0,
+    };
+    [...state.issues, ...state.clarityIssues].forEach((issue) => {
+      if (counts[issue.type] !== undefined) {
+        counts[issue.type]++;
+      }
     });
     return counts;
   });

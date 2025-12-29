@@ -31,7 +31,17 @@ export interface SceneMetrics {
 /**
  * Types of style issues that can be detected
  */
-export type StyleIssueType = "telling" | "passive" | "adverb" | "repetition";
+export type StyleIssueType =
+  | "telling"
+  | "passive"
+  | "adverb"
+  | "repetition"
+  // Clarity issue types
+  | "ambiguous_pronoun"
+  | "unclear_antecedent"
+  | "cliche"
+  | "filler_word"
+  | "dangling_modifier";
 
 /**
  * Fix suggestion with old and new text for replacement
@@ -101,3 +111,33 @@ export const DEFAULT_WRITING_ANALYSIS: WritingAnalysis = {
   issues: [],
   insights: [],
 };
+
+/**
+ * Readability metrics from clarity analysis
+ */
+export interface ReadabilityMetrics {
+  /** Flesch-Kincaid grade level (e.g., 8.6 = 8th grade) */
+  fleschKincaidGrade: number;
+  /** Flesch Reading Ease score (0-100, higher = easier) */
+  fleschReadingEase: number;
+  /** Total number of sentences */
+  sentenceCount: number;
+  /** Total number of words */
+  wordCount: number;
+  /** Average words per sentence */
+  avgWordsPerSentence: number;
+  /** Percentage of sentences considered "long" (>25 words) */
+  longSentencePct?: number;
+}
+
+/**
+ * Result of clarity analysis combining readability metrics and style issues
+ */
+export interface ClarityAnalysis {
+  /** Readability metrics */
+  metrics: ReadabilityMetrics;
+  /** Detected clarity issues (as StyleIssue) */
+  issues: StyleIssue[];
+  /** Optional summary of the analysis */
+  summary?: string;
+}

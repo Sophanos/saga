@@ -19,6 +19,8 @@ import type {
   CheckConsistencyResult,
   GenerateTemplateArgs,
   GenerateTemplateResult,
+  ClarityCheckArgs,
+  ClarityCheckResult,
   SagaMode,
   EditorContext,
   AgentStreamEventType,
@@ -450,4 +452,15 @@ export async function executeGenerateTemplate(
   opts?: ExecuteToolOptions
 ): Promise<GenerateTemplateResult> {
   return executeSagaTool<GenerateTemplateResult>("generate_template", input, opts);
+}
+
+/**
+ * Execute clarity_check tool.
+ * Checks prose for word/phrase-level clarity issues.
+ */
+export async function executeClarityCheck(
+  input: ClarityCheckArgs & { text: string },
+  opts?: ExecuteToolOptions
+): Promise<ClarityCheckResult> {
+  return executeSagaTool<ClarityCheckResult>("clarity_check", input, opts);
 }

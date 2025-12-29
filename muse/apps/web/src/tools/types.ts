@@ -2,7 +2,7 @@
  * Client-side tool types and interfaces.
  */
 
-import type { Entity, Relationship, EntityType, RelationType } from "@mythos/core";
+import type { Entity, Relationship, EntityType, RelationType, StyleIssue, ReadabilityMetrics } from "@mythos/core";
 import type { ToolName, ToolArtifact, ToolDangerLevel, AnalysisScope } from "@mythos/agent-protocol";
 
 // Re-export for backwards compatibility
@@ -61,6 +61,15 @@ export interface ToolExecutionContext {
   setTemplateDraft?: (draft: unknown) => void;
   /** Progress callback for long-running operations */
   onProgress?: (progress: { pct?: number; stage?: string }) => void;
+
+  // ==========================================================================
+  // Clarity Tool Extensions
+  // ==========================================================================
+
+  /** Set clarity issues in the analysis store */
+  setClarityIssues?: (issues: StyleIssue[]) => void;
+  /** Set readability metrics in the analysis store */
+  setReadabilityMetrics?: (metrics: ReadabilityMetrics) => void;
 }
 
 // =============================================================================

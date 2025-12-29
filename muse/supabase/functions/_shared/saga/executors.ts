@@ -11,6 +11,7 @@ import {
   GENESIS_SYSTEM_PROMPT,
   buildGenesisUserPrompt,
 } from "../prompts/mod.ts";
+import { CLARITY_CHECK_SYSTEM } from "../prompts/clarity.ts";
 
 // =============================================================================
 // Input Validation
@@ -588,6 +589,42 @@ export async function executeGenerateTemplate(
   return parseTemplateResponse(text);
 }
 
+// =============================================================================
+// Clarity Check Types
+// =============================================================================
+
+export type ClarityIssueType =
+  | "ambiguous_pronoun"
+  | "unclear_antecedent"
+  | "cliche"
+  | "filler_word"
+  | "dangling_modifier";
+
+export interface ReadabilityMetrics {
+  fleschKincaidGrade: number;
+  fleschReadingEase: number;
+  sentenceCount: number;
+  wordCount: number;
+  avgWordsPerSentence: number;
+  longSentencePct?: number;
+}
+
+export interface ClarityCheckIssue {
+  id: string;
+  type: ClarityIssueType;
+  text: string;
+  line?: number;
+  position?: { start: number; end: number };
+  suggestion: string;
+  fix?: { oldText: string; newText: string };
+}
+
+export interface ClarityCheckResult {
+  metrics: ReadabilityMetrics;
+  issues: ClarityCheckIssue[];
+  summary?: string;
+}
+
 function parseTemplateResponse(response: string): GenerateTemplateResult {
   const fallback: GenerateTemplateResult = {
     template: {
@@ -602,6 +639,196 @@ function parseTemplateResponse(response: string): GenerateTemplateResult {
       linterRules: [],
     },
   };
+
+// =============================================================================
+// Clarity Check Executor
+// =============================================================================
+
+/**
+ * Compute readability metrics deterministically (no LLM needed).
+ */
+function computeReadabilityMetrics(text: string): ReadabilityMetrics {
+  // Split into sentences (simple regex approach)
+  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+  const sentenceCount = sentences.length || 1;
+
+  // Split into words
+  const words = text.split(/\s+/).filter((w) => w.length > 0);
+  const wordCount = words.length || 1;
+
+  // Count syllables (simple heuristic)
+  const countSyllables = (word: string): number => {
+    const w = word.toLowerCase().replace(/[^a-z]/g, "");
+    if (w.length <= 3) return 1;
+    // Count vowel groups
+    const matches = w.match(/[aeiouy]+/g);
+    let count = matches ? matches.length : 1;
+    // Adjust for silent e
+    if (w.endsWith("e") && count > 1) count--;
+    // Ensure at least 1 syllable
+    return Math.max(1, count);
+  };
+
+  const totalSyllables = words.reduce((sum, word) => sum + countSyllables(word), 0);
+  const avgWordsPerSentence = wordCount / sentenceCount;
+  const avgSyllablesPerWord = totalSyllables / wordCount;
+
+  // Flesch Reading Ease = 206.835 - 1.015*(words/sentences) - 84.6*(syllables/words)
+  const fleschReadingEase = Math.max(
+    0,
+    Math.min(100, 206.835 - 1.015 * avgWordsPerSentence - 84.6 * avgSyllablesPerWord)
+  );
+
+  // Flesch-Kincaid Grade = 0.39*(words/sentences) + 11.8*(syllables/words) - 15.59
+  const fleschKincaidGrade = Math.max(
+    0,
+    0.39 * avgWordsPerSentence + 11.8 * avgSyllablesPerWord - 15.59
+  );
+
+  // Calculate long sentence percentage (>25 words)
+  const longSentences = sentences.filter((s) => {
+    const sentenceWords = s.split(/\s+/).filter((w) => w.length > 0);
+    return sentenceWords.length > 25;
+  });
+  const longSentencePct = (longSentences.length / sentenceCount) * 100;
+
+  return {
+    fleschKincaidGrade: Math.round(fleschKincaidGrade * 10) / 10,
+    fleschReadingEase: Math.round(fleschReadingEase * 10) / 10,
+    sentenceCount,
+    wordCount,
+    avgWordsPerSentence: Math.round(avgWordsPerSentence * 10) / 10,
+    longSentencePct: Math.round(longSentencePct * 10) / 10,
+  };
+}
+
+/**
+ * Compute character offset positions for an issue based on line and text.
+ */
+function computePosition(
+  text: string,
+  issueText: string,
+  line?: number
+): { start: number; end: number } | undefined {
+  if (!issueText) return undefined;
+
+  // If we have a line number, try to find within that line first
+  if (line !== undefined && line > 0) {
+    const lines = text.split("\n");
+    let charOffset = 0;
+    for (let i = 0; i < line - 1 && i < lines.length; i++) {
+      charOffset += lines[i].length + 1; // +1 for newline
+    }
+    if (line <= lines.length) {
+      const lineText = lines[line - 1];
+      const localIndex = lineText.indexOf(issueText);
+      if (localIndex !== -1) {
+        return {
+          start: charOffset + localIndex,
+          end: charOffset + localIndex + issueText.length,
+        };
+      }
+    }
+  }
+
+  // Fallback to global search
+  const globalIndex = text.indexOf(issueText);
+  if (globalIndex !== -1) {
+    return {
+      start: globalIndex,
+      end: globalIndex + issueText.length,
+    };
+  }
+
+  return undefined;
+}
+
+/**
+ * Generate a stable issue ID.
+ */
+function generateIssueId(type: string, line: number | undefined, text: string, index: number): string {
+  const hash = `${type}-${line ?? 0}-${text.slice(0, 20)}-${index}`;
+  // Simple hash
+  let h = 0;
+  for (let i = 0; i < hash.length; i++) {
+    h = ((h << 5) - h + hash.charCodeAt(i)) | 0;
+  }
+  return `clarity_${Math.abs(h).toString(16)}`;
+}
+
+export async function executeClarityCheck(
+  input: {
+    text: string;
+    maxIssues?: number;
+  },
+  apiKey: string
+): Promise<ClarityCheckResult> {
+  const model = getOpenRouterModel(apiKey, "analysis");
+  const maxIssues = input.maxIssues ?? 25;
+
+  // Compute readability metrics deterministically
+  const metrics = computeReadabilityMetrics(input.text);
+
+  const truncatedText = truncateText(input.text);
+  const userPrompt = `Analyze this text for clarity issues (max ${maxIssues} issues):\n\n"${truncatedText}"`;
+
+  console.log("[saga/clarity] Checking clarity of text length:", input.text.length);
+
+  const { text: responseText } = await generateText({
+    model,
+    system: CLARITY_CHECK_SYSTEM,
+    prompt: userPrompt,
+    maxTokens: 2048,
+    temperature: 0.2,
+  });
+
+  // Parse response and normalize issues
+  const parsed = parseClarityResponse(responseText, input.text, maxIssues);
+
+  return {
+    metrics,
+    issues: parsed.issues,
+    summary: parsed.summary,
+  };
+}
+
+function parseClarityResponse(
+  response: string,
+  originalText: string,
+  maxIssues: number
+): { issues: ClarityCheckIssue[]; summary?: string } {
+  return parseJsonFromLLMResponse(
+    response,
+    "clarity",
+    (parsed) => {
+      const rawIssues = (parsed.issues as unknown[]) || [];
+      const issues: ClarityCheckIssue[] = rawIssues
+        .slice(0, maxIssues)
+        .map((issue: unknown, idx: number) => {
+          const i = issue as Record<string, unknown>;
+          const issueText = (i.text as string) || "";
+          const line = typeof i.line === "number" ? i.line : undefined;
+          const position = computePosition(originalText, issueText, line);
+
+          return {
+            id: generateIssueId(i.type as string, line, issueText, idx),
+            type: i.type as ClarityIssueType,
+            text: issueText,
+            line,
+            position,
+            suggestion: (i.suggestion as string) || "Consider revising for clarity.",
+            fix: i.fix as { oldText: string; newText: string } | undefined,
+          };
+        });
+
+      return {
+        issues,
+        summary: parsed.summary as string | undefined,
+      };
+    },
+    { issues: [] }
+  );
+}
 
   return parseJsonFromLLMResponse(
     response,

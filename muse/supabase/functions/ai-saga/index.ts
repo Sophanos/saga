@@ -33,6 +33,7 @@ import {
   executeDetectEntities,
   executeCheckConsistency,
   executeGenerateTemplate,
+  executeClarityCheck,
 } from "../_shared/saga/executors.ts";
 import type { SagaMode, EditorContext } from "../_shared/tools/types.ts";
 import {
@@ -365,9 +366,26 @@ async function handleExecuteTool(
         break;
       }
 
+      case "clarity_check": {
+        const typedInput = input as {
+          text: string;
+          maxIssues?: number;
+        };
+        if (!typedInput.text) {
+          return createErrorResponse(
+            "Text is required for clarity check",
+            ErrorCode.VALIDATION_ERROR,
+            400,
+            origin
+          );
+        }
+        result = await executeClarityCheck(typedInput, apiKey);
+        break;
+      }
+
       default:
         return createErrorResponse(
-          `Unknown tool: ${toolName}. Supported tools: genesis_world, detect_entities, check_consistency, generate_template`,
+          `Unknown tool: ${toolName}. Supported tools: genesis_world, detect_entities, check_consistency, generate_template, clarity_check`,
           ErrorCode.VALIDATION_ERROR,
           400,
           origin
