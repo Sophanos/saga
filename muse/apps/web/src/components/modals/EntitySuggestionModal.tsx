@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Check,
   Loader2,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Button,
@@ -30,6 +31,13 @@ import type {
   DetectionWarning,
   EntityType,
 } from "@mythos/core";
+import {
+  ENTITY_TYPE_CONFIG,
+  ENTITY_TYPES,
+  getEntityColor,
+  getEntityLabel,
+  type EntityIconName,
+} from "@mythos/core";
 
 interface EntitySuggestionModalProps {
   isOpen: boolean;
@@ -40,58 +48,26 @@ interface EntitySuggestionModalProps {
   isProcessing: boolean;
 }
 
-// Entity type metadata for display
-const ENTITY_TYPE_CONFIG: Record<
-  EntityType,
-  { icon: typeof User; label: string; color: string }
-> = {
-  character: {
-    icon: User,
-    label: "Character",
-    color: "text-mythos-entity-character",
-  },
-  location: {
-    icon: MapPin,
-    label: "Location",
-    color: "text-mythos-entity-location",
-  },
-  item: {
-    icon: Sword,
-    label: "Item",
-    color: "text-mythos-entity-item",
-  },
-  magic_system: {
-    icon: Wand2,
-    label: "Magic System",
-    color: "text-mythos-entity-magic",
-  },
-  faction: {
-    icon: Building2,
-    label: "Faction",
-    color: "text-mythos-accent-purple",
-  },
-  event: {
-    icon: Calendar,
-    label: "Event",
-    color: "text-mythos-accent-amber",
-  },
-  concept: {
-    icon: Sparkles,
-    label: "Concept",
-    color: "text-mythos-accent-cyan",
-  },
+/**
+ * Map icon names to React components
+ */
+const ENTITY_ICONS: Record<EntityIconName, LucideIcon> = {
+  User,
+  MapPin,
+  Sword,
+  Wand2,
+  Building2,
+  Calendar,
+  Sparkles,
 };
 
-// All entity types for dropdown
-const ENTITY_TYPES: EntityType[] = [
-  "character",
-  "location",
-  "item",
-  "magic_system",
-  "faction",
-  "event",
-  "concept",
-];
+/**
+ * Get the icon component for an entity type
+ */
+function getEntityIconComponent(type: EntityType): LucideIcon {
+  const iconName = ENTITY_TYPE_CONFIG[type]?.icon ?? "User";
+  return ENTITY_ICONS[iconName] ?? User;
+}
 
 // Confidence threshold for auto-selection
 const AUTO_SELECT_THRESHOLD = 0.7;
@@ -126,9 +102,9 @@ function EntityTypeIcon({
   type: EntityType;
   className?: string;
 }) {
-  const config = ENTITY_TYPE_CONFIG[type];
-  const Icon = config.icon;
-  return <Icon className={cn("w-4 h-4", config.color, className)} />;
+  const Icon = getEntityIconComponent(type);
+  const colorClass = getEntityColor(type);
+  return <Icon className={cn("w-4 h-4", colorClass, className)} />;
 }
 
 // Type selector dropdown
@@ -169,7 +145,7 @@ function TypeSelector({
       >
         <EntityTypeIcon type={value} className="w-3 h-3" />
         <span className="text-mythos-text-secondary">
-          {ENTITY_TYPE_CONFIG[value].label}
+          {getEntityLabel(value)}
         </span>
         <ChevronDown className="w-3 h-3 text-mythos-text-muted" />
       </button>
@@ -202,7 +178,7 @@ function TypeSelector({
                 )}
               >
                 <EntityTypeIcon type={type} className="w-3 h-3" />
-                <span>{ENTITY_TYPE_CONFIG[type].label}</span>
+                <span>{getEntityLabel(type)}</span>
                 {type === value && (
                   <Check className="w-3 h-3 ml-auto text-mythos-accent-cyan" />
                 )}
@@ -648,7 +624,7 @@ export function EntitySuggestionModal({
                   <div key={type}>
                     <h3 className="flex items-center gap-2 mb-2 text-sm font-medium text-mythos-text-secondary">
                       <EntityTypeIcon type={type} />
-                      <span>{ENTITY_TYPE_CONFIG[type].label}s</span>
+                      <span>{getEntityLabel(type)}s</span>
                       <span className="text-mythos-text-muted">
                         ({typeEntities.length})
                       </span>

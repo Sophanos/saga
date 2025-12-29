@@ -1,3 +1,15 @@
+// Persistence factory (generic)
+export {
+  usePersistenceState,
+  createPersistenceHook,
+} from "./usePersistence";
+export type {
+  PersistenceResult,
+  PersistenceConfig,
+  BasePersistenceState,
+  UsePersistenceResult,
+} from "./usePersistence";
+
 // Entity persistence
 export { useEntityPersistence } from "./useEntityPersistence";
 export type {
@@ -9,17 +21,13 @@ export type {
 export { useMentionPersistence } from "./useMentionPersistence";
 export type {
   UseMentionPersistenceResult,
-  MentionPersistenceResult,
   MentionInput,
   MentionBatchInput,
 } from "./useMentionPersistence";
 
 // Relationship persistence
 export { useRelationshipPersistence } from "./useRelationshipPersistence";
-export type {
-  UseRelationshipPersistenceResult,
-  RelationshipPersistenceResult,
-} from "./useRelationshipPersistence";
+export type { UseRelationshipPersistenceResult } from "./useRelationshipPersistence";
 
 // Mode management
 export { useMode } from "./useMode";

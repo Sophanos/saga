@@ -13,46 +13,36 @@ import {
   Building2,
   Calendar,
   Sparkles,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@mythos/ui";
 import type { Entity, EntityType } from "@mythos/core";
+import {
+  ENTITY_TYPE_CONFIG,
+  getEntityColor,
+  type EntityIconName,
+} from "@mythos/core";
 
 /**
- * Entity type configuration for icons and colors
+ * Map icon names to React components
  */
-const ENTITY_TYPE_CONFIG: Record<
-  EntityType,
-  { icon: typeof User; color: string }
-> = {
-  character: {
-    icon: User,
-    color: "text-mythos-entity-character",
-  },
-  location: {
-    icon: MapPin,
-    color: "text-mythos-entity-location",
-  },
-  item: {
-    icon: Sword,
-    color: "text-mythos-entity-item",
-  },
-  magic_system: {
-    icon: Wand2,
-    color: "text-mythos-entity-magic",
-  },
-  faction: {
-    icon: Building2,
-    color: "text-mythos-accent-purple",
-  },
-  event: {
-    icon: Calendar,
-    color: "text-mythos-accent-amber",
-  },
-  concept: {
-    icon: Sparkles,
-    color: "text-mythos-accent-cyan",
-  },
+const ENTITY_ICONS: Record<EntityIconName, LucideIcon> = {
+  User,
+  MapPin,
+  Sword,
+  Wand2,
+  Building2,
+  Calendar,
+  Sparkles,
 };
+
+/**
+ * Get the icon component for an entity type
+ */
+function getEntityIconComponent(type: EntityType): LucideIcon {
+  const iconName = ENTITY_TYPE_CONFIG[type]?.icon ?? "User";
+  return ENTITY_ICONS[iconName] ?? User;
+}
 
 export interface EntitySuggestionListProps {
   items: Entity[];
@@ -162,9 +152,8 @@ export const EntitySuggestionList = forwardRef<
     >
       <ul className="py-1" role="listbox">
         {items.map((entity, index) => {
-          const config = ENTITY_TYPE_CONFIG[entity.type];
-          const Icon = config?.icon ?? User;
-          const colorClass = config?.color ?? "text-mythos-text-muted";
+          const Icon = getEntityIconComponent(entity.type);
+          const colorClass = getEntityColor(entity.type);
 
           return (
             <li

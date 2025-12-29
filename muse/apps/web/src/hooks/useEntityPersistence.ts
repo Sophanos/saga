@@ -1,24 +1,32 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
   createEntity as dbCreateEntity,
   updateEntity as dbUpdateEntity,
   deleteEntity as dbDeleteEntity,
-} from "@mythos/db";
-import type { Entity } from "@mythos/core";
-import { useMythosStore } from "../stores";
-import {
   mapCoreEntityToDbInsert,
   mapCoreEntityToDbFullUpdate,
   mapDbEntityToEntity,
-} from "../utils/dbMappers";
+} from "@mythos/db";
+import type { Entity } from "@mythos/core";
+import type { Database } from "@mythos/db";
+import { useMythosStore } from "../stores";
+import {
+  createPersistenceHook,
+  type PersistenceResult,
+} from "./usePersistence";
+
+/**
+ * Database entity types
+ */
+type DbEntityRow = Database["public"]["Tables"]["entities"]["Row"];
+type DbEntityInsert = Database["public"]["Tables"]["entities"]["Insert"];
+type DbEntityUpdate = Database["public"]["Tables"]["entities"]["Update"];
 
 /**
  * Result type for entity persistence operations
+ * @deprecated Use PersistenceResult<T> from usePersistence instead
  */
-export interface EntityPersistenceResult<T = void> {
-  data: T | null;
-  error: string | null;
-}
+export type EntityPersistenceResult<T = void> = PersistenceResult<T>;
 
 /**
  * Return type for the useEntityPersistence hook
@@ -45,11 +53,48 @@ export interface UseEntityPersistenceResult {
 }
 
 /**
+ * Internal hook created by the persistence factory
+ */
+const useEntityPersistenceBase = createPersistenceHook<
+  Entity,
+  DbEntityInsert,
+  DbEntityUpdate,
+  DbEntityRow
+>(() => {
+  // These hooks must be called inside the returned function
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const entities = useMythosStore((state) => state.world.entities);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const addEntity = useMythosStore((state) => state.addEntity);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const updateEntity = useMythosStore((state) => state.updateEntity);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const removeEntity = useMythosStore((state) => state.removeEntity);
+
+  return {
+    name: "Entity",
+    dbCreate: dbCreateEntity,
+    dbUpdate: dbUpdateEntity,
+    dbDelete: dbDeleteEntity,
+    storeAdd: addEntity,
+    storeUpdate: updateEntity,
+    storeRemove: removeEntity,
+    storeGet: (id: string) => entities.get(id),
+    mapToDbInsert: mapCoreEntityToDbInsert,
+    mapToDbUpdate: mapCoreEntityToDbFullUpdate,
+    mapFromDb: mapDbEntityToEntity,
+  };
+});
+
+/**
  * Hook for entity persistence operations with Supabase
  *
  * Provides CRUD operations that sync between the Supabase database
  * and the local Zustand store. All operations handle errors gracefully
  * and return structured results.
+ *
+ * This hook is built on top of the generic createPersistenceHook factory
+ * but maintains backward compatibility with the original API.
  *
  * @example
  * ```tsx
@@ -69,137 +114,23 @@ export interface UseEntityPersistenceResult {
  * ```
  */
 export function useEntityPersistence(): UseEntityPersistenceResult {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { create, update, remove, isLoading, error, clearError } =
+    useEntityPersistenceBase();
 
-  // Store state and actions
-  const entities = useMythosStore((state) => state.world.entities);
-  const addEntityToStore = useMythosStore((state) => state.addEntity);
-  const updateEntityInStore = useMythosStore((state) => state.updateEntity);
-  const removeEntityFromStore = useMythosStore((state) => state.removeEntity);
-
-  /**
-   * Clear the current error
-   */
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
-
-  /**
-   * Create a new entity in the database and add to store
-   */
+  // Wrap to maintain backward-compatible naming
   const createEntity = useCallback(
-    async (
-      entity: Entity,
-      projectId: string
-    ): Promise<EntityPersistenceResult<Entity>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Map core entity to DB insert format
-        const dbInsert = mapCoreEntityToDbInsert(entity, projectId);
-
-        // Insert into database
-        const dbEntity = await dbCreateEntity(dbInsert);
-
-        // Map back to core entity format
-        const coreEntity = mapDbEntityToEntity(dbEntity);
-
-        // Add to store
-        addEntityToStore(coreEntity);
-
-        return { data: coreEntity, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to create entity";
-        setError(errorMessage);
-        console.error("[useEntityPersistence] Create error:", err);
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [addEntityToStore]
+    (entity: Entity, projectId: string) => create(entity, projectId),
+    [create]
   );
 
-  /**
-   * Update an existing entity in the database and store
-   *
-   * Merges the updates with the current entity state to ensure
-   * all entity data (properties, archetype, etc.) is persisted.
-   */
   const updateEntity = useCallback(
-    async (
-      entityId: string,
-      updates: Partial<Entity>
-    ): Promise<EntityPersistenceResult<Entity>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Get current entity from store
-        const currentEntity = entities.get(entityId);
-        if (!currentEntity) {
-          throw new Error(`Entity ${entityId} not found in store`);
-        }
-
-        // Merge current entity with updates to get complete state
-        const mergedEntity: Entity = { ...currentEntity, ...updates };
-
-        // Map complete entity to DB update format (includes properties & archetype)
-        const dbUpdate = mapCoreEntityToDbFullUpdate(mergedEntity);
-
-        // Update in database
-        const dbEntity = await dbUpdateEntity(entityId, dbUpdate);
-
-        // Map back to core entity format
-        const coreEntity = mapDbEntityToEntity(dbEntity);
-
-        // Update in store
-        updateEntityInStore(entityId, coreEntity);
-
-        return { data: coreEntity, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to update entity";
-        setError(errorMessage);
-        console.error("[useEntityPersistence] Update error:", err);
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [entities, updateEntityInStore]
+    (entityId: string, updates: Partial<Entity>) => update(entityId, updates),
+    [update]
   );
 
-  /**
-   * Delete an entity from the database and store
-   */
   const deleteEntity = useCallback(
-    async (entityId: string): Promise<EntityPersistenceResult<void>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Delete from database
-        await dbDeleteEntity(entityId);
-
-        // Remove from store
-        removeEntityFromStore(entityId);
-
-        return { data: undefined, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to delete entity";
-        setError(errorMessage);
-        console.error("[useEntityPersistence] Delete error:", err);
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [removeEntityFromStore]
+    (entityId: string) => remove(entityId),
+    [remove]
   );
 
   return {

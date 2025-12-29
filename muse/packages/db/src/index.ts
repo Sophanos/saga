@@ -6,3 +6,6 @@ export type { Database } from "./types/database";
 
 // Queries
 export * from "./queries";
+
+// Mappers
+export * from "./mappers";

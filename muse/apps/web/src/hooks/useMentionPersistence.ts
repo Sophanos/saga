@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
   getMentionsByDocument,
   createMention as dbCreateMention,
@@ -6,6 +6,11 @@ import {
   replaceMentionsForDocument,
 } from "@mythos/db";
 import type { Database } from "@mythos/db";
+import {
+  usePersistenceState,
+  type PersistenceResult,
+  type BasePersistenceState,
+} from "./usePersistence";
 
 /**
  * Database mention types
@@ -35,38 +40,22 @@ export interface MentionBatchInput {
 }
 
 /**
- * Result type for mention persistence operations
- */
-export interface MentionPersistenceResult<T = void> {
-  data: T | null;
-  error: string | null;
-}
-
-/**
  * Return type for the useMentionPersistence hook
  */
-export interface UseMentionPersistenceResult {
+export interface UseMentionPersistenceResult extends BasePersistenceState {
   /** Load all mentions for a document */
   loadMentionsForDocument: (
     documentId: string
-  ) => Promise<MentionPersistenceResult<Mention[]>>;
+  ) => Promise<PersistenceResult<Mention[]>>;
   /** Replace all mentions for a document (useful after entity detection) */
   saveMentions: (
     documentId: string,
     mentions: MentionBatchInput[]
-  ) => Promise<MentionPersistenceResult<Mention[]>>;
+  ) => Promise<PersistenceResult<Mention[]>>;
   /** Create a single mention */
-  addMention: (
-    mention: MentionInput
-  ) => Promise<MentionPersistenceResult<Mention>>;
+  addMention: (mention: MentionInput) => Promise<PersistenceResult<Mention>>;
   /** Delete a single mention by ID */
-  removeMention: (id: string) => Promise<MentionPersistenceResult<void>>;
-  /** Whether any operation is currently in progress */
-  isLoading: boolean;
-  /** Last error message (if any) */
-  error: string | null;
-  /** Clear the current error */
-  clearError: () => void;
+  removeMention: (id: string) => Promise<PersistenceResult<void>>;
 }
 
 /**
@@ -107,38 +96,19 @@ export interface UseMentionPersistenceResult {
  * ```
  */
 export function useMentionPersistence(): UseMentionPersistenceResult {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  /**
-   * Clear the current error
-   */
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+  const { isLoading, error, clearError, wrapOperation } =
+    usePersistenceState("Mention");
 
   /**
    * Load all mentions for a specific document
    */
   const loadMentionsForDocument = useCallback(
-    async (documentId: string): Promise<MentionPersistenceResult<Mention[]>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const mentions = await getMentionsByDocument(documentId);
-        return { data: mentions, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to load mentions";
-        setError(errorMessage);
-        console.error("[useMentionPersistence] Load error:", err);
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
+    (documentId: string): Promise<PersistenceResult<Mention[]>> =>
+      wrapOperation(
+        () => getMentionsByDocument(documentId),
+        "Failed to load mentions"
+      ),
+    [wrapOperation]
   );
 
   /**
@@ -148,41 +118,23 @@ export function useMentionPersistence(): UseMentionPersistenceResult {
    * It deletes all existing mentions for the document and inserts the new ones.
    */
   const saveMentions = useCallback(
-    async (
+    (
       documentId: string,
       mentions: MentionBatchInput[]
-    ): Promise<MentionPersistenceResult<Mention[]>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const savedMentions = await replaceMentionsForDocument(
-          documentId,
-          mentions
-        );
-        return { data: savedMentions, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to save mentions";
-        setError(errorMessage);
-        console.error("[useMentionPersistence] Save error:", err);
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
+    ): Promise<PersistenceResult<Mention[]>> =>
+      wrapOperation(
+        () => replaceMentionsForDocument(documentId, mentions),
+        "Failed to save mentions"
+      ),
+    [wrapOperation]
   );
 
   /**
    * Create a single mention
    */
   const addMention = useCallback(
-    async (mention: MentionInput): Promise<MentionPersistenceResult<Mention>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
+    (mention: MentionInput): Promise<PersistenceResult<Mention>> =>
+      wrapOperation(async () => {
         const insertData: MentionInsert = {
           entity_id: mention.entity_id,
           document_id: mention.document_id,
@@ -190,44 +142,18 @@ export function useMentionPersistence(): UseMentionPersistenceResult {
           position_end: mention.position_end,
           context: mention.context,
         };
-
-        const createdMention = await dbCreateMention(insertData);
-        return { data: createdMention, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to create mention";
-        setError(errorMessage);
-        console.error("[useMentionPersistence] Create error:", err);
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
+        return dbCreateMention(insertData);
+      }, "Failed to create mention"),
+    [wrapOperation]
   );
 
   /**
    * Delete a single mention by ID
    */
   const removeMention = useCallback(
-    async (id: string): Promise<MentionPersistenceResult<void>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        await dbDeleteMention(id);
-        return { data: undefined, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to delete mention";
-        setError(errorMessage);
-        console.error("[useMentionPersistence] Delete error:", err);
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
+    (id: string): Promise<PersistenceResult<void>> =>
+      wrapOperation(() => dbDeleteMention(id), "Failed to delete mention"),
+    [wrapOperation]
   );
 
   return {

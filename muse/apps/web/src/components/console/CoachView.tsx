@@ -1,10 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { RefreshCw, Lightbulb, Zap, BookOpen } from "lucide-react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
 import { TensionGraph } from "./TensionGraph";
 import { SensoryHeatmap } from "./SensoryHeatmap";
 import { ShowDontTellMeter } from "./ShowDontTellMeter";
 import { StyleIssuesList } from "./StyleIssuesList";
+import { StyleFixPreviewModal } from "./StyleFixPreviewModal";
 import { useAnalysisData } from "../../hooks/useWritingAnalysis";
 import { useEditorNavigation } from "../../hooks/useEditorNavigation";
 import {
@@ -149,6 +150,16 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
   const { metrics, error } = useAnalysisData();
   const { jumpToLine, applyTextReplacement, isReady } = useEditorNavigation();
   const dismissStyleIssue = useAnalysisStore((state) => state.dismissStyleIssue);
+  const setSelectedStyleIssueId = useAnalysisStore(
+    (state) => state.setSelectedStyleIssueId
+  );
+
+  // Style fix preview modal state
+  const [previewIssue, setPreviewIssue] = useState<StyleIssue | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Get all style issues
+  const styleIssues = useStyleIssues();
 
   // Jump to the location of a style issue
   const handleJumpToIssue = useCallback(
@@ -163,15 +174,44 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
     [isReady, jumpToLine]
   );
 
-  // Apply a fix for a style issue
-  const handleApplyFix = useCallback(
+  // Open the fix preview modal for an issue
+  const openStyleFixPreview = useCallback(
     (issue: StyleIssue) => {
+      setPreviewIssue(issue);
+      setIsPreviewOpen(true);
+      setSelectedStyleIssueId(issue.id);
+    },
+    [setSelectedStyleIssueId]
+  );
+
+  // Close the fix preview modal
+  const closeStyleFixPreview = useCallback(() => {
+    setIsPreviewOpen(false);
+    // Keep previewIssue for animation purposes, it will be replaced on next open
+  }, []);
+
+  // Handle selecting an issue (without opening preview)
+  const handleSelectIssue = useCallback(
+    (issue: StyleIssue) => {
+      setSelectedStyleIssueId(issue.id);
+      // Also jump to the issue in the editor
+      if (isReady && issue.line !== undefined) {
+        jumpToLine(issue.line, issue.text);
+      }
+    },
+    [setSelectedStyleIssueId, isReady, jumpToLine]
+  );
+
+  // Apply a fix from the preview modal
+  const applyStyleFixFromPreview = useCallback(
+    (issueId: string) => {
       if (!isReady) {
         console.warn("[CoachView] Cannot apply fix: editor not ready");
         return;
       }
 
-      if (!issue.fix) {
+      const issue = styleIssues.find((i) => i.id === issueId);
+      if (!issue?.fix) {
         console.warn("[CoachView] Cannot apply fix: no fix data");
         return;
       }
@@ -186,13 +226,19 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
       if (success) {
         // Dismiss the issue after successful fix
         dismissStyleIssue(issue.id);
+        // Close the modal
+        closeStyleFixPreview();
       }
     },
-    [isReady, applyTextReplacement, dismissStyleIssue]
+    [isReady, styleIssues, applyTextReplacement, dismissStyleIssue, closeStyleFixPreview]
   );
 
-  // Get all style issues for Fix All
-  const styleIssues = useStyleIssues();
+  // Count similar issues (same type as preview issue)
+  const similarIssuesCount = previewIssue
+    ? styleIssues.filter(
+        (i) => i.type === previewIssue.type && Boolean(i.fix)
+      ).length
+    : 0;
 
   // Fix all fixable style issues
   const handleFixAll = useCallback(() => {

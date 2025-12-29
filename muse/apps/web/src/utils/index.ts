@@ -1,20 +1,16 @@
 // Utility functions
 export { simpleHash } from "./hash";
 
-// DB <-> Core type mappers
+// DB <-> Core type mappers (re-exported from @mythos/db)
 export {
   mapDbProjectToProject,
   mapDbDocumentToDocument,
   mapDbEntityToEntity,
   mapCoreEntityToDbInsert,
   mapCoreEntityToDbUpdate,
-} from "./dbMappers";
-
-// Re-export DB types for convenience
-export type {
-  DbProject,
-  DbDocument,
-  DbEntity,
-  DbEntityInsert,
-  DbEntityUpdate,
-} from "./dbMappers";
+  type DbProject,
+  type DbDocument,
+  type DbEntity,
+  type DbEntityInsert,
+  type DbEntityUpdate,
+} from "@mythos/db";

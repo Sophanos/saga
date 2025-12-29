@@ -1,25 +1,16 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
   createRelationship as dbCreateRelationship,
   updateRelationship as dbUpdateRelationship,
   deleteRelationship as dbDeleteRelationship,
   getRelationshipsByEntity as dbGetRelationshipsByEntity,
-} from "@mythos/db";
-import type { Relationship } from "@mythos/core";
-import { useMythosStore } from "../stores";
-import {
   mapCoreRelationshipToDbInsert,
   mapCoreRelationshipToDbFullUpdate,
   mapDbRelationshipToRelationship,
-} from "../utils/dbMappers";
-
-/**
- * Result type for relationship persistence operations
- */
-export interface RelationshipPersistenceResult<T = void> {
-  data: T | null;
-  error: string | null;
-}
+} from "@mythos/db";
+import type { Relationship } from "@mythos/core";
+import { useMythosStore } from "../stores";
+import { usePersistenceState, type PersistenceResult } from "./usePersistence";
 
 /**
  * Return type for the useRelationshipPersistence hook
@@ -29,21 +20,21 @@ export interface UseRelationshipPersistenceResult {
   createRelationship: (
     relationship: Relationship,
     projectId: string
-  ) => Promise<RelationshipPersistenceResult<Relationship>>;
+  ) => Promise<PersistenceResult<Relationship>>;
   /** Update an existing relationship in DB and store */
   updateRelationship: (
     relationshipId: string,
     updates: Partial<Relationship>
-  ) => Promise<RelationshipPersistenceResult<Relationship>>;
+  ) => Promise<PersistenceResult<Relationship>>;
   /** Delete a relationship from DB and store */
   deleteRelationship: (
     relationshipId: string
-  ) => Promise<RelationshipPersistenceResult<void>>;
+  ) => Promise<PersistenceResult<void>>;
   /** Fetch relationships for a specific entity and add to store */
   fetchRelationshipsByEntity: (
     projectId: string,
     entityId: string
-  ) => Promise<RelationshipPersistenceResult<Relationship[]>>;
+  ) => Promise<PersistenceResult<Relationship[]>>;
   /** Whether any operation is currently in progress */
   isLoading: boolean;
   /** Last error message (if any) */
@@ -77,8 +68,9 @@ export interface UseRelationshipPersistenceResult {
  * ```
  */
 export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Use shared persistence state helper
+  const { isLoading, error, clearError, wrapOperation } =
+    usePersistenceState("Relationship");
 
   // Store state and actions
   const relationships = useMythosStore((state) => state.world.relationships);
@@ -93,24 +85,14 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
   );
 
   /**
-   * Clear the current error
-   */
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
-
-  /**
    * Create a new relationship in the database and add to store
    */
   const createRelationship = useCallback(
-    async (
+    (
       relationship: Relationship,
       projectId: string
-    ): Promise<RelationshipPersistenceResult<Relationship>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
+    ): Promise<PersistenceResult<Relationship>> =>
+      wrapOperation(async () => {
         // Map core relationship to DB insert format
         const dbInsert = mapCoreRelationshipToDbInsert(relationship, projectId);
 
@@ -123,18 +105,9 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
         // Add to store
         addRelationshipToStore(coreRelationship);
 
-        return { data: coreRelationship, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to create relationship";
-        setError(errorMessage);
-        console.error("[useRelationshipPersistence] Create error:", err);
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [addRelationshipToStore]
+        return coreRelationship;
+      }, "Failed to create relationship"),
+    [addRelationshipToStore, wrapOperation]
   );
 
   /**
@@ -144,14 +117,11 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
    * all relationship data is persisted.
    */
   const updateRelationship = useCallback(
-    async (
+    (
       relationshipId: string,
       updates: Partial<Relationship>
-    ): Promise<RelationshipPersistenceResult<Relationship>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
+    ): Promise<PersistenceResult<Relationship>> =>
+      wrapOperation(async () => {
         // Get current relationship from store
         const currentRelationship = relationships.find(
           (r) => r.id === relationshipId
@@ -181,49 +151,24 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
         // Update in store
         updateRelationshipInStore(relationshipId, coreRelationship);
 
-        return { data: coreRelationship, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to update relationship";
-        setError(errorMessage);
-        console.error("[useRelationshipPersistence] Update error:", err);
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [relationships, updateRelationshipInStore]
+        return coreRelationship;
+      }, "Failed to update relationship"),
+    [relationships, updateRelationshipInStore, wrapOperation]
   );
 
   /**
    * Delete a relationship from the database and store
    */
   const deleteRelationship = useCallback(
-    async (
-      relationshipId: string
-    ): Promise<RelationshipPersistenceResult<void>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
+    (relationshipId: string): Promise<PersistenceResult<void>> =>
+      wrapOperation(async () => {
         // Delete from database
         await dbDeleteRelationship(relationshipId);
 
         // Remove from store
         removeRelationshipFromStore(relationshipId);
-
-        return { data: undefined, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to delete relationship";
-        setError(errorMessage);
-        console.error("[useRelationshipPersistence] Delete error:", err);
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [removeRelationshipFromStore]
+      }, "Failed to delete relationship"),
+    [removeRelationshipFromStore, wrapOperation]
   );
 
   /**
@@ -231,14 +176,11 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
    * and add them to the store
    */
   const fetchRelationshipsByEntity = useCallback(
-    async (
+    (
       projectId: string,
       entityId: string
-    ): Promise<RelationshipPersistenceResult<Relationship[]>> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
+    ): Promise<PersistenceResult<Relationship[]>> =>
+      wrapOperation(async () => {
         // Fetch from database
         const dbRelationships = await dbGetRelationshipsByEntity(
           projectId,
@@ -258,23 +200,9 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
           }
         });
 
-        return { data: coreRelationships, error: null };
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error
-            ? err.message
-            : "Failed to fetch relationships by entity";
-        setError(errorMessage);
-        console.error(
-          "[useRelationshipPersistence] Fetch by entity error:",
-          err
-        );
-        return { data: null, error: errorMessage };
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [relationships, addRelationshipToStore]
+        return coreRelationships;
+      }, "Failed to fetch relationships by entity"),
+    [relationships, addRelationshipToStore, wrapOperation]
   );
 
   return {

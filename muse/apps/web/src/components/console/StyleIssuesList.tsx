@@ -1,6 +1,7 @@
+import { useRef, useEffect } from "react";
 import { AlertTriangle, Pencil, RefreshCcw, Copy, CheckCircle2, ArrowRight, Wand2 } from "lucide-react";
 import { cn, Button } from "@mythos/ui";
-import { useStyleIssues } from "../../stores/analysis";
+import { useStyleIssues, useSelectedStyleIssueId } from "../../stores/analysis";
 import type { StyleIssue } from "@mythos/core";
 
 const issueTypeConfig: Record<
@@ -53,21 +54,41 @@ function IssueTypeBadge({ type }: { type: StyleIssue["type"] }) {
 
 interface IssueItemProps {
   issue: StyleIssue;
+  isSelected?: boolean;
   onJump?: (issue: StyleIssue) => void;
   onApplyFix?: (issue: StyleIssue) => void;
+  onSelect?: (issue: StyleIssue) => void;
 }
 
-function IssueItem({ issue, onJump, onApplyFix }: IssueItemProps) {
+function IssueItem({ issue, isSelected, onJump, onApplyFix, onSelect }: IssueItemProps) {
   const config = issueTypeConfig[issue.type];
   const canJump = issue.line !== undefined && onJump;
   const canFix = issue.fix && onApplyFix;
+  const itemRef = useRef<HTMLDivElement>(null);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (isSelected && itemRef.current) {
+      itemRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }
+  }, [isSelected]);
+
+  const handleClick = () => {
+    onSelect?.(issue);
+  };
 
   return (
     <div
+      ref={itemRef}
+      onClick={handleClick}
       className={cn(
-        "p-3 rounded-md border transition-colors",
+        "p-3 rounded-md border transition-colors cursor-pointer",
         "bg-mythos-bg-secondary/50 border-mythos-text-muted/10",
-        "hover:bg-mythos-bg-secondary hover:border-mythos-text-muted/20"
+        "hover:bg-mythos-bg-secondary hover:border-mythos-text-muted/20",
+        isSelected && "ring-2 ring-mythos-accent-cyan ring-offset-1 ring-offset-mythos-bg-primary bg-mythos-bg-secondary border-mythos-accent-cyan/30"
       )}
     >
       <div className="flex items-center justify-between mb-2">
@@ -185,14 +206,23 @@ export interface StyleIssuesListProps {
   className?: string;
   /** Callback when user clicks to jump to an issue location */
   onJumpToIssue?: (issue: StyleIssue) => void;
-  /** Callback when user clicks to apply a fix */
+  /** Callback when user clicks to apply a fix (triggers preview modal) */
   onApplyFix?: (issue: StyleIssue) => void;
   /** Callback when user clicks Fix All */
   onFixAll?: () => void;
+  /** Callback when user selects an issue */
+  onSelectIssue?: (issue: StyleIssue) => void;
 }
 
-export function StyleIssuesList({ className, onJumpToIssue, onApplyFix, onFixAll }: StyleIssuesListProps) {
+export function StyleIssuesList({
+  className,
+  onJumpToIssue,
+  onApplyFix,
+  onFixAll,
+  onSelectIssue,
+}: StyleIssuesListProps) {
   const issues = useStyleIssues();
+  const selectedStyleIssueId = useSelectedStyleIssueId();
   const fixableCount = issues.filter((i) => Boolean(i.fix)).length;
 
   return (
@@ -207,8 +237,10 @@ export function StyleIssuesList({ className, onJumpToIssue, onApplyFix, onFixAll
             <IssueItem
               key={issue.id || `${issue.type}-${issue.line ?? index}-${index}`}
               issue={issue}
+              isSelected={issue.id === selectedStyleIssueId}
               onJump={onJumpToIssue}
               onApplyFix={onApplyFix}
+              onSelect={onSelectIssue}
             />
           ))}
         </div>

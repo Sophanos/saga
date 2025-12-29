@@ -1,0 +1,36 @@
+{
+  "name": "@mythos/theme",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./colors": {
+      "types": "./src/colors.ts",
+      "default": "./src/colors.ts"
+    },
+    "./typography": {
+      "types": "./src/typography.ts",
+      "default": "./src/typography.ts"
+    },
+    "./spacing": {
+      "types": "./src/spacing.ts",
+      "default": "./src/spacing.ts"
+    },
+    "./semantic": {
+      "types": "./src/semantic.ts",
+      "default": "./src/semantic.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/"
+  },
+  "devDependencies": {
+    "@mythos/typescript-config": "workspace:*",
+    "typescript": "^5.7.2"
+  }
+}

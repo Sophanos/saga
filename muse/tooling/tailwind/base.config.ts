@@ -1,34 +1,35 @@
 import type { Config } from "tailwindcss";
+import { bg, text, accent, entity } from "@mythos/theme";
 
 const config: Partial<Config> = {
   darkMode: "class",
   theme: {
     extend: {
       colors: {
-        // Mythos IDE brand colors
+        // Mythos IDE brand colors - imported from @mythos/theme
         mythos: {
           bg: {
-            primary: "#0a0a0f",
-            secondary: "#12121a",
-            tertiary: "#1a1a24",
+            primary: bg.primary,
+            secondary: bg.secondary,
+            tertiary: bg.tertiary,
           },
           text: {
-            primary: "#e4e4e7",
-            secondary: "#a1a1aa",
-            muted: "#71717a",
+            primary: text.primary,
+            secondary: text.secondary,
+            muted: text.muted,
           },
           accent: {
-            cyan: "#22d3ee",
-            purple: "#a855f7",
-            green: "#22c55e",
-            amber: "#f59e0b",
-            red: "#ef4444",
+            cyan: accent.cyan,
+            purple: accent.purple,
+            green: accent.green,
+            amber: accent.amber,
+            red: accent.red,
           },
           entity: {
-            character: "#22d3ee",
-            location: "#22c55e",
-            item: "#f59e0b",
-            magic: "#a855f7",
+            character: entity.character,
+            location: entity.location,
+            item: entity.item,
+            magic: entity.magic,
           },
         },
       },

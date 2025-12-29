@@ -15,3 +15,8 @@ export {
   pasteHandlerPluginKey,
 } from "./paste-handler";
 export { SceneBlock, type SceneBlockOptions } from "./scene-block";
+export {
+  StyleDecoration,
+  type StyleDecorationOptions,
+  styleDecorationPluginKey,
+} from "./style-decoration";

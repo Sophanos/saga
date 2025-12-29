@@ -15,6 +15,7 @@
     "@mythos/core": "workspace:*",
     "@mythos/db": "workspace:*",
     "@mythos/editor": "workspace:*",
+    "@mythos/theme": "workspace:*",
     "@mythos/ui": "workspace:*",
     "@tippyjs/react": "^4.2.6",
     "immer": "^10.1.1",

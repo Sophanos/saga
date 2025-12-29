@@ -7,10 +7,10 @@ import {
   Sparkles,
   Building2,
   Wand2,
-  ChevronDown,
-  Check,
+  Calendar,
   Plus,
   Save,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Button,
@@ -22,6 +22,9 @@ import {
   CardFooter,
   ScrollArea,
   Input,
+  FormField,
+  Select,
+  TextArea,
   cn,
 } from "@mythos/ui";
 import type {
@@ -34,6 +37,12 @@ import type {
   Faction,
   JungianArchetype,
   Trait,
+} from "@mythos/core";
+import {
+  ENTITY_TYPE_CONFIG,
+  getEntityColor,
+  getEntityLabel,
+  type EntityIconName,
 } from "@mythos/core";
 
 // ============================================================================
@@ -87,6 +96,9 @@ interface EntityFormModalProps {
 // Constants
 // ============================================================================
 
+/**
+ * Entity types available for form selection (excludes event/concept)
+ */
 const ENTITY_TYPES: EntityType[] = [
   "character",
   "location",
@@ -95,46 +107,26 @@ const ENTITY_TYPES: EntityType[] = [
   "faction",
 ];
 
-const ENTITY_TYPE_CONFIG: Record<
-  EntityType,
-  { icon: typeof User; label: string; color: string }
-> = {
-  character: {
-    icon: User,
-    label: "Character",
-    color: "text-mythos-entity-character",
-  },
-  location: {
-    icon: MapPin,
-    label: "Location",
-    color: "text-mythos-entity-location",
-  },
-  item: {
-    icon: Sword,
-    label: "Item",
-    color: "text-mythos-entity-item",
-  },
-  magic_system: {
-    icon: Wand2,
-    label: "Magic System",
-    color: "text-mythos-entity-magic",
-  },
-  faction: {
-    icon: Building2,
-    label: "Faction",
-    color: "text-mythos-accent-amber",
-  },
-  event: {
-    icon: Sparkles,
-    label: "Event",
-    color: "text-mythos-accent-cyan",
-  },
-  concept: {
-    icon: Sparkles,
-    label: "Concept",
-    color: "text-mythos-accent-purple",
-  },
+/**
+ * Map icon names to React components
+ */
+const ENTITY_ICONS: Record<EntityIconName, LucideIcon> = {
+  User,
+  MapPin,
+  Sword,
+  Wand2,
+  Building2,
+  Calendar,
+  Sparkles,
 };
+
+/**
+ * Get the icon component for an entity type
+ */
+function getEntityIconComponent(type: EntityType): LucideIcon {
+  const iconName = ENTITY_TYPE_CONFIG[type]?.icon ?? "User";
+  return ENTITY_ICONS[iconName] ?? User;
+}
 
 const JUNGIAN_ARCHETYPES: JungianArchetype[] = [
   "hero",
@@ -177,135 +169,6 @@ const TRAIT_TYPES: Trait["type"][] = ["strength", "weakness", "neutral", "shadow
 // ============================================================================
 // Helper Components
 // ============================================================================
-
-interface FormFieldProps {
-  label: string;
-  required?: boolean;
-  error?: string;
-  children: React.ReactNode;
-}
-
-function FormField({ label, required, error, children }: FormFieldProps) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-sm font-medium text-mythos-text-secondary">
-        {label}
-        {required && <span className="text-mythos-accent-red ml-0.5">*</span>}
-      </label>
-      {children}
-      {error && (
-        <p className="text-xs text-mythos-accent-red">{error}</p>
-      )}
-    </div>
-  );
-}
-
-interface SelectProps {
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-  placeholder?: string;
-  disabled?: boolean;
-  className?: string;
-}
-
-function Select({
-  value,
-  onChange,
-  options,
-  placeholder = "Select...",
-  disabled,
-  className,
-}: SelectProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const selectedOption = options.find((o) => o.value === value);
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
-        className={cn(
-          "flex items-center justify-between w-full h-9 px-3 py-1 rounded-md text-sm",
-          "border border-mythos-text-muted/30 bg-mythos-bg-secondary",
-          "hover:bg-mythos-bg-tertiary transition-colors",
-          "focus:outline-none focus:ring-1 focus:ring-mythos-accent-cyan",
-          disabled && "opacity-50 cursor-not-allowed",
-          className
-        )}
-      >
-        <span className={selectedOption ? "text-mythos-text-primary" : "text-mythos-text-muted"}>
-          {selectedOption?.label || placeholder}
-        </span>
-        <ChevronDown className="w-4 h-4 text-mythos-text-muted" />
-      </button>
-
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setIsOpen(false)}
-          />
-          <ul
-            className={cn(
-              "absolute z-20 mt-1 w-full max-h-60 overflow-auto py-1 rounded-md",
-              "bg-mythos-bg-secondary border border-mythos-text-muted/30",
-              "shadow-lg shadow-black/20"
-            )}
-          >
-            {options.map((option) => (
-              <li
-                key={option.value}
-                onClick={() => {
-                  onChange(option.value);
-                  setIsOpen(false);
-                }}
-                className={cn(
-                  "flex items-center justify-between px-3 py-2 cursor-pointer",
-                  "text-sm text-mythos-text-secondary",
-                  "hover:bg-mythos-bg-tertiary",
-                  option.value === value && "bg-mythos-bg-tertiary"
-                )}
-              >
-                <span>{option.label}</span>
-                {option.value === value && (
-                  <Check className="w-4 h-4 text-mythos-accent-cyan" />
-                )}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-interface TextAreaProps {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  rows?: number;
-  className?: string;
-}
-
-function TextArea({ value, onChange, placeholder, rows = 3, className }: TextAreaProps) {
-  return (
-    <textarea
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      rows={rows}
-      className={cn(
-        "flex w-full rounded-md border border-mythos-text-muted/30 bg-mythos-bg-secondary",
-        "px-3 py-2 text-sm text-mythos-text-primary shadow-sm transition-colors",
-        "placeholder:text-mythos-text-muted resize-none",
-        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-mythos-accent-cyan",
-        className
-      )}
-    />
-  );
-}
 
 interface StringListFieldProps {
   label: string;
@@ -491,8 +354,9 @@ function EntityTypeSelector({ value, onChange, disabled }: EntityTypeSelectorPro
   return (
     <div className="grid grid-cols-5 gap-2">
       {ENTITY_TYPES.map((type) => {
-        const config = ENTITY_TYPE_CONFIG[type];
-        const Icon = config.icon;
+        const Icon = getEntityIconComponent(type);
+        const colorClass = getEntityColor(type);
+        const label = getEntityLabel(type);
         const isSelected = type === value;
 
         return (
@@ -509,12 +373,12 @@ function EntityTypeSelector({ value, onChange, disabled }: EntityTypeSelectorPro
               disabled && "opacity-50 cursor-not-allowed"
             )}
           >
-            <Icon className={cn("w-5 h-5", isSelected ? "text-mythos-accent-cyan" : config.color)} />
+            <Icon className={cn("w-5 h-5", isSelected ? "text-mythos-accent-cyan" : colorClass)} />
             <span className={cn(
               "text-xs font-medium",
               isSelected ? "text-mythos-accent-cyan" : "text-mythos-text-secondary"
             )}>
-              {config.label}
+              {label}
             </span>
           </button>
         );
@@ -896,7 +760,7 @@ export function EntityFormModal({
   );
 
   const title = mode === "create" ? "Create Entity" : `Edit ${entity?.name || "Entity"}`;
-  const TypeIcon = ENTITY_TYPE_CONFIG[formData.type].icon;
+  const TypeIcon = getEntityIconComponent(formData.type);
 
   if (!isOpen) return null;
 
@@ -920,7 +784,7 @@ export function EntityFormModal({
         <CardHeader className="pb-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <TypeIcon className={cn("w-5 h-5", ENTITY_TYPE_CONFIG[formData.type].color)} />
+              <TypeIcon className={cn("w-5 h-5", getEntityColor(formData.type))} />
               <CardTitle id="entity-form-title" className="text-lg">
                 {title}
               </CardTitle>
@@ -987,7 +851,7 @@ export function EntityFormModal({
                 {/* Divider */}
                 <div className="border-t border-mythos-text-muted/20 pt-4">
                   <h3 className="text-sm font-medium text-mythos-text-secondary mb-4">
-                    {ENTITY_TYPE_CONFIG[formData.type].label} Details
+                    {getEntityLabel(formData.type)} Details
                   </h3>
 
                   {/* Type-specific fields */}

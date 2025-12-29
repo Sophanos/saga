@@ -11,15 +11,14 @@ import type { Editor } from "@mythos/editor";
 import {
   createEntity as dbCreateEntity,
   updateEntity as dbUpdateEntity,
+  mapCoreEntityToDbInsert,
+  mapCoreEntityToDbUpdate,
+  mapDbEntityToEntity,
 } from "@mythos/db";
 import { useMythosStore, useEntities } from "../stores";
 import { useApiKey } from "./useApiKey";
 import { useEntityMarks } from "./useEntityMarks";
-import {
-  mapCoreEntityToDbInsert,
-  mapCoreEntityToDbUpdate,
-  mapDbEntityToEntity,
-} from "../utils/dbMappers";
+import { detectEntitiesViaEdge, DetectApiError } from "../services/ai";
 
 /**
  * Generate a simple UUID v4
@@ -89,9 +88,6 @@ const DEFAULT_OPTIONS: Omit<Required<UseEntityDetectionOptions>, "editor"> = {
   detectionOptions: {},
   enabled: true,
 };
-
-// Supabase edge function URL
-const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "";
 
 /**
  * Convert DetectedEntity to Entity for store persistence
@@ -202,31 +198,22 @@ export function useEntityDetection(
         const existingForMatching = existingEntities.map((e) => ({
           id: e.id,
           name: e.name,
-          aliases: e.aliases,
+          aliases: e.aliases || [],
           type: e.type as EntityType,
         }));
 
-        // Call the entity detection edge function
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-detect`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiKey && { "x-openrouter-key": apiKey }),
-          },
-          body: JSON.stringify({
+        // Call the entity detection edge function via service client
+        const result = await detectEntitiesViaEdge(
+          {
             text,
             existingEntities: existingForMatching,
             options: detectionOptions,
-          }),
-          signal: abortControllerRef.current.signal,
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || `Detection failed: ${response.status}`);
-        }
-
-        const result = await response.json();
+          },
+          {
+            apiKey: apiKey || undefined,
+            signal: abortControllerRef.current.signal,
+          }
+        );
 
         // Check if aborted
         if (abortControllerRef.current?.signal.aborted) {
@@ -234,17 +221,17 @@ export function useEntityDetection(
         }
 
         // Update state with results
-        setDetectedEntities(result.entities || []);
-        setWarnings(result.warnings || []);
-        setStats(result.stats || null);
+        setDetectedEntities(result.entities);
+        setWarnings(result.warnings);
+        setStats(result.stats);
 
         // Auto-open modal if entities were detected
-        if (result.entities && result.entities.length > 0) {
+        if (result.entities.length > 0) {
           setIsModalOpen(true);
         }
       } catch (err) {
         // Ignore abort errors
-        if (err instanceof Error && err.name === "AbortError") {
+        if (err instanceof DetectApiError && err.code === "ABORTED") {
           return;
         }
 

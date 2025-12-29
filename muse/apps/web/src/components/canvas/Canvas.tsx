@@ -6,6 +6,7 @@ import {
   Placeholder,
   EntityMark,
   LinterDecoration,
+  StyleDecoration,
   PasteHandler,
   EntitySuggestion,
   createSuggestionItems,
@@ -22,7 +23,12 @@ import { useDynamicsExtraction } from "../../hooks/useDynamicsExtraction";
 import { useAutoSave } from "../../hooks/useAutoSave";
 import { useAutoApplyEntityMarks } from "../../hooks/useEntityMarks";
 import { useMythosStore, useEntities } from "../../stores";
-import { useMood } from "../../stores/analysis";
+import {
+  useMood,
+  useStyleIssues,
+  useSelectedStyleIssueId,
+  useAnalysisStore,
+} from "../../stores/analysis";
 import { EntitySuggestionModal } from "../modals/EntitySuggestionModal";
 import { SceneContextBar } from "./SceneContextBar";
 import {
@@ -61,6 +67,13 @@ export function Canvas() {
 
   // Get mood from analysis store
   const mood = useMood();
+
+  // Get style issues and selection from analysis store
+  const styleIssues = useStyleIssues();
+  const selectedStyleIssueId = useSelectedStyleIssueId();
+  const setSelectedStyleIssueId = useAnalysisStore(
+    (state) => state.setSelectedStyleIssueId
+  );
 
   // Handle entity avatar click in SceneContextBar
   const handleSceneEntityClick = useCallback(
@@ -111,6 +124,9 @@ export function Canvas() {
       }),
       EntityMark,
       LinterDecoration,
+      StyleDecoration.configure({
+        onIssueSelect: (issueId) => setSelectedStyleIssueId(issueId),
+      }),
       PasteHandler.configure({
         minLength: 100,
         onSubstantialPaste: stableHandlePaste,
@@ -308,6 +324,20 @@ export function Canvas() {
       editor.commands.setLinterIssues(decorationIssues);
     }
   }, [editor, linterIssues]);
+
+  // Sync style issues from store to editor decorations
+  useEffect(() => {
+    if (editor && !editor.isDestroyed && editor.commands.setStyleIssues) {
+      editor.commands.setStyleIssues(styleIssues);
+    }
+  }, [editor, styleIssues]);
+
+  // Sync selected style issue from store to editor
+  useEffect(() => {
+    if (editor && !editor.isDestroyed && editor.commands.setSelectedStyleIssue) {
+      editor.commands.setSelectedStyleIssue(selectedStyleIssueId);
+    }
+  }, [editor, selectedStyleIssueId]);
 
   // Update tension level when metrics change (0-100 scale for SceneContextBar)
   useEffect(() => {

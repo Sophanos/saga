@@ -1,12 +1,12 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import {
   X,
   AlertCircle,
   AlertTriangle,
   Info,
-  ArrowRight,
   CheckCircle2,
   Layers,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Button,
@@ -19,6 +19,14 @@ import {
   cn,
 } from "@mythos/ui";
 import type { LinterIssue } from "../../stores";
+import {
+  SEVERITY_CONFIG,
+  getIssueTypeLabel,
+  type Severity,
+  type LinterIssueType,
+  type SeverityIconName,
+} from "@mythos/core";
+import { DiffView, InlineDiffView } from "./DiffViews";
 
 /**
  * Props for FixPreviewModal component
@@ -41,179 +49,20 @@ interface FixPreviewModalProps {
 }
 
 /**
- * Configuration for severity display
+ * Map severity icon names to React components
  */
-const severityConfig: Record<
-  LinterIssue["severity"],
-  {
-    icon: typeof AlertCircle;
-    label: string;
-    bgClass: string;
-    textClass: string;
-    borderClass: string;
-  }
-> = {
-  error: {
-    icon: AlertCircle,
-    label: "Error",
-    bgClass: "bg-mythos-accent-red/10",
-    textClass: "text-mythos-accent-red",
-    borderClass: "border-mythos-accent-red/30",
-  },
-  warning: {
-    icon: AlertTriangle,
-    label: "Warning",
-    bgClass: "bg-mythos-accent-amber/10",
-    textClass: "text-mythos-accent-amber",
-    borderClass: "border-mythos-accent-amber/30",
-  },
-  info: {
-    icon: Info,
-    label: "Info",
-    bgClass: "bg-mythos-accent-cyan/10",
-    textClass: "text-mythos-accent-cyan",
-    borderClass: "border-mythos-accent-cyan/30",
-  },
+const SEVERITY_ICONS: Record<SeverityIconName, LucideIcon> = {
+  AlertCircle,
+  AlertTriangle,
+  Info,
 };
 
 /**
- * Configuration for issue type display
+ * Get icon component for severity
  */
-const issueTypeLabels: Record<LinterIssue["type"], string> = {
-  character: "Character",
-  world: "World",
-  plot: "Plot",
-  timeline: "Timeline",
-};
-
-/**
- * Diff visualization component for before/after text
- */
-function DiffView({
-  before,
-  after,
-}: {
-  before: string;
-  after: string;
-}) {
-  return (
-    <div className="space-y-4">
-      {/* Before section */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-mythos-text-muted">
-            Before
-          </span>
-          <div className="flex-1 h-px bg-mythos-text-muted/20" />
-        </div>
-        <div
-          className={cn(
-            "p-3 rounded-md border font-mono text-sm leading-relaxed",
-            "bg-mythos-accent-red/5 border-mythos-accent-red/20"
-          )}
-        >
-          <span className="text-mythos-accent-red line-through decoration-2">
-            {before}
-          </span>
-        </div>
-      </div>
-
-      {/* Arrow indicator */}
-      <div className="flex justify-center">
-        <div className="flex items-center gap-2 text-mythos-text-muted">
-          <div className="w-8 h-px bg-mythos-text-muted/30" />
-          <ArrowRight className="w-4 h-4" />
-          <div className="w-8 h-px bg-mythos-text-muted/30" />
-        </div>
-      </div>
-
-      {/* After section */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-mythos-text-muted">
-            After
-          </span>
-          <div className="flex-1 h-px bg-mythos-text-muted/20" />
-        </div>
-        <div
-          className={cn(
-            "p-3 rounded-md border font-mono text-sm leading-relaxed",
-            "bg-mythos-accent-green/5 border-mythos-accent-green/20"
-          )}
-        >
-          <span className="text-mythos-accent-green">
-            {after}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Inline diff visualization showing changes side by side
- */
-function InlineDiffView({
-  before,
-  after,
-}: {
-  before: string;
-  after: string;
-}) {
-  // Find common prefix and suffix to highlight only the changed parts
-  const findDiffBounds = useMemo(() => {
-    let prefixEnd = 0;
-
-    // Find common prefix
-    while (
-      prefixEnd < before.length &&
-      prefixEnd < after.length &&
-      before[prefixEnd] === after[prefixEnd]
-    ) {
-      prefixEnd++;
-    }
-
-    // Find common suffix (but don't overlap with prefix)
-    let beforeIdx = before.length - 1;
-    let afterIdx = after.length - 1;
-    while (
-      beforeIdx >= prefixEnd &&
-      afterIdx >= prefixEnd &&
-      before[beforeIdx] === after[afterIdx]
-    ) {
-      beforeIdx--;
-      afterIdx--;
-    }
-
-    const beforeSuffixStart = beforeIdx + 1;
-    const afterSuffixStart = afterIdx + 1;
-
-    return {
-      prefix: before.substring(0, prefixEnd),
-      beforeChanged: before.substring(prefixEnd, beforeSuffixStart),
-      afterChanged: after.substring(prefixEnd, afterSuffixStart),
-      suffix: before.substring(beforeSuffixStart),
-    };
-  }, [before, after]);
-
-  const { prefix, beforeChanged, afterChanged, suffix } = findDiffBounds;
-
-  return (
-    <div className="p-3 rounded-md border border-mythos-text-muted/20 bg-mythos-bg-tertiary/30 font-mono text-sm leading-relaxed">
-      <span className="text-mythos-text-secondary">{prefix}</span>
-      {beforeChanged && (
-        <span className="bg-mythos-accent-red/20 text-mythos-accent-red line-through decoration-1 px-0.5 rounded">
-          {beforeChanged}
-        </span>
-      )}
-      {afterChanged && (
-        <span className="bg-mythos-accent-green/20 text-mythos-accent-green px-0.5 rounded ml-0.5">
-          {afterChanged}
-        </span>
-      )}
-      <span className="text-mythos-text-secondary">{suffix}</span>
-    </div>
-  );
+function getSeverityIconComponent(severity: Severity): LucideIcon {
+  const iconName = SEVERITY_CONFIG[severity]?.icon ?? "Info";
+  return SEVERITY_ICONS[iconName] ?? Info;
 }
 
 /**
@@ -261,8 +110,8 @@ export function FixPreviewModal({
 
   if (!isOpen || !issue) return null;
 
-  const severityConf = severityConfig[issue.severity];
-  const SeverityIcon = severityConf.icon;
+  const severityConf = SEVERITY_CONFIG[issue.severity as Severity];
+  const SeverityIcon = getSeverityIconComponent(issue.severity as Severity);
   const hasSuggestion = Boolean(issue.suggestion);
   const hasOriginalText = Boolean(issue.location.text);
   const canShowDiff = hasSuggestion && hasOriginalText;
@@ -310,7 +159,7 @@ export function FixPreviewModal({
                     {severityConf.label}
                   </span>
                   <span className="text-mythos-text-muted">
-                    {issueTypeLabels[issue.type]} Issue
+                    {getIssueTypeLabel(issue.type as LinterIssueType)} Issue
                   </span>
                 </CardDescription>
               </div>

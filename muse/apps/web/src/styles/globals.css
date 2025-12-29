@@ -149,3 +149,62 @@
 .linter-info:hover {
   background-color: rgba(34, 211, 238, 0.1);
 }
+
+/* =============================================================================
+   Style Issue Decorations
+   Visual underlines for writing coach style issues (telling, passive, etc.)
+   ============================================================================= */
+
+.style-squiggle {
+  position: relative;
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+  transition: background-color 0.15s ease;
+}
+
+/* Telling issues - amber */
+.style-telling {
+  text-decoration-color: rgba(245, 158, 11, 0.85);
+}
+
+.style-telling:hover {
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+/* Passive voice - blue */
+.style-passive {
+  text-decoration-color: rgba(59, 130, 246, 0.85);
+}
+
+.style-passive:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Adverb overuse - purple */
+.style-adverb {
+  text-decoration-color: rgba(168, 85, 247, 0.85);
+}
+
+.style-adverb:hover {
+  background-color: rgba(168, 85, 247, 0.1);
+}
+
+/* Word repetition - pink */
+.style-repetition {
+  text-decoration-color: rgba(236, 72, 153, 0.85);
+}
+
+.style-repetition:hover {
+  background-color: rgba(236, 72, 153, 0.1);
+}
+
+/* Selected style issue highlight */
+.style-selected {
+  background-color: rgba(34, 211, 238, 0.12);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.25);
+}

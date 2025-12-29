@@ -5,14 +5,12 @@ import {
   getDocuments,
   getEntities,
   getRelationships,
-} from "@mythos/db";
-import type { Project } from "@mythos/core";
-import {
   mapDbProjectToProject,
   mapDbDocumentToDocument,
   mapDbEntityToEntity,
   mapDbRelationshipToRelationship,
-} from "../utils/dbMappers";
+} from "@mythos/db";
+import type { Project } from "@mythos/core";
 
 
 /**

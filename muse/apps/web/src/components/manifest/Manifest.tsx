@@ -20,7 +20,7 @@ import {
   Plus,
   Pencil,
 } from "lucide-react";
-import { ScrollArea, Input, Button } from "@mythos/ui";
+import { ScrollArea, Input, Button, Select } from "@mythos/ui";
 import type { Entity, EntityType, Document, DocumentType, Character, Location, Item, MagicSystem, Faction } from "@mythos/core";
 import { useEntities, useDocuments, useMythosStore } from "../../stores";
 import { EntityFormModal, type EntityFormData } from "../modals";
@@ -763,17 +763,12 @@ export function Manifest() {
               <label className="text-xs text-mythos-text-muted whitespace-nowrap">
                 Type:
               </label>
-              <select
+              <Select
                 value={documentTypeFilter}
-                onChange={(e) => setDocumentTypeFilter(e.target.value as DocumentType | "all")}
-                className="flex-1 h-7 px-2 text-xs rounded-md border border-mythos-text-muted/30 bg-mythos-bg-primary text-mythos-text-primary focus:outline-none focus:ring-1 focus:ring-mythos-accent-cyan"
-              >
-                {DOCUMENT_TYPE_FILTERS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setDocumentTypeFilter(value as DocumentType | "all")}
+                options={DOCUMENT_TYPE_FILTERS}
+                className="flex-1 h-7 text-xs"
+              />
             </div>
           </div>
         )}

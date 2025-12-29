@@ -5,6 +5,7 @@ import {
   useStyleIssues,
 } from "../../stores/analysis";
 import { cn } from "@mythos/ui";
+import { accent } from "@mythos/theme";
 
 /**
  * Props for ShowDontTellMeter component
@@ -39,7 +40,7 @@ function getGradeColor(grade: string): string {
  * Red (0%) -> Amber (50%) -> Green (100%)
  */
 function getProgressGradient(): string {
-  return "linear-gradient(to right, #ef4444, #f59e0b, #22c55e)";
+  return `linear-gradient(to right, ${accent.red}, ${accent.amber}, ${accent.green})`;
 }
 
 /**

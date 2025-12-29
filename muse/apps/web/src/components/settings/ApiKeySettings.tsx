@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { X, Eye, EyeOff, ExternalLink, Key, Check, AlertCircle } from "lucide-react";
-import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@mythos/ui";
+import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, FormField } from "@mythos/ui";
 import { useApiKey } from "../../hooks/useApiKey";
 
 interface ApiKeySettingsProps {
@@ -84,10 +84,7 @@ export function ApiKeySettings({ isOpen, onClose }: ApiKeySettingsProps) {
           </div>
 
           {/* API Key input */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-mythos-text-secondary">
-              OpenRouter API Key
-            </label>
+          <FormField label="OpenRouter API Key" className="space-y-2">
             <div className="relative">
               <Input
                 type={showKey ? "text" : "password"}
@@ -112,7 +109,7 @@ export function ApiKeySettings({ isOpen, onClose }: ApiKeySettingsProps) {
                 )}
               </Button>
             </div>
-          </div>
+          </FormField>
 
           {/* OpenRouter link */}
           <a

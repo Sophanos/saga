@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { X, FolderPlus, ChevronDown, Check } from "lucide-react";
+import { X, FolderPlus } from "lucide-react";
 import {
   Button,
   Card,
@@ -9,7 +9,9 @@ import {
   CardContent,
   CardFooter,
   Input,
-  cn,
+  FormField,
+  Select,
+  TextArea,
 } from "@mythos/ui";
 import { createProject, createDocument } from "@mythos/db";
 
@@ -46,139 +48,6 @@ const GENRE_OPTIONS: { value: Genre; label: string }[] = [
 ];
 
 const EMPTY_TIPTAP_DOC = { type: "doc", content: [{ type: "paragraph" }] };
-
-// ============================================================================
-// Helper Components
-// ============================================================================
-
-interface FormFieldProps {
-  label: string;
-  required?: boolean;
-  error?: string;
-  children: React.ReactNode;
-}
-
-function FormField({ label, required, error, children }: FormFieldProps) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-sm font-medium text-mythos-text-secondary">
-        {label}
-        {required && <span className="text-mythos-accent-red ml-0.5">*</span>}
-      </label>
-      {children}
-      {error && (
-        <p className="text-xs text-mythos-accent-red">{error}</p>
-      )}
-    </div>
-  );
-}
-
-interface SelectProps {
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-  placeholder?: string;
-  disabled?: boolean;
-  className?: string;
-}
-
-function Select({
-  value,
-  onChange,
-  options,
-  placeholder = "Select...",
-  disabled,
-  className,
-}: SelectProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const selectedOption = options.find((o) => o.value === value);
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
-        className={cn(
-          "flex items-center justify-between w-full h-9 px-3 py-1 rounded-md text-sm",
-          "border border-mythos-text-muted/30 bg-mythos-bg-secondary",
-          "hover:bg-mythos-bg-tertiary transition-colors",
-          "focus:outline-none focus:ring-1 focus:ring-mythos-accent-cyan",
-          disabled && "opacity-50 cursor-not-allowed",
-          className
-        )}
-      >
-        <span className={selectedOption ? "text-mythos-text-primary" : "text-mythos-text-muted"}>
-          {selectedOption?.label || placeholder}
-        </span>
-        <ChevronDown className="w-4 h-4 text-mythos-text-muted" />
-      </button>
-
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setIsOpen(false)}
-          />
-          <ul
-            className={cn(
-              "absolute z-20 mt-1 w-full max-h-60 overflow-auto py-1 rounded-md",
-              "bg-mythos-bg-secondary border border-mythos-text-muted/30",
-              "shadow-lg shadow-black/20"
-            )}
-          >
-            {options.map((option) => (
-              <li
-                key={option.value}
-                onClick={() => {
-                  onChange(option.value);
-                  setIsOpen(false);
-                }}
-                className={cn(
-                  "flex items-center justify-between px-3 py-2 cursor-pointer",
-                  "text-sm text-mythos-text-secondary",
-                  "hover:bg-mythos-bg-tertiary",
-                  option.value === value && "bg-mythos-bg-tertiary"
-                )}
-              >
-                <span>{option.label}</span>
-                {option.value === value && (
-                  <Check className="w-4 h-4 text-mythos-accent-cyan" />
-                )}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-interface TextAreaProps {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  rows?: number;
-  className?: string;
-}
-
-function TextArea({ value, onChange, placeholder, rows = 3, className }: TextAreaProps) {
-  return (
-    <textarea
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      rows={rows}
-      className={cn(
-        "flex w-full rounded-md border border-mythos-text-muted/30 bg-mythos-bg-secondary",
-        "px-3 py-2 text-sm text-mythos-text-primary shadow-sm transition-colors",
-        "placeholder:text-mythos-text-muted resize-none",
-        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-mythos-accent-cyan",
-        className
-      )}
-    />
-  );
-}
 
 // ============================================================================
 // Main Modal Component

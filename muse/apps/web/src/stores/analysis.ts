@@ -20,6 +20,8 @@ interface AnalysisState {
   error: string | null;
   /** Hash of the last analyzed content for deduplication */
   lastAnalyzedHash: string | null;
+  /** Currently selected style issue ID for navigation/highlighting */
+  selectedStyleIssueId: string | null;
 }
 
 /**
@@ -49,6 +51,12 @@ interface AnalysisActions {
   }) => void;
   /** Set the last analyzed content hash */
   setLastAnalyzedHash: (hash: string) => void;
+  /** Set the currently selected style issue ID */
+  setSelectedStyleIssueId: (issueId: string | null) => void;
+  /** Select the next style issue in document order */
+  selectNextStyleIssue: () => void;
+  /** Select the previous style issue in document order */
+  selectPreviousStyleIssue: () => void;
 }
 
 /**
@@ -78,7 +86,7 @@ const defaultMetrics: SceneMetrics = {
  * Analysis store for writing coach data
  */
 export const useAnalysisStore = create<AnalysisStore>()(
-  immer((set) => ({
+  immer((set, get) => ({
     // Initial state
     metrics: null,
     issues: [],
@@ -87,6 +95,7 @@ export const useAnalysisStore = create<AnalysisStore>()(
     lastAnalyzedAt: null,
     error: null,
     lastAnalyzedHash: null,
+    selectedStyleIssueId: null,
 
     // Actions
     setMetrics: (metrics) =>
@@ -99,6 +108,13 @@ export const useAnalysisStore = create<AnalysisStore>()(
     setIssues: (issues) =>
       set((state) => {
         state.issues = issues;
+        // Clear selection if the selected issue no longer exists
+        if (
+          state.selectedStyleIssueId &&
+          !issues.some((i) => i.id === state.selectedStyleIssueId)
+        ) {
+          state.selectedStyleIssueId = null;
+        }
       }),
 
     setInsights: (insights) =>
@@ -128,10 +144,23 @@ export const useAnalysisStore = create<AnalysisStore>()(
         state.lastAnalyzedAt = null;
         state.error = null;
         state.lastAnalyzedHash = null;
+        state.selectedStyleIssueId = null;
       }),
 
     dismissStyleIssue: (issueId) =>
       set((state) => {
+        // If dismissing the selected issue, advance to nearest neighbor or clear
+        if (state.selectedStyleIssueId === issueId) {
+          const currentIndex = state.issues.findIndex((i) => i.id === issueId);
+          const newIssues = state.issues.filter((i) => i.id !== issueId);
+          if (newIssues.length > 0) {
+            // Select the next issue, or the previous if we were at the end
+            const nextIndex = Math.min(currentIndex, newIssues.length - 1);
+            state.selectedStyleIssueId = newIssues[nextIndex].id;
+          } else {
+            state.selectedStyleIssueId = null;
+          }
+        }
         state.issues = state.issues.filter((i) => i.id !== issueId);
       }),
 
@@ -146,12 +175,79 @@ export const useAnalysisStore = create<AnalysisStore>()(
         if (data.contentHash) {
           state.lastAnalyzedHash = data.contentHash;
         }
+        // Clear selection if the selected issue no longer exists
+        if (
+          state.selectedStyleIssueId &&
+          !data.issues.some((i) => i.id === state.selectedStyleIssueId)
+        ) {
+          state.selectedStyleIssueId = null;
+        }
       }),
 
     setLastAnalyzedHash: (hash) =>
       set((state) => {
         state.lastAnalyzedHash = hash;
       }),
+
+    setSelectedStyleIssueId: (issueId) =>
+      set((state) => {
+        state.selectedStyleIssueId = issueId;
+      }),
+
+    selectNextStyleIssue: () => {
+      const { issues, selectedStyleIssueId } = get();
+      if (issues.length === 0) return;
+
+      // Sort issues by line (document order)
+      const sortedIssues = [...issues].sort(
+        (a, b) => (a.line ?? 0) - (b.line ?? 0)
+      );
+
+      if (!selectedStyleIssueId) {
+        // No selection - select the first issue
+        set((state) => {
+          state.selectedStyleIssueId = sortedIssues[0].id;
+        });
+        return;
+      }
+
+      const currentIndex = sortedIssues.findIndex(
+        (i) => i.id === selectedStyleIssueId
+      );
+      // Wrap around to first issue if at end
+      const nextIndex = (currentIndex + 1) % sortedIssues.length;
+      set((state) => {
+        state.selectedStyleIssueId = sortedIssues[nextIndex].id;
+      });
+    },
+
+    selectPreviousStyleIssue: () => {
+      const { issues, selectedStyleIssueId } = get();
+      if (issues.length === 0) return;
+
+      // Sort issues by line (document order)
+      const sortedIssues = [...issues].sort(
+        (a, b) => (a.line ?? 0) - (b.line ?? 0)
+      );
+
+      if (!selectedStyleIssueId) {
+        // No selection - select the last issue
+        set((state) => {
+          state.selectedStyleIssueId = sortedIssues[sortedIssues.length - 1].id;
+        });
+        return;
+      }
+
+      const currentIndex = sortedIssues.findIndex(
+        (i) => i.id === selectedStyleIssueId
+      );
+      // Wrap around to last issue if at beginning
+      const prevIndex =
+        (currentIndex - 1 + sortedIssues.length) % sortedIssues.length;
+      set((state) => {
+        state.selectedStyleIssueId = sortedIssues[prevIndex].id;
+      });
+    },
   }))
 );
 
@@ -244,3 +340,19 @@ export const useIssueCountByType = () =>
  */
 export const useLastAnalyzedHash = () =>
   useAnalysisStore((state) => state.lastAnalyzedHash);
+
+/**
+ * Get the selected style issue ID
+ */
+export const useSelectedStyleIssueId = () =>
+  useAnalysisStore((state) => state.selectedStyleIssueId);
+
+/**
+ * Get the selected style issue object
+ */
+export const useSelectedStyleIssue = () =>
+  useAnalysisStore((state) =>
+    state.selectedStyleIssueId
+      ? state.issues.find((i) => i.id === state.selectedStyleIssueId) ?? null
+      : null
+  );

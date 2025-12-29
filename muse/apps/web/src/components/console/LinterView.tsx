@@ -18,6 +18,7 @@ import {
   Eye,
   Undo2,
   Redo2,
+  type LucideIcon,
 } from "lucide-react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
 import {
@@ -28,6 +29,14 @@ import {
 } from "../../stores";
 import { useCanUndo, useCanRedo, useUndoCount } from "../../stores/undo";
 import { FixPreviewModal } from "./FixPreviewModal";
+import {
+  SEVERITY_CONFIG,
+  ISSUE_TYPE_CONFIG,
+  type Severity,
+  type LinterIssueType,
+  type SeverityIconName,
+  type IssueTypeIconName,
+} from "@mythos/core";
 
 /**
  * Props for LinterView component
@@ -47,90 +56,42 @@ interface LinterViewProps {
   className?: string;
 }
 
-type Severity = LinterIssue["severity"];
 type IssueType = LinterIssue["type"];
 
 /**
- * Configuration for severity levels
+ * Map severity icon names to React components
  */
-const severityConfig: Record<
-  Severity,
-  {
-    label: string;
-    icon: typeof AlertCircle;
-    bgClass: string;
-    textClass: string;
-    borderClass: string;
-    badgeBg: string;
-    order: number;
-  }
-> = {
-  error: {
-    label: "Errors",
-    icon: AlertCircle,
-    bgClass: "bg-mythos-accent-red/10",
-    textClass: "text-mythos-accent-red",
-    borderClass: "border-mythos-accent-red/30",
-    badgeBg: "bg-mythos-accent-red/20",
-    order: 0,
-  },
-  warning: {
-    label: "Warnings",
-    icon: AlertTriangle,
-    bgClass: "bg-mythos-accent-amber/10",
-    textClass: "text-mythos-accent-amber",
-    borderClass: "border-mythos-accent-amber/30",
-    badgeBg: "bg-mythos-accent-amber/20",
-    order: 1,
-  },
-  info: {
-    label: "Info",
-    icon: Info,
-    bgClass: "bg-mythos-accent-cyan/10",
-    textClass: "text-mythos-accent-cyan",
-    borderClass: "border-mythos-accent-cyan/30",
-    badgeBg: "bg-mythos-accent-cyan/20",
-    order: 2,
-  },
+const SEVERITY_ICONS: Record<SeverityIconName, LucideIcon> = {
+  AlertCircle,
+  AlertTriangle,
+  Info,
 };
 
 /**
- * Configuration for issue types
+ * Map issue type icon names to React components
  */
-const issueTypeConfig: Record<
-  IssueType,
-  {
-    label: string;
-    icon: typeof User;
-    bgClass: string;
-    textClass: string;
-  }
-> = {
-  character: {
-    label: "Character",
-    icon: User,
-    bgClass: "bg-mythos-accent-purple/20",
-    textClass: "text-mythos-accent-purple",
-  },
-  world: {
-    label: "World",
-    icon: Globe,
-    bgClass: "bg-emerald-500/20",
-    textClass: "text-emerald-400",
-  },
-  plot: {
-    label: "Plot",
-    icon: GitBranch,
-    bgClass: "bg-pink-500/20",
-    textClass: "text-pink-400",
-  },
-  timeline: {
-    label: "Timeline",
-    icon: Clock,
-    bgClass: "bg-orange-500/20",
-    textClass: "text-orange-400",
-  },
+const ISSUE_TYPE_ICONS: Record<IssueTypeIconName, LucideIcon> = {
+  User,
+  Globe,
+  GitBranch,
+  Clock,
 };
+
+/**
+ * Get icon component for severity
+ */
+function getSeverityIconComponent(severity: Severity): LucideIcon {
+  const iconName = SEVERITY_CONFIG[severity]?.icon ?? "Info";
+  return SEVERITY_ICONS[iconName] ?? Info;
+}
+
+/**
+ * Get icon component for issue type
+ */
+function getIssueTypeIconComponent(type: LinterIssueType): LucideIcon {
+  const iconName = ISSUE_TYPE_CONFIG[type]?.icon ?? "User";
+  return ISSUE_TYPE_ICONS[iconName] ?? User;
+}
 
 /**
  * Generate a unique ID for an issue (fallback if issue doesn't have one)
@@ -149,8 +110,8 @@ function SeverityBadge({
   severity: Severity;
   count: number;
 }) {
-  const config = severityConfig[severity];
-  const Icon = config.icon;
+  const config = SEVERITY_CONFIG[severity];
+  const Icon = getSeverityIconComponent(severity);
 
   if (count === 0) return null;
 
@@ -172,8 +133,8 @@ function SeverityBadge({
  * Issue type badge
  */
 function IssueTypeBadge({ type }: { type: IssueType }) {
-  const config = issueTypeConfig[type];
-  const Icon = config.icon;
+  const config = ISSUE_TYPE_CONFIG[type as LinterIssueType];
+  const Icon = getIssueTypeIconComponent(type as LinterIssueType);
 
   return (
     <span
@@ -207,8 +168,8 @@ function IssueItem({
   onApplyFix?: (issueId: string, fix: string) => void;
   onPreview?: (issue: LinterIssue) => void;
 }) {
-  const severityConf = severityConfig[issue.severity];
-  const SeverityIcon = severityConf.icon;
+  const severityConf = SEVERITY_CONFIG[issue.severity];
+  const SeverityIcon = getSeverityIconComponent(issue.severity);
   const hasFix = Boolean(issue.suggestion);
 
   return (
@@ -344,8 +305,8 @@ function SeveritySection({
   onPreview?: (issue: LinterIssue) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const config = severityConfig[severity];
-  const Icon = config.icon;
+  const config = SEVERITY_CONFIG[severity];
+  const Icon = getSeverityIconComponent(severity);
 
   if (issues.length === 0) return null;
 

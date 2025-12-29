@@ -6,6 +6,9 @@
   "exports": {
     ".": "./base.config.ts"
   },
+  "dependencies": {
+    "@mythos/theme": "workspace:*"
+  },
   "devDependencies": {
     "tailwindcss": "^3.4.17"
   }

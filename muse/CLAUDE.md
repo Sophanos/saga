@@ -35,8 +35,10 @@ bun run db:generate  # Regenerate Supabase types (requires SUPABASE_PROJECT_ID)
 - `packages/editor` - Tiptap extensions (EntityMark, EntitySuggestion, SceneBlock)
 - `packages/ai` - AI agents (ConsistencyLinter, WritingCoach) via Vercel AI SDK
 - `packages/db` - Supabase client, queries, migrations
-- `packages/ui` - Shared components (Button, Card, Input, ScrollArea)
-- `tooling/` - Shared configs (Tailwind, ESLint, TypeScript)
+- `packages/ui` - Shared components (Button, Card, Input, ScrollArea, FormField, Select, TextArea)
+- `packages/theme` - Cross-platform design tokens (colors, typography, spacing, semantic colors)
+- `packages/prompts` - Consolidated AI prompts (coach, dynamics, linter, entity-detector)
+- `tooling/` - Shared configs (Tailwind imports from @mythos/theme, ESLint, TypeScript)
 
 ## Key Concepts
 
@@ -60,6 +62,37 @@ Copy `.env.example` to `.env` and configure:
 - `OPENROUTER_API_KEY` - Primary AI provider
 - `GOOGLE_GENERATIVE_AI_API_KEY` - Fallback AI provider (optional)
 
+## Code Consolidation Patterns
+
+**Single Source of Truth**:
+- Entity config: `@mythos/core/entities/config.ts` exports `ENTITY_TYPE_CONFIG`, `getEntityColor()`, `getEntityLabel()`
+- Severity config: `@mythos/core/analysis/severity-config.ts` exports `SEVERITY_CONFIG`, `getSeverityColor()`
+- Theme tokens: `@mythos/theme` exports `bg`, `text`, `accent`, `entity`, `severity` colors
+- AI prompts: `@mythos/prompts` is the source; `@mythos/ai` and edge functions re-export
+
+**Persistence Hooks Factory** (`apps/web/src/hooks/usePersistence.ts`):
+- `usePersistenceState(name)` - Shared loading/error state management
+- `createPersistenceHook<T>()` - Factory for CRUD persistence hooks
+- `PersistenceResult<T>` - Unified return type `{ data, error }`
+- All persistence hooks (`useEntityPersistence`, `useRelationshipPersistence`, `useMentionPersistence`) use this
+
+**API Client Base** (`apps/web/src/services/api-client.ts`):
+- `callEdgeFunction<TReq, TRes>()` - Unified HTTP client with error handling
+- `ApiError` base class extended by domain errors (`LinterApiError`, `DynamicsApiError`, `DetectApiError`)
+- All AI service clients import from this base
+
+**DB Mappers** (`@mythos/db/mappers/`):
+- All DB↔Core type mappers live in `@mythos/db`
+- `mapDb*To*()` and `mapCore*ToDb*()` functions
+
 ## Current State
 
 Phases 1-3 (Core Interactivity, Dynamics, Coach) are complete. Phase 4 (Auto-fix Linter integration) is partial - the ConsistencyLinter agent exists but is not wired to the UI (using mock data). See `ARCHITECTURE_REVIEW.md` for detailed gap analysis.
+
+**Consolidation Status (Phase 1-2 Complete)**:
+- UI components consolidated to `@mythos/ui`
+- Theme tokens in `@mythos/theme`, integrated with Tailwind
+- Prompts consolidated to `@mythos/prompts`
+- Persistence hooks using factory pattern
+- API clients using shared base
+- DB mappers moved to `@mythos/db`

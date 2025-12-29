@@ -1,11 +1,36 @@
 /**
  * Shared Prompts for Supabase Edge Functions
  *
- * This module exports all AI prompts used by edge functions.
+ * Re-exports all AI prompts from @mythos/prompts package.
  * Import from here instead of defining prompts inline.
  */
 
-export { WRITING_COACH_SYSTEM } from "./coach.ts";
-export { DYNAMICS_EXTRACTOR_SYSTEM } from "./dynamics.ts";
-export { CONSISTENCY_LINTER_SYSTEM } from "./linter.ts";
-export { ENTITY_DETECTOR_SYSTEM } from "./entity-detector.ts";
+// Coach prompts
+export {
+  WRITING_COACH_SYSTEM,
+  GENRE_COACH_CONTEXTS,
+  QUICK_COACH_PROMPT,
+  SENSORY_FOCUS_PROMPT,
+  TENSION_FOCUS_PROMPT,
+} from "./coach.ts";
+
+// Dynamics prompts
+export {
+  DYNAMICS_EXTRACTOR_SYSTEM,
+  DYNAMICS_QUICK_PROMPT,
+  DYNAMICS_HOSTILE_FOCUS_PROMPT,
+  DYNAMICS_HIDDEN_FOCUS_PROMPT,
+} from "./dynamics.ts";
+
+// Linter prompts
+export {
+  CONSISTENCY_LINTER_SYSTEM,
+  ARCHETYPE_LINTER_SYSTEM,
+  PACING_ANALYZER_SYSTEM,
+} from "./linter.ts";
+
+// Entity detector prompts
+export {
+  ENTITY_DETECTOR_SYSTEM,
+  ENTITY_DETECTOR_USER_TEMPLATE,
+} from "./entity-detector.ts";

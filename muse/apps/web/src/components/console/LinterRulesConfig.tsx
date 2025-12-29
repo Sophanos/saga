@@ -13,7 +13,7 @@ import {
   Check,
   RotateCcw,
 } from "lucide-react";
-import { Button, ScrollArea, cn } from "@mythos/ui";
+import { Button, ScrollArea, Select, cn } from "@mythos/ui";
 
 /**
  * Rule category configuration
@@ -163,6 +163,16 @@ function Toggle({
 }
 
 /**
+ * Severity options for the Select component
+ */
+const severityOptions = [
+  { value: "error", label: "Error" },
+  { value: "warning", label: "Warning" },
+  { value: "info", label: "Info" },
+  { value: "disabled", label: "Disabled" },
+];
+
+/**
  * Category card component
  */
 function CategoryCard({
@@ -177,6 +187,22 @@ function CategoryCard({
   onExpandToggle: () => void;
 }) {
   const Icon = category.icon;
+
+  // Track severity overrides for each level
+  const [severityOverrides, setSeverityOverrides] = useState<
+    Record<string, string>
+  >({
+    error: "error",
+    warning: "warning",
+    info: "info",
+  });
+
+  const handleSeverityChange = (levelId: string, newValue: string) => {
+    setSeverityOverrides((prev) => ({
+      ...prev,
+      [levelId]: newValue,
+    }));
+  };
 
   return (
     <div
@@ -247,21 +273,12 @@ function CategoryCard({
                       {level.label}
                     </span>
                   </div>
-                  <select
-                    className={cn(
-                      "text-[10px] px-1.5 py-0.5 rounded border appearance-none cursor-pointer",
-                      "bg-mythos-bg-tertiary border-mythos-text-muted/20",
-                      "text-mythos-text-secondary",
-                      "focus:outline-none focus:ring-1 focus:ring-mythos-accent-cyan"
-                    )}
-                    defaultValue={level.id}
-                    aria-label={`Override ${level.label} severity`}
-                  >
-                    <option value="error">Error</option>
-                    <option value="warning">Warning</option>
-                    <option value="info">Info</option>
-                    <option value="disabled">Disabled</option>
-                  </select>
+                  <Select
+                    value={severityOverrides[level.id]}
+                    onChange={(value) => handleSeverityChange(level.id, value)}
+                    options={severityOptions}
+                    className="h-6 w-24 text-[10px] px-1.5 py-0.5"
+                  />
                 </div>
               );
             })}
