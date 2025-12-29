@@ -1,313 +1,368 @@
-# Mythos IDE – Architecture Review & Gap Analysis (saga/muse)
+# Mythos IDE - Architecture Review & Strategic Analysis
 
-## 0) Executive Summary
+> Last Updated: December 2024
 
-The Mythos IDE is a monorepo (Turborepo + Bun) with clear separation between domain (`packages/core`), editor (`packages/editor`), AI (`packages/ai`), persistence (`packages/db`), shared UI (`packages/ui`), and the web shell (`apps/web`).
+## Executive Summary
 
-### Implementation Status
+Mythos IDE is an **AI-powered creative writing environment** that treats **"story as code"**. It combines the structured data model of Notion with the AI assistance of Cursor.ai, purpose-built for fiction writers, world-builders, and TTRPG game masters.
+
+**Core Philosophy:**
+- Entities as variables (Characters, Locations, Items, Magic Systems, Factions)
+- Relationships as dependencies (18 typed relationship categories)
+- Consistency as type checking (AI linter catches contradictions)
+- Genre-agnostic (14 templates, expandable to 30+)
+
+---
+
+## 1. Implementation Status
+
+### Completed Phases
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| Phase 1 | Core Interactivity (EntityHUD + Mode Toggle) | **COMPLETE** |
-| Phase 2 | Dynamics System (Event Stream + Causal Chains) | **COMPLETE** |
-| Phase 3 | Coach / Writing Analysis | **COMPLETE** |
-| Phase 4 | AI Integration & Auto-fix Linter | **COMPLETE** |
+| Phase 1 | Core Interactivity (EntityHUD + Mode Toggle) | **Complete** |
+| Phase 2 | Dynamics System (Event Stream + Causal Chains) | **Complete** |
+| Phase 3 | Coach / Writing Analysis | **Complete** |
+| Phase 4 | AI Integration & Auto-fix Linter | **Complete** |
+| Phase 5 | RAG Chat & Semantic Search | **Complete** |
+| Phase 6 | Import/Export (EPUB, DOCX, PDF, Markdown) | **Complete** |
+| Phase 7 | Authentication (Supabase + Google OAuth) | **Complete** |
+
+### MLP Readiness: 85%
+
+**Ready:**
+- Core editor with entity mentions
+- 7 entity types with relationships
+- AI Chat (RAG), Search, Linter, Coach, Dynamics
+- Multi-format import/export
+- Authentication flow
+- Landing page with pricing tiers
+
+**Gaps for MLP:**
+- Onboarding flow (guided tour, sample project)
+- Template picker UI (14 templates defined, no selector)
+- Usage dashboard (word count, AI calls, billing)
+- Collaboration UI wiring (backend 100% done)
 
 ---
 
-## 1) Current Implementation (What Exists Today)
+## 2. Architecture Overview
 
-### 1.1 Repo Layout (High-level)
+### Monorepo Structure (Turborepo + Bun)
 
-- **apps/web**
-  - Three-pane layout (Manifest / Canvas / Console)
-  - Console tabs: Chat, Linter, Dynamics, Coach
-  - Tiptap editor rendering via `@mythos/editor`
-  - Zustand stores: project, document, world, editor, linter, ui, dynamics, analysis
-  - Writer/DM mode toggle with mode-aware UI
+```
+saga/muse/
+├── apps/
+│   ├── web/           # React SPA (Vite + Tiptap + Zustand)
+│   ├── mobile/        # Expo React Native (partial)
+│   └── website/       # Marketing landing page
+├── packages/
+│   ├── core/          # Domain types, World Graph, templates, schemas
+│   ├── editor/        # Tiptap extensions (EntityMark, SceneBlock, Linter)
+│   ├── ai/            # AI agents (Linter, Coach, Detector, Dynamics)
+│   ├── db/            # Supabase client, queries, migrations, mappers
+│   ├── ui/            # Shared React components
+│   ├── theme/         # Design tokens (colors, typography, spacing)
+│   ├── prompts/       # Consolidated AI prompts
+│   ├── state/         # Zustand stores (auth, project, collaboration, offline)
+│   ├── storage/       # Platform storage abstraction (web/native)
+│   └── sync/          # Offline sync engine (Dexie/SQLite)
+├── supabase/
+│   └── functions/     # Edge functions (ai-chat, ai-search, ai-lint, etc.)
+└── tooling/           # Shared configs (Tailwind, ESLint, TypeScript)
+```
 
-- **packages/core**
-  - Entity domain types + Zod schemas (`src/entities/`, `src/schema/`)
-  - `WorldGraph` for entity/relationship graph + conflict detection
-  - Story structs (scenes/chapters/arcs) (`src/story/`)
-  - Dynamics module (`src/dynamics/`) - Interaction types, EventStream class
-  - Analysis types (`src/analysis/`) - SceneMetrics, StyleIssue, WritingAnalysis
-  - HUD types (`src/entities/hud-types.ts`) - CharacterHudData, ItemHudData, LocationHudData
+### Key Architectural Patterns
 
-- **packages/editor**
-  - Tiptap extensions:
-    - `EntityMark` (wrap spans with data attributes)
-    - `EntitySuggestion` ("@" mention suggestions)
-    - `SceneBlock` wrapper node
+1. **Single Source of Truth**
+   - Entity config: `@mythos/core/entities/config.ts`
+   - Severity config: `@mythos/core/analysis/severity-config.ts`
+   - Theme tokens: `@mythos/theme`
+   - AI prompts: `@mythos/prompts` (edge functions re-export)
 
-- **packages/ai**
-  - Vercel AI SDK + Gemini provider
-  - `ConsistencyLinter` agent (returns JSON issues)
-  - `GenesisWizard` scaffolding agent
-  - `WritingCoach` agent (tension, sensory, pacing, mood, show-don't-tell)
+2. **Persistence Hooks Factory**
+   - `usePersistenceState()` for shared loading/error state
+   - `createPersistenceHook<T>()` factory for CRUD hooks
+   - Unified `PersistenceResult<T>` return type
 
-- **packages/db**
-  - Supabase schema + queries for projects/entities/documents/mentions
-  - Migrations:
-    - `001_initial.sql` - projects, entities, relationships, documents, mentions
-    - `002_interactions.sql` - interactions table with RLS
-    - `003_pgvector.sql` - document embeddings, semantic/hybrid search
-    - `004_analysis.sql` - scene_analysis table with history functions
+3. **API Client Base**
+   - `callEdgeFunction<TReq, TRes>()` unified HTTP client
+   - `ApiError` base class for domain errors
 
-- **packages/ui**
-  - Button/Input/Card/ScrollArea + globals.css theme tokens
-
-### 1.2 Implemented Features
-
-#### Phase 1 - Core Interactivity
-- `ui.mode: "writer" | "dm"` in Zustand store
-- `ModeToggle.tsx` - toggles between Writer/DM with icons
-- `useMode.ts` - returns mode, isDM, isWriter, setMode, toggleMode
-- `useEntityClick.ts` - handles entity span clicks, calculates position
-- `useHudPosition.ts` - viewport boundary logic with placement fallbacks
-- `AsciiHud.tsx` - mode-aware rendering for Character/Item/Location entities
-- Header integration with ModeToggle component
-
-#### Phase 2 - Dynamics System
-- `packages/core/src/dynamics/types.ts` - InteractionType, Interaction, EventStreamSnapshot
-- `packages/core/src/dynamics/event-stream.ts` - causal chain querying, temporal proximity, hidden detection
-- `packages/db/src/migrations/002_interactions.sql` - interactions table with RLS
-- `packages/db/src/queries/interactions.ts` - CRUD + getInteractionsByEntity, getHiddenInteractions
-- `apps/web/src/stores/dynamics.ts` - Zustand store with selectors
-- `DynamicsView.tsx` - timeline view, hidden/hostile badges, insights panel
-
-#### Phase 3 - Coach / Writing Analysis
-- `packages/core/src/analysis/types.ts` - SceneMetrics, StyleIssue, WritingAnalysis
-- `packages/ai/src/prompts/coach.ts` - WRITING_COACH_SYSTEM, QUICK_COACH_PROMPT
-- `packages/ai/src/agents/writing-coach.ts` - validation, normalization, grade conversion
-- `apps/web/src/stores/analysis.ts` - metrics, issues, insights, lastAnalyzedHash
-- `apps/web/src/hooks/useWritingAnalysis.ts` - debounced auto-analysis with hash deduplication
-- `CoachView.tsx` - integrates all subcomponents
-- `TensionGraph.tsx` - bar chart with gradient colors
-- `SensoryHeatmap.tsx` - 5-sense grid with balance visualization
-- `ShowDontTellMeter.tsx` - letter grade, progress bar, feedback
-- `StyleIssuesList.tsx` - issue cards with type badges
-- `packages/db/src/migrations/003_pgvector.sql` - document embeddings, semantic search
-- `packages/db/src/migrations/004_analysis.sql` - scene_analysis table
-- `packages/db/src/queries/analysis.ts` - CRUD + metrics aggregation
+4. **DB Mappers**
+   - All type conversions in `@mythos/db/mappers/`
+   - `mapDb*To*()` and `mapCore*ToDb*()` functions
 
 ---
 
-## 2) Target Prototype Features (Expected Behaviors)
+## 3. Feature Deep-Dive
 
-From the prototype, the IDE should support:
+### 3.1 Entity System
 
-1. **EntitySpan click** → opens HUD near cursor, supports mode-dependent fields
-2. **Scene Context Bar** always visible (between Header and workspace):
-   - "In Scene" cast badges
-   - tension state and mood
-   - quick analysis stats
-3. **Dynamics View** in right console (tab):
-   - timeline dots + action arrows (Source → Verb → Target)
-   - hidden interactions highlighted (purple)
-   - "Dynamics Insight" summary
-4. **Coach View** in right console (tab):
-   - show-don't-tell meter
-   - tension arc graph
-   - sensory heatmap
-5. **Writer/DM Mode Toggle** in header:
-   - DM shows mechanical stats, hidden interactions
-   - Writer focuses on narrative threads, prose metrics
-6. **Enhanced Linter**
-   - multiple issue categories: consistency, style, graph insights
-   - issue-level "Auto-Fix" actions (where safe)
+| Entity Type | Key Properties |
+|-------------|----------------|
+| **Character** | 16 Jungian archetypes, traits (strength/weakness/shadow), status (health/mood), visual description, backstory, goals, fears |
+| **Location** | Parent hierarchy, climate, atmosphere, inhabitants, connections |
+| **Item** | Category (weapon/armor/artifact/key), rarity, owner, abilities |
+| **Magic System** | Rules, limitations, costs, users, spells |
+| **Faction** | Leader, members, headquarters, goals, rivals, allies |
+| **Event** | Timeline markers |
+| **Concept** | Abstract themes |
 
----
+**Relationships (18 types):**
+Interpersonal (knows, loves, hates, married_to, allied_with, enemy_of), Familial (parent_of, child_of, sibling_of), Power/Action (killed, created, owns, guards, rules, serves, member_of), Ability (weakness, strength)
 
-## 3) Optional Enhancements (Future Work)
+### 3.2 AI Capabilities
 
-### 3.1 Scene Context Bar
-- `apps/web/src/components/canvas/SceneContextBar.tsx`
-- "In Scene" cast badges with entity avatars
-- Quick tension/mood display from analysis store
-- Active character indicators
+| Agent | Function | Provider |
+|-------|----------|----------|
+| **RAG Chat** | Context-aware assistant using vector search | DeepInfra + Qdrant + OpenRouter |
+| **Semantic Search** | Meaning-based search across docs/entities | DeepInfra (Qwen3-Embedding-8B) + Qdrant |
+| **Consistency Linter** | Catches plot holes, timeline errors, contradictions | OpenRouter (Gemini 2.0 Flash) |
+| **Writing Coach** | Show-don't-tell, tension, sensory balance, style | OpenRouter (Gemini 2.0 Flash) |
+| **Entity Detector** | Auto-detects entities from pasted text | OpenRouter |
+| **Dynamics Extractor** | Tracks character interactions | OpenRouter |
+| **Genesis Wizard** | Project scaffolding from description | OpenRouter |
 
-### 3.2 Dynamics Extraction AI Agent
-- `packages/ai/src/agents/dynamics-extractor.ts`
-- Auto-extract interactions from prose text
-- Populate dynamics store automatically
-- Detect hidden/hostile interactions
+**Vector Infrastructure:**
+- Embeddings: DeepInfra Qwen3-Embedding-8B (4096 dimensions)
+- Vector DB: Qdrant (saga_vectors collection on Hetzner)
+- Reranking: Qwen3-Reranker-4B (optional)
 
-### 3.3 Entity Avatars
-- `apps/web/src/components/canvas/EntityAvatar.tsx`
-- Visual character/item/location thumbnails
-- Used in SceneContextBar and HUD
+### 3.3 World Graph
 
-### 3.4 Advanced Linter Features
-- Fix preview modal before applying
-- Undo/redo for applied fixes
-- Issue severity trends over time
+In-memory graph structure with:
+- `nodes: Map<string, Entity>`
+- `edges: Map<string, Relationship>`
+- `adjacency: Map<string, Set<string>>`
 
----
+**Conflict Detection:**
+- Genealogy conflicts (incest warnings)
+- Relationship contradictions (loves AND hates same target)
+- Timeline inconsistencies
+- Location contradictions
+- Power scaling issues
+- Visual description inconsistencies
 
-## 4) Implementation Roadmap (Updated)
+### 3.4 Writer/DM Mode
 
-### Phase 1 — Core Interactivity (EntityHUD + mode toggle)
-**Status: COMPLETE**
+| Aspect | Writer Mode | DM Mode |
+|--------|-------------|---------|
+| HUD Content | Narrative threads, arcs, foreshadowing | Stats, health, power level, hidden notes |
+| Dynamics | Visible interactions only | All interactions including hidden |
+| Focus | Prose quality, pacing | Game mechanics, secrets |
 
-Implemented:
-- `ui.mode: "writer" | "dm"` in Zustand
-- `ModeToggle` in Header
-- Entity click handler with HUD positioning
-- Mode-aware HUD rendering (Writer: threads, narrative; DM: stats, hidden notes)
+### 3.5 Collaboration System (80% Complete)
 
-Files:
-- `apps/web/src/stores/index.ts`
-- `apps/web/src/components/Header.tsx`
-- `apps/web/src/components/ModeToggle.tsx`
-- `apps/web/src/hooks/useMode.ts`
-- `apps/web/src/hooks/useEntityClick.ts`
-- `apps/web/src/hooks/useHudPosition.ts`
-- `apps/web/src/components/hud/AsciiHud.tsx`
-- `packages/core/src/entities/hud-types.ts`
+**Backend (Complete):**
+- `project_members` table with roles (owner/editor/viewer)
+- `project_invitations` with email tokens
+- `activity_log` with triggers
+- Row-Level Security policies
+- Supabase Realtime channels
 
----
+**Frontend (Needs Wiring):**
+- `CollaboratorsBar.tsx` - avatar stack, invite button
+- `InviteMemberModal.tsx` - email invitation form
+- `ActivityFeed.tsx` - real-time activity stream
+- `useCollaboration.ts` - hook for state management
 
-### Phase 2 — Dynamics System (Event stream + causal chains)
-**Status: COMPLETE**
+### 3.6 Offline Sync Engine (80% Complete)
 
-Implemented:
-- `packages/core/src/dynamics/*` with EventStream class
-- DB table + queries (interactions)
-- `dynamics` store slice
-- `DynamicsView` tab in Console
-- Timeline visualization with interaction types
+**Architecture:**
+- Local-first writes to IndexedDB (web) / SQLite (native)
+- Mutation queue for pending changes
+- Background sync every 30 seconds
+- Supabase Realtime for pull
+- Conflict resolution strategies (server_wins, client_wins, merge, manual)
 
-Files:
-- `packages/core/src/dynamics/types.ts`
-- `packages/core/src/dynamics/event-stream.ts`
-- `packages/core/src/dynamics/index.ts`
-- `packages/db/src/migrations/002_interactions.sql`
-- `packages/db/src/queries/interactions.ts`
-- `apps/web/src/stores/dynamics.ts`
-- `apps/web/src/components/console/DynamicsView.tsx`
+**Files:**
+- `packages/sync/src/syncEngine.ts`
+- `packages/sync/src/web/dexieDb.ts`
+- `packages/sync/src/native/sqliteDb.ts`
 
 ---
 
-### Phase 3 — Coach / Writing Analysis
-**Status: COMPLETE**
+## 4. USPs / Competitive Advantages
 
-Implemented:
-- `WritingCoach` agent + prompts
-- `analysis` store slice with hash deduplication
-- `CoachView` with all subcomponents
-- Debounced analysis (1000ms) with content hash comparison
-- DB persistence for scene analysis history
+### 4.1 Killer Features
 
-Files:
-- `packages/ai/src/prompts/coach.ts`
-- `packages/ai/src/agents/writing-coach.ts`
-- `packages/core/src/analysis/types.ts`
-- `apps/web/src/stores/analysis.ts`
-- `apps/web/src/hooks/useWritingAnalysis.ts`
-- `apps/web/src/components/console/CoachView.tsx`
-- `apps/web/src/components/console/TensionGraph.tsx`
-- `apps/web/src/components/console/SensoryHeatmap.tsx`
-- `apps/web/src/components/console/ShowDontTellMeter.tsx`
-- `apps/web/src/components/console/StyleIssuesList.tsx`
-- `packages/db/src/migrations/003_pgvector.sql`
-- `packages/db/src/migrations/004_analysis.sql`
-- `packages/db/src/queries/analysis.ts`
+1. **"Story as Code" Philosophy**
+   - No other writing tool treats narrative with this structural rigor
+   - Entities as typed variables with validation
 
----
+2. **AI Consistency Linter**
+   - Catches "Marcus has blue eyes in Ch.3 but brown in Ch.12"
+   - Auto-fix suggestions with one-click apply
+   - **This is the #1 WOW feature**
 
-### Phase 4 — AI Integration & Auto-fix Linter
-**Status: COMPLETE**
+3. **Writer/DM Mode Toggle**
+   - Unique dual-persona approach
+   - Writers see narrative; GMs see mechanics
 
-Implemented:
-- Editor fix primitives (replaceText, removeText, insertText, jumpToPosition)
-- `LinterView.tsx` with issue grouping by severity/type
-- `useLinterFixes.ts` hook with debounced auto-linting
-- ConsistencyLinter agent wired to linter store
-- Auto-fix actions with per-issue and batch fix support
-- Jump-to-location functionality
+4. **18 Typed Relationships**
+   - Not just "related" but knows, loves, hates, killed, guards
+   - Conflict detection on relationship logic
 
-Files:
-- `packages/editor/src/fixes/index.ts`
-- `packages/editor/src/fixes/replaceText.ts`
-- `packages/editor/src/fixes/removeText.ts`
-- `packages/editor/src/fixes/insertText.ts`
-- `packages/editor/src/fixes/jumpToPosition.ts`
-- `apps/web/src/components/console/LinterView.tsx`
-- `apps/web/src/hooks/useLinterFixes.ts`
-- `apps/web/src/stores/index.ts` (enhanced linter slice)
+5. **Show-Don't-Tell Meter**
+   - Real-time prose quality feedback
+   - Letter grades (A-F) with specific fixes
+
+6. **Genre-Aware Templates**
+   - Epic Fantasy, D&D Campaign, Manga Novel, Visual Novel
+   - Each customizes entity types, linter rules, UI
+
+### 4.2 Comparison to Competitors
+
+| Feature | Notion | Scrivener | Mythos |
+|---------|--------|-----------|--------|
+| Structured entities | Manual DBs | Tags only | **Typed system** |
+| Relationship tracking | Manual | None | **18 types + graph** |
+| AI writing feedback | None | None | **Coach + Linter** |
+| Consistency checking | None | None | **Auto-detection** |
+| Genre templates | None | Basic | **14 specialized** |
+| DM/hidden info layer | None | None | **Built-in** |
 
 ---
 
-## 5) Architectural Guardrails
+## 5. Opportunities Roadmap
 
-1. **Keep "domain entities" clean**
-   - HUD-specific and DM-stats in projection layer (`hud-types.ts`), not base `Entity`
+### 5.1 Immediate (MLP Launch)
 
-2. **Use stable shared types**
-   - Shared "Interaction", "SceneMetrics", "StyleIssue" types in `packages/core`
-   - UI + AI depend on those shapes
+| Priority | Feature | Effort | Impact |
+|----------|---------|--------|--------|
+| P0 | Onboarding flow (3-step wizard) | 2 days | High |
+| P0 | Template picker UI | 1 day | High |
+| P0 | Usage dashboard (word count, AI calls) | 2 days | High |
+| P1 | Wire collaboration UI | 1 day | Medium |
+| P1 | Subscription billing (Stripe) | 3 days | Critical |
 
-3. **Debounce AI calls**
-   - 1000ms debounce implemented
-   - Hash-based content deduplication prevents redundant analysis
-   - Manual "Run" button available
+### 5.2 Near-Term (Differentiation)
 
-4. **Document positions**
-   - Tiptap position offsets for precise fixes
-   - Line/column mapping for display
+| Priority | Feature | Effort | Impact |
+|----------|---------|--------|--------|
+| P1 | **World Graph Visualization** | 1 week | Very High |
+| P1 | **Cmd+K Command Palette** | 3 days | High |
+| P2 | Timeline View | 1 week | High |
+| P2 | Map Integration | 2 weeks | Medium |
+
+### 5.3 Medium-Term (World-Building Expansion)
+
+| Priority | Feature | Effort | Impact |
+|----------|---------|--------|--------|
+| P2 | Character Relationship Board | 1 week | High |
+| P2 | Genealogy Tree View | 1 week | Medium |
+| P3 | Power Scaling Tracker | 3 days | Medium |
+| P3 | Magic System Simulator | 1 week | Low |
+
+### 5.4 Long-Term (Vision Execution)
+
+| Priority | Feature | Effort | Impact |
+|----------|---------|--------|--------|
+| P3 | **Character Image Generation** | 2 weeks | Very High |
+| P3 | **Storyboard View (Manga/Comics)** | 3 weeks | High |
+| P3 | **Interactive Fiction Export (Twine/Ink)** | 1 week | Medium |
+| P4 | Scene-to-Image Generation | 1 month | Very High |
+| P4 | Video Script Mode | 2 weeks | Medium |
+
+### 5.5 Progressive Disclosure Polish
+
+The progressive disclosure system (Gardener/Architect modes) is implemented. Remaining polish:
+
+| Priority | Feature | Effort | Impact |
+|----------|---------|--------|--------|
+| P1 | Tutorial overlays (coach marks for first-time features) | 2 days | High |
+| P1 | Persist "never ask" preferences to Supabase | 0.5 day | Medium |
+| P1 | Wire ConsistencyLinter agent to UI (currently mock data) | 2 days | High |
+| P2 | Phase progression analytics (track unlock rates) | 1 day | Medium |
+| P2 | Customizable unlock thresholds in settings | 1 day | Low |
+
+**Related beads:** `muse-7r3` (Onboarding flow integration), `muse-x3g` (Progressive Structure - closed)
+
+---
+
+## 6. Technical Debt & Guardrails
+
+### 6.1 Architectural Guardrails
+
+1. **Keep domain entities clean** - HUD-specific data in projection layer only
+2. **Debounce AI calls** - 1000ms debounce, hash-based deduplication
+3. **Document positions** - Tiptap offsets for precise fixes
+4. **Single source of truth** - No duplicated type definitions
+
+### 6.2 Known Technical Debt
+
+| Area | Issue | Severity |
+|------|-------|----------|
+| Naming | "Mythos" vs "Muse" inconsistency | Low |
+| Mobile | Expo app incomplete | Medium |
+| Tests | No test coverage | High |
+| Docs | API documentation missing | Medium |
+
+### 6.3 Security Considerations
+
+- BYOK model means no API key storage (user-provided)
+- Supabase RLS policies in place
+- No PII in vector embeddings (content only)
 
 ---
 
-## 6) Optional Enhancements Plan
+## 7. Metrics to Track
 
-All core phases (1-4) are complete. Below are optional enhancements prioritized by impact:
+### 7.1 Product Metrics
 
-### Priority 1: Scene Context Bar
-**Goal:** Show active scene context between Header and Canvas
+| Metric | Target | Purpose |
+|--------|--------|---------|
+| Words written/user/day | 500+ | Engagement |
+| AI calls/user/session | 5-10 | Feature adoption |
+| Entities created/project | 20+ | Depth of use |
+| Linter issues fixed | 50%+ | AI value delivery |
 
-**Deliverables:**
-- `apps/web/src/components/canvas/SceneContextBar.tsx`
-- `apps/web/src/components/canvas/EntityAvatar.tsx`
-- Integration with analysis store for tension/mood
-- Integration with dynamics store for active cast
+### 7.2 Business Metrics
 
-**Features:**
-- Cast badges showing characters in current scene
-- Quick tension indicator (color-coded bar)
-- Current mood display
-- Click avatar → open entity HUD
-
-### Priority 2: Dynamics Extraction Agent
-**Goal:** Auto-populate event stream from prose
-
-**Deliverables:**
-- `packages/ai/src/agents/dynamics-extractor.ts`
-- `packages/ai/src/prompts/dynamics.ts`
-- Integration with dynamics store
-- Manual trigger + auto-extract on scene change
-
-**Features:**
-- Extract character interactions from text
-- Detect interaction types (neutral/hostile/hidden/passive)
-- Identify causal chains
-- Flag potential hidden interactions for DM review
-
-### Priority 3: Enhanced Analysis Persistence
-**Goal:** Track writing metrics over time
-
-**Deliverables:**
-- Dashboard for historical metrics
-- Scene-by-scene comparison view
-- Trend graphs for tension/sensory/show-don't-tell
-
-### Priority 4: Advanced Linter UX
-**Goal:** Polish the linting experience
-
-**Deliverables:**
-- Fix preview modal with diff view
-- Undo stack for applied fixes
-- Bulk ignore by rule type
-- Custom rule configuration
+| Metric | Target | Purpose |
+|--------|--------|---------|
+| Free→Pro conversion | 5%+ | Monetization |
+| Churn (monthly) | <5% | Retention |
+| NPS | 40+ | Satisfaction |
 
 ---
+
+## 8. Decision Log
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2024-Q4 | DeepInfra for embeddings | Cost-effective, high quality |
+| 2024-Q4 | Qdrant for vectors | Self-hosted, no vendor lock-in |
+| 2024-Q4 | OpenRouter for LLM | BYOK support, model flexibility |
+| 2024-Q4 | Supabase for DB | Realtime, RLS, edge functions |
+| 2024-Q4 | Bun + Turborepo | Fast builds, modern tooling |
+
+---
+
+## Appendix: File Reference
+
+### Core Files
+
+| Purpose | Location |
+|---------|----------|
+| Entity types | `packages/core/src/entities/types.ts` |
+| World Graph | `packages/core/src/world-graph/index.ts` |
+| Template definitions | `packages/core/src/templates/builtin.ts` |
+| AI prompts | `packages/prompts/src/*.ts` |
+| Edge functions | `supabase/functions/*/index.ts` |
+| Main app | `apps/web/src/App.tsx` |
+| Zustand stores | `apps/web/src/stores/*.ts` |
+
+### Database Migrations
+
+| Migration | Purpose |
+|-----------|---------|
+| 001_initial | Projects, entities, relationships, documents, mentions |
+| 002_interactions | Entity interactions for dynamics |
+| 003_pgvector | Document embeddings, semantic search |
+| 004_analysis | Scene analysis history |
+| 005_flexible_kinds | Template-driven entity kinds |
+| 006_profiles | User profiles |
+| 007_collaboration | Project members, invitations, activity log |
+| 008_offline_versioning | Version columns for sync |
