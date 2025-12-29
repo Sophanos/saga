@@ -13,6 +13,24 @@ import type {
 import type { ConsistencyIssue } from "@mythos/ai";
 import type { Editor } from "@mythos/editor";
 
+// Import shared tool types from agent-protocol (single source of truth)
+import type {
+  ToolName,
+  ToolInvocationStatus,
+  ToolArtifactKind,
+  ToolArtifact,
+  ToolProgress,
+} from "@mythos/agent-protocol";
+
+// Re-export for backwards compatibility
+export type {
+  ToolName,
+  ToolInvocationStatus,
+  ToolArtifactKind,
+  ToolArtifact,
+  ToolProgress,
+};
+
 // Project slice
 interface ProjectState {
   currentProject: Project | null;
@@ -138,56 +156,6 @@ export interface ChatMention {
   type: "entity" | "document";
   id: string;
   name: string;
-}
-
-/**
- * Status of a tool invocation throughout its lifecycle.
- */
-export type ToolInvocationStatus =
-  | "proposed"     // LLM suggested this action, awaiting user decision
-  | "accepted"     // User accepted, execution starting
-  | "executing"    // Long-running operation in progress
-  | "executed"     // Successfully completed
-  | "rejected"     // User declined the proposal
-  | "failed"       // Execution failed
-  | "canceled";    // User or system canceled during execution
-
-/**
- * Tool names supported by the agent system.
- */
-export type ToolName =
-  | "create_entity"
-  | "update_entity"
-  | "delete_entity"
-  | "create_relationship"
-  | "update_relationship"
-  | "delete_relationship"
-  | "generate_content"
-  | "generate_image";  // future
-
-/**
- * Artifact kinds that tools can produce.
- */
-export type ToolArtifactKind = "image" | "link" | "diff" | "graph" | "file";
-
-/**
- * An artifact produced by a tool execution.
- */
-export interface ToolArtifact {
-  kind: ToolArtifactKind;
-  title?: string;
-  url?: string;
-  previewUrl?: string;
-  mimeType?: string;
-  data?: unknown;
-}
-
-/**
- * Progress information for long-running tools.
- */
-export interface ToolProgress {
-  pct?: number;
-  stage?: string;
 }
 
 /**

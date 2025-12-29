@@ -11,6 +11,7 @@ import { createEntityExecutor } from "./executors/createEntity";
 import { updateEntityExecutor } from "./executors/updateEntity";
 import { deleteEntityExecutor } from "./executors/deleteEntity";
 import { createRelationshipExecutor } from "./executors/createRelationship";
+import { updateRelationshipExecutor } from "./executors/updateRelationship";
 import { deleteRelationshipExecutor } from "./executors/deleteRelationship";
 import { generateContentExecutor } from "./executors/generateContent";
 
@@ -26,6 +27,7 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   update_entity: updateEntityExecutor as ToolDefinition<unknown, unknown>,
   delete_entity: deleteEntityExecutor as ToolDefinition<unknown, unknown>,
   create_relationship: createRelationshipExecutor as ToolDefinition<unknown, unknown>,
+  update_relationship: updateRelationshipExecutor as ToolDefinition<unknown, unknown>,
   delete_relationship: deleteRelationshipExecutor as ToolDefinition<unknown, unknown>,
   generate_content: generateContentExecutor as ToolDefinition<unknown, unknown>,
 };

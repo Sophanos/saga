@@ -3,7 +3,10 @@
  */
 
 import type { Entity, Relationship, EntityType, RelationType } from "@mythos/core";
-import type { ToolName, ToolArtifact } from "../stores";
+import type { ToolName, ToolArtifact, ToolDangerLevel } from "@mythos/agent-protocol";
+
+// Re-export for backwards compatibility
+export type { ToolDangerLevel };
 
 // =============================================================================
 // Execution Context
@@ -16,6 +19,8 @@ import type { ToolName, ToolArtifact } from "../stores";
 export interface ToolExecutionContext {
   /** Current project ID */
   projectId: string;
+  /** Abort signal for cancellation support */
+  signal?: AbortSignal;
   /** All entities in the project (by ID) */
   entities: Map<string, Entity>;
   /** All relationships in the project */
@@ -54,11 +59,6 @@ export interface ToolExecutionResult<T = unknown> {
 // =============================================================================
 
 /**
- * Danger level for tool execution.
- */
-export type ToolDangerLevel = "safe" | "destructive" | "costly";
-
-/**
  * Definition for a single tool in the client registry.
  */
 export interface ToolDefinition<TArgs = unknown, TResult = unknown> {
@@ -74,8 +74,8 @@ export interface ToolDefinition<TArgs = unknown, TResult = unknown> {
   renderSummary: (args: TArgs) => string;
   /** Execute the tool */
   execute: (args: TArgs, ctx: ToolExecutionContext) => Promise<ToolExecutionResult<TResult>>;
-  /** Validate args (optional) */
-  validate?: (args: unknown) => args is TArgs;
+  /** Validate args before execution (optional) */
+  validate?: (args: TArgs) => { valid: boolean; error?: string };
 }
 
 // =============================================================================

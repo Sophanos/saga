@@ -99,7 +99,12 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
 
   // Handle accepting the tool proposal
   const handleAccept = useCallback(async () => {
-    await acceptTool(messageId);
+    try {
+      await acceptTool(messageId);
+    } catch (error) {
+      console.error("Failed to accept tool:", error);
+      // Error is displayed via tool.error in the UI
+    }
   }, [messageId, acceptTool]);
 
   // Handle rejecting the tool proposal
@@ -114,7 +119,12 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
 
   // Handle retrying a failed tool
   const handleRetry = useCallback(async () => {
-    await retryTool(messageId);
+    try {
+      await retryTool(messageId);
+    } catch (error) {
+      console.error("Failed to retry tool:", error);
+      // Error is displayed via tool.error in the UI
+    }
   }, [messageId, retryTool]);
 
   // Get icon based on tool type

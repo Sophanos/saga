@@ -4,7 +4,7 @@
 
 import type { EntityType } from "@mythos/core";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
-import { resolveEntityByName } from "../types";
+import { withErrorHandling, resolveEntityOrError } from "../utils";
 
 export interface DeleteEntityArgs {
   entityName: string;
@@ -26,22 +26,20 @@ export const deleteEntityExecutor: ToolDefinition<DeleteEntityArgs, DeleteEntity
   renderSummary: (args) =>
     `${args.entityType || "entity"}: "${args.entityName}"${args.reason ? ` (${args.reason})` : ""}`,
 
-  execute: async (args, ctx): Promise<ToolExecutionResult<DeleteEntityResult>> => {
-    try {
+  execute: (args, ctx): Promise<ToolExecutionResult<DeleteEntityResult>> =>
+    withErrorHandling(async () => {
       // Resolve entity by name
-      const resolution = resolveEntityByName(args.entityName, ctx.entities, args.entityType);
+      const resolved = resolveEntityOrError<DeleteEntityResult>(
+        args.entityName,
+        ctx.entities,
+        args.entityType
+      );
 
-      if (!resolution.found) {
-        if (resolution.candidates) {
-          return {
-            success: false,
-            error: `Ambiguous: found ${resolution.candidates.length} entities named "${args.entityName}". Candidates: ${resolution.candidates.map((e) => `${e.name} (${e.type})`).join(", ")}`,
-          };
-        }
-        return { success: false, error: resolution.error };
+      if (resolved.ok === false) {
+        return resolved.errorResult;
       }
 
-      const entity = resolution.entity!;
+      const entity = resolved.entity;
 
       // Delete from database
       const result = await ctx.deleteEntity(entity.id);
@@ -63,11 +61,5 @@ export const deleteEntityExecutor: ToolDefinition<DeleteEntityArgs, DeleteEntity
         success: false,
         error: result.error ?? "Failed to delete entity",
       };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  },
+    }),
 };

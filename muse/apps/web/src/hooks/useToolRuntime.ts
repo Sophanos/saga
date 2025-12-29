@@ -8,7 +8,7 @@
  * allowing tools to be executed from any surface (chat, command palette, etc.)
  */
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useMythosStore, type ChatToolInvocation } from "../stores";
 import { useEntityPersistence } from "./useEntityPersistence";
 import { useRelationshipPersistence } from "./useRelationshipPersistence";
@@ -30,12 +30,12 @@ export interface UseToolRuntimeResult {
   acceptTool: (messageId: string) => Promise<ToolRuntimeResult>;
   /** Reject a proposed tool */
   rejectTool: (messageId: string) => void;
-  /** Cancel an executing tool */
+  /** Cancel an executing tool (actually aborts the execution) */
   cancelTool: (messageId: string) => void;
   /** Retry a failed tool */
   retryTool: (messageId: string) => Promise<ToolRuntimeResult>;
   /** Build execution context (for advanced use cases) */
-  buildContext: () => ToolExecutionContext | null;
+  buildContext: (signal?: AbortSignal) => ToolExecutionContext | null;
 }
 
 /**
@@ -48,18 +48,9 @@ export interface UseToolRuntimeResult {
  * - Progress updates for long-running operations
  */
 export function useToolRuntime(): UseToolRuntimeResult {
-  // Store state and actions
-  const projectId = useMythosStore((s) => s.project.currentProject?.id);
-  const entities = useMythosStore((s) => s.world.entities);
-  const relationships = useMythosStore((s) => s.world.relationships);
-  const messages = useMythosStore((s) => s.chat.messages);
-
+  // Store actions - subscribe to these for stable references
   const updateToolStatus = useMythosStore((s) => s.updateToolStatus);
   const updateToolInvocation = useMythosStore((s) => s.updateToolInvocation);
-  const addEntity = useMythosStore((s) => s.addEntity);
-  const removeEntity = useMythosStore((s) => s.removeEntity);
-  const addRelationship = useMythosStore((s) => s.addRelationship);
-  const removeRelationship = useMythosStore((s) => s.removeRelationship);
 
   // Persistence hooks
   const {
@@ -74,14 +65,29 @@ export function useToolRuntime(): UseToolRuntimeResult {
     deleteRelationship,
   } = useRelationshipPersistence();
 
+  // Track AbortControllers for each executing tool (by messageId)
+  const abortControllerRef = useRef<Map<string, AbortController>>(new Map());
+
+  // Track which tools are currently executing (prevents double-execution race condition)
+  const executingRef = useRef<Set<string>>(new Set());
+
   /**
    * Build execution context with all dependencies.
+   * Reads fresh state from store at execution time to avoid stale closures.
+   * @param signal Optional AbortSignal for cancellation support
    */
-  const buildContext = useCallback((): ToolExecutionContext | null => {
+  const buildContext = useCallback((signal?: AbortSignal): ToolExecutionContext | null => {
+    // Read fresh state at execution time to avoid stale closures
+    const state = useMythosStore.getState();
+    const projectId = state.project.currentProject?.id;
+    const entities = state.world.entities;
+    const relationships = state.world.relationships;
+
     if (!projectId) return null;
 
     return {
       projectId,
+      signal,
       entities,
       relationships,
       // Entity operations
@@ -110,37 +116,35 @@ export function useToolRuntime(): UseToolRuntimeResult {
         const result = await deleteRelationship(id);
         return { success: !result.error, error: result.error ?? undefined };
       },
-      // Store actions
-      addEntity,
-      addRelationship,
-      removeEntity,
-      removeRelationship,
+      // Store actions - read fresh from store to avoid stale closures
+      addEntity: (entity) => useMythosStore.getState().addEntity(entity),
+      addRelationship: (rel) => useMythosStore.getState().addRelationship(rel),
+      removeEntity: (id) => useMythosStore.getState().removeEntity(id),
+      removeRelationship: (id) => useMythosStore.getState().removeRelationship(id),
     };
   }, [
-    projectId,
-    entities,
-    relationships,
+    // Only persistence hooks needed - state is read fresh at execution time
     createEntity,
     persistUpdateEntity,
     deleteEntity,
     createRelationship,
     persistUpdateRelationship,
     deleteRelationship,
-    addEntity,
-    addRelationship,
-    removeEntity,
-    removeRelationship,
   ]);
 
   /**
    * Find tool invocation from a message.
+   * Note: O(n) lookup via Array.find(). Consider using a Map<messageId, message>
+   * in the store if message counts grow large and this becomes a bottleneck.
    */
   const findToolInvocation = useCallback(
     (messageId: string): ChatToolInvocation | null => {
+      // Read fresh messages to avoid stale closure
+      const messages = useMythosStore.getState().chat.messages;
       const message = messages.find((m) => m.id === messageId);
       return message?.tool ?? null;
     },
-    [messages]
+    [] // No dependencies - reads fresh state each time
   );
 
   /**
@@ -151,16 +155,31 @@ export function useToolRuntime(): UseToolRuntimeResult {
       messageId: string,
       invocation: ChatToolInvocation
     ): Promise<ToolRuntimeResult> => {
-      const ctx = buildContext();
-      if (!ctx) {
-        updateToolStatus(messageId, "failed", "No project selected");
-        return { success: false, error: "No project selected" };
-      }
-
       const tool = getTool(invocation.toolName);
       if (!tool) {
         updateToolStatus(messageId, "failed", `Unknown tool: ${invocation.toolName}`);
         return { success: false, error: `Unknown tool: ${invocation.toolName}` };
+      }
+
+      // Validate args before execution
+      if (tool.validate) {
+        const validationResult = tool.validate(invocation.args);
+        if (!validationResult.valid) {
+          updateToolStatus(messageId, "failed", validationResult.error ?? "Invalid arguments");
+          return { success: false, error: validationResult.error ?? "Invalid arguments" };
+        }
+      }
+
+      // Create AbortController for this execution
+      const abortController = new AbortController();
+      abortControllerRef.current.set(messageId, abortController);
+
+      // Build context with abort signal
+      const ctx = buildContext(abortController.signal);
+      if (!ctx) {
+        abortControllerRef.current.delete(messageId);
+        updateToolStatus(messageId, "failed", "No project selected");
+        return { success: false, error: "No project selected" };
       }
 
       // Update status to executing
@@ -169,6 +188,12 @@ export function useToolRuntime(): UseToolRuntimeResult {
       try {
         // Execute the tool
         const result: ToolExecutionResult = await tool.execute(invocation.args, ctx);
+
+        // Check if aborted before updating status
+        if (abortController.signal.aborted) {
+          // Status was already set to "canceled" by cancelTool
+          return { success: false, error: "Tool execution was canceled" };
+        }
 
         if (result.success) {
           // Update with success
@@ -184,9 +209,18 @@ export function useToolRuntime(): UseToolRuntimeResult {
           return { success: false, error: result.error };
         }
       } catch (error) {
+        // Check if this was an abort error
+        if (abortController.signal.aborted) {
+          // Status was already set to "canceled" by cancelTool
+          return { success: false, error: "Tool execution was canceled" };
+        }
+
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
         updateToolStatus(messageId, "failed", errorMessage);
         return { success: false, error: errorMessage };
+      } finally {
+        // Clean up the controller
+        abortControllerRef.current.delete(messageId);
       }
     },
     [buildContext, updateToolStatus, updateToolInvocation]
@@ -197,6 +231,11 @@ export function useToolRuntime(): UseToolRuntimeResult {
    */
   const acceptTool = useCallback(
     async (messageId: string): Promise<ToolRuntimeResult> => {
+      // Prevent double-execution race condition
+      if (executingRef.current.has(messageId)) {
+        return { success: false, error: "Tool is already executing" };
+      }
+
       const invocation = findToolInvocation(messageId);
       if (!invocation) {
         return { success: false, error: "Tool invocation not found" };
@@ -206,11 +245,19 @@ export function useToolRuntime(): UseToolRuntimeResult {
         return { success: false, error: `Cannot accept tool in status: ${invocation.status}` };
       }
 
-      // Mark as accepted
-      updateToolStatus(messageId, "accepted");
+      // Mark as executing to prevent race condition
+      executingRef.current.add(messageId);
 
-      // Execute the tool
-      return executeToolInvocation(messageId, invocation);
+      try {
+        // Mark as accepted
+        updateToolStatus(messageId, "accepted");
+
+        // Execute the tool
+        return await executeToolInvocation(messageId, invocation);
+      } finally {
+        // Clean up executing flag
+        executingRef.current.delete(messageId);
+      }
     },
     [findToolInvocation, updateToolStatus, executeToolInvocation]
   );
@@ -246,6 +293,13 @@ export function useToolRuntime(): UseToolRuntimeResult {
         return;
       }
 
+      // Abort the controller if one exists (this actually cancels execution)
+      const controller = abortControllerRef.current.get(messageId);
+      if (controller) {
+        controller.abort();
+      }
+
+      // Update status to canceled
       updateToolStatus(messageId, "canceled");
     },
     [findToolInvocation, updateToolStatus]
@@ -265,12 +319,12 @@ export function useToolRuntime(): UseToolRuntimeResult {
         return { success: false, error: `Cannot retry tool in status: ${invocation.status}` };
       }
 
-      // Reset to accepted and re-execute
-      updateToolStatus(messageId, "accepted");
+      // Reset to accepted and clear previous error before re-executing
+      updateToolInvocation(messageId, { status: "accepted", error: undefined });
 
       return executeToolInvocation(messageId, invocation);
     },
-    [findToolInvocation, updateToolStatus, executeToolInvocation]
+    [findToolInvocation, updateToolInvocation, executeToolInvocation]
   );
 
   return {

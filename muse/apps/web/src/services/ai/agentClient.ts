@@ -170,15 +170,18 @@ export async function sendAgentMessageStreaming(
     }
 
     const decoder = new TextDecoder();
-    let buffer = "";
+    const chunks: string[] = [];
 
     while (true) {
       const { done, value } = await readWithTimeout(reader);
       if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
+      chunks.push(decoder.decode(value, { stream: true }));
+      const buffer = chunks.join("");
       const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
+      const remainder = lines.pop() ?? "";
+      chunks.length = 0; // Clear after processing
+      if (remainder) chunks.push(remainder);
 
       for (const line of lines) {
         const event = parseSSELine(line);
@@ -196,12 +199,14 @@ export async function sendAgentMessageStreaming(
             break;
 
           case "tool":
-            if (event.toolName && event.toolCallId) {
+            if (event.toolName && event.toolCallId && typeof event.toolCallId === "string" && event.toolCallId.trim()) {
               onTool?.({
                 toolCallId: event.toolCallId,
                 toolName: event.toolName,
                 args: event.args,
               });
+            } else {
+              console.warn("[agentClient] Received malformed tool event:", event);
             }
             break;
 
@@ -223,8 +228,9 @@ export async function sendAgentMessageStreaming(
     }
 
     // Process remaining buffer
-    if (buffer.trim()) {
-      const event = parseSSELine(buffer);
+    const remainingBuffer = chunks.join("");
+    if (remainingBuffer.trim()) {
+      const event = parseSSELine(remainingBuffer);
       if (event) {
         if (event.type === "done") {
           onDone?.();
