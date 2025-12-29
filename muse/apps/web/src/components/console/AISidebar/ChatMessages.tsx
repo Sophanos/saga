@@ -1,6 +1,7 @@
 import { useRef, useEffect } from "react";
 import { User, Bot, Loader2 } from "lucide-react";
 import { ScrollArea, cn } from "@mythos/ui";
+import { formatTime24 } from "@mythos/core";
 import type { ChatMessage } from "../../../stores";
 import { ToolResultCard } from "./ToolResultCard";
 
@@ -84,18 +85,11 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
         {/* Timestamp */}
         <div className="text-[10px] text-mythos-text-muted mt-1">
-          {formatTime(message.timestamp)}
+          {formatTime24(message.timestamp)}
         </div>
       </div>
     </div>
   );
-}
-
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 export function ChatMessages({

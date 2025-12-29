@@ -5,6 +5,7 @@ import { ApiKeySettings } from "../settings/ApiKeySettings";
 import { ExportModal } from "./ExportModal";
 import { ImportModal } from "./ImportModal";
 import { EntityFormModal, type EntityFormData } from "./EntityFormModal";
+import { InviteMemberModal } from "../collaboration/InviteMemberModal";
 import type { Entity } from "@mythos/core";
 import { buildEntity, getTypeSpecificUpdates } from "@mythos/core";
 
@@ -88,6 +89,9 @@ export function ModalHost() {
           onSave={handleEntitySave}
         />
       );
+
+    case "inviteMember":
+      return <InviteMemberModal isOpen={true} onClose={closeModal} />;
 
     default:
       return null;

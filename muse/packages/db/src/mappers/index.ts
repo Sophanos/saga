@@ -34,3 +34,11 @@ export {
   type DbRelationshipInsert,
   type DbRelationshipUpdate,
 } from "./relationship";
+
+// Activity mappers
+export {
+  mapDbActivityToActivityLogEntry,
+  mapDbActionToActivityType,
+  mapActivityTypeToAction,
+  type ActivityWithActor,
+} from "./activity";

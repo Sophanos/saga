@@ -1,4 +1,5 @@
 // Components
+export { Avatar, getInitials } from "./components/avatar";
 export { Button, buttonVariants } from "./components/button";
 export { Input } from "./components/input";
 export {
@@ -15,6 +16,7 @@ export { Select } from "./components/select";
 export { TextArea } from "./components/textarea";
 
 // Types
+export type { AvatarProps } from "./components/avatar";
 export type { FormFieldProps } from "./components/form-field";
 export type { SelectProps, SelectOption } from "./components/select";
 export type { TextAreaProps } from "./components/textarea";

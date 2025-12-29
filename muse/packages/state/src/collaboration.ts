@@ -5,11 +5,10 @@
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import type { ProjectRole } from "@mythos/core";
 
-/**
- * Project role types for collaboration
- */
-export type ProjectRole = "owner" | "editor" | "viewer";
+// Re-export for consumers
+export type { ProjectRole } from "@mythos/core";
 
 /**
  * Project member representation
@@ -59,6 +58,8 @@ export type ActivityType =
 
 /**
  * Activity log entry for project history
+ * Note: id is string to accommodate both DB numeric IDs (via .toString())
+ * and locally-generated IDs for realtime activity (e.g., "1234567890-entity-insert")
  */
 export interface ActivityLogEntry {
   id: string;

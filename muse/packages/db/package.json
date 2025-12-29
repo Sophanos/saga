@@ -19,10 +19,12 @@
     "db:generate": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/types/database.ts"
   },
   "dependencies": {
+    "@mythos/storage": "workspace:*",
     "@supabase/supabase-js": "^2.47.12"
   },
   "devDependencies": {
     "@mythos/core": "workspace:*",
+    "@mythos/state": "workspace:*",
     "@mythos/typescript-config": "workspace:*",
     "typescript": "^5.7.2"
   }

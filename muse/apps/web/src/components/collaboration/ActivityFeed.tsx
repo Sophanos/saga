@@ -15,13 +15,17 @@ import {
   RefreshCw,
   ChevronDown,
 } from "lucide-react";
-import { Button, ScrollArea } from "@mythos/ui";
+import { Avatar, Button, ScrollArea } from "@mythos/ui";
 import {
   useActivityLog,
   type ActivityLogEntry,
   type ActivityType,
 } from "@mythos/state";
-import { getProjectActivityWithActors, type ActivityWithActor } from "@mythos/db";
+import {
+  getProjectActivityWithActors,
+  mapDbActivityToActivityLogEntry,
+} from "@mythos/db";
+import { formatRelativeTime, formatTime, getTimeGroupLabel } from "@mythos/core";
 import { useCurrentProject } from "../../stores";
 
 // ============================================================================
@@ -49,49 +53,6 @@ interface ActivityItemProps {
 interface TimeGroupProps {
   label: string;
   children: React.ReactNode;
-}
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-function getTimeGroupLabel(date: Date): string {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const entryDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-  if (entryDate.getTime() === today.getTime()) {
-    return "Today";
-  } else if (entryDate.getTime() === yesterday.getTime()) {
-    return "Yesterday";
-  } else {
-    return "Earlier";
-  }
-}
-
-function formatTime(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return formatTime(dateString);
 }
 
 // ============================================================================
@@ -204,42 +165,6 @@ function getEntityIcon(type?: string): React.ElementType {
 }
 
 // ============================================================================
-// Avatar Component
-// ============================================================================
-
-interface AvatarProps {
-  name?: string;
-  avatarUrl?: string;
-  size?: "sm" | "md";
-}
-
-function Avatar({ name, avatarUrl, size = "sm" }: AvatarProps) {
-  const sizeClasses = size === "sm" ? "w-6 h-6 text-[10px]" : "w-8 h-8 text-xs";
-  const initials = name
-    ? name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2)
-    : "?";
-
-  return avatarUrl ? (
-    <img
-      src={avatarUrl}
-      alt={name || "User"}
-      className={`${sizeClasses} rounded-full object-cover`}
-    />
-  ) : (
-    <div
-      className={`${sizeClasses} rounded-full bg-mythos-accent-cyan/30 flex items-center justify-center font-medium text-mythos-accent-cyan`}
-    >
-      {initials}
-    </div>
-  );
-}
-
-// ============================================================================
 // Time Group Component
 // ============================================================================
 
@@ -330,12 +255,23 @@ export function ActivityFeed({
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isMountedRef = useRef(true);
+  const loadActivitiesRef = useRef<(reset?: boolean) => Promise<void>>();
 
-  // Load initial activities
+  // Track mounted state for request cancellation
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Load initial activities using ref to avoid dependency warning
   useEffect(() => {
     if (project?.id) {
-      loadActivities(true);
+      loadActivitiesRef.current?.(true);
     }
   }, [project?.id]);
 
@@ -365,20 +301,11 @@ export function ActivityFeed({
           offset: currentOffset,
         });
 
-        // Map DB activity to state activity format
-        const mappedActivities: ActivityLogEntry[] = data.map((item) => ({
-          id: String(item.id),
-          type: mapActionToType(item.action, item.entity_table),
-          projectId: item.project_id,
-          userId: item.actor_user_id || "",
-          userName: item.actor_name,
-          userAvatarUrl: item.actor_avatar_url,
-          targetId: item.entity_id || undefined,
-          targetType: item.entity_table,
-          targetName: getEntityName(item),
-          details: item.metadata,
-          createdAt: item.created_at,
-        }));
+        // Check if component is still mounted before updating state
+        if (!isMountedRef.current) return;
+
+        // Map DB activity to state activity format using shared mapper
+        const mappedActivities: ActivityLogEntry[] = data.map(mapDbActivityToActivityLogEntry);
 
         if (reset) {
           setActivities(mappedActivities);
@@ -390,21 +317,37 @@ export function ActivityFeed({
 
         setHasMore(data.length === pageSize);
       } catch (error) {
-        console.error("Failed to load activities:", error);
+        // Check mounted state before logging error
+        if (!isMountedRef.current) return;
+        console.error("[Collaboration] Failed to load activities:", error);
       } finally {
-        setIsLoading(false);
+        // Check mounted state before setting loading to false
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
       }
     },
     [project?.id, offset, pageSize, isLoading]
   );
+
+  // Keep ref updated with latest loadActivities function
+  loadActivitiesRef.current = loadActivities;
 
   const handleLoadMore = useCallback(() => {
     loadActivities(false);
   }, [loadActivities]);
 
   const handleRefresh = useCallback(() => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
     loadActivities(true);
-  }, [loadActivities]);
+    // Debounce: prevent rapid clicking with a cooldown period
+    setTimeout(() => {
+      if (isMountedRef.current) {
+        setIsRefreshing(false);
+      }
+    }, 1000);
+  }, [loadActivities, isRefreshing]);
 
   // Group activities by time
   const groupedActivities = useMemo(() => {
@@ -440,12 +383,12 @@ export function ActivityFeed({
             variant="ghost"
             size="icon"
             onClick={handleRefresh}
-            disabled={isLoading}
+            disabled={isLoading || isRefreshing}
             className="h-7 w-7"
             title="Refresh"
           >
             <RefreshCw
-              className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`}
+              className={`w-4 h-4 ${isLoading || isRefreshing ? "animate-spin" : ""}`}
             />
           </Button>
         </div>
@@ -519,45 +462,6 @@ export function ActivityFeed({
         </div>
       </ScrollArea>
     </div>
-  );
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-function mapActionToType(action: string, entityTable: string): ActivityType {
-  // Map DB action + table to our ActivityType
-  const actionMap: Record<string, ActivityType> = {
-    "create:documents": "document_created",
-    "update:documents": "document_updated",
-    "create:entities": "entity_created",
-    "update:entities": "entity_updated",
-    "delete:entities": "entity_deleted",
-    "create:relationships": "relationship_created",
-    "delete:relationships": "relationship_deleted",
-    "create:project_members": "member_joined",
-    "delete:project_members": "member_left",
-    "update:project_members": "member_role_changed",
-    "create:projects": "project_created",
-    join: "member_joined",
-    leave: "member_left",
-  };
-
-  const key = `${action}:${entityTable}`;
-  return actionMap[key] || actionMap[action] || "document_updated";
-}
-
-function getEntityName(activity: ActivityWithActor): string | undefined {
-  const afterData = activity.after_data as Record<string, unknown> | undefined;
-  const beforeData = activity.before_data as Record<string, unknown> | undefined;
-
-  return (
-    (afterData?.['name'] as string) ||
-    (afterData?.['title'] as string) ||
-    (beforeData?.['name'] as string) ||
-    (beforeData?.['title'] as string) ||
-    undefined
   );
 }
 

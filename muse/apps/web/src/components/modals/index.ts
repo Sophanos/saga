@@ -24,3 +24,7 @@ export {
   type CanonChoice,
   type ConsistencyIssueWithChoices,
 } from "./ConsistencyChoiceModal";
+export {
+  InviteMemberModal,
+  type InviteMemberModalProps,
+} from "../collaboration/InviteMemberModal";

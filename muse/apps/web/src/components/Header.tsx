@@ -4,7 +4,6 @@ import { Button } from "@mythos/ui";
 import { ModeToggle } from "./ModeToggle";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { CollaboratorsBar } from "./collaboration/CollaboratorsBar";
-import { InviteMemberModal } from "./collaboration/InviteMemberModal";
 import { useApiKey } from "../hooks/useApiKey";
 import { useCurrentProject, useMythosStore } from "../stores";
 import { useNavigationStore } from "../stores/navigation";
@@ -35,7 +34,6 @@ export function Header() {
 
   // Dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
@@ -54,7 +52,6 @@ export function Header() {
   const isGardener = useIsGardenerMode();
 
   return (
-    <>
     <header className="h-12 border-b border-mythos-text-muted/20 bg-mythos-bg-secondary flex items-center justify-between px-4">
       {/* Logo & Project Name */}
       <div className="flex items-center gap-3">
@@ -123,7 +120,7 @@ export function Header() {
       {/* Actions */}
       <div className="flex items-center gap-2">
         {/* Collaboration & Status */}
-        <CollaboratorsBar onInviteClick={() => setIsInviteModalOpen(true)} />
+        <CollaboratorsBar onInviteClick={() => openModal({ type: "inviteMember" })} />
         <OfflineIndicator />
         <div className="w-px h-6 bg-mythos-text-muted/20 mx-1" />
         
@@ -171,14 +168,5 @@ export function Header() {
         </Button>
       </div>
     </header>
-
-      <InviteMemberModal
-        isOpen={isInviteModalOpen}
-        onClose={() => setIsInviteModalOpen(false)}
-        onInvited={() => {
-          // Optionally refresh activity/members later
-        }}
-      />
-    </>
   );
 }

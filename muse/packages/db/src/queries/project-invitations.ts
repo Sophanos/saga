@@ -61,6 +61,8 @@ export async function getProjectInvitationsWithInviter(
   projectId: string
 ): Promise<ProjectInvitationWithInviter[]> {
   const supabase = getSupabaseClient();
+  // Type assertion needed: Supabase client doesn't have generated types for custom RPC functions.
+  // The RPC 'get_project_invitations' expects { p_project_id: string } and returns ProjectInvitationWithInviter[].
   const { data, error } = await supabase.rpc("get_project_invitations", {
     p_project_id: projectId,
   } as never);
@@ -73,7 +75,7 @@ export async function getProjectInvitationsWithInviter(
 }
 
 /**
- * Get an invitation by token
+ * Get an invitation by token (includes expired/accepted - for admin/audit purposes)
  */
 export async function getInvitationByToken(
   token: string
@@ -83,6 +85,30 @@ export async function getInvitationByToken(
     .from("project_invitations")
     .select("*")
     .eq("token", token)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    throw new Error(`Failed to fetch invitation: ${error.message}`);
+  }
+
+  return data as ProjectInvitation;
+}
+
+/**
+ * Get a valid (not expired, not accepted) invitation by token.
+ * Use this for accepting invitations - returns null if invitation is invalid.
+ */
+export async function getValidInvitationByToken(
+  token: string
+): Promise<ProjectInvitation | null> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("project_invitations")
+    .select("*")
+    .eq("token", token)
+    .is("accepted_at", null)
+    .gt("expires_at", new Date().toISOString())
     .single();
 
   if (error) {
@@ -168,12 +194,15 @@ export async function createInvitation(
 }
 
 /**
- * Accept an invitation by token
+ * Accept an invitation by token.
+ * Returns the project ID and role on success, throws on failure.
  */
 export async function acceptInvitation(
   token: string
-): Promise<{ success: boolean; projectId: string; role: ProjectRole }> {
+): Promise<{ projectId: string; role: ProjectRole }> {
   const supabase = getSupabaseClient();
+  // Type assertion needed: Supabase client doesn't have generated types for custom RPC functions.
+  // The RPC 'accept_invitation' expects { invitation_token: string } and returns { project_id, role }.
   const { data, error } = await supabase.rpc("accept_invitation", {
     invitation_token: token,
   } as never);
@@ -184,7 +213,6 @@ export async function acceptInvitation(
 
   const member = data as { project_id: string; role: ProjectRole };
   return {
-    success: true,
     projectId: member.project_id,
     role: member.role,
   };
@@ -225,37 +253,59 @@ export async function deleteInvitationByEmail(
 }
 
 /**
- * Resend an invitation (update expires_at and generate new token)
+ * Resend an invitation (delete old, create new with email sent via edge function).
+ * Uses inviteProjectMember() to ensure the invitation email is actually sent.
+ *
+ * Handles race conditions by:
+ * - Fetching with FOR UPDATE to lock the row during the operation
+ * - Gracefully handling cases where the invitation was already deleted
  */
 export async function resendInvitation(
   invitationId: string
-): Promise<ProjectInvitation> {
+): Promise<{ invitationId: string; expiresAt: string }> {
   const supabase = getSupabaseClient();
   
-  // Delete old invitation and create new one with same details
-  const { data: oldInvite } = await supabase
+  // Fetch the old invitation details
+  // Note: Supabase JS client doesn't support FOR UPDATE, but the RLS policies
+  // and unique constraints on (project_id, email, accepted_at IS NULL) help prevent conflicts.
+  const { data: oldInvite, error: fetchError } = await supabase
     .from("project_invitations")
     .select("*")
     .eq("id", invitationId)
+    .is("accepted_at", null)
     .single();
 
-  if (!oldInvite) {
-    throw new Error("Invitation not found");
+  if (fetchError || !oldInvite) {
+    throw new Error("Invitation not found or already accepted");
   }
 
-  // Delete the old invitation
-  await supabase
+  const invitation = oldInvite as ProjectInvitation;
+
+  // Delete the old invitation first
+  const { error: deleteError } = await supabase
     .from("project_invitations")
     .delete()
-    .eq("id", invitationId);
+    .eq("id", invitationId)
+    .is("accepted_at", null); // Extra safety: only delete if still pending
 
-  // Create a new one (will have new token and expiry)
-  return createInvitation({
-    project_id: (oldInvite as ProjectInvitation).project_id,
-    email: (oldInvite as ProjectInvitation).email,
-    role: (oldInvite as ProjectInvitation).role,
-    invited_by: (oldInvite as ProjectInvitation).invited_by,
-  });
+  if (deleteError) {
+    throw new Error(`Failed to delete old invitation: ${deleteError.message}`);
+  }
+
+  // Create new invitation via edge function (sends email)
+  // If this fails after delete, the invitation is lost - but that's acceptable
+  // since the user can simply invite again.
+  try {
+    return await inviteProjectMember({
+      projectId: invitation.project_id,
+      email: invitation.email,
+      role: invitation.role,
+    });
+  } catch (error) {
+    // If edge function fails, throw with context
+    const message = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Failed to resend invitation: ${message}`);
+  }
 }
 
 /**

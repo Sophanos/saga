@@ -7,18 +7,18 @@
  * - Tracks presence and cleans up on unmount/project change
  */
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import {
   getSupabaseClient,
   getProjectMembersWithProfiles,
   getProjectActivityWithActors,
+  mapDbActivityToActivityLogEntry,
 } from "@mythos/db";
 import {
   useCollaborationStore,
   generateCollaboratorColor,
   type ProjectMember,
   type CollaboratorPresence,
-  type ActivityLogEntry,
   type ActivityType,
 } from "@mythos/state";
 import { useAuthStore } from "../stores/auth";
@@ -27,6 +27,7 @@ import { useAuthStore } from "../stores/auth";
 type RealtimeChannel = ReturnType<ReturnType<typeof getSupabaseClient>["channel"]>;
 
 // Postgres changes payload type (simplified local definition)
+// Matches Supabase RealtimePostgresChangesPayload structure from @supabase/supabase-js
 interface PostgresChangesPayload<T = Record<string, unknown>> {
   eventType: "INSERT" | "UPDATE" | "DELETE";
   new: T | null;
@@ -34,6 +35,7 @@ interface PostgresChangesPayload<T = Record<string, unknown>> {
 }
 
 // DB member type for type safety
+// Matches the shape returned by getProjectMembersWithProfiles from @mythos/db
 interface DBMemberWithProfile {
   id: string;
   user_id: string;
@@ -43,6 +45,50 @@ interface DBMemberWithProfile {
   name: string | null;
   email: string | null;
   avatar_url: string | null;
+}
+
+/**
+ * Helper to subscribe to postgres_changes on a channel.
+ * Wraps the Supabase channel method to avoid multiple eslint-disable comments.
+ * @internal
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function subscribeToPostgresChanges<T>(
+  channel: RealtimeChannel,
+  table: string,
+  projectId: string,
+  callback: (payload: PostgresChangesPayload<T>) => void
+): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (channel as any).on(
+    "postgres_changes",
+    {
+      event: "*",
+      schema: "public",
+      table,
+      filter: `project_id=eq.${projectId}`,
+    },
+    callback
+  );
+}
+
+/**
+ * Debounce a function with the specified delay
+ */
+function debounce<T extends (...args: unknown[]) => unknown>(
+  fn: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      fn(...args);
+      timeoutId = null;
+    }, delay);
+  };
 }
 
 /**
@@ -70,48 +116,6 @@ export interface UseCollaborationResult {
    * Refresh activity log
    */
   refreshActivity: () => Promise<void>;
-}
-
-/**
- * Map DB activity to collaboration store activity entry
- */
-function mapActivityToEntry(activity: {
-  id: number;
-  project_id: string;
-  actor_user_id: string | null;
-  action: string;
-  entity_table: string;
-  entity_id: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  actor_name?: string;
-  actor_avatar_url?: string;
-}): ActivityLogEntry {
-  // Map action to activity type
-  const actionMap: Record<string, ActivityType> = {
-    create: "entity_created",
-    update: "entity_updated",
-    delete: "entity_deleted",
-    join: "member_joined",
-    leave: "member_left",
-    comment: "comment_added",
-  };
-
-  const type = actionMap[activity.action] || "document_updated";
-
-  return {
-    id: activity.id.toString(),
-    type,
-    projectId: activity.project_id,
-    userId: activity.actor_user_id || "",
-    userName: activity.actor_name,
-    userAvatarUrl: activity.actor_avatar_url,
-    targetId: activity.entity_id || undefined,
-    targetType: activity.entity_table,
-    targetName: (activity.metadata?.["name"] as string) || undefined,
-    details: activity.metadata,
-    createdAt: activity.created_at,
-  };
 }
 
 /**
@@ -182,16 +186,26 @@ export function useCollaboration(projectId: string | null): UseCollaborationResu
   // Channel references
   const presenceChannelRef = useRef<RealtimeChannel | null>(null);
   const changesChannelRef = useRef<RealtimeChannel | null>(null);
-  const connectionStatusRef = useRef<CollaborationConnectionStatus>("disconnected");
+  
+  // Connection status as state so UI re-renders when status changes
+  const [connectionStatus, setConnectionStatus] = useState<CollaborationConnectionStatus>("disconnected");
+  
+  // Track mounted state for async cleanup
+  const isMountedRef = useRef(true);
 
   /**
    * Fetch project members
+   * Checks isMountedRef before setting state to handle component unmount during async operations
    */
   const refreshMembers = useCallback(async () => {
     if (!projectId) return;
 
     try {
       const members = await getProjectMembersWithProfiles(projectId);
+      
+      // Check if component is still mounted before setting state
+      if (!isMountedRef.current) return;
+      
       const mappedMembers = members.map((m: DBMemberWithProfile) => mapMemberToProjectMember(m, projectId));
       setMembers(mappedMembers);
 
@@ -201,36 +215,58 @@ export function useCollaboration(projectId: string | null): UseCollaborationResu
         setMyRole(myMembership?.role || null);
       }
     } catch (error) {
-      console.error("[Collaboration] Failed to fetch members:", error);
+      // Only log error if component is still mounted
+      if (isMountedRef.current) {
+        console.error("[Collaboration] Failed to fetch members:", error);
+      }
     }
   }, [projectId, currentUser, setMembers, setMyRole]);
 
   /**
    * Fetch project activity
+   * Checks isMountedRef before setting state to handle component unmount during async operations
    */
   const refreshActivity = useCallback(async () => {
     if (!projectId) return;
 
     try {
       const activity = await getProjectActivityWithActors(projectId, { limit: 50 });
-      const mappedActivity = activity.map(mapActivityToEntry);
+      
+      // Check if component is still mounted before setting state
+      if (!isMountedRef.current) return;
+      
+      const mappedActivity = activity.map(mapDbActivityToActivityLogEntry);
       setActivity(mappedActivity);
     } catch (error) {
-      console.error("[Collaboration] Failed to fetch activity:", error);
+      // Only log error if component is still mounted
+      if (isMountedRef.current) {
+        console.error("[Collaboration] Failed to fetch activity:", error);
+      }
     }
   }, [projectId, setActivity]);
+  
+  /**
+   * Debounced version of refreshMembers to prevent N requests on bulk operations
+   */
+  const debouncedRefreshMembers = useMemo(
+    () => debounce(() => refreshMembers(), 300),
+    [refreshMembers]
+  );
 
   /**
    * Set up realtime subscriptions
    */
   useEffect(() => {
+    // Reset mounted state on effect run
+    isMountedRef.current = true;
+    
     if (!projectId || !currentUser) {
       reset();
       return;
     }
 
     const supabase = getSupabaseClient();
-    connectionStatusRef.current = "connecting";
+    setConnectionStatus("connecting");
 
     // Create presence channel
     const presenceChannel = supabase.channel(`project:${projectId}:presence`, {
@@ -302,16 +338,11 @@ export function useCollaboration(projectId: string | null): UseCollaborationResu
     });
 
     // Subscribe to entity changes
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (changesChannel as any).on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "entities",
-        filter: `project_id=eq.${projectId}`,
-      },
-      (payload: PostgresChangesPayload<{ id: string; name?: string }>) => {
+    subscribeToPostgresChanges<{ id: string; name?: string }>(
+      changesChannel,
+      "entities",
+      projectId,
+      (payload) => {
         // Add to activity log
         const eventType = payload.eventType as "INSERT" | "UPDATE" | "DELETE";
         const activityType: ActivityType =
@@ -335,16 +366,11 @@ export function useCollaboration(projectId: string | null): UseCollaborationResu
     );
 
     // Subscribe to document changes
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (changesChannel as any).on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "documents",
-        filter: `project_id=eq.${projectId}`,
-      },
-      (payload: PostgresChangesPayload<{ id: string; title?: string }>) => {
+    subscribeToPostgresChanges<{ id: string; title?: string }>(
+      changesChannel,
+      "documents",
+      projectId,
+      (payload) => {
         const eventType = payload.eventType as "INSERT" | "UPDATE" | "DELETE";
         const activityType: ActivityType =
           eventType === "INSERT" ? "document_created" : "document_updated";
@@ -366,16 +392,11 @@ export function useCollaboration(projectId: string | null): UseCollaborationResu
     );
 
     // Subscribe to relationship changes
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (changesChannel as any).on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "relationships",
-        filter: `project_id=eq.${projectId}`,
-      },
-      (payload: PostgresChangesPayload<{ id: string }>) => {
+    subscribeToPostgresChanges<{ id: string }>(
+      changesChannel,
+      "relationships",
+      projectId,
+      (payload) => {
         const eventType = payload.eventType as "INSERT" | "UPDATE" | "DELETE";
         const activityType: ActivityType =
           eventType === "INSERT" ? "relationship_created" : "relationship_deleted";
@@ -395,33 +416,28 @@ export function useCollaboration(projectId: string | null): UseCollaborationResu
       }
     );
 
-    // Subscribe to member changes
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (changesChannel as any).on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "project_members",
-        filter: `project_id=eq.${projectId}`,
-      },
-      (payload: PostgresChangesPayload<{
-        id: string;
-        user_id: string;
-        role: "owner" | "editor" | "viewer";
-        invited_at: string;
-        accepted_at: string | null;
-      }>) => {
+    // Subscribe to member changes (debounced to prevent N requests on bulk operations)
+    subscribeToPostgresChanges<{
+      id: string;
+      user_id: string;
+      role: "owner" | "editor" | "viewer";
+      invited_at: string;
+      accepted_at: string | null;
+    }>(
+      changesChannel,
+      "project_members",
+      projectId,
+      (payload) => {
         const eventType = payload.eventType;
 
         if (eventType === "INSERT" && payload.new) {
-          // New member added - refresh to get profile info
-          refreshMembers();
+          // New member added - refresh to get profile info (debounced)
+          debouncedRefreshMembers();
         } else if (eventType === "DELETE" && payload.old) {
           removeMember(payload.old.id);
         } else if (eventType === "UPDATE" && payload.new) {
-          // Role changed - refresh to update
-          refreshMembers();
+          // Role changed - refresh to update (debounced)
+          debouncedRefreshMembers();
         }
       }
     );
@@ -442,10 +458,10 @@ export function useCollaboration(projectId: string | null): UseCollaborationResu
     // Subscribe to changes channel
     changesChannel.subscribe((status) => {
       if (status === "SUBSCRIBED") {
-        connectionStatusRef.current = "connected";
+        setConnectionStatus("connected");
         setConnected(true);
       } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
-        connectionStatusRef.current = "error";
+        setConnectionStatus("error");
         setConnectionError("Failed to connect to collaboration channel");
       }
     });
@@ -460,7 +476,9 @@ export function useCollaboration(projectId: string | null): UseCollaborationResu
 
     // Cleanup on unmount or project change
     return () => {
-      connectionStatusRef.current = "disconnected";
+      // Mark as unmounted to prevent state updates in pending async operations
+      isMountedRef.current = false;
+      setConnectionStatus("disconnected");
 
       if (presenceChannelRef.current) {
         presenceChannelRef.current.unsubscribe();
@@ -478,6 +496,7 @@ export function useCollaboration(projectId: string | null): UseCollaborationResu
     projectId,
     currentUser,
     setConnected,
+    setConnectionStatus,
     setConnectionError,
     updatePresence,
     upsertPresence,
@@ -486,12 +505,13 @@ export function useCollaboration(projectId: string | null): UseCollaborationResu
     addMember,
     removeMember,
     refreshMembers,
+    debouncedRefreshMembers,
     refreshActivity,
     reset,
   ]);
 
   return {
-    connectionStatus: connectionStatusRef.current,
+    connectionStatus,
     isConnected,
     refreshMembers,
     refreshActivity,

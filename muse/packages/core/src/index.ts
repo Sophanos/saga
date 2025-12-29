@@ -20,3 +20,6 @@ export * from "./inbox";
 
 // Genesis types (AI world generation)
 export * from "./genesis";
+
+// Utilities
+export * from "./utils";

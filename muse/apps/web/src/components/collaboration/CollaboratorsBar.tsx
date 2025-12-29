@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
-import { Users, ChevronDown, Circle, UserPlus, Settings } from "lucide-react";
-import { Button, ScrollArea } from "@mythos/ui";
+import { useState, useRef, useEffect, useMemo, memo } from "react";
+import { Users, ChevronDown, UserPlus, Settings } from "lucide-react";
+import { Avatar, Button, ScrollArea } from "@mythos/ui";
 import { MemberManagementModal } from "./MemberManagementModal";
 import {
   useProjectMembers,
@@ -23,69 +23,6 @@ interface CollaboratorsBarProps {
   className?: string;
 }
 
-interface AvatarProps {
-  name?: string;
-  avatarUrl?: string;
-  color?: string;
-  size?: "sm" | "md";
-  isOnline?: boolean;
-  showOnlineIndicator?: boolean;
-}
-
-// ============================================================================
-// Avatar Component
-// ============================================================================
-
-function Avatar({
-  name,
-  avatarUrl,
-  color,
-  size = "sm",
-  isOnline = false,
-  showOnlineIndicator = false,
-}: AvatarProps) {
-  const sizeClasses = size === "sm" ? "w-7 h-7 text-xs" : "w-8 h-8 text-sm";
-  const initials = name
-    ? name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2)
-    : "?";
-
-  return (
-    <div className="relative">
-      {avatarUrl ? (
-        <img
-          src={avatarUrl}
-          alt={name || "User avatar"}
-          className={`${sizeClasses} rounded-full object-cover border-2 border-mythos-bg-primary`}
-        />
-      ) : (
-        <div
-          className={`${sizeClasses} rounded-full flex items-center justify-center font-medium border-2 border-mythos-bg-primary`}
-          style={{
-            backgroundColor: color || "#6366F1",
-            color: "#fff",
-          }}
-        >
-          {initials}
-        </div>
-      )}
-      {showOnlineIndicator && (
-        <Circle
-          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 ${
-            isOnline
-              ? "fill-mythos-accent-green text-mythos-accent-green"
-              : "fill-mythos-text-muted text-mythos-text-muted"
-          }`}
-        />
-      )}
-    </div>
-  );
-}
-
 // ============================================================================
 // Member List Item
 // ============================================================================
@@ -96,7 +33,7 @@ interface MemberListItemProps {
   presence?: CollaboratorPresence;
 }
 
-function MemberListItem({ member, isOnline, presence }: MemberListItemProps) {
+const MemberListItem = memo(function MemberListItem({ member, isOnline, presence }: MemberListItemProps) {
   const roleLabels: Record<string, string> = {
     owner: "Owner",
     editor: "Editor",
@@ -143,7 +80,7 @@ function MemberListItem({ member, isOnline, presence }: MemberListItemProps) {
       </div>
     </div>
   );
-}
+});
 
 // ============================================================================
 // Collaborators Dropdown
@@ -166,17 +103,27 @@ function CollaboratorsDropdown({
   canInvite,
   canManage,
 }: CollaboratorsDropdownProps) {
-  const activeIds = new Set(activeCollaborators.map((c) => c.id));
+  const activeIds = useMemo(
+    () => new Set(activeCollaborators.map((c) => c.id)),
+    [activeCollaborators]
+  );
 
   // Sort members: online first, then by name
-  const sortedMembers = [...members].sort((a, b) => {
-    const aOnline = activeIds.has(a.userId);
-    const bOnline = activeIds.has(b.userId);
-    if (aOnline !== bOnline) return bOnline ? 1 : -1;
-    return (a.name || a.email).localeCompare(b.name || b.email);
-  });
+  const sortedMembers = useMemo(
+    () =>
+      [...members].sort((a, b) => {
+        const aOnline = activeIds.has(a.userId);
+        const bOnline = activeIds.has(b.userId);
+        if (aOnline !== bOnline) return bOnline ? 1 : -1;
+        return (a.name || a.email).localeCompare(b.name || b.email);
+      }),
+    [members, activeIds]
+  );
 
-  const onlineCount = members.filter((m) => activeIds.has(m.userId)).length;
+  const onlineCount = useMemo(
+    () => members.filter((m) => activeIds.has(m.userId)).length,
+    [members, activeIds]
+  );
 
   return (
     <div className="w-72 bg-mythos-bg-secondary border border-mythos-text-muted/20 rounded-lg shadow-xl overflow-hidden">
@@ -305,10 +252,17 @@ export function CollaboratorsBar({
   }, [isOpen]);
 
   // Get online members for avatar display
-  const activeIds = new Set(activeCollaborators.map((c) => c.id));
-  const onlineMembers = members.filter((m) => activeIds.has(m.userId));
-  const displayMembers = onlineMembers.slice(0, maxAvatars);
-  const overflowCount = Math.max(0, onlineMembers.length - maxAvatars);
+  const displayMembers = useMemo(() => {
+    const activeIds = new Set(activeCollaborators.map((c) => c.id));
+    const onlineMembers = members.filter((m) => activeIds.has(m.userId));
+    return onlineMembers.slice(0, maxAvatars);
+  }, [members, activeCollaborators, maxAvatars]);
+
+  const overflowCount = useMemo(() => {
+    const activeIds = new Set(activeCollaborators.map((c) => c.id));
+    const onlineMembers = members.filter((m) => activeIds.has(m.userId));
+    return Math.max(0, onlineMembers.length - maxAvatars);
+  }, [members, activeCollaborators, maxAvatars]);
 
   const handleInviteClick = () => {
     setIsOpen(false);

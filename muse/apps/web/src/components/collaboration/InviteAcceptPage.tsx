@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { BookOpen, Loader2, AlertCircle, CheckCircle, LogOut } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { BookOpen, Loader2, AlertCircle, CheckCircle, LogOut, AlertTriangle } from "lucide-react";
 import { acceptInvitation, getInvitationByToken } from "@mythos/db";
 import { Button, Card, CardContent } from "@mythos/ui";
 import { useAuthStore } from "../../stores/auth";
@@ -14,7 +14,7 @@ interface InviteAcceptPageProps {
   token: string;
 }
 
-type AcceptStatus = "loading" | "needs_auth" | "accepting" | "success" | "error";
+type AcceptStatus = "loading" | "needs_auth" | "email_mismatch" | "accepting" | "success" | "error";
 
 interface InvitationInfo {
   email: string;
@@ -30,9 +30,11 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
   const [status, setStatus] = useState<AcceptStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [invitationInfo, setInvitationInfo] = useState<InvitationInfo | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout>();
 
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isLoading = useAuthStore((state) => state.isLoading);
+  const user = useAuthStore((state) => state.user);
   const signOut = useAuthStore((state) => state.signOut);
 
   // Persist token to sessionStorage for OAuth flows
@@ -52,56 +54,97 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
         return;
       }
 
-      // User is authenticated, try to accept the invitation
-      setStatus("accepting");
-      
+      // User is authenticated - fetch invitation info first to validate email
       try {
-        const result = await acceptInvitation(token);
-        
-        if (result.success) {
-          // Store the project ID so app loads it after redirect
-          localStorage.setItem(LAST_PROJECT_KEY, result.projectId);
-          // Clear the pending token
-          sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
-          
-          setStatus("success");
-          
-          // Redirect to main app after a short delay
-          setTimeout(() => {
-            window.location.assign("/");
-          }, 1500);
+        const invitation = await getInvitationByToken(token);
+
+        if (!invitation) {
+          setError("Invitation not found. It may be expired or already used.");
+          setStatus("error");
+          return;
         }
+
+        // Store invitation info for display
+        setInvitationInfo({
+          email: invitation.email,
+          role: invitation.role,
+        });
+
+        // Check if invitation email matches logged-in user's email
+        const userEmail = user?.email?.toLowerCase();
+        const invitationEmail = invitation.email.toLowerCase();
+
+        if (userEmail && userEmail !== invitationEmail) {
+          // Email mismatch - warn user before proceeding
+          setStatus("email_mismatch");
+          return;
+        }
+
+        // Emails match or user has no email - proceed with acceptance
+        await performAcceptance();
       } catch (err) {
-        console.error("Failed to accept invitation:", err);
+        console.error("[Collaboration] Failed to check invitation:", err);
         setError(
           err instanceof Error 
             ? err.message 
-            : "Failed to accept invitation. It may be expired or already used."
+            : "Failed to check invitation. Please try again."
         );
         setStatus("error");
       }
     }
 
     checkAndAccept();
-  }, [token, isAuthenticated, isLoading]);
 
-  // Fetch invitation info for display (optional enhancement)
-  useEffect(() => {
-    async function fetchInfo() {
-      try {
-        const invitation = await getInvitationByToken(token);
-        if (invitation) {
-          setInvitationInfo({
-            email: invitation.email,
-            role: invitation.role,
-          });
-        }
-      } catch {
-        // Non-critical - just won't show invitation details
+    // Cleanup timeout on unmount
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
+    };
+  }, [token, isAuthenticated, isLoading, user?.email]);
+
+  // Perform the actual invitation acceptance
+  const performAcceptance = useCallback(async () => {
+    setStatus("accepting");
+
+    try {
+      const result = await acceptInvitation(token);
+
+      // Store the project ID so app loads it after redirect
+      localStorage.setItem(LAST_PROJECT_KEY, result.projectId);
+      // Clear the pending token
+      sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
+
+      setStatus("success");
+
+      // Redirect to main app after a short delay
+      timeoutRef.current = setTimeout(() => {
+        window.location.assign("/");
+      }, 1500);
+    } catch (err) {
+      console.error("[Collaboration] Failed to accept invitation:", err);
+
+      // Check for specific email mismatch error from RPC
+      const errorMessage = err instanceof Error ? err.message : "";
+      if (errorMessage.includes("Invitation was sent to a different email address")) {
+        setError(
+          "This invitation was sent to a different email address. Please sign in with that account."
+        );
+      } else {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to accept invitation. It may be expired or already used."
+        );
+      }
+      setStatus("error");
     }
-    fetchInfo();
   }, [token]);
+
+  // Handle user confirming they want to accept with mismatched email
+  const handleConfirmMismatch = useCallback(async () => {
+    await performAcceptance();
+  }, [performAcceptance]);
 
   const handleSignOutAndRetry = useCallback(async () => {
     await signOut();
@@ -140,6 +183,52 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
           </Card>
         </div>
         <AuthScreen onBack={handleReturnHome} />
+      </div>
+    );
+  }
+
+  // Email mismatch warning state
+  if (status === "email_mismatch") {
+    return (
+      <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary flex items-center justify-center">
+        <div className="flex flex-col items-center gap-6 text-center px-4 max-w-md">
+          <AlertTriangle className="w-12 h-12 text-mythos-accent-yellow" />
+          <div>
+            <h2 className="text-xl font-semibold text-mythos-text-primary mb-2">
+              Email Address Mismatch
+            </h2>
+            <p className="text-mythos-text-muted text-sm mb-3">
+              This invitation was sent to{" "}
+              <span className="font-mono text-mythos-text-secondary">
+                {invitationInfo?.email}
+              </span>
+              , but you're signed in as{" "}
+              <span className="font-mono text-mythos-text-secondary">
+                {user?.email}
+              </span>
+              .
+            </p>
+            <p className="text-mythos-text-muted text-sm">
+              You can sign in with the correct account, or continue with your current account if you have access.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 w-full max-w-xs">
+            <Button
+              onClick={handleSignOutAndRetry}
+              variant="outline"
+              className="gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign in with correct account
+            </Button>
+            <Button
+              onClick={handleConfirmMismatch}
+              variant="ghost"
+            >
+              Continue anyway
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }

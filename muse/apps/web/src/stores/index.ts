@@ -106,7 +106,8 @@ export type ModalState =
   | { type: "import" }
   | { type: "export" }
   | { type: "entityForm"; mode: FormMode; entityType?: EntityType; entityId?: string }
-  | { type: "templatePicker"; step: TemplatePickerStep; templateId?: string };
+  | { type: "templatePicker"; step: TemplatePickerStep; templateId?: string }
+  | { type: "inviteMember" };
 
 // Recent items tracking
 export interface RecentItems {

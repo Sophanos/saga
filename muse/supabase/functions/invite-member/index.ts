@@ -51,6 +51,7 @@ interface InviteMemberRequest {
 interface InviteMemberResponse {
   invitationId: string;
   expiresAt: string;
+  emailSent: boolean;
 }
 
 // ============================================================================
@@ -63,65 +64,82 @@ async function sendInvitationEmail(params: {
   projectName: string;
   role: string;
   inviteUrl: string;
-}): Promise<void> {
+}): Promise<boolean> {
   const resendApiKey = Deno.env.get("RESEND_API_KEY");
   const fromEmail = Deno.env.get("INVITE_FROM_EMAIL") ?? "Mythos <noreply@mythos.dev>";
 
   if (!resendApiKey) {
     console.warn("[invite-member] RESEND_API_KEY not configured, skipping email");
-    return;
+    return false;
   }
 
   const roleLabel = params.role === "editor" ? "Editor" : "Viewer";
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [params.to],
-      subject: `${params.inviterName} invited you to collaborate on "${params.projectName}"`,
-      html: `
-        <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2 style="color: #1a1a1a; margin-bottom: 16px;">You've been invited to collaborate!</h2>
-          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.5;">
-            <strong>${params.inviterName}</strong> has invited you to join 
-            <strong>"${params.projectName}"</strong> as a <strong>${roleLabel}</strong>.
-          </p>
-          <div style="margin: 32px 0;">
-            <a href="${params.inviteUrl}" 
-               style="background-color: #0ea5e9; color: white; padding: 12px 24px; 
-                      text-decoration: none; border-radius: 6px; font-weight: 500;
-                      display: inline-block;">
-              Accept Invitation
-            </a>
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [params.to],
+        subject: `${params.inviterName} invited you to collaborate on "${params.projectName}"`,
+        html: `
+          <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #1a1a1a; margin-bottom: 16px;">You've been invited to collaborate!</h2>
+            <p style="color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+              <strong>${params.inviterName}</strong> has invited you to join
+              <strong>"${params.projectName}"</strong> as a <strong>${roleLabel}</strong>.
+            </p>
+            <div style="margin: 32px 0;">
+              <a href="${params.inviteUrl}"
+                 style="background-color: #0ea5e9; color: white; padding: 12px 24px;
+                        text-decoration: none; border-radius: 6px; font-weight: 500;
+                        display: inline-block;">
+                Accept Invitation
+              </a>
+            </div>
+            <p style="color: #6a6a6a; font-size: 14px;">
+              This invitation expires in 7 days. If you didn't expect this email, you can safely ignore it.
+            </p>
+            <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;" />
+            <p style="color: #9a9a9a; font-size: 12px;">
+              Sent from <a href="https://mythos.dev" style="color: #0ea5e9;">Mythos</a>
+            </p>
           </div>
-          <p style="color: #6a6a6a; font-size: 14px;">
-            This invitation expires in 7 days. If you didn't expect this email, you can safely ignore it.
-          </p>
-          <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;" />
-          <p style="color: #9a9a9a; font-size: 12px;">
-            Sent from <a href="https://mythos.dev" style="color: #0ea5e9;">Mythos</a>
-          </p>
-        </div>
-      `,
-      text: `
+        `,
+        text: `
 ${params.inviterName} has invited you to collaborate on "${params.projectName}" as a ${roleLabel}.
 
 Accept the invitation: ${params.inviteUrl}
 
 This invitation expires in 7 days.
-      `.trim(),
-    }),
-  });
+        `.trim(),
+      }),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("[invite-member] Failed to send email:", errorText);
-    // Don't throw - invitation was created, email is a nice-to-have
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[invite-member] Failed to send email:", errorText);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      console.error("[invite-member] Email request timed out after 10 seconds");
+    } else {
+      console.error("[invite-member] Failed to send email:", error);
+    }
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -199,6 +217,9 @@ serve(async (req) => {
     }
 
     // Validate email format
+    // NOTE: Canonical email validation is in @mythos/core (packages/core/src/utils/validation.ts)
+    // Edge functions cannot import from @mythos/core, so this is a local copy.
+    // Keep in sync with: isValidEmail() and EMAIL_REGEX in @mythos/core
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(request.email)) {
       return createErrorResponse(
@@ -231,19 +252,38 @@ serve(async (req) => {
       );
     }
 
-    // Get project info for the email
-    const { data: project } = await supabase
-      .from("projects")
-      .select("name")
-      .eq("id", request.projectId)
+    // Check if user with this email is already a member
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("email", request.email.trim().toLowerCase())
       .single();
 
-    // Get inviter's profile for the email
-    const { data: inviterProfile } = await supabase
-      .from("profiles")
-      .select("name, email")
-      .eq("id", user.id)
-      .single();
+    if (existingProfile) {
+      const { data: existingMember } = await supabase
+        .from("project_members")
+        .select("id")
+        .eq("project_id", request.projectId)
+        .eq("user_id", existingProfile.id)
+        .single();
+
+      if (existingMember) {
+        return createErrorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          "This user is already a member of this project",
+          origin
+        );
+      }
+    }
+
+    // Get project info and inviter's profile for the email (parallelized)
+    const [projectResult, inviterResult] = await Promise.all([
+      supabase.from("projects").select("name").eq("id", request.projectId).single(),
+      supabase.from("profiles").select("name, email").eq("id", user.id).single(),
+    ]);
+
+    const project = projectResult.data;
+    const inviterProfile = inviterResult.data;
 
     // Create the invitation
     const { data: invitation, error: insertError } = await supabase
@@ -276,7 +316,7 @@ serve(async (req) => {
 
     // Send the invitation email
     const inviteUrl = `${appUrl}/invite/${invitation.token}`;
-    await sendInvitationEmail({
+    const emailSent = await sendInvitationEmail({
       to: request.email,
       inviterName: inviterProfile?.name ?? inviterProfile?.email ?? "A collaborator",
       projectName: project?.name ?? "Untitled Project",
@@ -287,6 +327,7 @@ serve(async (req) => {
     const response: InviteMemberResponse = {
       invitationId: invitation.id,
       expiresAt: invitation.expires_at,
+      emailSent,
     };
 
     return createSuccessResponse(response, origin);

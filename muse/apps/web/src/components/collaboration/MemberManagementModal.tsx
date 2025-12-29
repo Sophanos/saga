@@ -364,7 +364,7 @@ export function MemberManagementModal({
         setFeedback({ type: "success", message: "Role updated" });
         onMembersChanged?.();
       } catch (error) {
-        console.error("Failed to update role:", error);
+        console.error("[Collaboration] Failed to update role:", error);
         setFeedback({
           type: "error",
           message: error instanceof Error ? error.message : "Failed to update role",
@@ -389,7 +389,7 @@ export function MemberManagementModal({
         setConfirmingRemoveId(null);
         onMembersChanged?.();
       } catch (error) {
-        console.error("Failed to remove member:", error);
+        console.error("[Collaboration] Failed to remove member:", error);
         setFeedback({
           type: "error",
           message: error instanceof Error ? error.message : "Failed to remove member",
@@ -413,7 +413,7 @@ export function MemberManagementModal({
         setFeedback({ type: "success", message: "Ownership transferred" });
         onMembersChanged?.();
       } catch (error) {
-        console.error("Failed to transfer ownership:", error);
+        console.error("[Collaboration] Failed to transfer ownership:", error);
         setFeedback({
           type: "error",
           message: error instanceof Error ? error.message : "Failed to transfer ownership",

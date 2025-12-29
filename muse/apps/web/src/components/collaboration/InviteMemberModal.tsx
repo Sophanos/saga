@@ -21,6 +21,7 @@ import {
 } from "@mythos/db";
 import { useCurrentProject } from "../../stores";
 import type { ProjectRole } from "@mythos/state";
+import { isValidEmail } from "@mythos/core";
 
 // ============================================================================
 // Types
@@ -52,8 +53,6 @@ const ROLE_OPTIONS: { value: ProjectRole; label: string }[] = [
   { value: "editor", label: "Editor - Can edit content" },
   { value: "viewer", label: "Viewer - Read-only access" },
 ];
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ============================================================================
 // Pending Invitation Item
@@ -183,7 +182,7 @@ export function InviteMemberModal({
       const invitations = await getProjectInvitationsWithInviter(project.id);
       setPendingInvitations(invitations);
     } catch (error) {
-      console.error("Failed to load invitations:", error);
+      console.error("[Collaboration] Failed to load invitations:", error);
     } finally {
       setIsLoadingInvitations(false);
     }
@@ -206,7 +205,7 @@ export function InviteMemberModal({
 
     if (!formData.email.trim()) {
       newErrors["email"] = "Email address is required";
-    } else if (!EMAIL_REGEX.test(formData.email.trim())) {
+    } else if (!isValidEmail(formData.email)) {
       newErrors["email"] = "Please enter a valid email address";
     }
 
@@ -245,7 +244,7 @@ export function InviteMemberModal({
         await loadPendingInvitations();
         onInvited?.();
       } catch (error) {
-        console.error("Failed to create invitation:", error);
+        console.error("[Collaboration] Failed to create invitation:", error);
         setFeedback({
           type: "error",
           message:
@@ -273,7 +272,7 @@ export function InviteMemberModal({
           message: "Invitation cancelled",
         });
       } catch (error) {
-        console.error("Failed to delete invitation:", error);
+        console.error("[Collaboration] Failed to delete invitation:", error);
         setFeedback({
           type: "error",
           message: "Failed to cancel invitation",
