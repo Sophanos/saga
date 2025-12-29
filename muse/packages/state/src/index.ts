@@ -88,3 +88,26 @@ export type {
   SyncStatus,
   PendingMutation,
 } from "./offline";
+
+// Billing store
+export {
+  createBillingStore,
+  useSubscription,
+  useUsage,
+  useBillingMode,
+  useCanUseAI,
+  useUsagePercentage,
+  useIsSubscriptionActive,
+  useBillingLoading,
+  useBillingError,
+} from "./billing";
+export type {
+  BillingState,
+  BillingStore,
+  BillingTier,
+  BillingMode,
+  SubscriptionStatus,
+  Subscription,
+  Usage,
+  BillingActions,
+} from "./billing";

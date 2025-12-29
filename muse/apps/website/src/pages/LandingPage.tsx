@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { BookOpen, Check, Download, Plus, ArrowUp, FileText, X } from "lucide-react";
+import { BookOpen, Check, Plus, ArrowUp, FileText, X } from "lucide-react";
 
 /**
  * Landing Page - Cursor.ai inspired minimal design
@@ -12,6 +12,7 @@ export function LandingPage() {
     <div className="min-h-screen bg-bg-primary">
       <Navbar />
       <Hero />
+      <LiveStats />
       <Features />
       <Pricing />
       <Footer />
@@ -453,6 +454,68 @@ function FloatingChatBar() {
 }
 
 // ============================================
+// LIVE STATS
+// ============================================
+
+function LiveStats() {
+  const [stats, setStats] = useState({
+    chapters: 1247,
+    worlds: 89,
+    characters: 3421,
+    inconsistencies: 156,
+  });
+
+  // Simulate live updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStats(prev => ({
+        chapters: prev.chapters + Math.floor(Math.random() * 3),
+        worlds: prev.worlds + (Math.random() > 0.7 ? 1 : 0),
+        characters: prev.characters + Math.floor(Math.random() * 5),
+        inconsistencies: prev.inconsistencies + Math.floor(Math.random() * 2),
+      }));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const statItems = [
+    { label: "Chapters written today", value: stats.chapters, suffix: "" },
+    { label: "Worlds built", value: stats.worlds, suffix: "" },
+    { label: "Characters brought to life", value: stats.characters, suffix: "" },
+    { label: "Plot holes caught", value: stats.inconsistencies, suffix: "" },
+  ];
+
+  return (
+    <section className="py-12 px-6 border-y border-border bg-bg-secondary/30">
+      <div className="max-w-5xl mx-auto">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
+          {statItems.map((stat, i) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: i * 0.1 }}
+              className="text-center"
+            >
+              <div className="text-2xl md:text-3xl font-medium text-text-primary tabular-nums">
+                {stat.value.toLocaleString()}{stat.suffix}
+              </div>
+              <div className="text-xs md:text-sm text-text-muted mt-1">
+                {stat.label}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+        <p className="text-center text-xs text-text-muted/60 mt-6">
+          Live stats from writers using Mythos right now
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// ============================================
 // FEATURES
 // ============================================
 
@@ -504,40 +567,41 @@ function Features() {
 
 const PRICING = [
   {
-    name: "Hobby",
+    name: "Free",
     price: "Free",
     description: "Includes:",
     features: [
-      "10,000 words/month",
-      "Basic AI coaching",
-      "1 project",
+      "10K AI tokens/month",
+      "Basic AI chat & search",
+      "3 projects",
     ],
-    cta: "Download",
+    cta: "Get Started",
     recommended: false,
   },
   {
     name: "Pro",
-    price: "$12",
+    price: "$20",
     period: "/mo.",
-    description: "Everything in Hobby, plus:",
+    description: "Everything in Free, plus:",
     features: [
-      "100,000 words/month",
-      "Full AI coaching suite",
-      "Consistency linter",
-      "World Graph",
+      "500K AI tokens/month",
+      "Full AI suite (Linter, Coach)",
+      "10 projects",
+      "$0.10/1K token overage",
     ],
     cta: "Get Pro",
     recommended: false,
   },
   {
     name: "Pro+",
-    price: "$29",
+    price: "$40",
     period: "/mo.",
     description: "Everything in Pro, plus:",
     features: [
-      "Unlimited words",
-      "Priority AI processing",
-      "Advanced analytics",
+      "2M AI tokens/month",
+      "Unlimited projects",
+      "5 collaborators",
+      "$0.08/1K token overage",
     ],
     cta: "Get Pro+",
     recommended: true,
@@ -548,9 +612,10 @@ const PRICING = [
     period: "/mo.",
     description: "Everything in Pro+, plus:",
     features: [
-      "5 team members",
-      "Shared world graphs",
-      "Collaboration features",
+      "10M AI tokens/month",
+      "Unlimited collaborators",
+      "API access",
+      "$0.05/1K token overage",
     ],
     cta: "Get Team",
     recommended: false,
