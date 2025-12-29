@@ -79,14 +79,13 @@ export function StartOptions({
       </p>
 
       <div className="space-y-3">
-        {/* AI Builder - Coming Soon */}
+        {/* AI Builder */}
         <OptionCard
           icon={<Sparkles className="w-5 h-5 text-mythos-accent-purple" />}
           title="Create with AI"
           description="Describe your story idea and let AI generate a custom template with entity types, relationships, and structure tailored to your vision."
           accent="purple"
           onClick={onAIBuilder}
-          badge="Coming Soon"
         />
 
         {/* Browse Templates */}

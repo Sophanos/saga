@@ -99,7 +99,7 @@ export type CanvasView = "editor" | "worldGraph";
 export type FormMode = "create" | "edit";
 
 // Template picker step type
-export type TemplatePickerStep = "start" | "browse" | "ai-builder" | "create";
+export type TemplatePickerStep = "start" | "browse" | "ai-builder" | "preview" | "create";
 
 export type ModalState =
   | { type: "settings" }

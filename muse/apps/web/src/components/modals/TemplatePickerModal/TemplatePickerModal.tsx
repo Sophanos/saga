@@ -3,11 +3,15 @@ import { X, ChevronLeft } from "lucide-react";
 import { Button, Card, CardHeader, CardTitle, CardContent } from "@mythos/ui";
 import type { ProjectTemplate } from "@mythos/core";
 import { BLANK_TEMPLATE } from "@mythos/core";
+import type { TemplateDraft, GenesisEntity } from "@mythos/agent-protocol";
 import { StartOptions } from "./StartOptions";
 import { TemplateGrid } from "./TemplateGrid";
 import { CreateProjectForm } from "./CreateProjectForm";
+import { AITemplateBuilder } from "./AITemplateBuilder";
+import { TemplateDraftPreview } from "./TemplateDraftPreview";
+import { convertDraftToTemplate } from "./utils/convertDraftToTemplate";
 
-type Step = "start" | "browse" | "ai-builder" | "create";
+type Step = "start" | "browse" | "ai-builder" | "preview" | "create";
 
 export interface TemplatePickerModalProps {
   isOpen: boolean;
@@ -19,6 +23,7 @@ const STEP_TITLES: Record<Step, string> = {
   start: "New Project",
   browse: "Choose a Template",
   "ai-builder": "Create with AI",
+  preview: "Review Template",
   create: "Create Project",
 };
 
@@ -30,6 +35,8 @@ export function TemplatePickerModal({
   const [step, setStep] = useState<Step>("start");
   const [selectedTemplate, setSelectedTemplate] = useState<ProjectTemplate | null>(null);
   const [creationMode, setCreationMode] = useState<"gardener" | "architect">("gardener");
+  const [templateDraft, setTemplateDraft] = useState<TemplateDraft | null>(null);
+  const [starterEntities, setStarterEntities] = useState<GenesisEntity[]>([]);
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Reset state when modal opens and focus the modal
@@ -38,6 +45,8 @@ export function TemplatePickerModal({
       setStep("start");
       setSelectedTemplate(null);
       setCreationMode("gardener");
+      setTemplateDraft(null);
+      setStarterEntities([]);
       // Focus the modal for keyboard handling
       modalRef.current?.focus();
     }
@@ -46,8 +55,12 @@ export function TemplatePickerModal({
   const handleBack = useCallback(() => {
     if (step === "browse" || step === "ai-builder") {
       setStep("start");
+    } else if (step === "preview") {
+      setStep("ai-builder");
     } else if (step === "create") {
-      if (selectedTemplate?.id === "blank") {
+      if (selectedTemplate?.id?.startsWith("ai-")) {
+        setStep("preview");
+      } else if (selectedTemplate?.id === "blank") {
         setStep("start");
       } else {
         setStep("browse");
@@ -74,6 +87,23 @@ export function TemplatePickerModal({
     setCreationMode("architect");
     setStep("create");
   }, []);
+
+  const handleTemplateGenerated = useCallback(
+    (draft: TemplateDraft, entities?: GenesisEntity[]) => {
+      setTemplateDraft(draft);
+      setStarterEntities(entities ?? []);
+      setStep("preview");
+    },
+    []
+  );
+
+  const handleAcceptTemplate = useCallback(() => {
+    if (!templateDraft) return;
+    const generated = convertDraftToTemplate(templateDraft);
+    setSelectedTemplate(generated);
+    setCreationMode("architect");
+    setStep("create");
+  }, [templateDraft]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -151,10 +181,20 @@ export function TemplatePickerModal({
           )}
 
           {step === "ai-builder" && (
-            <div className="text-center py-12 text-mythos-text-muted">
-              <p>AI Template Builder coming soon.</p>
-              <p className="text-sm mt-2">For now, browse templates or start blank.</p>
-            </div>
+            <AITemplateBuilder
+              onTemplateGenerated={handleTemplateGenerated}
+              onCancel={() => setStep("start")}
+            />
+          )}
+
+          {step === "preview" && templateDraft && (
+            <TemplateDraftPreview
+              draft={templateDraft}
+              starterEntities={starterEntities}
+              onAccept={handleAcceptTemplate}
+              onRefine={() => setStep("ai-builder")}
+              onCancel={() => setStep("start")}
+            />
           )}
 
           {step === "create" && selectedTemplate && (
