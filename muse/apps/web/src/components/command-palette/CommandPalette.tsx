@@ -26,6 +26,7 @@ import {
 } from "../../stores";
 import {
   commandRegistry,
+  getUnlockHint,
   type Command,
   type CommandContext,
   type CommandCategory,
@@ -36,6 +37,10 @@ import { useGetEditorSelection } from "../../hooks/useEditorSelection";
 import { getEntityIconComponent } from "../../utils/entityConfig";
 import type { Editor } from "@mythos/editor";
 import type { EntityType } from "@mythos/core";
+import {
+  useIsGardenerMode,
+  useUnlockedModules,
+} from "@mythos/state";
 
 const FILTER_LABELS: Record<CommandPaletteFilter, string> = {
   all: "All",
@@ -86,6 +91,20 @@ export function CommandPalette() {
 
   // Get selection imperatively (for command execution)
   const getSelectedText = useGetEditorSelection(editorInstance);
+
+  // Progressive disclosure state
+  const isGardener = useIsGardenerMode();
+  const unlockedModules = useUnlockedModules();
+
+  // Helper to check if a command is locked
+  const isCommandLocked = useCallback(
+    (cmd: Command): boolean => {
+      if (!isGardener) return false; // Architect mode: everything unlocked
+      if (!cmd.requiredModule) return false; // No module requirement
+      return unlockedModules?.[cmd.requiredModule] !== true;
+    },
+    [isGardener, unlockedModules]
+  );
 
   // Recent items
   const recentDocuments = useRecentDocuments();
@@ -166,12 +185,21 @@ export function CommandPalette() {
   // Handle command execution
   const executeCommand = useCallback(
     (command: Command) => {
+      // Check if command is locked (progressive disclosure)
+      if (isCommandLocked(command)) {
+        // Don't execute - the hint is shown in the UI
+        console.log(
+          `[CommandPalette] Command "${command.id}" is locked. Hint: ${getUnlockHint(command.requiredModule!)}`
+        );
+        return;
+      }
+
       const ctx = getCommandContext();
       addRecentCommand(command.id);
       close();
       command.execute(ctx);
     },
-    [getCommandContext, addRecentCommand, close]
+    [getCommandContext, addRecentCommand, close, isCommandLocked]
   );
 
   // Handle document selection
@@ -442,6 +470,8 @@ export function CommandPalette() {
                   key={cmd.id}
                   command={cmd}
                   onSelect={() => executeCommand(cmd)}
+                  isLocked={isCommandLocked(cmd)}
+                  unlockHint={cmd.requiredModule ? getUnlockHint(cmd.requiredModule) : undefined}
                 />
               ))}
               {filteredCommands.slice(0, 3).map((cmd) => (
@@ -449,6 +479,8 @@ export function CommandPalette() {
                   key={cmd.id}
                   command={cmd}
                   onSelect={() => executeCommand(cmd)}
+                  isLocked={isCommandLocked(cmd)}
+                  unlockHint={cmd.requiredModule ? getUnlockHint(cmd.requiredModule) : undefined}
                 />
               ))}
             </CmdkCommand.Group>
@@ -560,6 +592,8 @@ export function CommandPalette() {
                         key={cmd.id}
                         command={cmd}
                         onSelect={() => executeCommand(cmd)}
+                        isLocked={isCommandLocked(cmd)}
+                        unlockHint={cmd.requiredModule ? getUnlockHint(cmd.requiredModule) : undefined}
                       />
                     ))}
                   </CmdkCommand.Group>

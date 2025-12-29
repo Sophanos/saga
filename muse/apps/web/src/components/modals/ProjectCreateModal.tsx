@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { X, FolderPlus, Feather, Building2 } from "lucide-react";
+import { X, FolderPlus, Feather, Building2, Sparkles } from "lucide-react";
 import {
   Button,
   Card,
@@ -13,8 +13,9 @@ import {
   Select,
   TextArea,
 } from "@mythos/ui";
-import { createProject, createDocument } from "@mythos/db";
+import { createProject, createDocument, createEntity, createRelationship } from "@mythos/db";
 import { useProgressiveStore } from "@mythos/state";
+import { runGenesisViaEdge } from "../../services/ai";
 
 // ============================================================================
 // Types
@@ -28,6 +29,7 @@ interface ProjectFormData {
   description: string;
   genre: Genre | "";
   creationMode: CreationMode;
+  genesisPrompt: string;
 }
 
 interface ProjectCreateModalProps {
@@ -61,6 +63,7 @@ const initialFormData: ProjectFormData = {
   description: "",
   genre: "",
   creationMode: "gardener",
+  genesisPrompt: "",
 };
 
 export function ProjectCreateModal({
@@ -71,6 +74,8 @@ export function ProjectCreateModal({
   const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -141,8 +146,113 @@ export function ProjectCreateModal({
           totalWritingTimeSec: 0,
           neverAsk: {},
         });
-        progressive.setActiveProject(project.id);
 
+        // Architect mode: Run genesis if prompt provided
+        if (formData.creationMode === "architect" && formData.genesisPrompt.trim()) {
+          setIsGenerating(true);
+          setGenerationStatus("Generating world...");
+
+          try {
+            const genesis = await runGenesisViaEdge({
+              prompt: formData.genesisPrompt,
+              genre: formData.genre || undefined,
+              preferences: {
+                entityCount: 10,
+                includeOutline: true,
+                detailLevel: "standard",
+              },
+            });
+
+            // Create entities from genesis result
+            setGenerationStatus(`Creating ${genesis.entities.length} entities...`);
+            const entityIdMap = new Map<string, string>();
+
+            for (const genEntity of genesis.entities) {
+              try {
+                const entity = await createEntity({
+                  project_id: project.id,
+                  name: genEntity.name,
+                  type: genEntity.type === "magic_system" ? "item" : genEntity.type,
+                  properties: {
+                    ...(genEntity.properties || {}),
+                    ...(genEntity.description ? { description: genEntity.description } : {}),
+                  },
+                  aliases: [],
+                });
+                entityIdMap.set(genEntity.name, entity.id);
+              } catch (entityError) {
+                console.warn(`Failed to create entity ${genEntity.name}:`, entityError);
+              }
+            }
+
+            // Create relationships
+            setGenerationStatus("Creating relationships...");
+            for (const genEntity of genesis.entities) {
+              if (!genEntity.relationships) continue;
+
+              const sourceId = entityIdMap.get(genEntity.name);
+              if (!sourceId) continue;
+
+              for (const rel of genEntity.relationships) {
+                const targetId = entityIdMap.get(rel.targetName);
+                if (!targetId) continue;
+
+                try {
+                  await createRelationship({
+                    project_id: project.id,
+                    source_id: sourceId,
+                    target_id: targetId,
+                    type: rel.type,
+                    metadata: rel.description ? { description: rel.description } : {},
+                  });
+                } catch (relError) {
+                  console.warn(`Failed to create relationship:`, relError);
+                }
+              }
+            }
+
+            // Create outline documents if provided
+            if (genesis.outline && genesis.outline.length > 0) {
+              setGenerationStatus("Creating story outline...");
+              for (let i = 0; i < genesis.outline.length; i++) {
+                const chapter = genesis.outline[i];
+                try {
+                  await createDocument({
+                    project_id: project.id,
+                    type: "chapter",
+                    title: chapter.title,
+                    content: {
+                      type: "doc",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: `// ${chapter.summary}` }],
+                        },
+                      ],
+                    },
+                    content_text: `// ${chapter.summary}`,
+                    order_index: i + 1,
+                    word_count: chapter.summary.split(/\s+/).length,
+                  });
+                } catch (docError) {
+                  console.warn(`Failed to create outline doc:`, docError);
+                }
+              }
+            }
+
+            console.log(
+              `[Genesis] Created ${entityIdMap.size} entities from genesis`
+            );
+          } catch (genesisError) {
+            console.error("Genesis failed, continuing with empty project:", genesisError);
+            // Don't fail project creation if genesis fails
+          } finally {
+            setIsGenerating(false);
+            setGenerationStatus(null);
+          }
+        }
+
+        progressive.setActiveProject(project.id);
         onCreated(project.id);
       } catch (error) {
         console.error("Failed to create project:", error);
@@ -296,6 +406,19 @@ export function ProjectCreateModal({
               />
             </FormField>
 
+            {/* Genesis Prompt (Architect mode only) */}
+            {formData.creationMode === "architect" && (
+              <FormField label="World Concept">
+                <TextArea
+                  value={formData.genesisPrompt}
+                  onChange={(v) => updateFormData({ genesisPrompt: v })}
+                  placeholder="A dystopian city where emotions are illegal and the protagonist discovers they can feel..."
+                  rows={4}
+                  disabled={isSubmitting || isGenerating}
+                />
+              </FormField>
+            )}
+
             {/* Description */}
             <FormField label="Description">
               <TextArea
@@ -303,6 +426,7 @@ export function ProjectCreateModal({
                 onChange={(v) => updateFormData({ description: v })}
                 placeholder="A brief description of your project..."
                 rows={3}
+                disabled={isSubmitting || isGenerating}
               />
             </FormField>
 
@@ -319,16 +443,21 @@ export function ProjectCreateModal({
               type="button"
               variant="outline"
               onClick={onClose}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isGenerating}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting}
-              className="gap-1.5 min-w-[120px]"
+              disabled={isSubmitting || isGenerating}
+              className="gap-1.5 min-w-[140px]"
             >
-              {isSubmitting ? (
+              {isGenerating ? (
+                <>
+                  <Sparkles className="w-4 h-4 animate-pulse" />
+                  {generationStatus || "Generating..."}
+                </>
+              ) : isSubmitting ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Creating...

@@ -19,32 +19,18 @@ import {
   cn,
 } from "@mythos/ui";
 import type { LinterIssue } from "../../stores";
+import type { CanonChoice } from "@mythos/ai";
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * A choice option for resolving a consistency issue
- */
-export interface CanonChoice {
-  id: string;
-  label: string;
-  explanation?: string;
-  entityName?: string;
-  entityType?: string;
-  propertyKey?: string;
-  value?: string;
-}
+// Re-export CanonChoice for external use
+export type { CanonChoice };
 
 /**
  * Extended linter issue with canon choice information
+ * Note: isContradiction, canonQuestion, canonChoices, evidence are already on ConsistencyIssue
+ * We just add description and override evidence with a more flexible type
  */
-export interface ConsistencyIssueWithChoices extends LinterIssue {
+export interface ConsistencyIssueWithChoices extends Omit<LinterIssue, "evidence"> {
   description?: string;
-  isContradiction?: boolean;
-  canonQuestion?: string;
-  canonChoices?: CanonChoice[];
   evidence?: Array<{
     documentHint?: string;
     line?: number;
@@ -105,9 +91,9 @@ function ChoiceOption({ choice, isSelected, onSelect, disabled }: ChoiceOptionPr
               {choice.explanation}
             </p>
           )}
-          {choice.value && (
+          {choice.value !== undefined && (
             <p className="text-xs text-mythos-accent-cyan mt-1 font-mono">
-              "{choice.value}"
+              "{String(choice.value)}"
             </p>
           )}
         </div>

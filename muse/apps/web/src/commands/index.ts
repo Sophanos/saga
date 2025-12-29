@@ -1,6 +1,7 @@
 // Command registry and types
 export {
   commandRegistry,
+  getUnlockHint,
   type Command,
   type CommandCategory,
   type CommandContext,

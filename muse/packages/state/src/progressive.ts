@@ -4,8 +4,10 @@
  */
 
 import { create } from "zustand";
+import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import type { EntityType } from "@mythos/core";
+import { createStorageAdapter } from "@mythos/storage";
 
 // ============================================================================
 // Types
@@ -393,11 +395,129 @@ export const gardenerDefaultState: ProgressiveProjectState = {
 };
 
 // ============================================================================
+// Persistence Configuration
+// ============================================================================
+
+/**
+ * Version for persistence migrations
+ */
+const PERSIST_VERSION = 1;
+
+/**
+ * Type for the persisted subset of progressive state
+ */
+type PersistedProgressiveState = {
+  archetype: WriterArchetype | null;
+  archetypeSelectedAt: string | null;
+  completedOnboardingSteps: OnboardingStep[];
+  onboardingCompletedAt: string | null;
+  currentOnboardingStep: OnboardingStep;
+  milestones: Milestone[];
+  uiVisibility: UIVisibility;
+  activeProjectId: string | null;
+  projects: Record<string, {
+    creationMode: WriterArchetype;
+    phase: ProgressivePhase;
+    unlockedModules: Partial<Record<UIModuleId, true>>;
+    totalWritingTimeSec: number;
+    neverAsk: Partial<Record<NudgeType, true>>;
+    lastEntityNudgeAtWordCount?: number;
+    entityNudgeSnoozedUntil?: string;
+  }>;
+};
+
+/**
+ * Partialize function - selects which state to persist
+ * Excludes ephemeral data like pendingDetectedEntities, captures (synced from DB), loading states
+ */
+const partialize = (state: ProgressiveState): PersistedProgressiveState => ({
+  archetype: state.archetype,
+  archetypeSelectedAt: state.archetypeSelectedAt,
+  completedOnboardingSteps: state.completedOnboardingSteps,
+  onboardingCompletedAt: state.onboardingCompletedAt,
+  currentOnboardingStep: state.currentOnboardingStep,
+  milestones: state.milestones,
+  uiVisibility: state.uiVisibility,
+  activeProjectId: state.activeProjectId,
+  projects: Object.fromEntries(
+    Object.entries(state.projects).map(([id, proj]) => [
+      id,
+      {
+        creationMode: proj.creationMode,
+        phase: proj.phase,
+        unlockedModules: proj.unlockedModules,
+        totalWritingTimeSec: proj.totalWritingTimeSec,
+        neverAsk: proj.neverAsk,
+        lastEntityNudgeAtWordCount: proj.lastEntityNudgeAtWordCount,
+        entityNudgeSnoozedUntil: proj.entityNudgeSnoozedUntil,
+      },
+    ])
+  ),
+});
+
+/**
+ * Merge function - safely merges persisted state with defaults
+ * Ensures nested objects have required default values to prevent runtime errors
+ */
+const merge = (
+  persistedState: unknown,
+  currentState: ProgressiveState
+): ProgressiveState => {
+  const persisted = persistedState as Partial<PersistedProgressiveState> | undefined;
+  
+  if (!persisted) return currentState;
+
+  // Merge per-project states, ensuring entityMentionCounts exists
+  const mergedProjects: Record<string, ProgressiveProjectState> = {};
+  
+  if (persisted.projects) {
+    for (const [projectId, persistedProject] of Object.entries(persisted.projects)) {
+      mergedProjects[projectId] = {
+        ...defaultProgressiveProjectState,
+        ...persistedProject,
+        // Always ensure entityMentionCounts exists (not persisted)
+        entityMentionCounts: {},
+      };
+    }
+  }
+
+  return {
+    ...currentState,
+    // Merge persisted user-level state
+    archetype: persisted.archetype ?? currentState.archetype,
+    archetypeSelectedAt: persisted.archetypeSelectedAt ?? currentState.archetypeSelectedAt,
+    completedOnboardingSteps: persisted.completedOnboardingSteps ?? currentState.completedOnboardingSteps,
+    onboardingCompletedAt: persisted.onboardingCompletedAt ?? currentState.onboardingCompletedAt,
+    currentOnboardingStep: persisted.currentOnboardingStep ?? currentState.currentOnboardingStep,
+    milestones: persisted.milestones ?? currentState.milestones,
+    uiVisibility: { ...defaultUIVisibility, ...persisted.uiVisibility },
+    activeProjectId: persisted.activeProjectId ?? currentState.activeProjectId,
+    projects: mergedProjects,
+  };
+};
+
+/**
+ * Migration function for handling version upgrades
+ */
+const migrate = (
+  persistedState: unknown,
+  version: number
+): PersistedProgressiveState | ProgressiveState => {
+  // Handle version migrations as needed
+  if (version === 0) {
+    // Migration from version 0 to 1 (if needed in future)
+    return persistedState as PersistedProgressiveState;
+  }
+  return persistedState as PersistedProgressiveState;
+};
+
+// ============================================================================
 // Store
 // ============================================================================
 
 export const useProgressiveStore = create<ProgressiveState>()(
-  immer((set) => ({
+  persist(
+    immer((set) => ({
     ...initialState,
 
     // ========================================================================
@@ -772,7 +892,16 @@ export const useProgressiveStore = create<ProgressiveState>()(
       set((state) => {
         state.pendingDetectedEntities = [];
       }),
-  }))
+  })),
+  {
+    name: "mythos-progressive-state",
+    version: PERSIST_VERSION,
+    storage: createJSONStorage(() => createStorageAdapter() as StateStorage),
+    partialize,
+    merge,
+    migrate,
+  }
+  )
 );
 
 // ============================================================================
