@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { streamText } from "https://esm.sh/ai@3.4.0";
-import { handleCorsPreFlight, getStreamingHeaders } from "../_shared/cors.ts";
+import { handleCorsPreFlight } from "../_shared/cors.ts";
+import {
+  createSSEStream,
+  getStreamingHeaders,
+  type SSEStreamController,
+} from "../_shared/streaming.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
 import {
   createErrorResponse,
@@ -8,15 +13,11 @@ import {
   validateRequestBody,
   ErrorCode,
 } from "../_shared/errors.ts";
+// DeepInfra and Qdrant imports moved to _shared/rag.ts
 import {
-  generateEmbedding,
-  isDeepInfraConfigured,
-} from "../_shared/deepinfra.ts";
-import {
-  searchPoints,
-  isQdrantConfigured,
-  type QdrantFilter,
-} from "../_shared/qdrant.ts";
+  retrieveRAGContext,
+  type RAGContext,
+} from "../_shared/rag.ts";
 import {
   AGENT_SYSTEM,
   AGENT_CONTEXT_TEMPLATE,
@@ -61,10 +62,7 @@ interface AgentRequest {
   stream?: boolean;
 }
 
-interface RAGContext {
-  documents: Array<{ id: string; title: string; preview: string }>;
-  entities: Array<{ id: string; name: string; type: string; preview: string }>;
-}
+// RAGContext type imported from ../shared/rag.ts
 
 // =============================================================================
 // Constants
@@ -72,56 +70,8 @@ interface RAGContext {
 
 const MAX_HISTORY_MESSAGES = 20;
 
-// =============================================================================
-// RAG Context Retrieval
-// =============================================================================
-
-async function retrieveContext(
-  query: string,
-  projectId: string,
-  limit: number = 5
-): Promise<RAGContext> {
-  if (!isDeepInfraConfigured() || !isQdrantConfigured()) {
-    console.log("[ai-agent] RAG not configured, skipping retrieval");
-    return { documents: [], entities: [] };
-  }
-
-  try {
-    const embedding = await generateEmbedding(query);
-    
-    const filter: QdrantFilter = {
-      must: [{ key: "projectId", match: { value: projectId } }],
-    };
-
-    const results = await searchPoints("mythos-embeddings", embedding, limit, filter);
-
-    const documents: RAGContext["documents"] = [];
-    const entities: RAGContext["entities"] = [];
-
-    for (const point of results) {
-      const payload = point.payload;
-      if (payload.type === "document") {
-        documents.push({
-          id: payload.id as string,
-          title: payload.title as string,
-          preview: (payload.text as string).slice(0, 200),
-        });
-      } else if (payload.type === "entity") {
-        entities.push({
-          id: payload.id as string,
-          name: payload.title as string,
-          type: payload.entityType as string,
-          preview: (payload.text as string).slice(0, 200),
-        });
-      }
-    }
-
-    return { documents, entities };
-  } catch (error) {
-    console.error("[ai-agent] RAG retrieval error:", error);
-    return { documents: [], entities: [] };
-  }
-}
+// RAG retrieval extracted to ../shared/rag.ts as retrieveRAGContext
+// Fixed bugs: projectId -> project_id, incorrect searchPoints API call
 
 function buildContextString(context: RAGContext, mentions?: Mention[]): string {
   const parts: string[] = [];
@@ -137,7 +87,7 @@ function buildContextString(context: RAGContext, mentions?: Mention[]): string {
   if (context.entities.length > 0) {
     parts.push("### Relevant Entities");
     for (const entity of context.entities) {
-      parts.push(`**${entity.name}** (${entity.type})`);
+      parts.push(`**${entity.title}** (${entity.type})`);
       parts.push(entity.preview);
       parts.push("");
     }
@@ -220,8 +170,10 @@ serve(async (req: Request): Promise<Response> => {
     const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
     const query = lastUserMessage?.content ?? "";
 
-    // Retrieve context
-    const context = await retrieveContext(query, projectId);
+    // Retrieve context (uses shared module with correct project_id key)
+    const context = await retrieveRAGContext(query, projectId, {
+      logPrefix: "[ai-agent]",
+    });
 
     // Build system prompt with context
     let systemPrompt = AGENT_SYSTEM;
@@ -266,97 +218,65 @@ serve(async (req: Request): Promise<Response> => {
       maxSteps: 3, // Allow up to 3 tool calls
     });
 
-    // Create streaming response
-    const encoder = new TextEncoder();
+    // Create SSE stream using shared utility
+    const stream = createSSEStream(async (sse: SSEStreamController) => {
+      try {
+        // Send context metadata first
+        sse.sendContext(context);
 
-    const readable = new ReadableStream({
-      async start(controller) {
-        try {
-          // Send context metadata first
-          const contextEvent = `data: ${JSON.stringify({ type: "context", data: context })}\n\n`;
-          controller.enqueue(encoder.encode(contextEvent));
+        // Use fullStream to get tool call IDs
+        const fullStream = result.fullStream;
 
-          // Use fullStream to get tool call IDs
-          const fullStream = result.fullStream;
+        for await (const part of fullStream) {
+          switch (part.type) {
+            case "text-delta":
+              sse.sendDelta(part.textDelta);
+              break;
 
-          for await (const part of fullStream) {
-            switch (part.type) {
-              case "text-delta":
-                // Stream text chunks
-                const deltaEvent = `data: ${JSON.stringify({
-                  type: "delta",
-                  content: part.textDelta
-                })}\n\n`;
-                controller.enqueue(encoder.encode(deltaEvent));
-                break;
+            case "tool-call":
+              sse.sendTool(part.toolCallId, part.toolName, part.args);
+              break;
 
-              case "tool-call":
-                // Send tool call with stable ID from the LLM
-                const toolEvent = `data: ${JSON.stringify({
-                  type: "tool",
-                  toolCallId: part.toolCallId,
-                  toolName: part.toolName,
-                  args: part.args,
-                })}\n\n`;
-                controller.enqueue(encoder.encode(toolEvent));
-                break;
+            case "finish":
+              break;
 
-              case "finish":
-                // Stream complete
-                break;
-
-              case "error":
-                // Handle stream errors
-                const errorEvent = `data: ${JSON.stringify({
-                  type: "error",
-                  message: part.error instanceof Error ? part.error.message : "Stream error",
-                })}\n\n`;
-                controller.enqueue(encoder.encode(errorEvent));
-                break;
-            }
+            case "error":
+              sse.sendError(part.error);
+              break;
           }
+        }
 
-          // Fire-and-forget: don't block stream completion
-          result.usage.then((finalUsage) => {
-            recordAIRequest(supabase, billing, {
-              endpoint: "agent",
-              model: "stream",
-              modelType,
-              usage: extractTokenUsage(finalUsage),
-              latencyMs: Date.now() - startTime,
-              metadata: { stream: true },
-            }).catch((err) => console.error("[ai-agent] Failed to record usage:", err));
-          });
-
-          // Send done event
-          const doneEvent = `data: ${JSON.stringify({ type: "done" })}\n\n`;
-          controller.enqueue(encoder.encode(doneEvent));
-
-          controller.close();
-        } catch (error) {
-          console.error("[ai-agent] Stream error:", error);
-          // Record failed request
-          await recordAIRequest(supabase, billing, {
+        // Fire-and-forget: don't block stream completion
+        result.usage.then((finalUsage) => {
+          recordAIRequest(supabase, billing, {
             endpoint: "agent",
             model: "stream",
             modelType,
-            usage: extractTokenUsage(undefined),
+            usage: extractTokenUsage(finalUsage),
             latencyMs: Date.now() - startTime,
-            success: false,
-            errorCode: "STREAM_ERROR",
-            errorMessage: error instanceof Error ? error.message : "Stream error",
-          });
-          const errorEvent = `data: ${JSON.stringify({
-            type: "error",
-            message: error instanceof Error ? error.message : "Stream error",
-          })}\n\n`;
-          controller.enqueue(encoder.encode(errorEvent));
-          controller.close();
-        }
-      },
+            metadata: { stream: true },
+          }).catch((err) => console.error("[ai-agent] Failed to record usage:", err));
+        });
+
+        sse.complete();
+      } catch (error) {
+        console.error("[ai-agent] Stream error:", error);
+        // Record failed request
+        await recordAIRequest(supabase, billing, {
+          endpoint: "agent",
+          model: "stream",
+          modelType,
+          usage: extractTokenUsage(undefined),
+          latencyMs: Date.now() - startTime,
+          success: false,
+          errorCode: "STREAM_ERROR",
+          errorMessage: error instanceof Error ? error.message : "Stream error",
+        });
+        sse.fail(error);
+      }
     });
 
-    return new Response(readable, {
+    return new Response(stream, {
       headers: getStreamingHeaders(origin),
     });
   } catch (error) {

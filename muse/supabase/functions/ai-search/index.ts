@@ -116,7 +116,8 @@ async function rerankResults(
   const config = getDeepInfraConfig();
   const documents = results.map((r) => `${r.title}\n${r.preview || ""}`);
 
-  const response = await fetch("https://api.deepinfra.com/v1/inference/Qwen/Qwen3-Reranker-4B", {
+  const rerankUrl = `${config.rerankUrl}/${config.rerankModel}`;
+  const response = await fetch(rerankUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

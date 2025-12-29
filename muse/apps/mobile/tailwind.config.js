@@ -12,21 +12,46 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Backgrounds - from @mythos/theme
+        // Mythos theme colors - match class names used in components
+        mythos: {
+          // Backgrounds
+          bg: {
+            primary: "#0a0a0f",
+            secondary: "#12121a",
+            tertiary: "#1a1a24",
+          },
+          // Text
+          text: {
+            primary: "#e4e4e7",
+            secondary: "#a1a1aa",
+            muted: "#71717a",
+          },
+          // Accents
+          accent: {
+            cyan: "#22d3ee",
+            red: "#f87171",
+            amber: "#fbbf24",
+            green: "#4ade80",
+          },
+          // Borders
+          border: {
+            DEFAULT: "rgba(255, 255, 255, 0.08)",
+            subtle: "rgba(255, 255, 255, 0.08)",
+            hover: "rgba(255, 255, 255, 0.15)",
+          },
+        },
+        // Legacy flat structure for backwards compatibility
         bg: {
           primary: "#0a0a0f",
           secondary: "#12121a",
           tertiary: "#1a1a24",
         },
-        // Text - from @mythos/theme
         text: {
           primary: "#e4e4e7",
           secondary: "#a1a1aa",
           muted: "#71717a",
         },
-        // Single accent
         accent: "#22d3ee",
-        // Borders
         border: {
           DEFAULT: "rgba(255, 255, 255, 0.08)",
           hover: "rgba(255, 255, 255, 0.15)",

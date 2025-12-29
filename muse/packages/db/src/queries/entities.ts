@@ -1,113 +1,245 @@
-import { supabase } from "../client";
+import {
+  executeQuery,
+  executeSingleQuery,
+  executeMutation,
+  executeVoidMutation,
+  executeRpc,
+} from "../queryHelper";
+import { getSupabaseClient } from "../client";
+import { QueryError } from "../errors";
 import type { Database } from "../types/database";
+import {
+  type PaginationParams,
+  type PaginatedResult,
+  normalizePaginationParams,
+  createPaginatedResult,
+  DEFAULT_PAGE_SIZE,
+} from "../types/pagination";
 
 type Entity = Database["public"]["Tables"]["entities"]["Row"];
 type EntityInsert = Database["public"]["Tables"]["entities"]["Insert"];
 type EntityUpdate = Database["public"]["Tables"]["entities"]["Update"];
 
-export async function getEntities(projectId: string): Promise<Entity[]> {
-  const { data, error } = await supabase
-    .from("entities")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("name");
+// Re-export pagination types for convenience
+export type { PaginationParams, PaginatedResult };
 
-  if (error) {
-    throw new Error(`Failed to fetch entities: ${error.message}`);
+/**
+ * Get entities for a project with optional pagination
+ * @param projectId - The project ID to fetch entities for
+ * @param pagination - Optional pagination params (limit, offset)
+ * @returns Paginated result with entities, total count, and hasMore flag
+ */
+export async function getEntities(
+  projectId: string,
+  pagination?: PaginationParams
+): Promise<PaginatedResult<Entity>> {
+  const supabase = getSupabaseClient();
+  const { limit, offset } = normalizePaginationParams(pagination);
+
+  // Get total count
+  const { count, error: countError } = await supabase
+    .from("entities")
+    .select("*", { count: "exact", head: true })
+    .eq("project_id", projectId);
+
+  if (countError) {
+    throw new QueryError("entities", "count", countError);
   }
 
-  return (data as Entity[]) || [];
+  const total = count ?? 0;
+
+  // Get paginated data
+  const data = await executeQuery<Entity>(
+    (client) =>
+      client
+        .from("entities")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("name")
+        .range(offset, offset + limit - 1),
+    { context: "fetch entities" }
+  );
+
+  return createPaginatedResult(data, total, { limit, offset });
 }
 
+/**
+ * Get all entities for a project (fetches all pages internally)
+ * Use with caution for large datasets - prefer paginated getEntities for UI
+ * @param projectId - The project ID to fetch entities for
+ * @returns Array of all entities
+ */
+export async function fetchAllEntities(projectId: string): Promise<Entity[]> {
+  const allEntities: Entity[] = [];
+  let offset = 0;
+  const pageSize = DEFAULT_PAGE_SIZE;
+  let hasMore = true;
+
+  while (hasMore) {
+    const result = await getEntities(projectId, { limit: pageSize, offset });
+    allEntities.push(...result.data);
+    hasMore = result.hasMore;
+    offset += pageSize;
+  }
+
+  return allEntities;
+}
+
+/**
+ * Get entities by type with optional pagination
+ * @param projectId - The project ID
+ * @param type - Entity type to filter by
+ * @param pagination - Optional pagination params
+ * @returns Paginated result with entities
+ */
 export async function getEntitiesByType(
+  projectId: string,
+  type: string,
+  pagination?: PaginationParams
+): Promise<PaginatedResult<Entity>> {
+  const supabase = getSupabaseClient();
+  const { limit, offset } = normalizePaginationParams(pagination);
+
+  // Get total count for this type
+  const { count, error: countError } = await supabase
+    .from("entities")
+    .select("*", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .eq("type", type);
+
+  if (countError) {
+    throw new QueryError("entities", "count by type", countError);
+  }
+
+  const total = count ?? 0;
+
+  // Get paginated data
+  const data = await executeQuery<Entity>(
+    (client) =>
+      client
+        .from("entities")
+        .select("*")
+        .eq("project_id", projectId)
+        .eq("type", type)
+        .order("name")
+        .range(offset, offset + limit - 1),
+    { context: "fetch entities by type" }
+  );
+
+  return createPaginatedResult(data, total, { limit, offset });
+}
+
+/**
+ * Get all entities by type (fetches all pages internally)
+ * @param projectId - The project ID
+ * @param type - Entity type to filter by
+ * @returns Array of all matching entities
+ */
+export async function fetchAllEntitiesByType(
   projectId: string,
   type: string
 ): Promise<Entity[]> {
-  const { data, error } = await supabase
-    .from("entities")
-    .select("*")
-    .eq("project_id", projectId)
-    .eq("type", type)
-    .order("name");
+  const allEntities: Entity[] = [];
+  let offset = 0;
+  const pageSize = DEFAULT_PAGE_SIZE;
+  let hasMore = true;
 
-  if (error) {
-    throw new Error(`Failed to fetch entities: ${error.message}`);
+  while (hasMore) {
+    const result = await getEntitiesByType(projectId, type, {
+      limit: pageSize,
+      offset,
+    });
+    allEntities.push(...result.data);
+    hasMore = result.hasMore;
+    offset += pageSize;
   }
 
-  return (data as Entity[]) || [];
+  return allEntities;
 }
 
 export async function getEntity(id: string): Promise<Entity | null> {
-  const { data, error } = await supabase
-    .from("entities")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") return null;
-    throw new Error(`Failed to fetch entity: ${error.message}`);
-  }
-
-  return data as Entity;
+  return executeSingleQuery<Entity>(
+    (client) => client.from("entities").select("*").eq("id", id).single(),
+    { context: "fetch entity" }
+  );
 }
 
 export async function createEntity(entity: EntityInsert): Promise<Entity> {
-  const { data, error } = await supabase
-    .from("entities")
-    .insert(entity as never)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to create entity: ${error.message}`);
-  }
-
-  return data as Entity;
+  return executeMutation<Entity>(
+    (client) =>
+      client
+        .from("entities")
+        .insert(entity as never)
+        .select()
+        .single(),
+    { context: "create entity" }
+  );
 }
 
 export async function updateEntity(
   id: string,
   updates: EntityUpdate
 ): Promise<Entity> {
-  const { data, error } = await supabase
-    .from("entities")
-    .update({ ...updates, updated_at: new Date().toISOString() } as never)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to update entity: ${error.message}`);
-  }
-
-  return data as Entity;
+  return executeMutation<Entity>(
+    (client) =>
+      client
+        .from("entities")
+        .update({ ...updates, updated_at: new Date().toISOString() } as never)
+        .eq("id", id)
+        .select()
+        .single(),
+    { context: "update entity" }
+  );
 }
 
 export async function deleteEntity(id: string): Promise<void> {
-  const { error } = await supabase.from("entities").delete().eq("id", id);
-
-  if (error) {
-    throw new Error(`Failed to delete entity: ${error.message}`);
-  }
+  return executeVoidMutation(
+    (client) => client.from("entities").delete().eq("id", id),
+    { context: "delete entity" }
+  );
 }
 
+/**
+ * Search entities with optional pagination
+ * @param projectId - The project ID
+ * @param query - Search query string
+ * @param pagination - Optional pagination params
+ * @returns Paginated result with matching entities
+ */
 export async function searchEntities(
   projectId: string,
-  query: string
-): Promise<Entity[]> {
-  // Text search on name and aliases
-  const { data, error } = await supabase
+  query: string,
+  pagination?: PaginationParams
+): Promise<PaginatedResult<Entity>> {
+  const supabase = getSupabaseClient();
+  const { limit, offset } = normalizePaginationParams(pagination);
+
+  // Get total count
+  const { count, error: countError } = await supabase
     .from("entities")
-    .select("*")
+    .select("*", { count: "exact", head: true })
     .eq("project_id", projectId)
     .or(`name.ilike.%${query}%,aliases.cs.{${query}}`);
 
-  if (error) {
-    throw new Error(`Failed to search entities: ${error.message}`);
+  if (countError) {
+    throw new QueryError("entities", "count search results", countError);
   }
 
-  return (data as Entity[]) || [];
+  const total = count ?? 0;
+
+  // Get paginated data
+  const data = await executeQuery<Entity>(
+    (client) =>
+      client
+        .from("entities")
+        .select("*")
+        .eq("project_id", projectId)
+        .or(`name.ilike.%${query}%,aliases.cs.{${query}}`)
+        .range(offset, offset + limit - 1),
+    { context: "search entities" }
+  );
+
+  return createPaginatedResult(data, total, { limit, offset });
 }
 
 // Semantic search using embeddings (requires pgvector)
@@ -118,16 +250,16 @@ export async function semanticSearchEntities(
   threshold: number = 0.7,
   limit: number = 10
 ): Promise<{ id: string; name: string; type: string; similarity: number }[]> {
-  const { data, error } = await supabase.rpc("search_entities", {
-    query_embedding: embedding,
-    match_threshold: threshold,
-    match_count: limit,
-    project_filter: projectId,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to search entities: ${error.message}`);
-  }
-
-  return (data as { id: string; name: string; type: string; similarity: number }[]) || [];
+  return executeRpc<
+    { id: string; name: string; type: string; similarity: number }[]
+  >(
+    (client) =>
+      client.rpc("search_entities", {
+        query_embedding: embedding,
+        match_threshold: threshold,
+        match_count: limit,
+        project_filter: projectId,
+      } as never),
+    { context: "semantic search entities" }
+  );
 }

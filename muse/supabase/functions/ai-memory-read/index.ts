@@ -43,13 +43,17 @@ import {
   checkBillingAndGetKey,
   createSupabaseClient,
 } from "../_shared/billing.ts";
+import {
+  type MemoryCategory,
+  type MemoryScope,
+  type MemoryRecord,
+  VALID_CATEGORIES,
+  VALID_SCOPES,
+} from "../_shared/memory/types.ts";
 
 // =============================================================================
 // Types
 // =============================================================================
-
-type MemoryCategory = "style" | "decision" | "preference" | "session";
-type MemoryScope = "project" | "user" | "conversation";
 
 interface MemoryReadRequest {
   projectId: string;
@@ -61,16 +65,8 @@ interface MemoryReadRequest {
   recencyWeight?: number;
 }
 
-interface MemoryRecord {
-  id: string;
-  projectId: string;
-  category: MemoryCategory;
-  scope: MemoryScope;
-  ownerId?: string;
-  content: string;
-  metadata?: Record<string, unknown>;
-  createdAt: string;
-  updatedAt?: string;
+// Extended MemoryRecord with score for search results
+interface ScoredMemoryRecord extends MemoryRecord {
   score?: number;
 }
 
@@ -81,8 +77,6 @@ interface MemoryRecord {
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const DEFAULT_RECENCY_WEIGHT = 0.2;
-const VALID_CATEGORIES: MemoryCategory[] = ["style", "decision", "preference", "session"];
-const VALID_SCOPES: MemoryScope[] = ["project", "user", "conversation"];
 
 // =============================================================================
 // Helpers
@@ -110,7 +104,7 @@ function parseMemoryFromPayload(
   id: string,
   payload: Record<string, unknown>,
   score?: number
-): MemoryRecord {
+): ScoredMemoryRecord {
   return {
     id,
     projectId: String(payload.project_id ?? ""),
@@ -162,14 +156,18 @@ function buildMemoryFilter(params: {
   if (params.scope) {
     must.push({ key: "scope", match: { value: params.scope } });
 
-    // For user/conversation scope, also filter by owner
-    if (params.scope !== "project" && params.ownerId) {
-      must.push({ key: "owner_id", match: { value: params.ownerId } });
-    }
-
     // For conversation scope, also filter by conversation
     if (params.scope === "conversation" && params.conversationId) {
       must.push({ key: "conversation_id", match: { value: params.conversationId } });
+    }
+  }
+
+  // Always filter by owner for non-project scopes to prevent privacy leaks
+  // This ensures user/conversation-scoped memories are only visible to their owner,
+  // even when no explicit scope is requested
+  if (params.ownerId) {
+    if (params.scope !== "project") {
+      must.push({ key: "owner_id", match: { value: params.ownerId } });
     }
   }
 
@@ -301,7 +299,7 @@ serve(async (req) => {
       conversationId: request.conversationId,
     });
 
-    let memories: MemoryRecord[];
+    let memories: ScoredMemoryRecord[];
 
     if (request.query && isDeepInfraConfigured()) {
       // Semantic search with query

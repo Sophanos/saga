@@ -1,4 +1,10 @@
-import { getSupabaseClient } from "../client";
+import {
+  executeSingleQuery,
+  executeMutation,
+  executeQuery,
+  executeRpc,
+  DbQueryError,
+} from "../queryHelper";
 
 // Billing mode types (matches billing_mode enum in DB)
 export type BillingMode = "managed" | "byok";
@@ -191,19 +197,11 @@ export type AIFeature = "chat" | "lint" | "coach" | "detect" | "search";
 export async function getSubscription(
   userId: string
 ): Promise<Subscription | null> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from("subscriptions")
-    .select("*")
-    .eq("user_id", userId)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") return null;
-    throw new Error(`Failed to fetch subscription: ${error.message}`);
-  }
-
-  return data as Subscription;
+  return executeSingleQuery<Subscription>(
+    (client) =>
+      client.from("subscriptions").select("*").eq("user_id", userId).single(),
+    { context: "fetch subscription" }
+  );
 }
 
 /**
@@ -215,7 +213,6 @@ export async function getOrCreateSubscription(
   const existing = await getSubscription(userId);
   if (existing) return existing;
 
-  const supabase = getSupabaseClient();
   const defaultSubscription: SubscriptionInsert = {
     user_id: userId,
     tier: "free",
@@ -224,22 +221,24 @@ export async function getOrCreateSubscription(
     cancel_at_period_end: false,
   };
 
-  const { data, error } = await supabase
-    .from("subscriptions")
-    .insert(defaultSubscription as never)
-    .select()
-    .single();
-
-  if (error) {
+  try {
+    return await executeMutation<Subscription>(
+      (client) =>
+        client
+          .from("subscriptions")
+          .insert(defaultSubscription as never)
+          .select()
+          .single(),
+      { context: "create subscription" }
+    );
+  } catch (error) {
     // Handle race condition - another process may have created it
-    if (error.code === "23505") {
+    if (error instanceof DbQueryError && error.originalCode === "23505") {
       const retryData = await getSubscription(userId);
       if (retryData) return retryData;
     }
-    throw new Error(`Failed to create subscription: ${error.message}`);
+    throw error;
   }
-
-  return data as Subscription;
 }
 
 /**
@@ -249,19 +248,16 @@ export async function updateSubscription(
   userId: string,
   updates: SubscriptionUpdate
 ): Promise<Subscription> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from("subscriptions")
-    .update(updates as never)
-    .eq("user_id", userId)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to update subscription: ${error.message}`);
-  }
-
-  return data as Subscription;
+  return executeMutation<Subscription>(
+    (client) =>
+      client
+        .from("subscriptions")
+        .update(updates as never)
+        .eq("user_id", userId)
+        .select()
+        .single(),
+    { context: "update subscription" }
+  );
 }
 
 /**
@@ -275,17 +271,16 @@ export async function getCurrentUsage(userId: string): Promise<{
   periodStart: string | null;
   periodEnd: string | null;
 }> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.rpc("get_billing_context", {
-    p_user_id: userId,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to get current usage: ${error.message}`);
-  }
+  const data = await executeRpc<BillingContextRow[] | null>(
+    (client) =>
+      client.rpc("get_billing_context", {
+        p_user_id: userId,
+      } as never),
+    { context: "get current usage" }
+  );
 
   // RPC returns an array with one row
-  const row = (data as BillingContextRow[] | null)?.[0];
+  const row = data?.[0];
 
   if (!row) {
     return {
@@ -316,19 +311,15 @@ export async function recordTokenUsage(
   tokens: number,
   callType: AICallType
 ): Promise<TokenUsageRecord> {
-  const supabase = getSupabaseClient();
-
-  const { data, error } = await supabase.rpc("record_token_usage", {
-    p_tokens: tokens,
-    p_call_type: callType,
-    p_user_id: userId,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to record token usage: ${error.message}`);
-  }
-
-  return data as TokenUsageRecord;
+  return executeRpc<TokenUsageRecord>(
+    (client) =>
+      client.rpc("record_token_usage", {
+        p_tokens: tokens,
+        p_call_type: callType,
+        p_user_id: userId,
+      } as never),
+    { context: "record token usage" }
+  );
 }
 
 /**
@@ -338,36 +329,30 @@ export async function recordWordsWritten(
   userId: string,
   wordsDelta: number
 ): Promise<TokenUsageRecord> {
-  const supabase = getSupabaseClient();
-
-  const { data, error } = await supabase.rpc("record_words_written", {
-    p_words: wordsDelta,
-    p_user_id: userId,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to record words written: ${error.message}`);
-  }
-
-  return data as TokenUsageRecord;
+  return executeRpc<TokenUsageRecord>(
+    (client) =>
+      client.rpc("record_words_written", {
+        p_words: wordsDelta,
+        p_user_id: userId,
+      } as never),
+    { context: "record words written" }
+  );
 }
 
 /**
  * Get billing context for quota checks via get_billing_context RPC
  */
 export async function getBillingContext(userId: string): Promise<BillingContext> {
-  const supabase = getSupabaseClient();
-
-  const { data, error } = await supabase.rpc("get_billing_context", {
-    p_user_id: userId,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to get billing context: ${error.message}`);
-  }
+  const data = await executeRpc<BillingContextRow[] | null>(
+    (client) =>
+      client.rpc("get_billing_context", {
+        p_user_id: userId,
+      } as never),
+    { context: "get billing context" }
+  );
 
   // RPC returns an array with one row
-  const row = (data as BillingContextRow[] | null)?.[0];
+  const row = data?.[0];
 
   if (!row) {
     // Return default free tier context if no data
@@ -432,18 +417,14 @@ export async function canUseAIFeature(
   userId: string,
   feature: AIFeature
 ): Promise<boolean> {
-  const supabase = getSupabaseClient();
-
-  const { data, error } = await supabase.rpc("can_use_ai_feature", {
-    p_feature: feature,
-    p_user_id: userId,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to check AI feature access: ${error.message}`);
-  }
-
-  return data as boolean;
+  return executeRpc<boolean>(
+    (client) =>
+      client.rpc("can_use_ai_feature", {
+        p_feature: feature,
+        p_user_id: userId,
+      } as never),
+    { context: "check AI feature access" }
+  );
 }
 
 /**
@@ -452,42 +433,41 @@ export async function canUseAIFeature(
 export async function getOrCreateUsageRecord(
   userId: string
 ): Promise<TokenUsageRecord> {
-  const supabase = getSupabaseClient();
-
-  const { data, error } = await supabase.rpc("get_or_create_usage_record", {
-    p_user_id: userId,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to get or create usage record: ${error.message}`);
-  }
-
-  return data as TokenUsageRecord;
+  return executeRpc<TokenUsageRecord>(
+    (client) =>
+      client.rpc("get_or_create_usage_record", {
+        p_user_id: userId,
+      } as never),
+    { context: "get or create usage record" }
+  );
 }
 
 /**
  * Get all tier configurations
  */
 export async function getTierConfig(): Promise<TierConfig[]> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from("tier_config")
-    .select("*")
-    .order("price_monthly_cents", { ascending: true });
+  try {
+    const data = await executeQuery<TierConfig>(
+      (client) =>
+        client
+          .from("tier_config")
+          .select("*")
+          .order("price_monthly_cents", { ascending: true }),
+      { context: "fetch tier config" }
+    );
 
-  if (error) {
-    // Return default config if table doesn't exist or is empty
-    if (error.code === "42P01" || error.code === "PGRST116") {
+    if (data.length === 0) {
       return getDefaultTierConfig();
     }
-    throw new Error(`Failed to fetch tier config: ${error.message}`);
-  }
 
-  if (!data || data.length === 0) {
-    return getDefaultTierConfig();
+    return data;
+  } catch (error) {
+    // Return default config if table doesn't exist
+    if (error instanceof DbQueryError && error.originalCode === "42P01") {
+      return getDefaultTierConfig();
+    }
+    throw error;
   }
-
-  return data as TierConfig[];
 }
 
 /**
@@ -496,19 +476,11 @@ export async function getTierConfig(): Promise<TierConfig[]> {
 export async function getTierConfigByTier(
   tier: SubscriptionTier
 ): Promise<TierConfig | null> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from("tier_config")
-    .select("*")
-    .eq("tier", tier)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") return null;
-    throw new Error(`Failed to fetch tier config: ${error.message}`);
-  }
-
-  return data as TierConfig;
+  return executeSingleQuery<TierConfig>(
+    (client) =>
+      client.from("tier_config").select("*").eq("tier", tier).single(),
+    { context: "fetch tier config by tier" }
+  );
 }
 
 /**
@@ -668,20 +640,18 @@ export async function getUserRequestLogs(
     endpoint?: AIEndpoint;
   }
 ): Promise<AIRequestLog[]> {
-  const supabase = getSupabaseClient();
+  const data = await executeRpc<unknown[] | null>(
+    (client) =>
+      client.rpc("get_user_request_logs", {
+        p_user_id: userId,
+        p_limit: options?.limit ?? 50,
+        p_offset: options?.offset ?? 0,
+        p_endpoint: options?.endpoint ?? null,
+      } as never),
+    { context: "get request logs" }
+  );
 
-  const { data, error } = await supabase.rpc("get_user_request_logs", {
-    p_user_id: userId,
-    p_limit: options?.limit ?? 50,
-    p_offset: options?.offset ?? 0,
-    p_endpoint: options?.endpoint ?? null,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to get request logs: ${error.message}`);
-  }
-
-  return ((data as unknown[]) ?? []).map((row: unknown) => {
+  return (data ?? []).map((row: unknown) => {
     const r = row as Record<string, unknown>;
     return {
       id: r["id"] as string,
@@ -713,18 +683,16 @@ export async function getUserRequestAnalytics(
   userId: string,
   days: number = 30
 ): Promise<RequestAnalytics[]> {
-  const supabase = getSupabaseClient();
+  const data = await executeRpc<unknown[] | null>(
+    (client) =>
+      client.rpc("get_user_request_analytics", {
+        p_user_id: userId,
+        p_days: days,
+      } as never),
+    { context: "get request analytics" }
+  );
 
-  const { data, error } = await supabase.rpc("get_user_request_analytics", {
-    p_user_id: userId,
-    p_days: days,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to get request analytics: ${error.message}`);
-  }
-
-  return ((data as unknown[]) ?? []).map((row: unknown) => {
+  return (data ?? []).map((row: unknown) => {
     const r = row as Record<string, unknown>;
     return {
       endpoint: r["endpoint"] as AIEndpoint,

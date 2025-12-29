@@ -3,15 +3,24 @@
  *
  * Handles billing context retrieval and token usage recording
  * for BYOK (Bring Your Own Key) and managed billing modes.
+ * Also supports anonymous trial mode with server-enforced quotas.
  */
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { createErrorResponse, ErrorCode } from "./errors.ts";
+import {
+  getDeviceIdFromRequest,
+  consumeTrialRequest,
+  checkAICallLimitByIP,
+  checkAICallLimitByDevice,
+  AnonErrorCode,
+  type TrialConsumptionResult,
+} from "./anonymous.ts";
 
 /**
  * Billing modes
  */
-export type BillingMode = "byok" | "managed";
+export type BillingMode = "byok" | "managed" | "anonymous_trial";
 
 /**
  * Result of billing check
@@ -21,7 +30,7 @@ export interface BillingCheck {
   canProceed: boolean;
   /** The billing mode for this user */
   billingMode: BillingMode;
-  /** The API key to use (from header for BYOK, from env for managed) */
+  /** The API key to use (from header for BYOK, from env for managed/trial) */
   apiKey: string | null;
   /** Remaining tokens for managed billing (null for BYOK) */
   tokensRemaining: number | null;
@@ -29,6 +38,22 @@ export interface BillingCheck {
   userId: string | null;
   /** Error message if canProceed is false */
   error?: string;
+  /** Error code for frontend detection */
+  errorCode?: string;
+  /** Anonymous device ID (for trial mode) */
+  anonDeviceId?: string | null;
+  /** Remaining trial requests (for trial mode) */
+  anonTrialRemaining?: number | null;
+}
+
+/**
+ * Options for billing check
+ */
+export interface BillingOptions {
+  /** AI endpoint being called (for logging) */
+  endpoint?: AIEndpoint;
+  /** Whether to allow anonymous trial for this endpoint */
+  allowAnonymousTrial?: boolean;
 }
 
 /**
@@ -80,20 +105,23 @@ async function getUserFromAuth(
  * 2. Calls get_billing_context DB function to determine billing mode
  * 3. For BYOK: extracts key from x-openrouter-key header
  * 4. For Managed: uses OPENROUTER_API_KEY env var and checks quota
+ * 5. For Anonymous Trial: verifies token, checks quota, applies rate limits
  *
  * @param request - The incoming request
  * @param supabase - Supabase client instance
+ * @param options - Optional billing options
  * @returns BillingCheck with apiKey and authorization status
  */
 export async function checkBillingAndGetKey(
   request: Request,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  options?: BillingOptions
 ): Promise<BillingCheck> {
   // Get user from auth header
   const userId = await getUserFromAuth(request, supabase);
 
   if (!userId) {
-    // Anonymous user - check for BYOK header
+    // Anonymous user - check for BYOK header first
     const headerKey = request.headers.get("x-openrouter-key");
     if (headerKey && headerKey.trim().length > 0) {
       return {
@@ -105,6 +133,11 @@ export async function checkBillingAndGetKey(
       };
     }
 
+    // Check if anonymous trial is allowed for this endpoint
+    if (options?.allowAnonymousTrial) {
+      return await checkAnonymousTrial(request, supabase);
+    }
+
     // Anonymous users cannot use managed billing - require auth or BYOK
     return {
       canProceed: false,
@@ -113,6 +146,7 @@ export async function checkBillingAndGetKey(
       tokensRemaining: null,
       userId: null,
       error: "Authentication required for AI features. Please sign in or provide your own API key.",
+      errorCode: AnonErrorCode.SESSION_REQUIRED,
     };
   }
 
@@ -232,19 +266,127 @@ export async function checkBillingAndGetKey(
 export async function requireBilling(
   req: Request,
   supabase: SupabaseClient,
-  origin: string | null
+  origin: string | null,
+  options?: BillingOptions
 ): Promise<{ billing: BillingCheck } | { error: Response }> {
-  const billing = await checkBillingAndGetKey(req, supabase);
+  const billing = await checkBillingAndGetKey(req, supabase, options);
   if (!billing.canProceed) {
+    // Use appropriate error code based on the error type
+    const errorCode = billing.errorCode === AnonErrorCode.TRIAL_EXHAUSTED
+      ? ErrorCode.FORBIDDEN
+      : billing.errorCode === AnonErrorCode.RATE_LIMITED
+      ? ErrorCode.RATE_LIMITED
+      : ErrorCode.FORBIDDEN;
+
     return {
       error: createErrorResponse(
-        ErrorCode.FORBIDDEN,
+        errorCode,
         billing.error ?? "Unable to process request",
-        origin
+        origin,
+        billing.errorCode ? { code: billing.errorCode, anonTrialRemaining: billing.anonTrialRemaining } : undefined
       )
     };
   }
   return { billing };
+}
+
+/**
+ * Check anonymous trial eligibility
+ * Verifies token, checks rate limits, and consumes quota
+ */
+async function checkAnonymousTrial(
+  request: Request,
+  supabase: SupabaseClient
+): Promise<BillingCheck> {
+  // Get device ID from token
+  const deviceId = await getDeviceIdFromRequest(request);
+  if (!deviceId) {
+    return {
+      canProceed: false,
+      billingMode: "anonymous_trial",
+      apiKey: null,
+      tokensRemaining: null,
+      userId: null,
+      error: "Anonymous session required. Please initialize a trial session first.",
+      errorCode: AnonErrorCode.SESSION_REQUIRED,
+    };
+  }
+
+  // Check IP rate limit
+  const ipLimit = await checkAICallLimitByIP(supabase, request);
+  if (!ipLimit.allowed) {
+    return {
+      canProceed: false,
+      billingMode: "anonymous_trial",
+      apiKey: null,
+      tokensRemaining: null,
+      userId: null,
+      anonDeviceId: deviceId,
+      error: "Too many requests. Please try again later.",
+      errorCode: AnonErrorCode.RATE_LIMITED,
+    };
+  }
+
+  // Check device rate limit
+  const deviceLimit = await checkAICallLimitByDevice(supabase, deviceId);
+  if (!deviceLimit.allowed) {
+    return {
+      canProceed: false,
+      billingMode: "anonymous_trial",
+      apiKey: null,
+      tokensRemaining: null,
+      userId: null,
+      anonDeviceId: deviceId,
+      error: "Please wait before sending another message.",
+      errorCode: AnonErrorCode.RATE_LIMITED,
+    };
+  }
+
+  // Consume one trial request (atomic)
+  const consumption = await consumeTrialRequest(supabase, deviceId);
+  if (!consumption.allowed) {
+    return {
+      canProceed: false,
+      billingMode: "anonymous_trial",
+      apiKey: null,
+      tokensRemaining: null,
+      userId: null,
+      anonDeviceId: deviceId,
+      anonTrialRemaining: 0,
+      error: "Trial limit reached. Sign up to continue using AI features.",
+      errorCode: AnonErrorCode.TRIAL_EXHAUSTED,
+    };
+  }
+
+  // Get trial API key (separate from main managed key for cost isolation)
+  const trialKey = Deno.env.get("OPENROUTER_TRIAL_API_KEY") ?? Deno.env.get("OPENROUTER_API_KEY");
+  if (!trialKey) {
+    console.error("[billing] No trial API key configured");
+    return {
+      canProceed: false,
+      billingMode: "anonymous_trial",
+      apiKey: null,
+      tokensRemaining: null,
+      userId: null,
+      anonDeviceId: deviceId,
+      error: "Trial service temporarily unavailable.",
+      errorCode: "TRIAL_UNAVAILABLE",
+    };
+  }
+
+  console.log(
+    `[billing] Anonymous trial approved: device=${deviceId.substring(0, 8)}, remaining=${consumption.remaining}`
+  );
+
+  return {
+    canProceed: true,
+    billingMode: "anonymous_trial",
+    apiKey: trialKey,
+    tokensRemaining: null,
+    userId: null,
+    anonDeviceId: deviceId,
+    anonTrialRemaining: consumption.remaining,
+  };
 }
 
 /**

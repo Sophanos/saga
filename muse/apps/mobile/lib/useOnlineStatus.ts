@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useCallback, useState } from "react";
-import { useOfflineStore } from "@mythos/state";
+import { useOfflineStore, type OfflineState } from "@mythos/state";
 
 /**
  * NetInfo state type (from @react-native-community/netinfo)
@@ -121,8 +121,8 @@ export function useOnlineStatus(
     requireInternetReachable = false,
   } = options;
 
-  const isOnline = useOfflineStore((s) => s.isOnline);
-  const setOnline = useOfflineStore((s) => s.setOnline);
+  const isOnline = useOfflineStore((s: OfflineState) => s.isOnline);
+  const setOnline = useOfflineStore((s: OfflineState) => s.setOnline);
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [connectionType, setConnectionType] = useState<string | null>(null);
@@ -235,7 +235,7 @@ export function useOnlineStatus(
  * Use this when you only need to display status without callbacks
  */
 export function useIsOnline(): boolean {
-  return useOfflineStore((s) => s.isOnline);
+  return useOfflineStore((s: OfflineState) => s.isOnline);
 }
 
 /**
@@ -243,7 +243,7 @@ export function useIsOnline(): boolean {
  * Returns all data needed for an offline status indicator
  */
 export function useOfflineIndicator() {
-  return useOfflineStore((s) => ({
+  return useOfflineStore((s: OfflineState) => ({
     isOnline: s.isOnline,
     isSyncing: s.isSyncing,
     pendingCount: s.pendingMutations + s.pendingAiRequests,

@@ -11,12 +11,23 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mythos/agent-protocol": "workspace:*",
     "@mythos/core": "workspace:*",
     "@mythos/storage": "workspace:*",
     "zustand": "^5.0.2",
     "immer": "^10.1.1"
   },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": false
+    }
+  },
   "devDependencies": {
+    "@mythos/typescript-config": "workspace:*",
+    "@types/react": "^18.3.18",
     "typescript": "^5.7.2"
   }
 }

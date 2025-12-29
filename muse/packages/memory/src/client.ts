@@ -120,9 +120,9 @@ async function makeRequest<T>(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
-  // Combine with user-provided signal
+  // Combine with user-provided signal (use { once: true } to prevent memory leak)
   if (opts?.signal) {
-    opts.signal.addEventListener("abort", () => controller.abort());
+    opts.signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
 
   try {

@@ -1,4 +1,10 @@
-import { supabase } from "../client";
+import {
+  executeQuery,
+  executeSingleQuery,
+  executeMutation,
+  executeBulkMutation,
+  executeVoidMutation,
+} from "../queryHelper";
 import type { Database } from "../types/database";
 
 type Mention = Database["public"]["Tables"]["mentions"]["Row"];
@@ -11,17 +17,15 @@ type MentionUpdate = Database["public"]["Tables"]["mentions"]["Update"];
 export async function getMentionsByDocument(
   documentId: string
 ): Promise<Mention[]> {
-  const { data, error } = await supabase
-    .from("mentions")
-    .select("*")
-    .eq("document_id", documentId)
-    .order("position_start");
-
-  if (error) {
-    throw new Error(`Failed to fetch mentions: ${error.message}`);
-  }
-
-  return (data as Mention[]) || [];
+  return executeQuery<Mention>(
+    (client) =>
+      client
+        .from("mentions")
+        .select("*")
+        .eq("document_id", documentId)
+        .order("position_start"),
+    { context: "fetch mentions by document" }
+  );
 }
 
 /**
@@ -30,52 +34,40 @@ export async function getMentionsByDocument(
 export async function getMentionsByEntity(
   entityId: string
 ): Promise<Mention[]> {
-  const { data, error } = await supabase
-    .from("mentions")
-    .select("*")
-    .eq("entity_id", entityId)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    throw new Error(`Failed to fetch mentions: ${error.message}`);
-  }
-
-  return (data as Mention[]) || [];
+  return executeQuery<Mention>(
+    (client) =>
+      client
+        .from("mentions")
+        .select("*")
+        .eq("entity_id", entityId)
+        .order("created_at", { ascending: false }),
+    { context: "fetch mentions by entity" }
+  );
 }
 
 /**
  * Get a single mention by ID
  */
 export async function getMention(id: string): Promise<Mention | null> {
-  const { data, error } = await supabase
-    .from("mentions")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") return null;
-    throw new Error(`Failed to fetch mention: ${error.message}`);
-  }
-
-  return data as Mention;
+  return executeSingleQuery<Mention>(
+    (client) => client.from("mentions").select("*").eq("id", id).single(),
+    { context: "fetch mention" }
+  );
 }
 
 /**
  * Create a new mention
  */
 export async function createMention(mention: MentionInsert): Promise<Mention> {
-  const { data, error } = await supabase
-    .from("mentions")
-    .insert(mention as never)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to create mention: ${error.message}`);
-  }
-
-  return data as Mention;
+  return executeMutation<Mention>(
+    (client) =>
+      client
+        .from("mentions")
+        .insert(mention as never)
+        .select()
+        .single(),
+    { context: "create mention" }
+  );
 }
 
 /**
@@ -86,16 +78,14 @@ export async function createMentions(
 ): Promise<Mention[]> {
   if (mentions.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("mentions")
-    .insert(mentions as never[])
-    .select();
-
-  if (error) {
-    throw new Error(`Failed to create mentions: ${error.message}`);
-  }
-
-  return (data as Mention[]) || [];
+  return executeBulkMutation<Mention>(
+    (client) =>
+      client
+        .from("mentions")
+        .insert(mentions as never[])
+        .select(),
+    { context: "create mentions" }
+  );
 }
 
 /**
@@ -105,29 +95,26 @@ export async function updateMention(
   id: string,
   updates: MentionUpdate
 ): Promise<Mention> {
-  const { data, error } = await supabase
-    .from("mentions")
-    .update(updates as never)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to update mention: ${error.message}`);
-  }
-
-  return data as Mention;
+  return executeMutation<Mention>(
+    (client) =>
+      client
+        .from("mentions")
+        .update(updates as never)
+        .eq("id", id)
+        .select()
+        .single(),
+    { context: "update mention" }
+  );
 }
 
 /**
  * Delete a single mention
  */
 export async function deleteMention(id: string): Promise<void> {
-  const { error } = await supabase.from("mentions").delete().eq("id", id);
-
-  if (error) {
-    throw new Error(`Failed to delete mention: ${error.message}`);
-  }
+  return executeVoidMutation(
+    (client) => client.from("mentions").delete().eq("id", id),
+    { context: "delete mention" }
+  );
 }
 
 /**
@@ -137,28 +124,20 @@ export async function deleteMention(id: string): Promise<void> {
 export async function deleteMentionsByDocument(
   documentId: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from("mentions")
-    .delete()
-    .eq("document_id", documentId);
-
-  if (error) {
-    throw new Error(`Failed to delete mentions: ${error.message}`);
-  }
+  return executeVoidMutation(
+    (client) => client.from("mentions").delete().eq("document_id", documentId),
+    { context: "delete mentions by document" }
+  );
 }
 
 /**
  * Delete all mentions for a specific entity
  */
 export async function deleteMentionsByEntity(entityId: string): Promise<void> {
-  const { error } = await supabase
-    .from("mentions")
-    .delete()
-    .eq("entity_id", entityId);
-
-  if (error) {
-    throw new Error(`Failed to delete mentions: ${error.message}`);
-  }
+  return executeVoidMutation(
+    (client) => client.from("mentions").delete().eq("entity_id", entityId),
+    { context: "delete mentions by entity" }
+  );
 }
 
 /**
@@ -167,19 +146,15 @@ export async function deleteMentionsByEntity(entityId: string): Promise<void> {
 export async function getMentionCountsByEntity(
   documentId: string
 ): Promise<{ entity_id: string; count: number }[]> {
-  const { data, error } = await supabase
-    .from("mentions")
-    .select("entity_id")
-    .eq("document_id", documentId);
-
-  if (error) {
-    throw new Error(`Failed to fetch mention counts: ${error.message}`);
-  }
+  const data = await executeQuery<{ entity_id: string }>(
+    (client) =>
+      client.from("mentions").select("entity_id").eq("document_id", documentId),
+    { context: "fetch mention counts" }
+  );
 
   // Group and count manually since Supabase doesn't support GROUP BY directly
   const counts = new Map<string, number>();
-  const rows = (data || []) as { entity_id: string }[];
-  for (const row of rows) {
+  for (const row of data) {
     const current = counts.get(row.entity_id) || 0;
     counts.set(row.entity_id, current + 1);
   }

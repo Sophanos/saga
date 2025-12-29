@@ -17,6 +17,7 @@
     "@mythos/core": "workspace:*",
     "@mythos/db": "workspace:*",
     "@mythos/editor": "workspace:*",
+    "@mythos/memory": "workspace:*",
     "@mythos/state": "workspace:*",
     "@mythos/storage": "workspace:*",
     "@mythos/theme": "workspace:*",

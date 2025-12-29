@@ -9,6 +9,7 @@ import { useCallback, useMemo, useState, useEffect } from "react";
 import {
   createMemoryClient,
   type MemoryClient,
+  type MemoryCacheState,
   type MemoryRecord,
   type MemoryCategory,
   type MemoryWriteRequest,
@@ -75,10 +76,11 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
   const { key: apiKey } = useApiKey();
 
   // Cache store
-  const upsertLocal = useMemoryStore((s) => s.upsertLocal);
-  const setCategoryCache = useMemoryStore((s) => s.setCategoryCache);
-  const getByCategory = useMemoryStore((s) => s.getByCategory);
-  const getRecent = useMemoryStore((s) => s.getRecent);
+  const upsertLocal = useMemoryStore((s: MemoryCacheState) => s.upsertLocal);
+  const removeLocal = useMemoryStore((s: MemoryCacheState) => s.removeLocal);
+  const setCategoryCache = useMemoryStore((s: MemoryCacheState) => s.setCategoryCache);
+  const getByCategory = useMemoryStore((s: MemoryCacheState) => s.getByCategory);
+  const getRecent = useMemoryStore((s: MemoryCacheState) => s.getRecent);
 
   // Create client with auth headers
   const client = useMemo<MemoryClient | null>(() => {
@@ -136,10 +138,12 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
         const memory = await client.write({ ...params, projectId });
         upsertLocal(projectId, memory);
         return memory;
-      } catch (err) {
+      } catch (err: unknown) {
         const message = err instanceof MemoryApiError
           ? err.message
-          : "Failed to write memory";
+          : err instanceof Error
+            ? err.message
+            : "Failed to write memory";
         setError(message);
         return null;
       } finally {
@@ -163,8 +167,8 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
         const memories = await client.read({ ...params, projectId });
 
         // Update cache by category
-        if (params?.categories?.length === 1) {
-          setCategoryCache(projectId, params.categories[0], memories);
+        if (params?.["categories"]?.length === 1) {
+          setCategoryCache(projectId, params["categories"][0], memories);
         } else {
           // Group and cache by category
           const grouped = new Map<MemoryCategory, MemoryRecord[]>();
@@ -179,10 +183,12 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
         }
 
         return memories;
-      } catch (err) {
+      } catch (err: unknown) {
         const message = err instanceof MemoryApiError
           ? err.message
-          : "Failed to read memories";
+          : err instanceof Error
+            ? err.message
+            : "Failed to read memories";
         setError(message);
         return [];
       } finally {
@@ -204,18 +210,24 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
 
       try {
         const count = await client.delete({ projectId, memoryIds });
+        // Remove from local cache after successful delete
+        if (count > 0) {
+          removeLocal(projectId, memoryIds);
+        }
         return count;
-      } catch (err) {
+      } catch (err: unknown) {
         const message = err instanceof MemoryApiError
           ? err.message
-          : "Failed to delete memories";
+          : err instanceof Error
+            ? err.message
+            : "Failed to delete memories";
         setError(message);
         return 0;
       } finally {
         setIsLoading(false);
       }
     },
-    [client, projectId]
+    [client, projectId, removeLocal]
   );
 
   // Learn style
@@ -232,23 +244,37 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
       try {
         const learned = await client.learnStyle({ projectId, documentId, content });
 
+        // Get userId for ownerId field
+        const supabase = getSupabaseClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+
         // Cache the learned style memories
+        const now = new Date().toISOString();
         for (const item of learned) {
           upsertLocal(projectId, {
             id: item.id,
             projectId,
+            ownerId: userId,
             category: "style",
             scope: "user",
             content: item.content,
-            createdAt: new Date().toISOString(),
+            metadata: {
+              source: "ai",
+              documentId,
+            },
+            createdAt: now,
+            updatedAt: now,
           });
         }
 
         return learned;
-      } catch (err) {
+      } catch (err: unknown) {
         const message = err instanceof MemoryApiError
           ? err.message
-          : "Failed to learn style";
+          : err instanceof Error
+            ? err.message
+            : "Failed to learn style";
         setError(message);
         return [];
       } finally {

@@ -1,4 +1,5 @@
 import { ApiError, type ApiErrorCode } from "../api-client";
+import { API_TIMEOUTS } from "../config";
 import type { ChatContext, ChatMention } from "../../stores";
 
 const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "";
@@ -83,11 +84,9 @@ export interface AgentStreamOptions {
 // SSE Timeout Helper
 // =============================================================================
 
-const SSE_READ_TIMEOUT_MS = 30000;
-
 async function readWithTimeout<T>(
   reader: ReadableStreamDefaultReader<T>,
-  timeoutMs: number = SSE_READ_TIMEOUT_MS
+  timeoutMs: number = API_TIMEOUTS.SSE_READ_MS
 ) {
   return Promise.race([
     reader.read(),

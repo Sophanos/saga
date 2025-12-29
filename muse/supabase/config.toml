@@ -1,10 +1,6 @@
 # Supabase Configuration for Mythos IDE
 # See: https://supabase.com/docs/guides/cli/config
 
-[project]
-id = "mythos-ide"
-name = "Mythos IDE"
-
 [api]
 enabled = true
 port = 54321
@@ -17,7 +13,7 @@ schemas = ["public"]
 # Port to use for the local database URL
 port = 54322
 # The database major version to use
-major_version = 15
+major_version = 17
 
 [studio]
 enabled = true
@@ -63,13 +59,10 @@ additional_redirect_urls = [
 jwt_expiry = 3600
 # Allow/disallow new user signups
 enable_signup = true
-# Email confirmation settings
-enable_confirmations = false
 
 [auth.email]
 enable_signup = true
 double_confirm_changes = false
-enable_confirmations = false
 
 # OAuth providers (configure as needed)
 [auth.external.google]
@@ -88,10 +81,6 @@ enabled = false
 # secret = "env(APPLE_CLIENT_SECRET)"
 
 # Edge Functions Configuration
-[functions]
-# Enable edge functions
-enabled = true
-
 # Function-specific settings
 [functions.ai-lint]
 # Consistency linter endpoint

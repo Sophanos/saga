@@ -14,8 +14,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@mythos/core": "workspace:*"
+  },
   "devDependencies": {
-    "typescript": "^5.3.3"
+    "@mythos/typescript-config": "workspace:*",
+    "typescript": "^5.7.2"
   }
 }

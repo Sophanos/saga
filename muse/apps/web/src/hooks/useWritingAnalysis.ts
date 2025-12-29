@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { writingCoach } from "@mythos/ai";
 import type { SceneMetrics, StyleIssue } from "@mythos/core";
 import { useAnalysisStore } from "../stores/analysis";
 import { useHistoryStore } from "../stores/history";
 import { useMythosStore } from "../stores";
 import { simpleHash } from "../utils/hash";
-import { persistAnalysisRecord } from "../services/analysis";
+import { getAnalysisPersistenceQueue, type PersistenceQueueState } from "../services/analysis";
 
 /**
  * Debounce delay in milliseconds before triggering analysis
@@ -32,6 +32,22 @@ interface UseWritingAnalysisOptions {
 }
 
 /**
+ * Persistence status for tracking pending DB operations
+ */
+interface PersistenceStatus {
+  /** Number of pending persistence operations */
+  pendingCount: number;
+  /** Number of failed persistence operations */
+  failedCount: number;
+  /** Whether there are any pending or in-progress operations */
+  hasPending: boolean;
+  /** Whether there are any failed operations */
+  hasFailed: boolean;
+  /** Error messages from failed operations */
+  errors: string[];
+}
+
+/**
  * Return type for the useWritingAnalysis hook
  */
 interface UseWritingAnalysisResult {
@@ -49,6 +65,14 @@ interface UseWritingAnalysisResult {
   runAnalysis: () => Promise<void>;
   /** Clear all analysis data */
   clearAnalysis: () => void;
+  /** Persistence operation status */
+  persistence: PersistenceStatus;
+  /** Force-flush all pending persistence operations */
+  flushPersistence: () => Promise<{ succeeded: number; failed: number }>;
+  /** Retry all failed persistence operations */
+  retryFailedPersistence: () => Promise<{ succeeded: number; stillFailed: number }>;
+  /** Clear all failed operations (acknowledge data loss) */
+  clearFailedPersistence: () => number;
 }
 
 /**
@@ -80,6 +104,7 @@ export function useWritingAnalysis(
     setError,
     updateAnalysis,
     clearAnalysis,
+    updatePersistenceState,
   } = useAnalysisStore();
 
   // History store actions
@@ -89,10 +114,43 @@ export function useWritingAnalysis(
   const currentProject = useMythosStore((state) => state.project.currentProject);
   const currentDocument = useMythosStore((state) => state.document.currentDocument);
 
+  // Persistence queue state
+  const [persistenceState, setPersistenceState] = useState<PersistenceQueueState>({
+    pendingCount: 0,
+    failedCount: 0,
+    inProgressCount: 0,
+    errors: [],
+    operations: [],
+  });
+
+  // Get the persistence queue singleton
+  const queueRef = useRef(getAnalysisPersistenceQueue());
+
   // Refs for debouncing
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastContentRef = useRef<string>("");
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Set up queue state change listener
+  useEffect(() => {
+    const queue = queueRef.current;
+    const handleStateChange = (state: PersistenceQueueState) => {
+      setPersistenceState(state);
+      updatePersistenceState({
+        pendingCount: state.pendingCount,
+        failedCount: state.failedCount,
+        inProgressCount: state.inProgressCount,
+        persistenceErrors: state.errors,
+      });
+    };
+    queue.setOnStateChange(handleStateChange);
+    // Get initial state
+    handleStateChange(queue.getState());
+
+    return () => {
+      queue.setOnStateChange(null);
+    };
+  }, [updatePersistenceState]);
 
   /**
    * Run the writing analysis
@@ -142,17 +200,14 @@ export function useWritingAnalysis(
       });
 
       // Persist to database if we have a project context
+      // Uses persistence queue with retry logic to prevent data loss
       if (currentProject?.id) {
-        // Fire and forget - don't block the UI for database persistence
-        persistAnalysisRecord({
+        queueRef.current.enqueue({
           projectId: currentProject.id,
           documentId: currentDocument?.id,
           sceneId: contentHash,
           metrics: result.metrics,
           wordCount: content.split(/\s+/).filter(Boolean).length,
-        }).catch((err) => {
-          // Log but don't fail - local history is already saved
-          console.warn("[useWritingAnalysis] Failed to persist to database:", err);
         });
       }
 
@@ -223,6 +278,28 @@ export function useWritingAnalysis(
     };
   }, []);
 
+  // Persistence control functions
+  const flushPersistence = useCallback(async () => {
+    return queueRef.current.flush();
+  }, []);
+
+  const retryFailedPersistence = useCallback(async () => {
+    return queueRef.current.retryFailed();
+  }, []);
+
+  const clearFailedPersistence = useCallback(() => {
+    return queueRef.current.clearFailed();
+  }, []);
+
+  // Compute persistence status
+  const persistence: PersistenceStatus = {
+    pendingCount: persistenceState.pendingCount,
+    failedCount: persistenceState.failedCount,
+    hasPending: persistenceState.pendingCount > 0 || persistenceState.inProgressCount > 0,
+    hasFailed: persistenceState.failedCount > 0,
+    errors: persistenceState.errors,
+  };
+
   return {
     isAnalyzing,
     metrics,
@@ -231,6 +308,10 @@ export function useWritingAnalysis(
     error,
     runAnalysis,
     clearAnalysis,
+    persistence,
+    flushPersistence,
+    retryFailedPersistence,
+    clearFailedPersistence,
   };
 }
 

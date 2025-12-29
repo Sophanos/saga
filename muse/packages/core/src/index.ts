@@ -15,6 +15,9 @@ export * from "./templates";
 // Collaboration types
 export * from "./collaboration";
 
+// Activity types (for db/state interop)
+export * from "./activity";
+
 // Inbox / Captures
 export * from "./inbox";
 

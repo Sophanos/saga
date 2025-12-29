@@ -36,26 +36,20 @@ import {
   validateRequestBody,
   ErrorCode,
 } from "../_shared/errors.ts";
-import {
-  generateEmbedding,
-  DeepInfraError,
-  isDeepInfraConfigured,
-} from "../_shared/deepinfra.ts";
-import {
-  searchPoints,
-  scrollPoints,
-  isQdrantConfigured,
-  QdrantError,
-  type QdrantFilter,
-} from "../_shared/qdrant.ts";
-import {
-  getPayloadText,
-} from "../_shared/vectorPayload.ts";
+import { DeepInfraError } from "../_shared/deepinfra.ts";
+import { QdrantError } from "../_shared/qdrant.ts";
 import {
   retrieveRAGContext,
   type RAGContext,
   type RAGContextItem,
 } from "../_shared/rag.ts";
+import {
+  retrieveMemoryContext,
+  retrieveProfileContext,
+  DEFAULT_CHAT_LIMITS,
+  type RetrievedMemoryContext,
+  type ProfileContext,
+} from "../_shared/memory/retrieval.ts";
 import {
   CHAT_SYSTEM,
   CHAT_CONTEXT_TEMPLATE,
@@ -106,149 +100,12 @@ interface ChatRequest {
 
 // retrieveContext function extracted to ../shared/rag.ts as retrieveRAGContext
 
-// =============================================================================
-// Memory & Profile Context
-// =============================================================================
-
-interface MemoryRecord {
-  id: string;
-  content: string;
-  category: string;
-  score?: number;
-}
-
-interface MemoryContext {
-  decisions: MemoryRecord[];
-  style: MemoryRecord[];
-  preferences: MemoryRecord[];
-  session: MemoryRecord[];
-}
-
-interface ProfileContext {
-  preferredGenre?: string;
-  namingCulture?: string;
-  namingStyle?: string;
-  logicStrictness?: string;
-}
-
-/**
- * Retrieve memory context for the request
- */
-async function retrieveMemoryContext(
-  query: string,
-  projectId: string,
-  userId: string | null
-): Promise<MemoryContext> {
-  if (!isQdrantConfigured()) {
-    return { decisions: [], style: [], preferences: [], session: [] };
-  }
-
-  const result: MemoryContext = {
-    decisions: [],
-    style: [],
-    preferences: [],
-    session: [],
-  };
-
-  try {
-    // Retrieve project-scoped decisions
-    const decisionFilter: QdrantFilter = {
-      must: [
-        { key: "type", match: { value: "memory" } },
-        { key: "project_id", match: { value: projectId } },
-        { key: "category", match: { value: "decision" } },
-        { key: "scope", match: { value: "project" } },
-      ],
-    };
-
-    if (query && isDeepInfraConfigured()) {
-      const embedding = await generateEmbedding(query);
-      const decisions = await searchPoints(embedding, 5, decisionFilter);
-      result.decisions = decisions.map((p) => ({
-        id: String(p.id),
-        content: getPayloadText(p.payload),
-        category: "decision",
-        score: p.score,
-      }));
-    } else {
-      const decisions = await scrollPoints(decisionFilter, 5);
-      result.decisions = decisions.map((p) => ({
-        id: p.id,
-        content: getPayloadText(p.payload),
-        category: "decision",
-      }));
-    }
-
-    // Only retrieve user-scoped memories if we have a user
-    if (userId) {
-      // Retrieve style preferences
-      const styleFilter: QdrantFilter = {
-        must: [
-          { key: "type", match: { value: "memory" } },
-          { key: "project_id", match: { value: projectId } },
-          { key: "category", match: { value: "style" } },
-          { key: "owner_id", match: { value: userId } },
-        ],
-      };
-      const styleResults = await scrollPoints(styleFilter, 4);
-      result.style = styleResults.map((p) => ({
-        id: p.id,
-        content: getPayloadText(p.payload),
-        category: "style",
-      }));
-    }
-  } catch (error) {
-    console.error("[ai-chat] Memory retrieval error:", error);
-  }
-
-  return result;
-}
-
-/**
- * Retrieve profile context from user preferences
- */
-async function retrieveProfileContext(
-  supabase: ReturnType<typeof createSupabaseClient>,
-  userId: string | null
-): Promise<ProfileContext | undefined> {
-  if (!userId) {
-    return undefined;
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("preferences")
-      .eq("id", userId)
-      .single();
-
-    if (error || !data) {
-      return undefined;
-    }
-
-    const prefs = data.preferences as Record<string, unknown> | null;
-    const writing = prefs?.writing as Record<string, unknown> | undefined;
-
-    if (!writing) {
-      return undefined;
-    }
-
-    return {
-      preferredGenre: writing.preferredGenre as string | undefined,
-      namingCulture: writing.namingCulture as string | undefined,
-      namingStyle: writing.namingStyle as string | undefined,
-      logicStrictness: writing.logicStrictness as string | undefined,
-    };
-  } catch (error) {
-    console.error("[ai-chat] Profile retrieval error:", error);
-    return undefined;
-  }
-}
+// Memory retrieval extracted to ../_shared/memory/retrieval.ts
 
 /**
  * Format memory context for prompt injection
  */
-function formatMemoryContext(memory: MemoryContext): string {
+function formatMemoryContext(memory: RetrievedMemoryContext): string {
   const sections: string[] = [];
 
   if (memory.decisions.length > 0) {
@@ -442,8 +299,8 @@ serve(async (req) => {
       retrieveRAGContext(lastUserMessage.content, request.projectId, {
         logPrefix: "[ai-chat]",
       }),
-      retrieveMemoryContext(lastUserMessage.content, request.projectId, billing.userId),
-      retrieveProfileContext(supabase, billing.userId),
+      retrieveMemoryContext(lastUserMessage.content, request.projectId, billing.userId, undefined, DEFAULT_CHAT_LIMITS, "[ai-chat]"),
+      retrieveProfileContext(supabase, billing.userId, "[ai-chat]"),
     ]);
 
     // Build context string with all contexts

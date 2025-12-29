@@ -5,7 +5,7 @@
  * story world scaffolding in Architect mode.
  */
 
-import { callEdgeFunction, type ApiErrorCode } from "../api-client";
+import { ApiError, callEdgeFunction, type ApiErrorCode } from "../api-client";
 import type { GeneratedEntity, GenesisResult } from "@mythos/core";
 
 // Re-export GeneratedEntity for consumers
@@ -15,15 +15,20 @@ export type { GeneratedEntity };
 // Types
 // ============================================================================
 
-export type GenesisApiErrorCode = ApiErrorCode | "GENESIS_FAILED";
+/** Error codes returned by the genesis API (alias for ApiErrorCode) */
+export type GenesisApiErrorCode = ApiErrorCode;
 
-export class GenesisApiError extends Error {
+/**
+ * Genesis-specific API error for backwards compatibility.
+ * Extends the base ApiError with a domain-specific name.
+ */
+export class GenesisApiError extends ApiError {
   constructor(
     message: string,
-    public readonly statusCode?: number,
-    public readonly code: GenesisApiErrorCode = "UNKNOWN_ERROR"
+    statusCode?: number,
+    code?: GenesisApiErrorCode
   ) {
-    super(message);
+    super(message, code ?? "UNKNOWN_ERROR", statusCode);
     this.name = "GenesisApiError";
   }
 }
@@ -87,18 +92,11 @@ export async function runGenesisViaEdge(
 
     return result;
   } catch (error) {
-    if (error instanceof Error) {
-      throw new GenesisApiError(
-        error.message,
-        undefined,
-        "GENESIS_FAILED"
-      );
+    // Convert ApiError to GenesisApiError for backwards compatibility
+    if (error instanceof ApiError && !(error instanceof GenesisApiError)) {
+      throw new GenesisApiError(error.message, error.statusCode, error.code);
     }
-    throw new GenesisApiError(
-      "Failed to generate world",
-      undefined,
-      "GENESIS_FAILED"
-    );
+    throw error;
   }
 }
 

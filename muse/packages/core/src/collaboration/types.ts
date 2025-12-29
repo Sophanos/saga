@@ -64,9 +64,10 @@ export interface ProjectInvitation {
 export type ActivityAction = "insert" | "update" | "delete";
 
 /**
- * An entry in the project activity log
+ * Raw database activity log entry
+ * Note: For UI-friendly activity types, use ActivityLogEntry from @mythos/core/activity
  */
-export interface ActivityLogEntry {
+export interface DbActivityLogEntry {
   /** Unique log entry ID */
   id: number;
   /** Project this activity belongs to */

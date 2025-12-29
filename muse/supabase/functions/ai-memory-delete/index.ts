@@ -42,13 +42,16 @@ import {
   checkBillingAndGetKey,
   createSupabaseClient,
 } from "../_shared/billing.ts";
+import {
+  type MemoryCategory,
+  type MemoryScope,
+  VALID_CATEGORIES,
+  VALID_SCOPES,
+} from "../_shared/memory/types.ts";
 
 // =============================================================================
 // Types
 // =============================================================================
-
-type MemoryCategory = "style" | "decision" | "preference" | "session";
-type MemoryScope = "project" | "user" | "conversation";
 
 interface MemoryDeleteRequest {
   projectId: string;
@@ -58,13 +61,6 @@ interface MemoryDeleteRequest {
   conversationId?: string;
   olderThan?: string;
 }
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-const VALID_CATEGORIES: MemoryCategory[] = ["style", "decision", "preference", "session"];
-const VALID_SCOPES: MemoryScope[] = ["project", "user", "conversation"];
 
 // =============================================================================
 // Helpers
@@ -180,6 +176,16 @@ serve(async (req) => {
 
     const request = validation.data as unknown as MemoryDeleteRequest;
 
+    // Limit memoryIds array size to prevent DoS
+    const MAX_DELETE_IDS = 100;
+    if (request.memoryIds && request.memoryIds.length > MAX_DELETE_IDS) {
+      return createErrorResponse(
+        ErrorCode.VALIDATION_ERROR,
+        `Cannot delete more than ${MAX_DELETE_IDS} memories at once`,
+        origin
+      );
+    }
+
     // Validate that at least one filter is provided
     if (
       !request.memoryIds?.length &&
@@ -252,15 +258,23 @@ serve(async (req) => {
     let deletedCount = 0;
 
     if (request.memoryIds?.length) {
-      // Delete by specific IDs
+      // Delete by specific IDs with project filter for security
       console.log(
         `[ai-memory-delete] Deleting ${request.memoryIds.length} memories by ID`
       );
 
-      // Note: We trust that the IDs belong to the project since we verified access
-      // In production, you might want to verify each ID belongs to the project
-      await deletePoints(request.memoryIds);
-      deletedCount = request.memoryIds.length;
+      // Use filter-based delete to ensure IDs belong to the project (prevents IDOR)
+      const filter: QdrantFilter = {
+        must: [
+          { key: "type", match: { value: "memory" } },
+          { key: "project_id", match: { value: request.projectId } },
+          { key: "memory_id", match: { any: request.memoryIds } },
+        ],
+      };
+      deletedCount = await countPoints(filter);
+      if (deletedCount > 0) {
+        await deletePointsByFilter(filter);
+      }
     } else {
       // Delete by filter
       const filter = buildDeleteFilter({

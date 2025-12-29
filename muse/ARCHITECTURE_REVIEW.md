@@ -183,9 +183,87 @@ In-memory graph structure with:
 
 ---
 
-## 4. USPs / Competitive Advantages
+## 4. Marketing Position & Brand Identity
 
-### 4.1 Killer Features
+### 4.1 Tagline Options
+
+| Tagline | Best For |
+|---------|----------|
+| **"Write your story. We remember your world."** | General audience, emotional appeal |
+| **"Your story's database that organizes itself."** | Technical/organizational appeal |
+| **"Throw in info. AI sorts it automatically."** | Efficiency-focused writers |
+
+### 4.2 Core Positioning Statement
+
+> **Mythos is NOT a text generator. It's an organizational tool with AI superpowers.**
+
+This distinction is critical given widespread AI skepticism in the writing community.
+
+### 4.3 Key Differentiators to Highlight
+
+| What We Are | What We Are NOT |
+|-------------|-----------------|
+| An organizational tool | A text generator |
+| Tracks what YOU wrote | Writes stories for you |
+| Catches YOUR mistakes | Replaces your creativity |
+| Adapts to YOUR genre | One-size-fits-all AI |
+| Respects writer agency | "Slop generator" |
+
+### 4.4 Messaging for AI-Skeptical Writers
+
+Many writers distrust AI tools. Our messaging should emphasize:
+
+1. **AI Assists, Doesn't Write**
+   - Linter catches errors, doesn't auto-fix without approval
+   - Coach suggests, writer decides
+   - Entity detection extracts what YOU wrote
+
+2. **Respects Writer Agency**
+   - AI proposals require explicit approval
+   - Tool calls show diffs before applying
+   - Writer always has final say
+
+3. **Enhances Human Work**
+   - Tracks YOUR world, YOUR characters
+   - Catches YOUR contradictions
+   - Organizes YOUR information
+   - Never claims authorship
+
+### 4.5 Competitive Positioning
+
+```
+Scrivener    = Organization only (no AI)
+Notion       = Flexibility (no narrative understanding)
+Grammarly    = Grammar only (no story tracking)
+ChatGPT      = Text generation (no structure)
+Cursor.ai    = Code AI (not for writers)
+
+Mythos       = Organization + AI + Narrative Understanding
+             = "Notion meets Cursor.ai for fiction writers"
+```
+
+### 4.6 Landing Page Alignment ✓
+
+Current landing page (`apps/website/src/pages/LandingPage.tsx`) aligns well:
+
+| Element | Alignment |
+|---------|-----------|
+| Hero subtext | "Built to organize your world, refine your craft" ✓ |
+| Features | Organize, Refine, Stay Consistent ✓ |
+| App preview | Shows consistency alert (Marcus eye color) ✓ |
+| Live stats | "Plot holes caught" metric ✓ |
+| Pricing | Token-based tiers (not subscription-only) ✓ |
+
+**Potential improvements:**
+- Consider updating hero headline to one of our taglines
+- Add "NOT a text generator" messaging somewhere visible
+- Add testimonials/social proof from writers who value the organizational aspect
+
+---
+
+## 5. USPs / Competitive Advantages
+
+### 5.1 Killer Features
 
 1. **"Story as Code" Philosophy**
    - No other writing tool treats narrative with this structural rigor
@@ -225,9 +303,9 @@ In-memory graph structure with:
 
 ---
 
-## 5. Opportunities Roadmap
+## 6. Opportunities Roadmap
 
-### 5.1 Immediate (MLP Launch)
+### 6.1 Immediate (MLP Launch)
 
 | Priority | Feature | Effort | Impact |
 |----------|---------|--------|--------|
@@ -237,7 +315,7 @@ In-memory graph structure with:
 | P1 | Wire collaboration UI | 1 day | Medium |
 | P1 | Subscription billing (Stripe) | 3 days | Critical |
 
-### 5.2 Near-Term (Differentiation)
+### 6.2 Near-Term (Differentiation)
 
 | Priority | Feature | Effort | Impact |
 |----------|---------|--------|--------|
@@ -246,7 +324,7 @@ In-memory graph structure with:
 | P2 | Timeline View | 1 week | High |
 | P2 | Map Integration | 2 weeks | Medium |
 
-### 5.3 Medium-Term (World-Building Expansion)
+### 6.3 Medium-Term (World-Building Expansion)
 
 | Priority | Feature | Effort | Impact |
 |----------|---------|--------|--------|
@@ -255,7 +333,7 @@ In-memory graph structure with:
 | P3 | Power Scaling Tracker | 3 days | Medium |
 | P3 | Magic System Simulator | 1 week | Low |
 
-### 5.4 Long-Term (Vision Execution)
+### 6.4 Long-Term (Vision Execution)
 
 | Priority | Feature | Effort | Impact |
 |----------|---------|--------|--------|
@@ -265,7 +343,7 @@ In-memory graph structure with:
 | P4 | Scene-to-Image Generation | 1 month | Very High |
 | P4 | Video Script Mode | 2 weeks | Medium |
 
-### 5.5 Progressive Disclosure Polish
+### 6.5 Progressive Disclosure Polish
 
 The progressive disclosure system (Gardener/Architect modes) is implemented. Remaining polish:
 
@@ -281,16 +359,16 @@ The progressive disclosure system (Gardener/Architect modes) is implemented. Rem
 
 ---
 
-## 6. Technical Debt & Guardrails
+## 7. Technical Debt & Guardrails
 
-### 6.1 Architectural Guardrails
+### 7.1 Architectural Guardrails
 
 1. **Keep domain entities clean** - HUD-specific data in projection layer only
 2. **Debounce AI calls** - 1000ms debounce, hash-based deduplication
 3. **Document positions** - Tiptap offsets for precise fixes
 4. **Single source of truth** - No duplicated type definitions
 
-### 6.2 Known Technical Debt
+### 7.2 Known Technical Debt
 
 | Area | Issue | Severity |
 |------|-------|----------|
@@ -299,7 +377,7 @@ The progressive disclosure system (Gardener/Architect modes) is implemented. Rem
 | Tests | No test coverage | High |
 | Docs | API documentation missing | Medium |
 
-### 6.3 Security Considerations
+### 7.3 Security Considerations
 
 - BYOK model means no API key storage (user-provided)
 - Supabase RLS policies in place
@@ -307,9 +385,9 @@ The progressive disclosure system (Gardener/Architect modes) is implemented. Rem
 
 ---
 
-## 7. Metrics to Track
+## 8. Metrics to Track
 
-### 7.1 Product Metrics
+### 8.1 Product Metrics
 
 | Metric | Target | Purpose |
 |--------|--------|---------|
@@ -318,7 +396,7 @@ The progressive disclosure system (Gardener/Architect modes) is implemented. Rem
 | Entities created/project | 20+ | Depth of use |
 | Linter issues fixed | 50%+ | AI value delivery |
 
-### 7.2 Business Metrics
+### 8.2 Business Metrics
 
 | Metric | Target | Purpose |
 |--------|--------|---------|
@@ -328,7 +406,7 @@ The progressive disclosure system (Gardener/Architect modes) is implemented. Rem
 
 ---
 
-## 8. Decision Log
+## 9. Decision Log
 
 | Date | Decision | Rationale |
 |------|----------|-----------|

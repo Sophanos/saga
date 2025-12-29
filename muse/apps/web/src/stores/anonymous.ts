@@ -82,6 +82,12 @@ interface AnonymousState {
   chatMessages: AnonymousChatMessage[];
   chatMessageCount: number;
 
+  // Server-authoritative trial state
+  serverTrialLimit: number | null;
+  serverTrialUsed: number | null;
+  serverTrialRemaining: number | null;
+  isTrialExhausted: boolean;
+
   // Import tracking
   importSource: "file" | "paste" | null;
   importedContent: string | null;
@@ -115,6 +121,11 @@ interface AnonymousActions {
   // Chat
   addChatMessage: (message: Omit<AnonymousChatMessage, "id" | "timestamp">) => boolean;
   clearChat: () => void;
+
+  // Server trial status
+  setServerTrialStatus: (status: { limit: number; used: number; remaining: number }) => void;
+  markTrialExhausted: () => void;
+  decrementServerTrialRemaining: () => void;
 
   // Import
   setImportedContent: (source: "file" | "paste", content: string) => void;
@@ -170,6 +181,10 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
       relationships: [],
       chatMessages: [],
       chatMessageCount: 0,
+      serverTrialLimit: null,
+      serverTrialUsed: null,
+      serverTrialRemaining: null,
+      isTrialExhausted: false,
       importSource: null,
       importedContent: null,
       authPromptShown: false,
@@ -311,6 +326,37 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
         });
       },
 
+      // Server trial status
+      setServerTrialStatus: (status) => {
+        set((state) => {
+          state.serverTrialLimit = status.limit;
+          state.serverTrialUsed = status.used;
+          state.serverTrialRemaining = status.remaining;
+          state.isTrialExhausted = status.remaining <= 0;
+        });
+      },
+
+      markTrialExhausted: () => {
+        set((state) => {
+          state.serverTrialRemaining = 0;
+          state.isTrialExhausted = true;
+          state.authPromptShown = true;
+        });
+      },
+
+      decrementServerTrialRemaining: () => {
+        set((state) => {
+          if (state.serverTrialRemaining !== null && state.serverTrialRemaining > 0) {
+            state.serverTrialRemaining -= 1;
+            state.serverTrialUsed = (state.serverTrialUsed ?? 0) + 1;
+            if (state.serverTrialRemaining <= 0) {
+              state.isTrialExhausted = true;
+              state.authPromptShown = true;
+            }
+          }
+        });
+      },
+
       // Import tracking
       setImportedContent: (source, content) => {
         set((state) => {
@@ -359,6 +405,10 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
           state.relationships = [];
           state.chatMessages = [];
           state.chatMessageCount = 0;
+          state.serverTrialLimit = null;
+          state.serverTrialUsed = null;
+          state.serverTrialRemaining = null;
+          state.isTrialExhausted = false;
           state.importSource = null;
           state.importedContent = null;
           state.authPromptShown = false;
@@ -378,6 +428,7 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
         relationships: state.relationships,
         chatMessages: state.chatMessages,
         chatMessageCount: state.chatMessageCount,
+        // Note: Server trial state is NOT persisted - it comes from the server
         importSource: state.importSource,
         importedContent: state.importedContent,
         authPromptDismissedAt: state.authPromptDismissedAt,
@@ -398,5 +449,33 @@ export const useAnonymousActions = () => useAnonymousStore((s) => s.actions);
 export const useShouldShowAuthPrompt = () =>
   useAnonymousStore((s) => s.authPromptShown && !s.authPromptDismissedAt);
 
+/**
+ * Get remaining chat messages
+ * Prefers server-authoritative count, falls back to local count
+ */
 export const useRemainingChatMessages = () =>
-  useAnonymousStore((s) => MAX_CHAT_MESSAGES - s.chatMessageCount);
+  useAnonymousStore((s) => {
+    // Server state takes precedence when available
+    if (s.serverTrialRemaining !== null) {
+      return s.serverTrialRemaining;
+    }
+    // Fall back to local count
+    return MAX_CHAT_MESSAGES - s.chatMessageCount;
+  });
+
+/**
+ * Check if trial is exhausted (server-authoritative)
+ */
+export const useIsTrialExhausted = () =>
+  useAnonymousStore((s) => s.isTrialExhausted);
+
+/**
+ * Get full server trial status
+ */
+export const useServerTrialStatus = () =>
+  useAnonymousStore((s) => ({
+    limit: s.serverTrialLimit,
+    used: s.serverTrialUsed,
+    remaining: s.serverTrialRemaining,
+    isExhausted: s.isTrialExhausted,
+  }));

@@ -9,6 +9,14 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 // Entity Types
 // =============================================================================
 
+/**
+ * EntityType - INTENTIONAL DUPLICATION
+ *
+ * This duplicates @mythos/core EntityType for Deno edge function compatibility.
+ * Edge functions cannot import npm packages, so we maintain Zod schemas here.
+ *
+ * IMPORTANT: Keep in sync with packages/core/src/entities/types.ts
+ */
 export const entityTypeSchema = z.enum([
   "character",
   "location",
@@ -25,6 +33,14 @@ export type EntityType = z.infer<typeof entityTypeSchema>;
 // Relationship Types
 // =============================================================================
 
+/**
+ * RelationType - INTENTIONAL DUPLICATION
+ *
+ * This duplicates @mythos/core RelationType for Deno edge function compatibility.
+ * Edge functions cannot import npm packages, so we maintain Zod schemas here.
+ *
+ * IMPORTANT: Keep in sync with packages/core/src/entities/types.ts
+ */
 export const relationTypeSchema = z.enum([
   "knows",
   "loves",
@@ -166,6 +182,125 @@ export interface EditorContext {
   documentTitle?: string;
   /** Currently selected text in the editor */
   selectionText?: string;
+}
+
+// =============================================================================
+// Entity Detection Types
+// (Aligned with @mythos/core/entities/detection-types.ts)
+// =============================================================================
+
+/**
+ * Represents a single occurrence of an entity within text.
+ * Contains exact character offsets for editor highlighting.
+ */
+export interface EntityOccurrence {
+  /** Starting character offset in the source text (0-indexed) */
+  startOffset: number;
+  /** Ending character offset in the source text (exclusive) */
+  endOffset: number;
+  /** The exact text that was matched at this position */
+  matchedText: string;
+  /** Surrounding context snippet for disambiguation */
+  context: string;
+}
+
+/**
+ * Warning generated during entity detection.
+ */
+export interface DetectionWarning {
+  /** Type of warning */
+  type: "ambiguous_reference" | "low_confidence" | "possible_alias" | "conflicting_type";
+  /** Human-readable message describing the warning */
+  message: string;
+  /** Entity tempId this warning relates to (if applicable) */
+  entityTempId?: string;
+  /** Character offset where the issue was detected */
+  offset?: number;
+}
+
+/**
+ * A detected entity from text analysis.
+ * Used before the entity is persisted to the database.
+ */
+export interface DetectedEntity {
+  /** Temporary ID for tracking before persistence */
+  tempId: string;
+  /** Primary name of the entity as detected */
+  name: string;
+  /** Normalized/canonical form of the name for matching */
+  canonicalName: string;
+  /** Detected entity type */
+  type: EntityType;
+  /** Confidence score from 0.0 to 1.0 */
+  confidence: number;
+  /** All occurrences of this entity in the text */
+  occurrences: EntityOccurrence[];
+  /** Potential aliases detected for this entity */
+  suggestedAliases: string[];
+  /** Properties inferred from context */
+  inferredProperties?: Record<string, unknown>;
+  /** ID of existing entity if this matches one */
+  matchedExistingId?: string;
+}
+
+/**
+ * Statistics from a detection run.
+ */
+export interface DetectionStats {
+  /** Total characters analyzed */
+  charactersAnalyzed: number;
+  /** Total entities detected */
+  totalEntities: number;
+  /** Breakdown by entity type */
+  byType: Record<EntityType, number>;
+  /** Number of entities matched to existing */
+  matchedToExisting: number;
+  /** Number of new entities detected */
+  newEntities: number;
+  /** Processing time in milliseconds */
+  processingTimeMs?: number;
+}
+
+/**
+ * Options for entity detection.
+ */
+export interface DetectionOptions {
+  /** Minimum confidence threshold (0.0-1.0, default 0.5) */
+  minConfidence?: number;
+  /** Entity types to detect (default: all) */
+  entityTypes?: EntityType[];
+  /** Whether to attempt alias detection (default: true) */
+  detectAliases?: boolean;
+  /** Whether to match against existing entities (default: true) */
+  matchExisting?: boolean;
+  /** Maximum number of entities to return */
+  maxEntities?: number;
+  /** Include surrounding context in occurrences (default: true) */
+  includeContext?: boolean;
+  /** Number of characters for context snippets (default: 50) */
+  contextLength?: number;
+}
+
+/**
+ * Result of entity detection analysis.
+ */
+export interface DetectionResult {
+  /** All detected entities */
+  entities: DetectedEntity[];
+  /** Any warnings generated during detection */
+  warnings?: DetectionWarning[];
+  /** Statistics about the detection run */
+  stats?: DetectionStats;
+}
+
+/**
+ * Existing entity for matching during detection.
+ */
+export interface ExistingEntity {
+  id: string;
+  name: string;
+  aliases: string[];
+  type: EntityType;
 }
 
 // =============================================================================

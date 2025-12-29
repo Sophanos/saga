@@ -10,7 +10,7 @@ import type { EntityNodeType } from "../components/world-graph/nodes/EntityNode"
 import type { RelationshipEdgeType } from "../components/world-graph/edges/RelationshipEdge";
 
 interface UseWorldGraphOptions {
-  /** Filter to only show certain entity types */
+  /** Filter to only show certain entity types - use a stable Set reference or useMemo to prevent re-renders */
   visibleTypes?: Set<EntityType>;
 }
 
@@ -37,6 +37,17 @@ export function useWorldGraph(options?: UseWorldGraphOptions): UseWorldGraphResu
     useShallow((s) => s.world.relationships)
   );
   const selectedEntityId = useMythosStore((s) => s.world.selectedEntityId);
+
+  // Memoize total counts (from raw store data)
+  const entityCount = useMemo(() => entities.length, [entities]);
+  const relationshipCount = useMemo(() => relationships.length, [relationships]);
+
+  // Serialize visibleTypes for stable dependency comparison
+  // This prevents re-renders when a new Set with the same contents is passed
+  const visibleTypesKey = useMemo(
+    () => (visibleTypes ? Array.from(visibleTypes).sort().join(",") : ""),
+    [visibleTypes]
+  );
 
   // Transform to React Flow format
   const { nodes, edges } = useMemo(() => {
@@ -87,14 +98,23 @@ export function useWorldGraph(options?: UseWorldGraphOptions): UseWorldGraphResu
       }));
 
     return { nodes, edges };
-  }, [entities, relationships, selectedEntityId, visibleTypes]);
+  }, [entities, relationships, selectedEntityId, visibleTypes, visibleTypesKey]);
 
-  return {
-    nodes,
-    edges,
-    entityCount: entities.length,
-    relationshipCount: relationships.length,
-    visibleEntityCount: nodes.length,
-    visibleRelationshipCount: edges.length,
-  };
+  // Memoize visible counts derived from nodes/edges
+  const visibleEntityCount = useMemo(() => nodes.length, [nodes]);
+  const visibleRelationshipCount = useMemo(() => edges.length, [edges]);
+
+  // Memoize the return object to prevent downstream re-renders
+  // when the hook re-runs but values haven't changed
+  return useMemo(
+    () => ({
+      nodes,
+      edges,
+      entityCount,
+      relationshipCount,
+      visibleEntityCount,
+      visibleRelationshipCount,
+    }),
+    [nodes, edges, entityCount, relationshipCount, visibleEntityCount, visibleRelationshipCount]
+  );
 }

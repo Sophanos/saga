@@ -11,7 +11,7 @@ import {
   mapDbEntityToEntity,
   mapDbRelationshipToRelationship,
 } from "@mythos/db";
-import type { Project } from "@mythos/core";
+import type { Project, Document } from "@mythos/core";
 
 
 /**
@@ -131,8 +131,8 @@ export function useProjectLoader(
         ]);
 
         // Convert database types to core types and batch update stores
-        const documents = dbDocuments.map(mapDbDocumentToDocument);
-        const entities = dbEntities.map(mapDbEntityToEntity);
+        const documents = dbDocuments.data.map(mapDbDocumentToDocument);
+        const entities = dbEntities.data.map(mapDbEntityToEntity);
         const relationships = dbRelationships.map(mapDbRelationshipToRelationship);
 
         // Hydrate the store with project
@@ -143,7 +143,7 @@ export function useProjectLoader(
 
         // Set the first document as current if available
         if (documents.length > 0) {
-          const firstDoc = documents.find((d) => d.parentId === undefined) ?? documents[0];
+          const firstDoc = documents.find((d: Document) => d.parentId === undefined) ?? documents[0];
           setCurrentDocument(firstDoc);
         }
 

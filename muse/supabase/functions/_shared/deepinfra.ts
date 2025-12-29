@@ -13,6 +13,8 @@
  */
 const DEFAULT_BASE_URL = "https://api.deepinfra.com/v1/openai";
 const DEFAULT_EMBED_MODEL = "Qwen/Qwen3-Embedding-8B";
+const DEFAULT_RERANK_MODEL = "Qwen/Qwen3-Reranker-4B";
+const DEFAULT_RERANK_URL = "https://api.deepinfra.com/v1/inference";
 const DEFAULT_DIMENSIONS = 4096;
 
 /**
@@ -65,6 +67,8 @@ export interface DeepInfraConfig {
   baseUrl?: string;
   model?: string;
   dimensions?: number;
+  rerankModel?: string;
+  rerankUrl?: string;
 }
 
 /**
@@ -105,6 +109,8 @@ export function getDeepInfraConfig(): DeepInfraConfig {
     baseUrl: Deno.env.get("DEEPINFRA_BASE_URL") || DEFAULT_BASE_URL,
     model: Deno.env.get("DEEPINFRA_EMBED_MODEL") || DEFAULT_EMBED_MODEL,
     dimensions: parseInt(Deno.env.get("DEEPINFRA_EMBED_DIMENSIONS") || String(DEFAULT_DIMENSIONS), 10),
+    rerankModel: Deno.env.get("DEEPINFRA_RERANK_MODEL") || DEFAULT_RERANK_MODEL,
+    rerankUrl: Deno.env.get("DEEPINFRA_RERANK_URL") || DEFAULT_RERANK_URL,
   };
 }
 
@@ -191,4 +197,13 @@ export async function generateEmbedding(
 ): Promise<number[]> {
   const result = await generateEmbeddings([input], config);
   return result.embeddings[0];
+}
+
+/**
+ * Check if DeepInfra is configured
+ *
+ * Returns true if the DEEPINFRA_API_KEY environment variable is set.
+ */
+export function isDeepInfraConfigured(): boolean {
+  return !!Deno.env.get("DEEPINFRA_API_KEY");
 }

@@ -98,6 +98,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
   const isDirty = useMythosStore((state) => state.editor.isDirty);
   const setDirty = useMythosStore((state) => state.setDirty);
   const currentProjectId = useMythosStore((state) => state.project.currentProject?.id);
+  const currentDocumentTitle = useMythosStore((state) => state.document.currentDocument?.title);
 
   // Refs for tracking and debouncing
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -109,7 +110,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
   const embedDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const embedAbortRef = useRef<AbortController | null>(null);
   const lastEmbeddedTextHashRef = useRef<string>("");
-  const pendingEmbedRef = useRef<{ text: string; updatedAt: string; projectId: string } | null>(null);
+  const pendingEmbedRef = useRef<{ text: string; updatedAt: string; projectId: string; docTitle: string | undefined } | null>(null);
 
   /**
    * Get content hash from editor JSON structure
@@ -137,7 +138,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
    * for best quality with Qwen3-Embedding-8B model.
    */
   const generateAndPersistEmbedding = useCallback(
-    async (text: string, updatedAt: string, textHash: string, projectId: string) => {
+    async (text: string, updatedAt: string, textHash: string, projectId: string, docTitle: string | undefined) => {
       if (!documentId) return;
 
       // Abort any in-flight embedding request
@@ -156,6 +157,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
               project_id: projectId,
               type: "document",
               document_id: documentId,
+              title: docTitle || "Untitled",
               content_preview: text.slice(0, 500),
               updated_at: updatedAt,
             },
@@ -186,7 +188,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
    * Schedule embedding generation with debounce
    */
   const scheduleEmbeddingGeneration = useCallback(
-    (text: string, updatedAt: string, projectId: string) => {
+    (text: string, updatedAt: string, projectId: string, docTitle: string | undefined) => {
       // Skip if embeddings are disabled
       if (!EMBEDDINGS_ENABLED) {
         return;
@@ -204,7 +206,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
       }
 
       // Store pending embed data
-      pendingEmbedRef.current = { text, updatedAt, projectId };
+      pendingEmbedRef.current = { text, updatedAt, projectId, docTitle };
 
       // Clear existing debounce timer
       if (embedDebounceTimerRef.current) {
@@ -216,7 +218,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
         const pending = pendingEmbedRef.current;
         if (pending) {
           pendingEmbedRef.current = null;
-          void generateAndPersistEmbedding(pending.text, pending.updatedAt, textHash, pending.projectId);
+          void generateAndPersistEmbedding(pending.text, pending.updatedAt, textHash, pending.projectId, pending.docTitle);
         }
       }, EMBEDDING_DEBOUNCE_MS);
     },
@@ -276,7 +278,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
         // Schedule embedding generation (async, non-blocking)
         if (currentProjectId) {
           const savedUpdatedAt = new Date().toISOString();
-          scheduleEmbeddingGeneration(textContent, savedUpdatedAt, currentProjectId);
+          scheduleEmbeddingGeneration(textContent, savedUpdatedAt, currentProjectId, currentDocumentTitle);
         }
       }
     } catch (err) {
@@ -298,7 +300,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
         }
       }
     }
-  }, [editor, documentId, isSaving, getContentHash, setDirty, currentProjectId, scheduleEmbeddingGeneration]);
+  }, [editor, documentId, isSaving, getContentHash, setDirty, currentProjectId, currentDocumentTitle, scheduleEmbeddingGeneration]);
 
   /**
    * Public save function - saves immediately

@@ -111,20 +111,29 @@ async function qdrantRequest<T>(
     headers["api-key"] = config.apiKey;
   }
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  // Create abort controller with timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-  const data = await response.json();
+  try {
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
 
-  if (!response.ok || data.status?.error) {
-    const errorMessage = data.status?.error || `Qdrant API error: ${response.status}`;
-    throw new QdrantError(errorMessage, response.status, data.status?.error);
+    const data = await response.json();
+
+    if (!response.ok || data.status?.error) {
+      const errorMessage = data.status?.error || `Qdrant API error: ${response.status}`;
+      throw new QdrantError(errorMessage, response.status, data.status?.error);
+    }
+
+    return data as T;
+  } finally {
+    clearTimeout(timeoutId); // Always clear timeout
   }
-
-  return data as T;
 }
 
 /**

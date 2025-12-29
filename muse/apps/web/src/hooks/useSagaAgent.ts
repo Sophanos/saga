@@ -118,6 +118,9 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
   // Ref for current mode (avoids re-renders for mode changes)
   const modeRef = useRef<SagaMode>(initialMode);
 
+  // Ref for conversation ID (persists across messages in the same conversation)
+  const conversationIdRef = useRef<string | null>(null);
+
   /**
    * Set the current saga mode
    */
@@ -196,6 +199,11 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
             content: m.content,
           }));
 
+        // Generate conversationId if not already set
+        if (!conversationIdRef.current) {
+          conversationIdRef.current = crypto.randomUUID();
+        }
+
         // Build the payload with editor context
         const payload: SagaChatPayload = {
           messages: apiMessages,
@@ -203,6 +211,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
           mentions,
           editorContext: buildEditorContext(),
           mode: modeRef.current,
+          conversationId: conversationIdRef.current,
         };
 
         await sendSagaChatStreaming(payload, {
@@ -302,6 +311,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
    */
   const clearChat = useCallback(() => {
     abortControllerRef.current?.abort();
+    conversationIdRef.current = null; // Reset conversationId for new conversation
     startNewConversation();
   }, [startNewConversation]);
 

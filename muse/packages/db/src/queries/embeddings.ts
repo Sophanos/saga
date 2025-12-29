@@ -1,10 +1,22 @@
+/**
+ * @deprecated This module is deprecated. Use the Qdrant-based search via edge functions instead:
+ * - embedTextViaEdge / embedManyViaEdge from @mythos/web/services/ai
+ * - searchViaEdge from @mythos/web/services/ai
+ *
+ * The pgvector-based functions here are no longer used in the Qdrant-only architecture.
+ * They remain for potential migration scripts but should not be used in new code.
+ */
+
 import { getSupabaseClient } from "../client";
+import { DBError } from "../errors";
 import type { Database } from "../types/database";
 
 type Entity = Database["public"]["Tables"]["entities"]["Row"];
 type Document = Database["public"]["Tables"]["documents"]["Row"];
 
-// Result type for semantic search
+/**
+ * @deprecated Use searchViaEdge from @mythos/web/services/ai instead
+ */
 export interface SemanticSearchResult {
   id: string;
   title?: string;
@@ -16,6 +28,7 @@ export interface SemanticSearchResult {
 /**
  * Search entities by embedding similarity
  * Uses the search_entities RPC function for efficient vector search
+ * @deprecated Use searchViaEdge with scope="entities" from @mythos/web/services/ai instead
  */
 export async function searchEntitiesByEmbedding(
   projectId: string,
@@ -32,7 +45,7 @@ export async function searchEntitiesByEmbedding(
   } as never);
 
   if (error) {
-    throw new Error(`Failed to search entities by embedding: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "search entities by embedding");
   }
 
   return (data as SemanticSearchResult[]) || [];
@@ -41,6 +54,7 @@ export async function searchEntitiesByEmbedding(
 /**
  * Search documents by embedding similarity
  * Uses the search_documents RPC function for efficient vector search
+ * @deprecated Use searchViaEdge with scope="documents" from @mythos/web/services/ai instead
  */
 export async function searchDocumentsByEmbedding(
   projectId: string,
@@ -57,7 +71,7 @@ export async function searchDocumentsByEmbedding(
   } as never);
 
   if (error) {
-    throw new Error(`Failed to search documents by embedding: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "search documents by embedding");
   }
 
   return (data as SemanticSearchResult[]) || [];
@@ -65,6 +79,7 @@ export async function searchDocumentsByEmbedding(
 
 /**
  * Full-text search on documents
+ * @deprecated Fulltext search may be added to searchViaEdge in the future
  */
 export async function fulltextSearchDocuments(
   projectId: string,
@@ -79,7 +94,7 @@ export async function fulltextSearchDocuments(
   } as never);
 
   if (error) {
-    throw new Error(`Failed to search documents: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "search documents");
   }
 
   return (data as { id: string; title: string; type: string; rank: number }[]) || [];
@@ -87,6 +102,7 @@ export async function fulltextSearchDocuments(
 
 /**
  * Hybrid search combining semantic and full-text search
+ * @deprecated Hybrid search may be added to searchViaEdge in the future
  */
 export async function hybridSearchDocuments(
   projectId: string,
@@ -105,7 +121,7 @@ export async function hybridSearchDocuments(
   } as never);
 
   if (error) {
-    throw new Error(`Failed to hybrid search documents: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "hybrid search documents");
   }
 
   return (data as { id: string; title: string; type: string; combined_score: number }[]) || [];
@@ -113,6 +129,7 @@ export async function hybridSearchDocuments(
 
 /**
  * Update entity embedding
+ * @deprecated Use embedTextViaEdge with qdrant option from @mythos/web/services/ai instead
  */
 export async function updateEntityEmbedding(
   entityId: string,
@@ -127,7 +144,7 @@ export async function updateEntityEmbedding(
     .single();
 
   if (error) {
-    throw new Error(`Failed to update entity embedding: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "update entity embedding");
   }
 
   return data as Entity;
@@ -135,6 +152,7 @@ export async function updateEntityEmbedding(
 
 /**
  * Update document embedding
+ * @deprecated Use embedTextViaEdge with qdrant option from @mythos/web/services/ai instead
  */
 export async function updateDocumentEmbedding(
   documentId: string,
@@ -149,7 +167,7 @@ export async function updateDocumentEmbedding(
     .single();
 
   if (error) {
-    throw new Error(`Failed to update document embedding: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "update document embedding");
   }
 
   return data as Document;
@@ -157,6 +175,7 @@ export async function updateDocumentEmbedding(
 
 /**
  * Update document content text (for full-text search indexing)
+ * @deprecated Content text is updated via updateDocument in documents.ts
  */
 export async function updateDocumentContentText(
   documentId: string,
@@ -171,7 +190,7 @@ export async function updateDocumentContentText(
     .single();
 
   if (error) {
-    throw new Error(`Failed to update document content text: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "update document content text");
   }
 
   return data as Document;
@@ -179,6 +198,7 @@ export async function updateDocumentContentText(
 
 /**
  * Update document with both embedding and content text
+ * @deprecated Use embedTextViaEdge with qdrant option from @mythos/web/services/ai instead
  */
 export async function updateDocumentSearchData(
   documentId: string,
@@ -198,7 +218,7 @@ export async function updateDocumentSearchData(
     .single();
 
   if (error) {
-    throw new Error(`Failed to update document search data: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "update document search data");
   }
 
   return data as Document;
@@ -206,6 +226,7 @@ export async function updateDocumentSearchData(
 
 /**
  * Batch update entity embeddings
+ * @deprecated Use embedManyViaEdge with qdrant option from @mythos/web/services/ai instead
  */
 export async function batchUpdateEntityEmbeddings(
   updates: { id: string; embedding: number[] }[]
@@ -223,14 +244,17 @@ export async function batchUpdateEntityEmbeddings(
   const errors = results.filter((r) => r.error);
 
   if (errors.length > 0) {
-    throw new Error(
-      `Failed to update ${errors.length} entity embeddings: ${errors[0].error?.message}`
+    throw new DBError(
+      `Failed to update ${errors.length} entity embeddings: ${errors[0].error?.message}`,
+      "QUERY_FAILED",
+      errors[0].error?.code
     );
   }
 }
 
 /**
  * Batch update document embeddings
+ * @deprecated Use embedManyViaEdge with qdrant option from @mythos/web/services/ai instead
  */
 export async function batchUpdateDocumentEmbeddings(
   updates: { id: string; embedding: number[]; contentText?: string }[]
@@ -251,14 +275,17 @@ export async function batchUpdateDocumentEmbeddings(
   const errors = results.filter((r) => r.error);
 
   if (errors.length > 0) {
-    throw new Error(
-      `Failed to update ${errors.length} document embeddings: ${errors[0].error?.message}`
+    throw new DBError(
+      `Failed to update ${errors.length} document embeddings: ${errors[0].error?.message}`,
+      "QUERY_FAILED",
+      errors[0].error?.code
     );
   }
 }
 
 /**
  * Get entities without embeddings (for batch embedding generation)
+ * @deprecated Embeddings are now stored in Qdrant, not the database
  */
 export async function getEntitiesWithoutEmbeddings(
   projectId: string,
@@ -273,7 +300,7 @@ export async function getEntitiesWithoutEmbeddings(
     .limit(limit);
 
   if (error) {
-    throw new Error(`Failed to fetch entities without embeddings: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "fetch entities without embeddings");
   }
 
   return (data as Entity[]) || [];
@@ -281,6 +308,7 @@ export async function getEntitiesWithoutEmbeddings(
 
 /**
  * Get documents without embeddings (for batch embedding generation)
+ * @deprecated Embeddings are now stored in Qdrant, not the database
  */
 export async function getDocumentsWithoutEmbeddings(
   projectId: string,
@@ -295,7 +323,7 @@ export async function getDocumentsWithoutEmbeddings(
     .limit(limit);
 
   if (error) {
-    throw new Error(`Failed to fetch documents without embeddings: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "fetch documents without embeddings");
   }
 
   return (data as Document[]) || [];
@@ -305,8 +333,9 @@ export async function getDocumentsWithoutEmbeddings(
  * Update document embedding only if the document hasn't changed since expectedUpdatedAt.
  * This prevents stale embeddings from overwriting newer content.
  *
+ * @deprecated Use embedTextViaEdge with qdrant option from @mythos/web/services/ai instead
  * @param documentId - Document ID
- * @param embedding - Embedding vector (1536 dimensions)
+ * @param embedding - Embedding vector (4096 dimensions for Qwen3-Embedding-8B)
  * @param expectedUpdatedAt - The updated_at timestamp when embedding generation started
  * @returns The updated document, or null if the document was modified (stale write prevented)
  */
@@ -324,7 +353,7 @@ export async function updateDocumentEmbeddingIfUnchanged(
     .select();
 
   if (error) {
-    throw new Error(`Failed to update document embedding: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "update document embedding");
   }
 
   // If no rows were updated, the document was modified since we started
@@ -339,8 +368,9 @@ export async function updateDocumentEmbeddingIfUnchanged(
  * Update entity embedding only if the entity hasn't changed since expectedUpdatedAt.
  * This prevents stale embeddings from overwriting newer content.
  *
+ * @deprecated Use embedTextViaEdge with qdrant option from @mythos/web/services/ai instead
  * @param entityId - Entity ID
- * @param embedding - Embedding vector (1536 dimensions)
+ * @param embedding - Embedding vector (4096 dimensions for Qwen3-Embedding-8B)
  * @param expectedUpdatedAt - The updated_at timestamp when embedding generation started
  * @returns The updated entity, or null if the entity was modified (stale write prevented)
  */
@@ -358,7 +388,7 @@ export async function updateEntityEmbeddingIfUnchanged(
     .select();
 
   if (error) {
-    throw new Error(`Failed to update entity embedding: ${error.message}`);
+    throw DBError.fromSupabaseError(error, "update entity embedding");
   }
 
   // If no rows were updated, the entity was modified since we started

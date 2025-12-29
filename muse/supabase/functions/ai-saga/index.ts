@@ -22,24 +22,20 @@ import {
   ErrorCode,
 } from "../_shared/errors.ts";
 import {
-  generateEmbedding,
-  isDeepInfraConfigured,
-} from "../_shared/deepinfra.ts";
-import {
-  searchPoints,
-  scrollPoints,
-  isQdrantConfigured,
-  type QdrantFilter,
-} from "../_shared/qdrant.ts";
-import {
   getProjectId,
   getPayloadTitle,
-  getPayloadText,
   getPayloadPreview,
   getPayloadType,
   getEntityType,
   getMemoryCategory,
 } from "../_shared/vectorPayload.ts";
+import {
+  retrieveMemoryContext,
+  retrieveProfileContext,
+  DEFAULT_SAGA_LIMITS,
+  type RetrievedMemoryContext,
+  type ProfileContext,
+} from "../_shared/memory/retrieval.ts";
 import {
   retrieveRAGContext,
   type RAGContext,
@@ -113,180 +109,7 @@ const MAX_HISTORY_MESSAGES = 20;
 
 // RAG retrieval extracted to ../shared/rag.ts as retrieveRAGContext
 
-// =============================================================================
-// Memory Context Retrieval
-// =============================================================================
-
-interface MemoryRecord {
-  id: string;
-  content: string;
-  category: string;
-  score?: number;
-}
-
-interface MemoryContext {
-  decisions: MemoryRecord[];
-  style: MemoryRecord[];
-  preferences: MemoryRecord[];
-  session: MemoryRecord[];
-}
-
-interface ProfileContext {
-  preferredGenre?: string;
-  namingCulture?: string;
-  namingStyle?: string;
-  logicStrictness?: string;
-}
-
-/**
- * Retrieve memory context for the request
- */
-async function retrieveMemoryContext(
-  query: string,
-  projectId: string,
-  userId: string | null,
-  conversationId?: string
-): Promise<MemoryContext> {
-  if (!isQdrantConfigured()) {
-    return { decisions: [], style: [], preferences: [], session: [] };
-  }
-
-  const result: MemoryContext = {
-    decisions: [],
-    style: [],
-    preferences: [],
-    session: [],
-  };
-
-  try {
-    // Retrieve project-scoped decisions (shared canon)
-    const decisionFilter: QdrantFilter = {
-      must: [
-        { key: "type", match: { value: "memory" } },
-        { key: "project_id", match: { value: projectId } },
-        { key: "category", match: { value: "decision" } },
-        { key: "scope", match: { value: "project" } },
-      ],
-    };
-
-    // If we have a query, do semantic search; otherwise scroll recent
-    if (query && isDeepInfraConfigured()) {
-      const embedding = await generateEmbedding(query);
-      const decisions = await searchPoints(embedding, 8, decisionFilter);
-      result.decisions = decisions.map((p) => ({
-        id: String(p.id),
-        content: getPayloadText(p.payload),
-        category: "decision",
-        score: p.score,
-      }));
-    } else {
-      const decisions = await scrollPoints(decisionFilter, 8);
-      result.decisions = decisions.map((p) => ({
-        id: p.id,
-        content: getPayloadText(p.payload),
-        category: "decision",
-      }));
-    }
-
-    // Only retrieve user-scoped memories if we have a user
-    if (userId) {
-      // Retrieve style preferences
-      const styleFilter: QdrantFilter = {
-        must: [
-          { key: "type", match: { value: "memory" } },
-          { key: "project_id", match: { value: projectId } },
-          { key: "category", match: { value: "style" } },
-          { key: "owner_id", match: { value: userId } },
-        ],
-      };
-      const styleResults = await scrollPoints(styleFilter, 6);
-      result.style = styleResults.map((p) => ({
-        id: p.id,
-        content: getPayloadText(p.payload),
-        category: "style",
-      }));
-
-      // Retrieve preference memories
-      const prefFilter: QdrantFilter = {
-        must: [
-          { key: "type", match: { value: "memory" } },
-          { key: "project_id", match: { value: projectId } },
-          { key: "category", match: { value: "preference" } },
-          { key: "owner_id", match: { value: userId } },
-        ],
-      };
-      const prefResults = await scrollPoints(prefFilter, 6);
-      result.preferences = prefResults.map((p) => ({
-        id: p.id,
-        content: getPayloadText(p.payload),
-        category: "preference",
-      }));
-    }
-
-    // Retrieve session memories if we have a conversation ID
-    if (conversationId && userId) {
-      const sessionFilter: QdrantFilter = {
-        must: [
-          { key: "type", match: { value: "memory" } },
-          { key: "project_id", match: { value: projectId } },
-          { key: "category", match: { value: "session" } },
-          { key: "conversation_id", match: { value: conversationId } },
-        ],
-      };
-      const sessionResults = await scrollPoints(sessionFilter, 3);
-      result.session = sessionResults.map((p) => ({
-        id: p.id,
-        content: getPayloadText(p.payload),
-        category: "session",
-      }));
-    }
-  } catch (error) {
-    console.error("[ai-saga] Memory retrieval error:", error);
-  }
-
-  return result;
-}
-
-/**
- * Retrieve profile context from user preferences
- */
-async function retrieveProfileContext(
-  supabase: ReturnType<typeof createSupabaseClient>,
-  userId: string | null
-): Promise<ProfileContext | undefined> {
-  if (!userId) {
-    return undefined;
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("preferences")
-      .eq("id", userId)
-      .single();
-
-    if (error || !data) {
-      return undefined;
-    }
-
-    const prefs = data.preferences as Record<string, unknown> | null;
-    const writing = prefs?.writing as Record<string, unknown> | undefined;
-
-    if (!writing) {
-      return undefined;
-    }
-
-    return {
-      preferredGenre: writing.preferredGenre as string | undefined,
-      namingCulture: writing.namingCulture as string | undefined,
-      namingStyle: writing.namingStyle as string | undefined,
-      logicStrictness: writing.logicStrictness as string | undefined,
-    };
-  } catch (error) {
-    console.error("[ai-saga] Profile retrieval error:", error);
-    return undefined;
-  }
-}
+// Memory retrieval extracted to ../_shared/memory/retrieval.ts
 
 // =============================================================================
 // Chat Handler (Streaming)
@@ -311,8 +134,8 @@ async function handleChat(
       logPrefix: "[ai-saga]",
       excludeMemories: true,
     }),
-    retrieveMemoryContext(query, projectId, billing.userId, conversationId),
-    retrieveProfileContext(supabase, billing.userId),
+    retrieveMemoryContext(query, projectId, billing.userId, conversationId, DEFAULT_SAGA_LIMITS, "[ai-saga]"),
+    retrieveProfileContext(supabase, billing.userId, "[ai-saga]"),
   ]);
 
   // Build system prompt with all contexts
@@ -418,9 +241,8 @@ async function handleExecuteTool(
         };
         if (!typedInput.text) {
           return createErrorResponse(
-            "Text is required for entity detection",
             ErrorCode.VALIDATION_ERROR,
-            400,
+            "Text is required for entity detection",
             origin
           );
         }
@@ -441,9 +263,8 @@ async function handleExecuteTool(
         };
         if (!typedInput.text) {
           return createErrorResponse(
-            "Text is required for consistency check",
             ErrorCode.VALIDATION_ERROR,
-            400,
+            "Text is required for consistency check",
             origin
           );
         }
@@ -460,9 +281,8 @@ async function handleExecuteTool(
         };
         if (!typedInput.storyDescription) {
           return createErrorResponse(
-            "Story description is required for template generation",
             ErrorCode.VALIDATION_ERROR,
-            400,
+            "Story description is required for template generation",
             origin
           );
         }
@@ -477,9 +297,8 @@ async function handleExecuteTool(
         };
         if (!typedInput.text) {
           return createErrorResponse(
-            "Text is required for clarity check",
             ErrorCode.VALIDATION_ERROR,
-            400,
+            "Text is required for clarity check",
             origin
           );
         }
@@ -489,9 +308,8 @@ async function handleExecuteTool(
 
       default:
         return createErrorResponse(
-          `Unknown tool: ${toolName}. Supported tools: genesis_world, detect_entities, check_consistency, generate_template, clarity_check`,
           ErrorCode.VALIDATION_ERROR,
-          400,
+          `Unknown tool: ${toolName}. Supported tools: genesis_world, detect_entities, check_consistency, generate_template, clarity_check`,
           origin
         );
     }
@@ -515,7 +333,7 @@ serve(async (req: Request): Promise<Response> => {
 
   // Only allow POST
   if (req.method !== "POST") {
-    return createErrorResponse("Method not allowed", ErrorCode.VALIDATION_ERROR, 405);
+    return createErrorResponse(ErrorCode.VALIDATION_ERROR, "Method not allowed", null);
   }
 
   const origin = req.headers.get("Origin");
@@ -544,9 +362,8 @@ serve(async (req: Request): Promise<Response> => {
       // Validate execute_tool request
       if (!body.toolName) {
         return createErrorResponse(
-          "toolName is required for execute_tool",
           ErrorCode.VALIDATION_ERROR,
-          400,
+          "toolName is required for execute_tool",
           origin
         );
       }
@@ -555,9 +372,8 @@ serve(async (req: Request): Promise<Response> => {
       // Default to chat
       if (!body.messages || !body.projectId) {
         return createErrorResponse(
-          "messages and projectId are required for chat",
           ErrorCode.VALIDATION_ERROR,
-          400,
+          "messages and projectId are required for chat",
           origin
         );
       }

@@ -1,4 +1,10 @@
-import { supabase } from "../client";
+import {
+  executeQuery,
+  executeSingleQuery,
+  executeMutation,
+  executeBulkMutation,
+  executeVoidMutation,
+} from "../queryHelper";
 import type { Database } from "../types/database";
 
 type Interaction = Database["public"]["Tables"]["interactions"]["Row"];
@@ -12,41 +18,33 @@ export async function getInteractions(
   projectId: string,
   documentId?: string
 ): Promise<Interaction[]> {
-  let query = supabase
-    .from("interactions")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: true });
+  return executeQuery<Interaction>(
+    (client) => {
+      let query = client
+        .from("interactions")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: true });
 
-  if (documentId) {
-    query = query.eq("document_id", documentId);
-  }
+      if (documentId) {
+        query = query.eq("document_id", documentId);
+      }
 
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(`Failed to fetch interactions: ${error.message}`);
-  }
-
-  return (data as Interaction[]) || [];
+      return query;
+    },
+    { context: "fetch interactions" }
+  );
 }
 
 /**
  * Get a single interaction by id
  */
 export async function getInteraction(id: string): Promise<Interaction | null> {
-  const { data, error } = await supabase
-    .from("interactions")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") return null;
-    throw new Error(`Failed to fetch interaction: ${error.message}`);
-  }
-
-  return data as Interaction;
+  return executeSingleQuery<Interaction>(
+    (client) =>
+      client.from("interactions").select("*").eq("id", id).single(),
+    { context: "fetch interaction" }
+  );
 }
 
 /**
@@ -55,17 +53,15 @@ export async function getInteraction(id: string): Promise<Interaction | null> {
 export async function createInteraction(
   interaction: InteractionInsert
 ): Promise<Interaction> {
-  const { data, error } = await supabase
-    .from("interactions")
-    .insert(interaction as never)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to create interaction: ${error.message}`);
-  }
-
-  return data as Interaction;
+  return executeMutation<Interaction>(
+    (client) =>
+      client
+        .from("interactions")
+        .insert(interaction as never)
+        .select()
+        .single(),
+    { context: "create interaction" }
+  );
 }
 
 /**
@@ -75,29 +71,26 @@ export async function updateInteraction(
   id: string,
   updates: InteractionUpdate
 ): Promise<Interaction> {
-  const { data, error } = await supabase
-    .from("interactions")
-    .update(updates as never)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to update interaction: ${error.message}`);
-  }
-
-  return data as Interaction;
+  return executeMutation<Interaction>(
+    (client) =>
+      client
+        .from("interactions")
+        .update(updates as never)
+        .eq("id", id)
+        .select()
+        .single(),
+    { context: "update interaction" }
+  );
 }
 
 /**
  * Delete an interaction
  */
 export async function deleteInteraction(id: string): Promise<void> {
-  const { error } = await supabase.from("interactions").delete().eq("id", id);
-
-  if (error) {
-    throw new Error(`Failed to delete interaction: ${error.message}`);
-  }
+  return executeVoidMutation(
+    (client) => client.from("interactions").delete().eq("id", id),
+    { context: "delete interaction" }
+  );
 }
 
 /**
@@ -107,18 +100,16 @@ export async function getInteractionsByEntity(
   projectId: string,
   entityId: string
 ): Promise<Interaction[]> {
-  const { data, error } = await supabase
-    .from("interactions")
-    .select("*")
-    .eq("project_id", projectId)
-    .or(`source_id.eq.${entityId},target_id.eq.${entityId}`)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    throw new Error(`Failed to fetch interactions by entity: ${error.message}`);
-  }
-
-  return (data as Interaction[]) || [];
+  return executeQuery<Interaction>(
+    (client) =>
+      client
+        .from("interactions")
+        .select("*")
+        .eq("project_id", projectId)
+        .or(`source_id.eq.${entityId},target_id.eq.${entityId}`)
+        .order("created_at", { ascending: true }),
+    { context: "fetch interactions by entity" }
+  );
 }
 
 /**
@@ -128,18 +119,16 @@ export async function getInteractionsByType(
   projectId: string,
   type: string
 ): Promise<Interaction[]> {
-  const { data, error } = await supabase
-    .from("interactions")
-    .select("*")
-    .eq("project_id", projectId)
-    .eq("type", type)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    throw new Error(`Failed to fetch interactions by type: ${error.message}`);
-  }
-
-  return (data as Interaction[]) || [];
+  return executeQuery<Interaction>(
+    (client) =>
+      client
+        .from("interactions")
+        .select("*")
+        .eq("project_id", projectId)
+        .eq("type", type)
+        .order("created_at", { ascending: true }),
+    { context: "fetch interactions by type" }
+  );
 }
 
 /**
@@ -157,16 +146,14 @@ export async function getHiddenInteractions(
 export async function createInteractions(
   interactions: InteractionInsert[]
 ): Promise<Interaction[]> {
-  const { data, error } = await supabase
-    .from("interactions")
-    .insert(interactions as never[])
-    .select();
-
-  if (error) {
-    throw new Error(`Failed to create interactions: ${error.message}`);
-  }
-
-  return (data as Interaction[]) || [];
+  return executeBulkMutation<Interaction>(
+    (client) =>
+      client
+        .from("interactions")
+        .insert(interactions as never[])
+        .select(),
+    { context: "create interactions" }
+  );
 }
 
 /**
@@ -175,12 +162,8 @@ export async function createInteractions(
 export async function deleteInteractionsByDocument(
   documentId: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from("interactions")
-    .delete()
-    .eq("document_id", documentId);
-
-  if (error) {
-    throw new Error(`Failed to delete interactions: ${error.message}`);
-  }
+  return executeVoidMutation(
+    (client) => client.from("interactions").delete().eq("document_id", documentId),
+    { context: "delete interactions" }
+  );
 }

@@ -72,6 +72,66 @@ export function requireApiKey(request: Request): string {
  * Extract Gemini API key from request or environment
  * For fallback support when OpenRouter is unavailable
  */
+/**
+ * Result of billing-aware API key extraction
+ */
+export interface ApiKeyWithBillingResult extends ApiKeyResult {
+  /** Whether this is using the managed billing system */
+  isManaged: boolean;
+  /** User ID if authenticated (for usage tracking) */
+  userId: string | null;
+}
+
+/**
+ * Extract API key with billing system integration
+ *
+ * This is a convenience wrapper that combines BYOK extraction with
+ * billing system awareness. Use checkBillingAndGetKey from billing.ts
+ * for full billing context (including quota checks).
+ *
+ * Priority:
+ * 1. x-openrouter-key header (BYOK - not managed)
+ * 2. OPENROUTER_API_KEY environment variable (managed)
+ *
+ * @param request - The incoming request
+ * @param userId - Optional authenticated user ID for tracking
+ * @returns The API key, source, and billing info
+ */
+export function extractApiKeyWithBilling(
+  request: Request,
+  userId: string | null = null
+): ApiKeyWithBillingResult {
+  // Check for BYOK header first
+  const headerKey = request.headers.get("x-openrouter-key");
+  if (headerKey && headerKey.trim().length > 0) {
+    return {
+      key: headerKey.trim(),
+      source: "header",
+      isManaged: false,
+      userId,
+    };
+  }
+
+  // Fall back to environment variable (managed billing)
+  const envKey = Deno.env.get("OPENROUTER_API_KEY");
+  if (envKey && envKey.trim().length > 0) {
+    return {
+      key: envKey.trim(),
+      source: "environment",
+      isManaged: true,
+      userId,
+    };
+  }
+
+  // No API key available
+  return {
+    key: null,
+    source: "none",
+    isManaged: false,
+    userId,
+  };
+}
+
 export function extractGeminiKey(request: Request): ApiKeyResult {
   // Check for BYOK header
   const headerKey = request.headers.get("x-gemini-key");

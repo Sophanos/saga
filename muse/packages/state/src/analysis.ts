@@ -5,7 +5,7 @@
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { SceneMetrics, StyleIssue, SensoryBalance } from "@mythos/core/analysis";
+import type { SceneMetrics, StyleIssue } from "@mythos/core/analysis";
 
 export interface AnalysisState {
   // Metrics

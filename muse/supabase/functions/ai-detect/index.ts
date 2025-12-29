@@ -55,96 +55,20 @@ import {
   recordAIRequest,
   extractTokenUsage,
 } from "../_shared/billing.ts";
+import type {
+  EntityType,
+  EntityOccurrence,
+  DetectedEntity,
+  DetectionWarning,
+  DetectionStats,
+  DetectionOptions,
+  DetectionResult,
+  ExistingEntity,
+} from "../_shared/tools/types.ts";
 
 // ============================================================================
 // Types
 // ============================================================================
-
-/**
- * Entity types that can be detected
- */
-type EntityType =
-  | "character"
-  | "location"
-  | "item"
-  | "magic_system"
-  | "faction"
-  | "event"
-  | "concept";
-
-/**
- * Entity occurrence in text
- */
-interface EntityOccurrence {
-  startOffset: number;
-  endOffset: number;
-  matchedText: string;
-  context: string;
-}
-
-/**
- * Detection warning
- */
-interface DetectionWarning {
-  type:
-    | "ambiguous_reference"
-    | "low_confidence"
-    | "possible_alias"
-    | "conflicting_type";
-  message: string;
-  entityTempId?: string;
-  offset?: number;
-}
-
-/**
- * Detected entity
- */
-interface DetectedEntity {
-  tempId: string;
-  name: string;
-  canonicalName: string;
-  type: EntityType;
-  confidence: number;
-  occurrences: EntityOccurrence[];
-  suggestedAliases: string[];
-  inferredProperties?: Record<string, unknown>;
-  matchedExistingId?: string;
-}
-
-/**
- * Detection statistics
- */
-interface DetectionStats {
-  charactersAnalyzed: number;
-  totalEntities: number;
-  byType: Record<EntityType, number>;
-  matchedToExisting: number;
-  newEntities: number;
-  processingTimeMs: number;
-}
-
-/**
- * Detection options
- */
-interface DetectionOptions {
-  minConfidence?: number;
-  entityTypes?: EntityType[];
-  detectAliases?: boolean;
-  matchExisting?: boolean;
-  maxEntities?: number;
-  includeContext?: boolean;
-  contextLength?: number;
-}
-
-/**
- * Existing entity for matching
- */
-interface ExistingEntity {
-  id: string;
-  name: string;
-  aliases: string[];
-  type: EntityType;
-}
 
 /**
  * Request body interface
@@ -153,15 +77,6 @@ interface DetectRequest {
   text: string;
   existingEntities?: ExistingEntity[];
   options?: DetectionOptions;
-}
-
-/**
- * Detection result
- */
-interface DetectionResult {
-  entities: DetectedEntity[];
-  warnings?: DetectionWarning[];
-  stats?: DetectionStats;
 }
 
 // ============================================================================

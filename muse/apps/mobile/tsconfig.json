@@ -2,6 +2,8 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "paths": {
       "@/*": [
         "./*"
@@ -11,6 +13,12 @@
       ],
       "@mythos/theme": [
         "../../packages/theme/src"
+      ],
+      "@mythos/db": [
+        "../../packages/db/src"
+      ],
+      "@mythos/state": [
+        "../../packages/state/src"
       ]
     },
     "baseUrl": "."

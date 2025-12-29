@@ -5,10 +5,10 @@
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { ProjectRole } from "@mythos/core";
+import type { ProjectRole, ActivityLogEntry } from "@mythos/core";
 
 // Re-export for consumers
-export type { ProjectRole } from "@mythos/core";
+export type { ProjectRole, ActivityType, ActivityLogEntry } from "@mythos/core";
 
 /**
  * Project member representation
@@ -38,42 +38,7 @@ export interface CollaboratorPresence {
   lastSeen: string;
 }
 
-/**
- * Activity log entry types
- */
-export type ActivityType =
-  | "project_created"
-  | "document_created"
-  | "document_updated"
-  | "entity_created"
-  | "entity_updated"
-  | "entity_deleted"
-  | "relationship_created"
-  | "relationship_deleted"
-  | "member_joined"
-  | "member_left"
-  | "member_role_changed"
-  | "comment_added"
-  | "analysis_run";
 
-/**
- * Activity log entry for project history
- * Note: id is string to accommodate both DB numeric IDs (via .toString())
- * and locally-generated IDs for realtime activity (e.g., "1234567890-entity-insert")
- */
-export interface ActivityLogEntry {
-  id: string;
-  type: ActivityType;
-  projectId: string;
-  userId: string;
-  userName?: string;
-  userAvatarUrl?: string;
-  targetId?: string;
-  targetType?: string;
-  targetName?: string;
-  details?: Record<string, unknown>;
-  createdAt: string;
-}
 
 /**
  * Collaboration state interface

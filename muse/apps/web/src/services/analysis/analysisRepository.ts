@@ -1,4 +1,4 @@
-import { supabase, type Database } from "@mythos/db";
+import { getSupabaseClient, type Database } from "@mythos/db";
 import type { AnalysisRecord } from "../../stores/history";
 import type { SceneMetrics, SensoryBalance } from "@mythos/core";
 
@@ -110,6 +110,7 @@ export async function fetchAnalysisHistory(
   projectId: string,
   limit: number = 100
 ): Promise<AnalysisRecord[]> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("scene_analysis")
     .select("*")
@@ -167,6 +168,7 @@ export async function persistAnalysisRecord(input: PersistAnalysisInput): Promis
     analyzed_at: new Date().toISOString(),
   };
 
+  const supabase = getSupabaseClient();
   const { error } = await supabase
     .from("scene_analysis")
     .insert(analysisInsert as never);
@@ -190,6 +192,7 @@ export async function fetchDocumentAnalysisHistory(
   documentId: string,
   limit: number = 50
 ): Promise<AnalysisRecord[]> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("scene_analysis")
     .select("*")

@@ -1,4 +1,11 @@
-import { supabase } from "../client";
+import {
+  executeQuery,
+  executeSingleQuery,
+  executeMutation,
+  executeBulkMutation,
+  executeVoidMutation,
+  executeRpc,
+} from "../queryHelper";
 import type { Database } from "../types/database";
 
 type SceneAnalysis = Database["public"]["Tables"]["scene_analysis"]["Row"];
@@ -13,45 +20,41 @@ export async function getSceneAnalysis(
   documentId?: string,
   sceneId?: string
 ): Promise<SceneAnalysis[]> {
-  let query = supabase
-    .from("scene_analysis")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("analyzed_at", { ascending: false });
+  return executeQuery<SceneAnalysis>(
+    (client) => {
+      let query = client
+        .from("scene_analysis")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("analyzed_at", { ascending: false });
 
-  if (documentId) {
-    query = query.eq("document_id", documentId);
-  }
+      if (documentId) {
+        query = query.eq("document_id", documentId);
+      }
 
-  if (sceneId) {
-    query = query.eq("scene_id", sceneId);
-  }
+      if (sceneId) {
+        query = query.eq("scene_id", sceneId);
+      }
 
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(`Failed to fetch scene analysis: ${error.message}`);
-  }
-
-  return (data as SceneAnalysis[]) || [];
+      return query;
+    },
+    { context: "fetch scene analysis" }
+  );
 }
 
 /**
  * Get a single scene analysis by id
  */
 export async function getSceneAnalysisById(id: string): Promise<SceneAnalysis | null> {
-  const { data, error } = await supabase
-    .from("scene_analysis")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") return null;
-    throw new Error(`Failed to fetch scene analysis: ${error.message}`);
-  }
-
-  return data as SceneAnalysis;
+  return executeSingleQuery<SceneAnalysis>(
+    (client) =>
+      client
+        .from("scene_analysis")
+        .select("*")
+        .eq("id", id)
+        .single(),
+    { context: "fetch scene analysis" }
+  );
 }
 
 /**
@@ -60,17 +63,15 @@ export async function getSceneAnalysisById(id: string): Promise<SceneAnalysis | 
 export async function createSceneAnalysis(
   analysis: SceneAnalysisInsert
 ): Promise<SceneAnalysis> {
-  const { data, error } = await supabase
-    .from("scene_analysis")
-    .insert(analysis as never)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to create scene analysis: ${error.message}`);
-  }
-
-  return data as SceneAnalysis;
+  return executeMutation<SceneAnalysis>(
+    (client) =>
+      client
+        .from("scene_analysis")
+        .insert(analysis as never)
+        .select()
+        .single(),
+    { context: "create scene analysis" }
+  );
 }
 
 /**
@@ -80,29 +81,26 @@ export async function updateSceneAnalysis(
   id: string,
   updates: SceneAnalysisUpdate
 ): Promise<SceneAnalysis> {
-  const { data, error } = await supabase
-    .from("scene_analysis")
-    .update(updates as never)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to update scene analysis: ${error.message}`);
-  }
-
-  return data as SceneAnalysis;
+  return executeMutation<SceneAnalysis>(
+    (client) =>
+      client
+        .from("scene_analysis")
+        .update(updates as never)
+        .eq("id", id)
+        .select()
+        .single(),
+    { context: "update scene analysis" }
+  );
 }
 
 /**
  * Delete a scene analysis record
  */
 export async function deleteSceneAnalysis(id: string): Promise<void> {
-  const { error } = await supabase.from("scene_analysis").delete().eq("id", id);
-
-  if (error) {
-    throw new Error(`Failed to delete scene analysis: ${error.message}`);
-  }
+  return executeVoidMutation(
+    (client) => client.from("scene_analysis").delete().eq("id", id),
+    { context: "delete scene analysis" }
+  );
 }
 
 /**
@@ -113,16 +111,14 @@ export async function getLatestAnalysis(
   projectId: string,
   documentId?: string
 ): Promise<SceneAnalysis[]> {
-  const { data, error } = await supabase.rpc("get_latest_scene_analysis", {
-    p_project_id: projectId,
-    p_document_id: documentId || null,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to fetch latest analysis: ${error.message}`);
-  }
-
-  return (data as SceneAnalysis[]) || [];
+  return executeRpc<SceneAnalysis[]>(
+    (client) =>
+      client.rpc("get_latest_scene_analysis", {
+        p_project_id: projectId,
+        p_document_id: documentId || null,
+      } as never),
+    { context: "fetch latest analysis" }
+  );
 }
 
 /**
@@ -134,18 +130,16 @@ export async function getAnalysisHistory(
   sceneId?: string,
   limit: number = 10
 ): Promise<SceneAnalysis[]> {
-  const { data, error } = await supabase.rpc("get_scene_analysis_history", {
-    p_project_id: projectId,
-    p_document_id: documentId,
-    p_scene_id: sceneId || null,
-    p_limit: limit,
-  } as never);
-
-  if (error) {
-    throw new Error(`Failed to fetch analysis history: ${error.message}`);
-  }
-
-  return (data as SceneAnalysis[]) || [];
+  return executeRpc<SceneAnalysis[]>(
+    (client) =>
+      client.rpc("get_scene_analysis_history", {
+        p_project_id: projectId,
+        p_document_id: documentId,
+        p_scene_id: sceneId || null,
+        p_limit: limit,
+      } as never),
+    { context: "fetch analysis history" }
+  );
 }
 
 /**
@@ -154,36 +148,34 @@ export async function getAnalysisHistory(
 export async function createSceneAnalysisBatch(
   analyses: SceneAnalysisInsert[]
 ): Promise<SceneAnalysis[]> {
-  const { data, error } = await supabase
-    .from("scene_analysis")
-    .insert(analyses as never[])
-    .select();
-
-  if (error) {
-    throw new Error(`Failed to create scene analyses: ${error.message}`);
-  }
-
-  return (data as SceneAnalysis[]) || [];
+  return executeBulkMutation<SceneAnalysis>(
+    (client) =>
+      client
+        .from("scene_analysis")
+        .insert(analyses as never[])
+        .select(),
+    { context: "create scene analyses" }
+  );
 }
 
 /**
  * Delete all analysis records for a document
  */
 export async function deleteAnalysisByDocument(documentId: string): Promise<void> {
-  const { error } = await supabase
-    .from("scene_analysis")
-    .delete()
-    .eq("document_id", documentId);
-
-  if (error) {
-    throw new Error(`Failed to delete analyses: ${error.message}`);
-  }
+  return executeVoidMutation(
+    (client) =>
+      client
+        .from("scene_analysis")
+        .delete()
+        .eq("document_id", documentId),
+    { context: "delete analyses" }
+  );
 }
 
 /**
- * Get average metrics across all scenes in a project
+ * Project metrics return type
  */
-export async function getProjectMetrics(projectId: string): Promise<{
+export interface ProjectMetrics {
   avgPacing: number | null;
   avgShowDontTell: number | null;
   avgDialogueRatio: number | null;
@@ -191,22 +183,23 @@ export async function getProjectMetrics(projectId: string): Promise<{
   avgDescriptionRatio: number | null;
   totalWordCount: number;
   sceneCount: number;
-}> {
-  const { data, error } = await supabase
-    .from("scene_analysis")
-    .select("pacing, show_dont_tell_score, dialogue_ratio, action_ratio, description_ratio, word_count")
-    .eq("project_id", projectId);
+}
 
-  if (error) {
-    throw new Error(`Failed to fetch project metrics: ${error.message}`);
-  }
+/**
+ * Get average metrics across all scenes in a project
+ * Uses SQL aggregation via database function for efficiency
+ */
+export async function getProjectMetrics(projectId: string): Promise<ProjectMetrics> {
+  const metrics = await executeRpc<ProjectMetrics | null>(
+    (client) =>
+      client.rpc("get_project_metrics", {
+        p_project_id: projectId,
+      } as never),
+    { context: "fetch project metrics" }
+  );
 
-  const analyses = data as Pick<
-    SceneAnalysis,
-    "pacing" | "show_dont_tell_score" | "dialogue_ratio" | "action_ratio" | "description_ratio" | "word_count"
-  >[];
-
-  if (!analyses || analyses.length === 0) {
+  // Handle empty result (no scenes analyzed yet)
+  if (!metrics || metrics.sceneCount === 0) {
     return {
       avgPacing: null,
       avgShowDontTell: null,
@@ -218,24 +211,29 @@ export async function getProjectMetrics(projectId: string): Promise<{
     };
   }
 
-  const sum = (arr: (number | null)[]): number =>
-    arr.filter((v): v is number => v !== null).reduce((a, b) => a + b, 0);
-
-  const count = (arr: (number | null)[]): number =>
-    arr.filter((v): v is number => v !== null).length;
-
-  const avg = (arr: (number | null)[]): number | null => {
-    const validCount = count(arr);
-    return validCount > 0 ? sum(arr) / validCount : null;
-  };
-
-  return {
-    avgPacing: avg(analyses.map((a) => a.pacing)),
-    avgShowDontTell: avg(analyses.map((a) => a.show_dont_tell_score)),
-    avgDialogueRatio: avg(analyses.map((a) => a.dialogue_ratio)),
-    avgActionRatio: avg(analyses.map((a) => a.action_ratio)),
-    avgDescriptionRatio: avg(analyses.map((a) => a.description_ratio)),
-    totalWordCount: sum(analyses.map((a) => a.word_count)),
-    sceneCount: analyses.length,
-  };
+  return metrics;
 }
+
+/*
+ * DEPRECATED: Old JavaScript-based aggregation (kept for reference)
+ * This implementation fetched ALL rows then aggregated client-side,
+ * which was inefficient for large projects.
+ *
+ * async function getProjectMetricsLegacy(projectId: string): Promise<ProjectMetrics> {
+ *   const supabase = getSupabaseClient();
+ *   const { data, error } = await supabase
+ *     .from("scene_analysis")
+ *     .select("pacing, show_dont_tell_score, dialogue_ratio, action_ratio, description_ratio, word_count")
+ *     .eq("project_id", projectId);
+ *
+ *   if (error) throw DBError.fromSupabaseError(error, "fetch project metrics");
+ *
+ *   const analyses = data as Pick<SceneAnalysis, ...>[];
+ *   if (!analyses || analyses.length === 0) return defaultMetrics;
+ *
+ *   // JavaScript aggregation loop - replaced by SQL AVG/SUM/COUNT
+ *   const sum = (arr: (number | null)[]) => arr.filter(v => v !== null).reduce((a, b) => a + b, 0);
+ *   const avg = (arr: (number | null)[]) => { ... };
+ *   return { avgPacing: avg(analyses.map(a => a.pacing)), ... };
+ * }
+ */

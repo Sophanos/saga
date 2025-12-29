@@ -3,6 +3,20 @@ import { immer } from "zustand/middleware/immer";
 import type { SceneMetrics, StyleIssue, ReadabilityMetrics } from "@mythos/core";
 
 /**
+ * Persistence operation state for tracking pending DB operations
+ */
+interface PersistenceState {
+  /** Number of pending persistence operations */
+  pendingCount: number;
+  /** Number of failed persistence operations */
+  failedCount: number;
+  /** Number of in-progress persistence operations */
+  inProgressCount: number;
+  /** Error messages from failed operations */
+  persistenceErrors: string[];
+}
+
+/**
  * Analysis store state interface
  */
 interface AnalysisState {
@@ -26,6 +40,8 @@ interface AnalysisState {
   lastAnalyzedHash: string | null;
   /** Currently selected style issue ID for navigation/highlighting */
   selectedStyleIssueId: string | null;
+  /** Persistence operation tracking state */
+  persistence: PersistenceState;
 }
 
 /**
@@ -67,6 +83,8 @@ interface AnalysisActions {
   selectNextStyleIssue: () => void;
   /** Select the previous style issue in document order */
   selectPreviousStyleIssue: () => void;
+  /** Update persistence state from queue */
+  updatePersistenceState: (state: PersistenceState) => void;
 }
 
 /**
@@ -108,6 +126,12 @@ export const useAnalysisStore = create<AnalysisStore>()(
     error: null,
     lastAnalyzedHash: null,
     selectedStyleIssueId: null,
+    persistence: {
+      pendingCount: 0,
+      failedCount: 0,
+      inProgressCount: 0,
+      persistenceErrors: [],
+    },
 
     // Actions
     setMetrics: (metrics) =>
@@ -298,6 +322,11 @@ export const useAnalysisStore = create<AnalysisStore>()(
         state.selectedStyleIssueId = sortedIssues[prevIndex].id;
       });
     },
+
+    updatePersistenceState: (persistenceState) =>
+      set((state) => {
+        state.persistence = persistenceState;
+      }),
   }))
 );
 
@@ -427,3 +456,29 @@ export const useSelectedStyleIssue = () =>
     const allIssues = [...state.issues, ...state.clarityIssues];
     return allIssues.find((i) => i.id === state.selectedStyleIssueId) ?? null;
   });
+
+/**
+ * Get the persistence state
+ */
+export const usePersistenceState = () =>
+  useAnalysisStore((state) => state.persistence);
+
+/**
+ * Check if there are pending persistence operations
+ */
+export const useHasPendingPersistence = () =>
+  useAnalysisStore(
+    (state) => state.persistence.pendingCount > 0 || state.persistence.inProgressCount > 0
+  );
+
+/**
+ * Check if there are failed persistence operations
+ */
+export const useHasFailedPersistence = () =>
+  useAnalysisStore((state) => state.persistence.failedCount > 0);
+
+/**
+ * Get persistence errors
+ */
+export const usePersistenceErrors = () =>
+  useAnalysisStore((state) => state.persistence.persistenceErrors);

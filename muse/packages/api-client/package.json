@@ -15,6 +15,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@mythos/typescript-config": "workspace:*",
     "typescript": "^5.7.2"
   }
 }

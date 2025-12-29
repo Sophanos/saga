@@ -30,6 +30,9 @@ export interface MemoryCacheState {
   /** Upsert a memory into the local cache */
   upsertLocal: (projectId: string, memory: MemoryRecord) => void;
 
+  /** Remove memories from the local cache */
+  removeLocal: (projectId: string, memoryIds: string[]) => void;
+
   /** Set entire category cache */
   setCategoryCache: (
     projectId: string,
@@ -140,6 +143,41 @@ export function createMemoryCacheStore(storage: StorageAdapter) {
                     ...projectCache.byCategory,
                     [memory.category]: newCategoryMemories,
                   },
+                  updatedAt: new Date().toISOString(),
+                },
+              },
+            };
+          });
+        },
+
+        removeLocal: (projectId, memoryIds) => {
+          set((state) => {
+            const projectCache = state.byProject[projectId];
+            if (!projectCache) return state;
+
+            const idsToRemove = new Set(memoryIds);
+
+            // Filter recent list
+            const newRecent = projectCache.recent.filter(
+              (m) => !idsToRemove.has(m.id)
+            );
+
+            // Filter all category caches
+            const newByCategory: Partial<Record<MemoryCategory, MemoryRecord[]>> = {};
+            for (const [category, memories] of Object.entries(projectCache.byCategory)) {
+              if (memories) {
+                newByCategory[category as MemoryCategory] = memories.filter(
+                  (m) => !idsToRemove.has(m.id)
+                );
+              }
+            }
+
+            return {
+              byProject: {
+                ...state.byProject,
+                [projectId]: {
+                  recent: newRecent,
+                  byCategory: newByCategory,
                   updatedAt: new Date().toISOString(),
                 },
               },

@@ -4,6 +4,7 @@ import { ProjectSelectorScreen } from "./components/projects";
 import { TemplatePickerModal } from "./components/modals";
 import { AuthScreen, AuthCallback } from "./components/auth";
 import { InviteAcceptPage } from "./components/collaboration";
+import { AnonymousApp } from "./components/anonymous";
 import { LAST_PROJECT_KEY, PENDING_INVITE_TOKEN_KEY } from "./constants/storageKeys";
 import { LandingPage } from "@mythos/website/pages";
 import { useProjects } from "./hooks/useProjects";
@@ -179,12 +180,15 @@ function App() {
     return path === "/login" || path === "/signup";
   });
 
+  // Check for /try route (anonymous trial)
+  const pathname = window.location.pathname;
+  const isTryRoute = pathname === "/try";
+
   // Check if we're on the auth callback route
-  const isAuthCallback = window.location.pathname === "/auth/callback" ||
+  const isAuthCallback = pathname === "/auth/callback" ||
     window.location.search.includes("code=");
 
   // Check if we're on an invite route
-  const pathname = window.location.pathname;
   const inviteMatch = pathname.match(/^\/invite\/([^/]+)$/);
   const inviteTokenFromPath = inviteMatch?.[1] ?? null;
   const pendingInviteToken = sessionStorage.getItem(PENDING_INVITE_TOKEN_KEY);
@@ -214,6 +218,24 @@ function App() {
   // Handle invitation acceptance route
   if (isInviteRoute && inviteToken) {
     return <InviteAcceptPage token={inviteToken} />;
+  }
+
+  // Handle /try route (anonymous trial) - even if authenticated, but redirect if so
+  if (isTryRoute && !isAuthenticated) {
+    return (
+      <AnonymousApp
+        onSignUp={() => {
+          // Navigate to signup
+          window.history.pushState({}, "", "/signup");
+          setShowAuth(true);
+        }}
+      />
+    );
+  }
+
+  // If on /try but authenticated, redirect to main app
+  if (isTryRoute && isAuthenticated) {
+    window.history.replaceState({}, "", "/");
   }
 
   // Show landing or auth screen if not authenticated

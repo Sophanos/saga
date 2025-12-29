@@ -32,10 +32,17 @@ Transform Mythos IDE into a power-user-friendly creative writing environment wit
 - **Editor**: Tiptap-based with entity mentions and linter decorations
 - **Entities**: Character, Location, Item, MagicSystem, Faction support
 - **World Graph**: In-memory graph class exists (no visualization)
-- **AI**: RAG chat, consistency linter, writing coach (separate panels)
-- **Search**: Semantic search via DeepInfra + Qdrant (see [SEMANTIC_SEARCH.md](../../../docs/SEMANTIC_SEARCH.md))
-- **RAG Chat**: Console Chat tab with streaming responses (implemented)
-- **Keyboard shortcuts**: Only Mod-[ and Mod-] for style navigation
+- **Console Panel** (6 tabs, all implemented):
+  | Tab | Feature | Status |
+  |-----|---------|--------|
+  | Chat | RAG chat with streaming (`useChatAgent`) | Done |
+  | Search | Semantic search (DeepInfra + Qdrant) | Done |
+  | Linter | Consistency checking with auto-fix | Done |
+  | Dynamics | Entity interaction extraction | Done |
+  | Coach | Writing feedback (show-don't-tell, pacing, sensory) | Done |
+  | History | Analysis dashboard | Done |
+- **Search**: See [SEMANTIC_SEARCH.md](../../../docs/SEMANTIC_SEARCH.md)
+- **Keyboard shortcuts**: Mod-[ / Mod-] (style nav), Mod-J (console toggle)
 
 ### Implementation Status
 
@@ -54,43 +61,159 @@ Transform Mythos IDE into a power-user-friendly creative writing environment wit
 
 ### Design
 
+**Progressive Disclosure (Raycast/Linear style)**
+
+The palette starts compact and expands progressively:
+- Default: ~6 most relevant items (recent + quick actions)
+- Typing: Shows all matching results across categories
+- "Show All": Expands individual sections
+- Tab: Cycles through section filters
+
+**Compact state (default, no query):**
 ```
 ┌────────────────────────────────────────────────────┐
-│ 🔍 Type a command or search...              [ESC] │
+│  Search commands and content...              ⌘K   │
 ├────────────────────────────────────────────────────┤
 │                                                    │
 │ Recent                                             │
-│ ├─ 👤 Create Character                   ⌘⇧C     │
-│ └─ 🔍 Search Entities                    ⌘E      │
+│ ┌────────────────────────────────────────────────┐ │
+│ │ 📄  Chapter 7 — The Awakening            Dec 28│ │
+│ └────────────────────────────────────────────────┘ │
+│    👤  Elena (Character)                   Dec 27 │
 │                                                    │
-│ Entities                                           │
-│ ├─ 👤 Create Character                   ⌘⇧C     │
-│ ├─ 📍 Create Location                    ⌘⇧L     │
-│ ├─ ⚔️  Create Item                                │
-│ ├─ ✨ Create Magic System                         │
-│ ├─ 🏛️  Create Faction                             │
-│ └─ 🔍 Search Entities                    ⌘E      │
+│ Quick Actions                                      │
+│    💬  Ask AI                               ⌘/    │
+│    👤  Create Character                     ⌘⇧C   │
+│    ⚠️   Run Linter                          ⌘⇧L   │
 │                                                    │
-│ AI Actions                                         │
-│ ├─ 💬 Ask AI About Story                 ⌘/      │
-│ ├─ ✨ Detect Entities in Selection               │
-│ └─ ⚠️  Check Story Consistency           ⌘⇧L     │
-│                                                    │
-│ Navigation                                         │
-│ ├─ 📄 Go to Document                     ⌘P      │
-│ ├─ 🔍 Search Everything                  ⌘⇧F     │
-│ └─ 🕐 Recent Files                                │
-│                                                    │
-│ General                                            │
-│ ├─ 🎲 Toggle Writer/DM Mode              ⌘M      │
-│ ├─ 📥 Export Story                       ⌘⇧E     │
-│ ├─ 📤 Import Story                                │
-│ └─ ⚙️  Settings                           ⌘,      │
+│ More...                                   Show All │
 │                                                    │
 ├────────────────────────────────────────────────────┤
-│ [↑↓] navigate  [↵] select  [esc] close           │
+│  ↑↓ navigate   Tab sections   ↵ select   esc     │
 └────────────────────────────────────────────────────┘
 ```
+
+**Expanded state (after clicking "Show All" or Tab):**
+```
+┌────────────────────────────────────────────────────┐
+│  Search commands and content...              ⌘K   │
+├────────────────────────────────────────────────────┤
+│ ┌──────┐ ┌──────┐ ┌────┐ ┌─────┐ ┌───────┐       │
+│ │ All  │ │Entity│ │ AI │ │ Nav │ │General│       │  ← Tab filters
+│ └──────┘ └──────┘ └────┘ └─────┘ └───────┘       │
+│                                                    │
+│ Entities                                           │
+│    👤  Create Character                     ⌘⇧C   │
+│    📍  Create Location                      ⌘⇧O   │
+│    ⚔️   Create Item                         ⌘⇧I   │
+│    ✨  Create Magic System                        │
+│    🏛️   Create Faction                            │
+│    🔍  Search Entities                      ⌘E    │
+│                                                    │
+│ AI Actions                                         │
+│    💬  Ask AI About Story                   ⌘/    │
+│    ✨  Detect Entities in Selection               │
+│    ⚠️   Check Story Consistency             ⌘⇧L   │
+│                                                    │
+│ Navigation                                         │
+│    📄  Go to Document                       ⌘P    │
+│    🔍  Search Everything                    ⌘⇧F   │
+│    🕐  Recent Files                               │
+│                                                    │
+│ General                                            │
+│    🎲  Toggle Writer/DM Mode                ⌘M    │
+│    📥  Export Story                         ⌘⇧E   │
+│    📤  Import Story                               │
+│    ⚙️   Settings                            ⌘,    │
+│                                                    │
+├────────────────────────────────────────────────────┤
+│  ↑↓ navigate   Tab sections   ↵ select   esc     │
+└────────────────────────────────────────────────────┘
+```
+
+**Search results state:**
+```
+┌────────────────────────────────────────────────────┐
+│  elena                                       ⌘K   │
+├────────────────────────────────────────────────────┤
+│                                                    │
+│ Entities                                           │
+│ ┌────────────────────────────────────────────────┐ │
+│ │ 👤  Elena                                      │ │
+│ │     Character · Mentioned in 12 docs           │ │
+│ └────────────────────────────────────────────────┘ │
+│                                                    │
+│ Documents                                          │
+│    Chapter 7 — The Awakening               Dec 28 │
+│    "Elena stood at the edge of the cliff..."      │
+│                                                    │
+│    Character Notes: Elena                  Dec 27 │
+│    "Backstory and motivations..."                 │
+│                                                    │
+├────────────────────────────────────────────────────┤
+│  ↑↓ navigate   ↵ select   esc close              │
+└────────────────────────────────────────────────────┘
+```
+
+**Empty state (no results):**
+```
+┌────────────────────────────────────────────────────┐
+│  xyzabc                                      ⌘K   │
+├────────────────────────────────────────────────────┤
+│                                                    │
+│                                                    │
+│              No results found.                     │
+│                                                    │
+│         Press ↵ to search story content:          │
+│                   "xyzabc"                         │
+│                                                    │
+│         Or create new entity:                      │
+│         👤 Character  📍 Location  ⚔️ Item        │
+│                                                    │
+│                                                    │
+├────────────────────────────────────────────────────┤
+│  ↑↓ navigate   ↵ search   esc close              │
+└────────────────────────────────────────────────────┘
+```
+
+### Interaction Behavior
+
+| Action | Result |
+|--------|--------|
+| `Cmd+K` | Open compact palette (~6 items) |
+| Type query | Filter all commands + semantic search |
+| `Tab` | Cycle section filters (All → Entity → AI → Nav → General) |
+| `Shift+Tab` | Cycle backwards |
+| Click "Show All" / "More..." | Expand to full list |
+| `↑` `↓` | Navigate items |
+| `Enter` | Execute selected command |
+| `Esc` | Close palette (or clear query first) |
+| `Cmd+Enter` | Execute + keep palette open |
+
+### Progressive Disclosure Logic
+
+```typescript
+// Compact mode shows:
+const compactItems = [
+  ...recentItems.slice(0, 2),        // Last 2 recent docs/entities
+  ...frequentActions.slice(0, 3),    // Top 3 most-used actions
+  { type: "show-all", label: "More..." }
+];
+
+// Expanded mode shows all categories
+// Search mode shows all matching results ranked by relevance
+```
+
+### Design Principles (Raycast/Grok inspired)
+
+- **Progressive disclosure**: Start minimal, expand on demand
+- **Clean typography**: Flat lists with subtle indentation
+- **Date metadata**: Right-aligned, relative dates ("Dec 28", "Today")
+- **Tab filters**: Quick category switching without typing
+- **Selection highlight**: Subtle background, not heavy borders
+- **Preview text**: Content snippets under document results
+- **Empty state**: Fallback to semantic search + entity creation
+- **Keyboard-first**: All actions accessible via keyboard
 
 ### Technology
 
@@ -156,11 +279,12 @@ interface CommandContext {
 |----------|--------|
 | `Cmd+K` | Open command palette |
 | `Cmd+Shift+C` | Create character |
-| `Cmd+Shift+L` | Create location / Run linter |
+| `Cmd+Shift+O` | Create location |
+| `Cmd+Shift+L` | Run linter |
 | `Cmd+E` | Search entities |
 | `Cmd+P` | Go to document |
-| `Cmd+Shift+F` | Search everything |
-| `Cmd+/` | Ask AI |
+| `Cmd+Shift+F` | Search everything (semantic) |
+| `Cmd+/` | Ask AI (focus chat) |
 | `Cmd+M` | Toggle Writer/DM mode |
 | `Cmd+Shift+E` | Export story |
 | `Cmd+,` | Settings |
@@ -609,14 +733,15 @@ export function CommandItem({ command, onSelect }: CommandItemProps) {
 
 ---
 
-## Implementation Timeline
+## Implementation Phases
 
-| Week | Phase | Deliverables |
-|------|-------|--------------|
-| 1 | Command Palette | Cmd+K working with all commands |
-| 2 | World Graph | Graph tab with entity visualization |
-| 3 | AI Sidebar (Part 1) | Context-aware chat with streaming |
-| 4 | AI Sidebar (Part 2) | Tool calling with entity creation |
+| Phase | Feature | Deliverables |
+|-------|---------|--------------|
+| 1 | Command Palette | Cmd+K with all commands, semantic search integration |
+| 2 | World Graph | Graph tab with entity visualization, ELK layout |
+| 3 | Console Enhancements | Context bar, quick actions, tool calling |
+
+> Note: Console Chat, Search, Coach, Linter, Dynamics tabs are already complete.
 
 ---
 
@@ -637,14 +762,15 @@ bun add @xyflow/react elkjs
 
 ## Success Criteria
 
-### Command Palette
+### Command Palette (Planned)
 - [ ] Opens with Cmd+K from anywhere
 - [ ] Fuzzy search across all commands
+- [ ] Semantic search integration via `searchViaEdge()`
 - [ ] All shortcuts work and match displayed keys
 - [ ] Recent commands tracked
 - [ ] Commands execute correct actions
 
-### World Graph
+### World Graph (Planned)
 - [ ] All entities displayed as nodes
 - [ ] All relationships displayed as labeled edges
 - [ ] Click selects and shows in HUD
@@ -652,10 +778,13 @@ bun add @xyflow/react elkjs
 - [ ] Layout algorithm produces readable graphs
 - [ ] Pan/zoom smooth on 100+ entities
 
-### AI Sidebar
+### Console / AI Features (Done + Enhancements)
+- [x] RAG chat with streaming responses
+- [x] Semantic search panel
+- [x] Writing coach (show-don't-tell, pacing, sensory)
+- [x] Consistency linter with auto-fix
+- [x] Entity dynamics extraction
 - [ ] Context bar shows current doc/selection
-- [ ] Quick actions trigger correct prompts
-- [ ] Streaming responses display in real-time
-- [ ] Tool calls show confirmation UI
-- [ ] Confirmed tools create entities in store
-- [ ] @mentions work for entities
+- [ ] Quick actions (preset prompts)
+- [ ] Tool calls with entity creation confirmation
+- [ ] @mentions for entities in chat

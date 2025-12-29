@@ -2,7 +2,7 @@
  * Activity mappers: DB <-> Core type conversions
  */
 
-import type { ActivityLogEntry, ActivityType } from "@mythos/state";
+import type { ActivityLogEntry, ActivityType } from "@mythos/core";
 import type { ActivityWithActor } from "../queries/activity";
 
 /**

@@ -39,13 +39,20 @@ import {
   createSupabaseClient,
   type BillingCheck,
 } from "../_shared/billing.ts";
+import {
+  type MemoryCategory,
+  type MemoryScope,
+  type MemoryRecord,
+  VALID_CATEGORIES,
+  VALID_SCOPES,
+  isValidCategory,
+  isValidScope,
+  getDefaultScope,
+} from "../_shared/memory/types.ts";
 
 // =============================================================================
 // Types
 // =============================================================================
-
-type MemoryCategory = "style" | "decision" | "preference" | "session";
-type MemoryScope = "project" | "user" | "conversation";
 
 interface MemoryWriteRequest {
   projectId: string;
@@ -65,57 +72,11 @@ interface MemoryWriteRequest {
   id?: string;
 }
 
-interface MemoryRecord {
-  id: string;
-  projectId: string;
-  category: MemoryCategory;
-  scope: MemoryScope;
-  ownerId?: string;
-  content: string;
-  metadata?: Record<string, unknown>;
-  createdAt: string;
-  updatedAt?: string;
-}
-
 // =============================================================================
 // Constants
 // =============================================================================
 
 const MAX_CONTENT_LENGTH = 32000;
-const VALID_CATEGORIES: MemoryCategory[] = ["style", "decision", "preference", "session"];
-const VALID_SCOPES: MemoryScope[] = ["project", "user", "conversation"];
-
-// =============================================================================
-// Helpers
-// =============================================================================
-
-/**
- * Get default scope for a category.
- */
-function getDefaultScope(category: MemoryCategory): MemoryScope {
-  switch (category) {
-    case "decision":
-      return "project";
-    case "session":
-      return "conversation";
-    default:
-      return "user";
-  }
-}
-
-/**
- * Validate category.
- */
-function isValidCategory(category: unknown): category is MemoryCategory {
-  return typeof category === "string" && VALID_CATEGORIES.includes(category as MemoryCategory);
-}
-
-/**
- * Validate scope.
- */
-function isValidScope(scope: unknown): scope is MemoryScope {
-  return typeof scope === "string" && VALID_SCOPES.includes(scope as MemoryScope);
-}
 
 // =============================================================================
 // Main Handler

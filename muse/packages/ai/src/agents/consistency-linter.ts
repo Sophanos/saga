@@ -62,9 +62,9 @@ export class ConsistencyLinter extends NarrativeAgent {
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]) as ConsistencyResult;
       }
-    } catch {
+    } catch (error) {
       // If parsing fails, return empty result
-      console.error("Failed to parse linter response:", response);
+      console.error("[ConsistencyLinter] Failed to parse linter response:", error, response);
     }
 
     return { issues: [] };
