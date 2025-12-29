@@ -11,11 +11,18 @@ import { AsciiHud } from "./hud/AsciiHud";
 import { CommandPalette } from "./command-palette";
 import { ModalHost } from "./modals";
 import { ProgressiveNudge, ProgressiveStructureController } from "./progressive";
-import { useMythosStore } from "../stores";
+import { useMythosStore, useCurrentProject } from "../stores";
 import { useGlobalShortcuts, useProgressiveLinter } from "../hooks";
+import { useCollaboration } from "../hooks/useCollaboration";
 import { useProgressivePanelVisibility } from "@mythos/state";
 
 export function Layout() {
+  // Get current project for collaboration
+  const project = useCurrentProject();
+
+  // Activate collaboration (members, presence, activity) when project is loaded
+  useCollaboration(project?.id ?? null);
+
   const hudEntity = useMythosStore((state) => state.ui.hudEntity);
   const hudPosition = useMythosStore((state) => state.ui.hudPosition);
   const showHud = useMythosStore((state) => state.showHud);

@@ -90,7 +90,7 @@ interface LinterState {
 }
 
 // Console tab type - shared between UIState and setActiveTab action
-export type ConsoleTab = "chat" | "search" | "linter" | "dynamics" | "coach" | "history";
+export type ConsoleTab = "chat" | "search" | "linter" | "activity" | "dynamics" | "coach" | "history";
 
 // Canvas view type for switching between editor and world graph
 export type CanvasView = "editor" | "worldGraph";

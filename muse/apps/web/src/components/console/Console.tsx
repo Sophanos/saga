@@ -4,6 +4,7 @@ import {
   TrendingUp,
   BarChart3,
   Search,
+  Activity as ActivityIcon,
 } from "lucide-react";
 import { jumpToPosition } from "@mythos/editor";
 import { DynamicsView } from "./DynamicsView";
@@ -12,6 +13,7 @@ import { LinterView } from "./LinterView";
 import { AnalysisDashboard } from "./AnalysisDashboard";
 import { SearchPanel } from "./SearchPanel";
 import { AISidebar } from "./AISidebar";
+import { ActivityFeed } from "../collaboration";
 import {
   useLinterIssueCounts,
   useMythosStore,
@@ -197,6 +199,17 @@ export function Console() {
           )}
         </button>
         <button
+          onClick={() => setActiveTab("activity")}
+          className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === "activity"
+              ? "text-mythos-accent-cyan border-b-2 border-mythos-accent-cyan"
+              : "text-mythos-text-muted hover:text-mythos-text-secondary"
+          }`}
+        >
+          <ActivityIcon className="w-4 h-4" />
+          Activity
+        </button>
+        <button
           onClick={() => setActiveTab("dynamics")}
           className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
             activeTab === "dynamics"
@@ -249,6 +262,8 @@ export function Console() {
           onUndo={handleUndo}
           onRedo={handleRedo}
         />
+      ) : activeTab === "activity" ? (
+        <ActivityFeed showHeader={false} compact />
       ) : activeTab === "dynamics" ? (
         <DynamicsView />
       ) : activeTab === "coach" ? (
