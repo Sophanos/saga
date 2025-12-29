@@ -7,7 +7,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { streamText } from "https://esm.sh/ai@3.4.0";
+import { streamText } from "https://esm.sh/ai@4.0.0";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import {
   createSSEStream,
@@ -128,13 +128,17 @@ async function handleChat(
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
   const query = lastUserMessage?.content ?? "";
 
+  // Determine owner ID for memory isolation (userId or anonDeviceId)
+  const ownerId = billing.userId ?? billing.anonDeviceId ?? null;
+
   // Retrieve all contexts in parallel
   const [ragContext, memoryContext, profileContext] = await Promise.all([
     retrieveRAGContext(query, projectId, {
       logPrefix: "[ai-saga]",
       excludeMemories: true,
     }),
-    retrieveMemoryContext(query, projectId, billing.userId, conversationId, DEFAULT_SAGA_LIMITS, "[ai-saga]"),
+    // Pass ownerId for proper user/conversation scope isolation
+    retrieveMemoryContext(query, projectId, ownerId, conversationId, DEFAULT_SAGA_LIMITS, "[ai-saga]"),
     retrieveProfileContext(supabase, billing.userId, "[ai-saga]"),
   ]);
 
@@ -161,7 +165,7 @@ async function handleChat(
   const model = getOpenRouterModel(apiKey, "creative");
 
   // Stream response with all tools
-  const result = streamText({
+  const result = await streamText({
     model,
     messages: apiMessages,
     tools: agentTools,
@@ -317,7 +321,7 @@ async function handleExecuteTool(
     return createSuccessResponse({ toolName, result }, origin);
   } catch (error) {
     console.error(`[ai-saga] Tool execution error (${toolName}):`, error);
-    return handleAIError(error, origin, { operation: toolName });
+    return handleAIError(error, origin, { providerName: toolName });
   }
 }
 
@@ -381,6 +385,6 @@ serve(async (req: Request): Promise<Response> => {
     }
   } catch (error) {
     console.error("[ai-saga] Handler error:", error);
-    return handleAIError(error, origin, { operation: "saga" });
+    return handleAIError(error, origin, { providerName: "saga" });
   }
 });

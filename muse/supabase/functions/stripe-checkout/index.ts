@@ -69,10 +69,18 @@ interface CheckoutRequest {
 }
 
 /**
+ * Profile data from database
+ */
+interface ProfileData {
+  stripe_customer_id: string | null;
+}
+
+/**
  * Get or create Stripe customer for user
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getOrCreateCustomer(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   userId: string,
   email: string
 ): Promise<string> {
@@ -81,7 +89,7 @@ async function getOrCreateCustomer(
     .from("profiles")
     .select("stripe_customer_id")
     .eq("id", userId)
-    .single();
+    .single() as { data: ProfileData | null };
 
   if (profile?.stripe_customer_id) {
     return profile.stripe_customer_id;
@@ -264,7 +272,7 @@ serve(async (req) => {
     if (error instanceof Stripe.errors.StripeError) {
       return createErrorResponse(
         ErrorCode.BAD_REQUEST,
-        error.message,
+        (error as Error).message,
         origin
       );
     }

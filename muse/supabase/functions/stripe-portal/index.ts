@@ -47,17 +47,25 @@ interface PortalRequest {
 }
 
 /**
+ * Profile data from database
+ */
+interface ProfileData {
+  stripe_customer_id: string | null;
+}
+
+/**
  * Get Stripe customer ID for user
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getCustomerId(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   userId: string
 ): Promise<string | null> {
   const { data: profile, error } = await supabase
     .from("profiles")
     .select("stripe_customer_id")
     .eq("id", userId)
-    .single();
+    .single() as { data: ProfileData | null; error: unknown };
 
   if (error) {
     console.error("Error fetching profile:", error);
@@ -156,7 +164,7 @@ serve(async (req) => {
     if (error instanceof Stripe.errors.StripeError) {
       return createErrorResponse(
         ErrorCode.BAD_REQUEST,
-        error.message,
+        (error as Error).message,
         origin
       );
     }

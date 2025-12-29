@@ -3,7 +3,7 @@
  * These are the canonical Zod schemas used by the AI SDK.
  */
 
-import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { z } from "https://esm.sh/zod@3.25.28";
 
 // =============================================================================
 // Entity Types

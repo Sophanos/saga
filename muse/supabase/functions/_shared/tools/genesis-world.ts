@@ -5,8 +5,8 @@
  * Actual execution happens in ai-saga execute_tool path.
  */
 
-import { tool } from "https://esm.sh/ai@3.4.0";
-import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { tool } from "https://esm.sh/ai@4.0.0";
+import { z } from "https://esm.sh/zod@3.25.28";
 import { genesisDetailLevelSchema, type ToolExecuteResult } from "./types.ts";
 
 export const genesisWorldParameters = z.object({

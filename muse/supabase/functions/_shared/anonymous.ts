@@ -21,6 +21,8 @@ export interface AnonTokenPayload {
   exp: number;
   /** Fingerprint hash (optional) */
   fp?: string;
+  /** Index signature for JWT payload compatibility */
+  [key: string]: unknown;
 }
 
 export interface AnonSessionResult {

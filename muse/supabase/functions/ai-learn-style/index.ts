@@ -20,7 +20,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { generateText } from "https://esm.sh/ai@3.4.0";
+import { generateText } from "https://esm.sh/ai@4.0.0";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import {
   createErrorResponse,
@@ -272,7 +272,7 @@ serve(async (req) => {
       modelType: "analysis",
       usage: extractTokenUsage(result.usage),
       latencyMs: Date.now() - startTime,
-      metadata: { operation: "learn-style" },
+      metadata: { providerName: "learn-style" },
     });
 
     // Parse rules from response
@@ -327,6 +327,6 @@ serve(async (req) => {
     return createSuccessResponse({ learned }, origin);
   } catch (error) {
     console.error("[ai-learn-style] Error:", error);
-    return handleAIError(error, origin, { operation: "learn-style" });
+    return handleAIError(error, origin, { providerName: "learn-style" });
   }
 });

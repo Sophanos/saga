@@ -59,7 +59,7 @@ export function createErrorResponse(
     error: {
       code,
       message,
-      ...(details && { details }),
+      ...(details !== undefined ? { details } : {}),
     },
   };
 

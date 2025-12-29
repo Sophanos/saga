@@ -1,10 +1,10 @@
 /**
- * AI Memory Delete Edge Function
+ * AI Memory Delete Edge Function (MLP 2.x)
  *
  * POST /ai-memory-delete
  *
  * Deletes memories by IDs or filter criteria.
- * Part of the Writer Memory Layer (MLP 1.5).
+ * Uses soft-delete in Postgres first, then attempts Qdrant deletion.
  *
  * Request Body:
  * {
@@ -34,6 +34,7 @@ import {
   deletePointsByFilter,
   countPoints,
   isQdrantConfigured,
+  QdrantError,
   type QdrantFilter,
   type QdrantCondition,
 } from "../_shared/qdrant.ts";
@@ -67,9 +68,9 @@ interface MemoryDeleteRequest {
 // =============================================================================
 
 /**
- * Build filter conditions for memory deletion.
+ * Build filter conditions for Qdrant memory deletion.
  */
-function buildDeleteFilter(params: {
+function buildQdrantDeleteFilter(params: {
   projectId: string;
   category?: MemoryCategory;
   scope?: MemoryScope;
@@ -113,6 +114,122 @@ function buildDeleteFilter(params: {
   return { must };
 }
 
+/**
+ * Soft-delete memories in Postgres by IDs.
+ * Returns count of affected rows.
+ */
+async function softDeleteByIds(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  projectId: string,
+  memoryIds: string[],
+  ownerId?: string
+): Promise<number> {
+  // Build query with project filter for security
+  let query = supabase
+    .from("memories")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("project_id", projectId)
+    .in("id", memoryIds)
+    .is("deleted_at", null);
+
+  // Add owner filter if provided (for non-project scope)
+  if (ownerId) {
+    query = query.or(`scope.eq.project,owner_id.eq.${ownerId}`);
+  }
+
+  const { data, error, count } = await query.select("id");
+
+  if (error) {
+    console.error("[ai-memory-delete] Postgres soft-delete failed:", error);
+    throw new Error(`Database error: ${error.message}`);
+  }
+
+  return data?.length ?? 0;
+}
+
+/**
+ * Soft-delete memories in Postgres by filter.
+ * Returns count of affected rows.
+ */
+async function softDeleteByFilter(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  params: {
+    projectId: string;
+    category?: MemoryCategory;
+    scope?: MemoryScope;
+    ownerId?: string;
+    conversationId?: string;
+    olderThanTs?: number;
+  }
+): Promise<number> {
+  let query = supabase
+    .from("memories")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("project_id", params.projectId)
+    .is("deleted_at", null);
+
+  if (params.category) {
+    query = query.eq("category", params.category);
+  }
+
+  if (params.scope) {
+    query = query.eq("scope", params.scope);
+
+    // For non-project scope, filter by owner
+    if (params.scope !== "project" && params.ownerId) {
+      query = query.eq("owner_id", params.ownerId);
+    }
+
+    if (params.scope === "conversation" && params.conversationId) {
+      query = query.eq("conversation_id", params.conversationId);
+    }
+  }
+
+  if (params.olderThanTs) {
+    query = query.lt("created_at_ts", params.olderThanTs);
+  }
+
+  const { data, error } = await query.select("id");
+
+  if (error) {
+    console.error("[ai-memory-delete] Postgres soft-delete failed:", error);
+    throw new Error(`Database error: ${error.message}`);
+  }
+
+  return data?.length ?? 0;
+}
+
+/**
+ * Attempt Qdrant deletion (best-effort).
+ * Returns true if successful, false if failed.
+ */
+async function deleteFromQdrant(
+  memoryIds?: string[],
+  filter?: QdrantFilter
+): Promise<{ success: boolean; error?: string }> {
+  if (!isQdrantConfigured()) {
+    return { success: false, error: "Qdrant not configured" };
+  }
+
+  try {
+    if (memoryIds && memoryIds.length > 0) {
+      await deletePoints(memoryIds);
+    } else if (filter) {
+      await deletePointsByFilter(filter);
+    }
+    return { success: true };
+  } catch (error) {
+    const errorMessage =
+      error instanceof QdrantError
+        ? error.message
+        : error instanceof Error
+        ? error.message
+        : "Unknown Qdrant error";
+    console.warn("[ai-memory-delete] Qdrant delete failed (best-effort):", errorMessage);
+    return { success: false, error: errorMessage };
+  }
+}
+
 // =============================================================================
 // Main Handler
 // =============================================================================
@@ -128,15 +245,6 @@ serve(async (req) => {
   // Only accept POST
   if (req.method !== "POST") {
     return createErrorResponse(ErrorCode.BAD_REQUEST, "Method not allowed", origin);
-  }
-
-  // Check infrastructure
-  if (!isQdrantConfigured()) {
-    return createErrorResponse(
-      ErrorCode.INTERNAL_ERROR,
-      "Memory system not configured",
-      origin
-    );
   }
 
   const supabase = createSupabaseClient();
@@ -255,29 +363,38 @@ serve(async (req) => {
     // Determine owner ID for scoped deletion
     const ownerId = userId ?? billing.anonDeviceId ?? undefined;
 
+    // Enforce owner isolation for user/conversation scope
+    if (request.scope && request.scope !== "project" && !ownerId) {
+      return createErrorResponse(
+        ErrorCode.VALIDATION_ERROR,
+        "Owner identification required for user/conversation scoped memories",
+        origin
+      );
+    }
+
     let deletedCount = 0;
+    let deletedIds: string[] = [];
 
     if (request.memoryIds?.length) {
-      // Delete by specific IDs with project filter for security
+      // Delete by specific IDs
       console.log(
-        `[ai-memory-delete] Deleting ${request.memoryIds.length} memories by ID`
+        `[ai-memory-delete] Soft-deleting ${request.memoryIds.length} memories by ID`
       );
 
-      // Use filter-based delete to ensure IDs belong to the project (prevents IDOR)
-      const filter: QdrantFilter = {
-        must: [
-          { key: "type", match: { value: "memory" } },
-          { key: "project_id", match: { value: request.projectId } },
-          { key: "memory_id", match: { any: request.memoryIds } },
-        ],
-      };
-      deletedCount = await countPoints(filter);
-      if (deletedCount > 0) {
-        await deletePointsByFilter(filter);
-      }
+      // Step 1: Soft-delete in Postgres (durable)
+      deletedCount = await softDeleteByIds(
+        supabase,
+        request.projectId,
+        request.memoryIds,
+        ownerId
+      );
+      deletedIds = request.memoryIds;
     } else {
       // Delete by filter
-      const filter = buildDeleteFilter({
+      console.log("[ai-memory-delete] Soft-deleting memories by filter");
+
+      // Step 1: Soft-delete in Postgres (durable)
+      deletedCount = await softDeleteByFilter(supabase, {
         projectId: request.projectId,
         category: request.category,
         scope: request.scope,
@@ -285,13 +402,43 @@ serve(async (req) => {
         conversationId: request.conversationId,
         olderThanTs,
       });
+    }
 
-      // Count before delete (for accurate response)
-      deletedCount = await countPoints(filter);
+    // Step 2: Attempt Qdrant deletion (best-effort)
+    if (deletedCount > 0) {
+      console.log(`[ai-memory-delete] Attempting Qdrant deletion for ${deletedCount} memories`);
 
-      if (deletedCount > 0) {
-        console.log(`[ai-memory-delete] Deleting ${deletedCount} memories by filter`);
-        await deletePointsByFilter(filter);
+      let qdrantResult: { success: boolean; error?: string };
+
+      if (deletedIds.length > 0) {
+        // Delete by IDs using memory_id filter (for security)
+        const filter: QdrantFilter = {
+          must: [
+            { key: "type", match: { value: "memory" } },
+            { key: "project_id", match: { value: request.projectId } },
+            { key: "memory_id", match: { any: deletedIds } },
+          ],
+        };
+        qdrantResult = await deleteFromQdrant(undefined, filter);
+      } else {
+        // Delete by filter
+        const filter = buildQdrantDeleteFilter({
+          projectId: request.projectId,
+          category: request.category,
+          scope: request.scope,
+          ownerId,
+          conversationId: request.conversationId,
+          olderThanTs,
+        });
+        qdrantResult = await deleteFromQdrant(undefined, filter);
+      }
+
+      if (!qdrantResult.success) {
+        console.warn(
+          `[ai-memory-delete] Qdrant deletion failed, memories remain soft-deleted in Postgres: ${qdrantResult.error}`
+        );
+        // Note: This is acceptable - Postgres has the soft-delete, reads will filter them out
+        // A background cleanup job can retry Qdrant deletion later
       }
     }
 
@@ -300,6 +447,6 @@ serve(async (req) => {
     return createSuccessResponse({ deletedCount }, origin);
   } catch (error) {
     console.error("[ai-memory-delete] Error:", error);
-    return handleAIError(error, origin, { operation: "memory-delete" });
+    return handleAIError(error, origin, { providerName: "memory-delete" });
   }
 });

@@ -22,7 +22,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { streamText, generateText } from "https://esm.sh/ai@3.4.0";
+import { streamText, generateText } from "https://esm.sh/ai@4.0.0";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import {
   createSSEStream,
@@ -94,6 +94,7 @@ interface ChatRequest {
   projectId: string;
   mentions?: Mention[];
   stream?: boolean;
+  conversationId?: string; // MLP 2.x: For session memory continuity
 }
 
 // RAGContext and RAGContextItem types imported from ../shared/rag.ts
@@ -294,12 +295,23 @@ serve(async (req) => {
       );
     }
 
+    // Determine owner ID for memory isolation (userId or anonDeviceId)
+    const ownerId = billing.userId ?? billing.anonDeviceId ?? null;
+
     // Perform RAG and memory/profile retrieval in parallel
     const [context, memoryContext, profileContext] = await Promise.all([
       retrieveRAGContext(lastUserMessage.content, request.projectId, {
         logPrefix: "[ai-chat]",
       }),
-      retrieveMemoryContext(lastUserMessage.content, request.projectId, billing.userId, undefined, DEFAULT_CHAT_LIMITS, "[ai-chat]"),
+      // Pass ownerId and conversationId for proper user/conversation scope isolation
+      retrieveMemoryContext(
+        lastUserMessage.content,
+        request.projectId,
+        ownerId,
+        request.conversationId,
+        DEFAULT_CHAT_LIMITS,
+        "[ai-chat]"
+      ),
       retrieveProfileContext(supabase, billing.userId, "[ai-chat]"),
     ]);
 

@@ -13,7 +13,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { generateText } from "https://esm.sh/ai@3.4.0";
+import { generateText } from "https://esm.sh/ai@4.0.0";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import { requireApiKey } from "../_shared/api-key.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
@@ -144,7 +144,7 @@ serve(async (req) => {
 
     return createSuccessResponse(result, origin);
   } catch (error) {
-    return handleAIError(error, origin, { operation: "genesis" });
+    return handleAIError(error, origin, { providerName: "genesis" });
   }
 });
 

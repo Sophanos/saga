@@ -5,7 +5,7 @@
  * Called from ai-saga endpoint when kind: "execute_tool".
  */
 
-import { generateText } from "https://esm.sh/ai@3.4.0";
+import { generateText } from "https://esm.sh/ai@4.0.0";
 import { getOpenRouterModel } from "../providers.ts";
 import {
   GENESIS_SYSTEM_PROMPT,
@@ -248,7 +248,7 @@ function parseGenesisResponse(response: string, genre?: string): GenesisWorldRes
           return {
             tempId,
             name: entity.name as string,
-            type: entity.type as string,
+            type: entity.type as EntityType,
             description: (entity.description as string) ?? "",
             properties: (entity.properties as Record<string, unknown>) ?? {},
           };
@@ -268,7 +268,7 @@ function parseGenesisResponse(response: string, genre?: string): GenesisWorldRes
             relationships.push({
               sourceTempId,
               targetTempId,
-              type: (rel.type as string) || "knows",
+              type: (rel.type as RelationType) || "knows",
               notes: rel.description as string | undefined,
             });
           }
@@ -379,7 +379,7 @@ function parseDetectResponse(response: string, minConfidence: number): DetectEnt
           return {
             tempId: `detected_${idx}`,
             name: entity.name as string,
-            type: entity.type as string,
+            type: entity.type as EntityType,
             confidence: (entity.confidence as number) ?? 0.5,
             occurrences: Array.isArray(entity.occurrences) ? entity.occurrences : [],
             suggestedAliases: entity.suggestedAliases as string[] | undefined,
@@ -391,7 +391,7 @@ function parseDetectResponse(response: string, minConfidence: number): DetectEnt
         warnings: parsed.warnings as DetectEntitiesResult["warnings"],
       };
     },
-    { entities: [] }
+    { entities: [], warnings: undefined }
   );
 }
 
@@ -494,7 +494,7 @@ function parseConsistencyResponse(response: string): CheckConsistencyResult {
         summary: parsed.summary as string | undefined,
       };
     },
-    { issues: [] }
+    { issues: [], summary: undefined }
   );
 }
 
@@ -837,7 +837,7 @@ function parseClarityResponse(
         summary: parsed.summary as string | undefined,
       };
     },
-    { issues: [] }
+    { issues: [], summary: undefined }
   );
 }
 
@@ -1029,7 +1029,7 @@ function parseLogicResponse(response: string): CheckLogicResult {
         summary: parsed.summary as string | undefined,
       };
     },
-    { issues: [] }
+    { issues: [], summary: undefined }
   );
 }
 
@@ -1137,6 +1137,6 @@ function parseNameGeneratorResponse(
         culture: (parsed.culture as NameCulture) ?? culture,
       };
     },
-    { names: [], genre, culture: culture as NameCulture }
+    { names: [], genre: genre ?? "", culture: (culture ?? "custom") as NameCulture }
   );
 }

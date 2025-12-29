@@ -2,8 +2,8 @@
  * delete_relationship tool definition
  */
 
-import { tool } from "https://esm.sh/ai@3.4.0";
-import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { tool } from "https://esm.sh/ai@4.0.0";
+import { z } from "https://esm.sh/zod@3.25.28";
 import { relationTypeSchema, type ToolExecuteResult } from "./types.ts";
 
 export const deleteRelationshipParameters = z.object({
