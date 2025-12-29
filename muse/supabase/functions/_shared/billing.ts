@@ -6,6 +6,7 @@
  */
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { createErrorResponse, ErrorCode } from "./errors.ts";
 
 /**
  * Billing modes
@@ -104,25 +105,14 @@ export async function checkBillingAndGetKey(
       };
     }
 
-    // Fall back to environment key for anonymous users
-    const envKey = Deno.env.get("OPENROUTER_API_KEY");
-    if (envKey && envKey.trim().length > 0) {
-      return {
-        canProceed: true,
-        billingMode: "managed",
-        apiKey: envKey.trim(),
-        tokensRemaining: null,
-        userId: null,
-      };
-    }
-
+    // Anonymous users cannot use managed billing - require auth or BYOK
     return {
       canProceed: false,
-      billingMode: "byok",
+      billingMode: "managed",
       apiKey: null,
       tokensRemaining: null,
       userId: null,
-      error: "No API key provided. Please sign in or provide your own API key.",
+      error: "Authentication required for AI features. Please sign in or provide your own API key.",
     };
   }
 
@@ -237,50 +227,24 @@ export async function checkBillingAndGetKey(
 }
 
 /**
- * Record token usage for managed billing
- *
- * Only records if billing mode is "managed". BYOK usage is not tracked.
- *
- * @param supabase - Supabase client instance
- * @param billing - The billing check result from checkBillingAndGetKey
- * @param tokensUsed - Number of tokens consumed
- * @param callType - Type of API call (e.g., "chat", "embed", "lint")
- * @returns True if usage was recorded (or skipped for BYOK), false on error
+ * Check billing and return error response if not allowed
  */
-export async function recordUsageIfManaged(
+export async function requireBilling(
+  req: Request,
   supabase: SupabaseClient,
-  billing: BillingCheck,
-  tokensUsed: number,
-  callType: string
-): Promise<boolean> {
-  // Only record for managed billing
-  if (billing.billingMode !== "managed") {
-    return true;
+  origin: string | null
+): Promise<{ billing: BillingCheck } | { error: Response }> {
+  const billing = await checkBillingAndGetKey(req, supabase);
+  if (!billing.canProceed) {
+    return {
+      error: createErrorResponse(
+        ErrorCode.FORBIDDEN,
+        billing.error ?? "Unable to process request",
+        origin
+      )
+    };
   }
-
-  // Skip if no user ID (shouldn't happen for managed, but be safe)
-  if (!billing.userId) {
-    console.warn("[billing] Attempted to record usage without user ID");
-    return true;
-  }
-
-  try {
-    const { error } = await supabase.rpc("record_token_usage", {
-      p_tokens: tokensUsed,
-      p_call_type: callType,
-      p_user_id: billing.userId,
-    });
-
-    if (error) {
-      console.error("[billing] Failed to record token usage:", error);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error("[billing] Unexpected error recording usage:", error);
-    return false;
-  }
+  return { billing };
 }
 
 /**
@@ -302,6 +266,18 @@ export function createSupabaseClient(): SupabaseClient {
 // ============================================================================
 // Usage Tracking
 // ============================================================================
+
+/**
+ * Result of recording an AI request
+ */
+export interface RecordResult {
+  /** Whether the recording was successful */
+  success: boolean;
+  /** The log ID if successful */
+  logId: string | null;
+  /** Error message if failed */
+  error?: string;
+}
 
 /**
  * Token usage from AI provider response
@@ -350,10 +326,13 @@ export async function recordAIRequest(
     requestId?: string;
     metadata?: Record<string, unknown>;
   }
-): Promise<string | null> {
+): Promise<RecordResult> {
   if (!billing.userId) {
     // Skip logging for anonymous users
-    return null;
+    return {
+      success: true,
+      logId: null,
+    };
   }
 
   try {
@@ -377,12 +356,23 @@ export async function recordAIRequest(
 
     if (error) {
       console.error("[billing] Failed to record AI request:", error);
-      return null;
+      return {
+        success: false,
+        logId: null,
+        error: `Failed to record AI request: ${error.message}`,
+      };
     }
 
-    return data as string;
+    return {
+      success: true,
+      logId: data as string,
+    };
   } catch (error) {
     console.error("[billing] Unexpected error recording AI request:", error);
-    return null;
+    return {
+      success: false,
+      logId: null,
+      error: `Unexpected error recording AI request: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }

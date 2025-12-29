@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { streamText } from "https://esm.sh/ai@3.4.0";
-import { handleCorsPreFlight } from "../_shared/cors.ts";
+import { handleCorsPreFlight, getStreamingHeaders } from "../_shared/cors.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
 import {
   createErrorResponse,
@@ -156,20 +156,6 @@ function buildContextString(context: RAGContext, mentions?: Mention[]): string {
 }
 
 // =============================================================================
-// Streaming Response Helpers
-// =============================================================================
-
-function getStreamingHeaders(origin: string | null): HeadersInit {
-  return {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-    "Access-Control-Allow-Origin": origin || "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-openrouter-key",
-  };
-}
-
-// =============================================================================
 // Main Handler
 // =============================================================================
 
@@ -184,7 +170,7 @@ serve(async (req: Request): Promise<Response> => {
 
   // Only allow POST
   if (req.method !== "POST") {
-    return createErrorResponse("Method not allowed", ErrorCode.VALIDATION_ERROR, 405);
+    return createErrorResponse(ErrorCode.BAD_REQUEST, "Method not allowed", origin);
   }
 
   const supabase = createSupabaseClient();
@@ -194,17 +180,32 @@ serve(async (req: Request): Promise<Response> => {
     const billing = await checkBillingAndGetKey(req, supabase);
     if (!billing.canProceed) {
       return createErrorResponse(
-        billing.error ?? "Unable to process request",
         ErrorCode.FORBIDDEN,
-        403
+        billing.error ?? "Unable to process request",
+        origin
       );
     }
 
     // Parse request body
-    const body = await req.json();
-    const validationError = validateRequestBody(body, ["messages", "projectId"]);
-    if (validationError) {
-      return createErrorResponse(validationError, ErrorCode.VALIDATION_ERROR, 400);
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return createErrorResponse(
+        ErrorCode.BAD_REQUEST,
+        "Invalid JSON in request body",
+        origin
+      );
+    }
+
+    // Validate required fields
+    const validation = validateRequestBody(body, ["messages", "projectId"]);
+    if (!validation.valid) {
+      return createErrorResponse(
+        ErrorCode.VALIDATION_ERROR,
+        `Missing required fields: ${validation.missing.join(", ")}`,
+        origin
+      );
     }
 
     const {
@@ -315,15 +316,16 @@ serve(async (req: Request): Promise<Response> => {
             }
           }
 
-          // Record usage after stream completes
-          const finalUsage = await result.usage;
-          await recordAIRequest(supabase, billing, {
-            endpoint: "agent",
-            model: "stream",
-            modelType,
-            usage: extractTokenUsage(finalUsage),
-            latencyMs: Date.now() - startTime,
-            metadata: { stream: true },
+          // Fire-and-forget: don't block stream completion
+          result.usage.then((finalUsage) => {
+            recordAIRequest(supabase, billing, {
+              endpoint: "agent",
+              model: "stream",
+              modelType,
+              usage: extractTokenUsage(finalUsage),
+              latencyMs: Date.now() - startTime,
+              metadata: { stream: true },
+            }).catch((err) => console.error("[ai-agent] Failed to record usage:", err));
           });
 
           // Send done event
@@ -333,6 +335,17 @@ serve(async (req: Request): Promise<Response> => {
           controller.close();
         } catch (error) {
           console.error("[ai-agent] Stream error:", error);
+          // Record failed request
+          await recordAIRequest(supabase, billing, {
+            endpoint: "agent",
+            model: "stream",
+            modelType,
+            usage: extractTokenUsage(undefined),
+            latencyMs: Date.now() - startTime,
+            success: false,
+            errorCode: "STREAM_ERROR",
+            errorMessage: error instanceof Error ? error.message : "Stream error",
+          });
           const errorEvent = `data: ${JSON.stringify({
             type: "error",
             message: error instanceof Error ? error.message : "Stream error",
@@ -348,6 +361,6 @@ serve(async (req: Request): Promise<Response> => {
     });
   } catch (error) {
     console.error("[ai-agent] Handler error:", error);
-    return handleAIError(error);
+    return handleAIError(error, origin);
   }
 });

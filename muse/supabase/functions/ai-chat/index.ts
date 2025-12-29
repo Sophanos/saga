@@ -23,7 +23,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { streamText, generateText } from "https://esm.sh/ai@3.4.0";
-import { handleCorsPreFlight } from "../_shared/cors.ts";
+import { handleCorsPreFlight, getStreamingHeaders } from "../_shared/cors.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
 import {
   createErrorResponse,
@@ -208,19 +208,6 @@ function buildContextString(context: RAGContext, mentions?: Mention[]): string {
   return parts.join("\n\n");
 }
 
-/**
- * Get CORS headers for streaming
- */
-function getStreamingHeaders(origin: string | null): HeadersInit {
-  return {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-    "Access-Control-Allow-Origin": origin || "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-openrouter-key",
-  };
-}
-
 serve(async (req) => {
   const origin = req.headers.get("Origin");
   const startTime = Date.now();
@@ -356,15 +343,16 @@ serve(async (req) => {
               controller.enqueue(encoder.encode(event));
             }
 
-            // Record usage after stream completes
-            const finalUsage = await result.usage;
-            await recordAIRequest(supabase, billing, {
-              endpoint: "chat",
-              model: "stream",
-              modelType,
-              usage: extractTokenUsage(finalUsage),
-              latencyMs: Date.now() - startTime,
-              metadata: { stream: true },
+            // Fire-and-forget: don't block stream completion
+            result.usage.then((finalUsage) => {
+              recordAIRequest(supabase, billing, {
+                endpoint: "chat",
+                model: "stream",
+                modelType,
+                usage: extractTokenUsage(finalUsage),
+                latencyMs: Date.now() - startTime,
+                metadata: { stream: true },
+              }).catch((err) => console.error("[ai-chat] Failed to record usage:", err));
             });
 
             // Send done event
@@ -374,6 +362,17 @@ serve(async (req) => {
             controller.close();
           } catch (error) {
             console.error("[ai-chat] Streaming error:", error);
+            // Record failed request
+            await recordAIRequest(supabase, billing, {
+              endpoint: "chat",
+              model: "stream",
+              modelType,
+              usage: extractTokenUsage(undefined),
+              latencyMs: Date.now() - startTime,
+              success: false,
+              errorCode: "STREAM_ERROR",
+              errorMessage: error instanceof Error ? error.message : "Stream error",
+            });
             const errorEvent = `data: ${JSON.stringify({
               type: "error",
               message: error instanceof Error ? error.message : "Unknown error",

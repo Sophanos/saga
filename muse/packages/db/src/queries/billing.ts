@@ -684,24 +684,24 @@ export async function getUserRequestLogs(
   return ((data as unknown[]) ?? []).map((row: unknown) => {
     const r = row as Record<string, unknown>;
     return {
-      id: r.id as string,
-      userId: r.user_id as string | null,
-      projectId: r.project_id as string | null,
-      endpoint: r.endpoint as AIEndpoint,
-      requestId: r.request_id as string | null,
-      model: r.model as string,
-      modelType: r.model_type as string | null,
-      promptTokens: r.prompt_tokens as number,
-      completionTokens: r.completion_tokens as number,
-      totalTokens: r.total_tokens as number,
-      latencyMs: r.latency_ms as number | null,
-      billingMode: r.billing_mode as BillingMode,
-      subscriptionTier: r.subscription_tier as SubscriptionTier | null,
-      success: r.success as boolean,
-      errorCode: r.error_code as string | null,
-      errorMessage: r.error_message as string | null,
-      metadata: (r.metadata as Record<string, unknown>) ?? {},
-      createdAt: r.created_at as string,
+      id: r["id"] as string,
+      userId: r["user_id"] as string | null,
+      projectId: r["project_id"] as string | null,
+      endpoint: r["endpoint"] as AIEndpoint,
+      requestId: r["request_id"] as string | null,
+      model: r["model"] as string,
+      modelType: r["model_type"] as string | null,
+      promptTokens: r["prompt_tokens"] as number,
+      completionTokens: r["completion_tokens"] as number,
+      totalTokens: r["total_tokens"] as number,
+      latencyMs: r["latency_ms"] as number | null,
+      billingMode: r["billing_mode"] as BillingMode,
+      subscriptionTier: r["subscription_tier"] as SubscriptionTier | null,
+      success: r["success"] as boolean,
+      errorCode: r["error_code"] as string | null,
+      errorMessage: r["error_message"] as string | null,
+      metadata: (r["metadata"] as Record<string, unknown>) ?? {},
+      createdAt: r["created_at"] as string,
     };
   });
 }
@@ -727,13 +727,13 @@ export async function getUserRequestAnalytics(
   return ((data as unknown[]) ?? []).map((row: unknown) => {
     const r = row as Record<string, unknown>;
     return {
-      endpoint: r.endpoint as AIEndpoint,
-      requestCount: Number(r.request_count),
-      totalTokens: Number(r.total_tokens),
-      avgLatencyMs: Number(r.avg_latency_ms),
-      successRate: Number(r.success_rate),
-      byokCount: Number(r.byok_count),
-      managedCount: Number(r.managed_count),
+      endpoint: r["endpoint"] as AIEndpoint,
+      requestCount: Number(r["request_count"]),
+      totalTokens: Number(r["total_tokens"]),
+      avgLatencyMs: Number(r["avg_latency_ms"]),
+      successRate: Number(r["success_rate"]),
+      byokCount: Number(r["byok_count"]),
+      managedCount: Number(r["managed_count"]),
     };
   });
 }

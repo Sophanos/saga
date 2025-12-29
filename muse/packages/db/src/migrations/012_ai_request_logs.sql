@@ -89,6 +89,11 @@ CREATE INDEX IF NOT EXISTS idx_ai_request_logs_billing_mode ON ai_request_logs(b
 CREATE INDEX IF NOT EXISTS idx_ai_request_logs_project ON ai_request_logs(project_id, created_at DESC) WHERE project_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ai_request_logs_errors ON ai_request_logs(created_at DESC) WHERE success = FALSE;
 
+-- Covering index for analytics query performance
+CREATE INDEX IF NOT EXISTS idx_ai_request_logs_user_analytics
+  ON ai_request_logs(user_id, created_at DESC)
+  INCLUDE (endpoint, billing_mode, success, total_tokens, latency_ms);
+
 -- Enable RLS
 ALTER TABLE ai_request_logs ENABLE ROW LEVEL SECURITY;
 

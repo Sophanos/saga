@@ -63,3 +63,16 @@ export function withCors(response: Response, origin: string | null): Response {
     headers: newHeaders,
   });
 }
+
+/**
+ * Get headers for SSE streaming responses
+ */
+export function getStreamingHeaders(origin: string | null): HeadersInit {
+  return {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Access-Control-Allow-Origin": origin || "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-openrouter-key",
+  };
+}

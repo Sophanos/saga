@@ -376,6 +376,17 @@ serve(async (req) => {
 
     return createSuccessResponse(dynamicsResult, origin);
   } catch (error) {
+    // Record failed request
+    await recordAIRequest(supabase, billing, {
+      endpoint: "dynamics",
+      model: "unknown",
+      modelType,
+      usage: extractTokenUsage(undefined),
+      latencyMs: Date.now() - startTime,
+      success: false,
+      errorCode: "AI_ERROR",
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+    });
     // Handle AI provider errors
     return handleAIError(error, origin);
   }

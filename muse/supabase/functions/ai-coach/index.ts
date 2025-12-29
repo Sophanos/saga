@@ -430,6 +430,17 @@ serve(async (req) => {
 
     return createSuccessResponse(analysis, origin);
   } catch (error) {
+    // Record failed request
+    await recordAIRequest(supabase, billing, {
+      endpoint: "coach",
+      model: "unknown",
+      modelType,
+      usage: extractTokenUsage(undefined),
+      latencyMs: Date.now() - startTime,
+      success: false,
+      errorCode: "AI_ERROR",
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+    });
     // Handle AI provider errors
     return handleAIError(error, origin);
   }
