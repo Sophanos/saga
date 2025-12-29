@@ -269,6 +269,43 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
     }
   }, [isReady, styleIssues, applyTextReplacement, dismissStyleIssue]);
 
+  // Apply all similar style fixes (same type as the preview issue)
+  const applyAllSimilarStyleFixes = useCallback(
+    (issueType: StyleIssue["type"]) => {
+      if (!isReady) {
+        console.warn("[CoachView] Cannot apply fixes: editor not ready");
+        return;
+      }
+
+      const similarIssues = styleIssues.filter(
+        (issue) => issue.type === issueType && issue.fix
+      );
+
+      // Apply fixes in reverse order (bottom to top) to preserve line positions
+      const sortedIssues = [...similarIssues].sort(
+        (a, b) => (b.line ?? 0) - (a.line ?? 0)
+      );
+
+      for (const issue of sortedIssues) {
+        if (!issue.fix) continue;
+
+        const success = applyTextReplacement(
+          issue.fix.oldText,
+          issue.fix.newText,
+          issue.position
+        );
+
+        if (success) {
+          dismissStyleIssue(issue.id);
+        }
+      }
+
+      // Close the modal
+      closeStyleFixPreview();
+    },
+    [isReady, styleIssues, applyTextReplacement, dismissStyleIssue, closeStyleFixPreview]
+  );
+
   return (
     <div className={cn("relative h-full flex flex-col", className)}>
       {/* Header */}
@@ -330,8 +367,9 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
           <section>
             <StyleIssuesList
               onJumpToIssue={handleJumpToIssue}
-              onApplyFix={handleApplyFix}
+              onApplyFix={openStyleFixPreview}
               onFixAll={handleFixAll}
+              onSelectIssue={handleSelectIssue}
             />
           </section>
 
@@ -348,6 +386,16 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
           )}
         </div>
       </ScrollArea>
+
+      {/* Style Fix Preview Modal */}
+      <StyleFixPreviewModal
+        isOpen={isPreviewOpen}
+        issue={previewIssue}
+        onClose={closeStyleFixPreview}
+        onApplyFix={applyStyleFixFromPreview}
+        onApplyAllSimilar={applyAllSimilarStyleFixes}
+        similarIssuesCount={similarIssuesCount}
+      />
     </div>
   );
 }
