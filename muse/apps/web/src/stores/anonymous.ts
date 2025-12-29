@@ -1,0 +1,402 @@
+/**
+ * Anonymous Session Store
+ *
+ * Manages temporary project data for unauthenticated users.
+ * Enables "try before signup" flow with context preservation.
+ *
+ * Data stored in localStorage:
+ * - Anonymous project (single project, no multi-project)
+ * - Chat messages (limited to 5 before auth prompt)
+ * - Import source (if they imported a story)
+ * - Session actions (what they've done, for adaptive onboarding)
+ */
+
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { immer } from "zustand/middleware/immer";
+import type { Entity } from "@mythos/core";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export type AnonymousAction = "imported_story" | "used_chat" | "created_entity" | "edited_document";
+
+export interface AnonymousChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: number;
+}
+
+export interface AnonymousProject {
+  id: string; // temp_xxx format
+  name: string;
+  description?: string;
+  genre?: string;
+  templateId?: string;
+  createdAt: number;
+}
+
+export interface AnonymousDocument {
+  id: string;
+  projectId: string;
+  title: string;
+  content: unknown; // Tiptap JSON
+  type: "chapter" | "scene" | "note";
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AnonymousEntity {
+  id: string;
+  projectId: string;
+  name: string;
+  type: Entity["type"];
+  properties: Record<string, unknown>;
+  createdAt: number;
+}
+
+export interface AnonymousRelationship {
+  id: string;
+  projectId: string;
+  sourceId: string;
+  targetId: string;
+  type: string;
+  createdAt: number;
+}
+
+interface AnonymousState {
+  // Session tracking
+  sessionId: string | null;
+  sessionStartedAt: number | null;
+  actions: AnonymousAction[];
+
+  // Project data
+  project: AnonymousProject | null;
+  documents: AnonymousDocument[];
+  entities: AnonymousEntity[];
+  relationships: AnonymousRelationship[];
+
+  // Chat data (limited)
+  chatMessages: AnonymousChatMessage[];
+  chatMessageCount: number;
+
+  // Import tracking
+  importSource: "file" | "paste" | null;
+  importedContent: string | null;
+
+  // Auth prompts
+  authPromptShown: boolean;
+  authPromptDismissedAt: number | null;
+}
+
+interface AnonymousActions {
+  // Session
+  startSession: () => void;
+  endSession: () => void;
+  recordAction: (action: AnonymousAction) => void;
+
+  // Project
+  createProject: (data: Omit<AnonymousProject, "id" | "createdAt">) => string;
+  updateProject: (updates: Partial<AnonymousProject>) => void;
+
+  // Documents
+  addDocument: (doc: Omit<AnonymousDocument, "id" | "createdAt" | "updatedAt">) => string;
+  updateDocument: (id: string, updates: Partial<AnonymousDocument>) => void;
+
+  // Entities
+  addEntity: (entity: Omit<AnonymousEntity, "id" | "createdAt">) => string;
+  updateEntity: (id: string, updates: Partial<AnonymousEntity>) => void;
+
+  // Relationships
+  addRelationship: (rel: Omit<AnonymousRelationship, "id" | "createdAt">) => string;
+
+  // Chat
+  addChatMessage: (message: Omit<AnonymousChatMessage, "id" | "timestamp">) => boolean;
+  clearChat: () => void;
+
+  // Import
+  setImportedContent: (source: "file" | "paste", content: string) => void;
+
+  // Auth prompts
+  showAuthPrompt: () => void;
+  dismissAuthPrompt: () => void;
+
+  // Migration (called after auth)
+  getDataForMigration: () => AnonymousDataForMigration;
+  clearAllData: () => void;
+}
+
+export interface AnonymousDataForMigration {
+  project: AnonymousProject | null;
+  documents: AnonymousDocument[];
+  entities: AnonymousEntity[];
+  relationships: AnonymousRelationship[];
+  chatMessages: AnonymousChatMessage[];
+  actions: AnonymousAction[];
+  importSource: "file" | "paste" | null;
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const MAX_CHAT_MESSAGES = 5;
+const STORAGE_KEY = "mythos:anonymous";
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function generateTempId(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+// ============================================================================
+// Store
+// ============================================================================
+
+export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
+  persist(
+    immer((set, get) => ({
+      // Initial state
+      sessionId: null,
+      sessionStartedAt: null,
+      actions: [],
+      project: null,
+      documents: [],
+      entities: [],
+      relationships: [],
+      chatMessages: [],
+      chatMessageCount: 0,
+      importSource: null,
+      importedContent: null,
+      authPromptShown: false,
+      authPromptDismissedAt: null,
+
+      // Session management
+      startSession: () => {
+        set((state) => {
+          if (!state.sessionId) {
+            state.sessionId = generateTempId("session");
+            state.sessionStartedAt = Date.now();
+          }
+        });
+      },
+
+      endSession: () => {
+        set((state) => {
+          state.sessionId = null;
+          state.sessionStartedAt = null;
+        });
+      },
+
+      recordAction: (action) => {
+        set((state) => {
+          if (!state.actions.includes(action)) {
+            state.actions.push(action);
+          }
+        });
+      },
+
+      // Project management
+      createProject: (data) => {
+        const id = generateTempId("temp_project");
+        set((state) => {
+          state.project = {
+            id,
+            ...data,
+            createdAt: Date.now(),
+          };
+        });
+        return id;
+      },
+
+      updateProject: (updates) => {
+        set((state) => {
+          if (state.project) {
+            Object.assign(state.project, updates);
+          }
+        });
+      },
+
+      // Document management
+      addDocument: (doc) => {
+        const id = generateTempId("temp_doc");
+        const now = Date.now();
+        set((state) => {
+          state.documents.push({
+            id,
+            ...doc,
+            createdAt: now,
+            updatedAt: now,
+          });
+          state.recordAction("edited_document");
+        });
+        return id;
+      },
+
+      updateDocument: (id, updates) => {
+        set((state) => {
+          const doc = state.documents.find((d) => d.id === id);
+          if (doc) {
+            Object.assign(doc, updates, { updatedAt: Date.now() });
+          }
+        });
+      },
+
+      // Entity management
+      addEntity: (entity) => {
+        const id = generateTempId("temp_entity");
+        set((state) => {
+          state.entities.push({
+            id,
+            ...entity,
+            createdAt: Date.now(),
+          });
+          state.recordAction("created_entity");
+        });
+        return id;
+      },
+
+      updateEntity: (id, updates) => {
+        set((state) => {
+          const entity = state.entities.find((e) => e.id === id);
+          if (entity) {
+            Object.assign(entity, updates);
+          }
+        });
+      },
+
+      // Relationship management
+      addRelationship: (rel) => {
+        const id = generateTempId("temp_rel");
+        set((state) => {
+          state.relationships.push({
+            id,
+            ...rel,
+            createdAt: Date.now(),
+          });
+        });
+        return id;
+      },
+
+      // Chat management (with limit)
+      addChatMessage: (message) => {
+        const { chatMessageCount } = get();
+
+        if (chatMessageCount >= MAX_CHAT_MESSAGES) {
+          // Hit limit, show auth prompt
+          get().showAuthPrompt();
+          return false;
+        }
+
+        set((state) => {
+          state.chatMessages.push({
+            id: generateTempId("msg"),
+            ...message,
+            timestamp: Date.now(),
+          });
+          state.chatMessageCount += 1;
+          state.recordAction("used_chat");
+        });
+        return true;
+      },
+
+      clearChat: () => {
+        set((state) => {
+          state.chatMessages = [];
+          // Don't reset count - they still used their messages
+        });
+      },
+
+      // Import tracking
+      setImportedContent: (source, content) => {
+        set((state) => {
+          state.importSource = source;
+          state.importedContent = content;
+          state.recordAction("imported_story");
+        });
+      },
+
+      // Auth prompt management
+      showAuthPrompt: () => {
+        set((state) => {
+          state.authPromptShown = true;
+        });
+      },
+
+      dismissAuthPrompt: () => {
+        set((state) => {
+          state.authPromptShown = false;
+          state.authPromptDismissedAt = Date.now();
+        });
+      },
+
+      // Migration helpers
+      getDataForMigration: () => {
+        const state = get();
+        return {
+          project: state.project,
+          documents: state.documents,
+          entities: state.entities,
+          relationships: state.relationships,
+          chatMessages: state.chatMessages,
+          actions: state.actions,
+          importSource: state.importSource,
+        };
+      },
+
+      clearAllData: () => {
+        set((state) => {
+          state.sessionId = null;
+          state.sessionStartedAt = null;
+          state.actions = [];
+          state.project = null;
+          state.documents = [];
+          state.entities = [];
+          state.relationships = [];
+          state.chatMessages = [];
+          state.chatMessageCount = 0;
+          state.importSource = null;
+          state.importedContent = null;
+          state.authPromptShown = false;
+          state.authPromptDismissedAt = null;
+        });
+      },
+    })),
+    {
+      name: STORAGE_KEY,
+      partialize: (state) => ({
+        sessionId: state.sessionId,
+        sessionStartedAt: state.sessionStartedAt,
+        actions: state.actions,
+        project: state.project,
+        documents: state.documents,
+        entities: state.entities,
+        relationships: state.relationships,
+        chatMessages: state.chatMessages,
+        chatMessageCount: state.chatMessageCount,
+        importSource: state.importSource,
+        importedContent: state.importedContent,
+        authPromptDismissedAt: state.authPromptDismissedAt,
+      }),
+    }
+  )
+);
+
+// ============================================================================
+// Selectors
+// ============================================================================
+
+export const useHasAnonymousData = () =>
+  useAnonymousStore((s) => s.project !== null || s.documents.length > 0 || s.chatMessages.length > 0);
+
+export const useAnonymousActions = () => useAnonymousStore((s) => s.actions);
+
+export const useShouldShowAuthPrompt = () =>
+  useAnonymousStore((s) => s.authPromptShown && !s.authPromptDismissedAt);
+
+export const useRemainingChatMessages = () =>
+  useAnonymousStore((s) => MAX_CHAT_MESSAGES - s.chatMessageCount);
