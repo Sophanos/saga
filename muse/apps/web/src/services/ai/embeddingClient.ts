@@ -8,6 +8,11 @@
 import { ApiError, callEdgeFunction, type ApiErrorCode } from "../api-client";
 
 /**
+ * Check if embeddings feature is enabled
+ */
+const EMBEDDINGS_ENABLED = import.meta.env["VITE_EMBEDDINGS_ENABLED"] !== "false";
+
+/**
  * Qdrant point metadata for indexing
  */
 export interface QdrantPointMeta {
@@ -130,18 +135,33 @@ function validateEmbeddings(
 }
 
 /**
+ * Single-point Qdrant indexing options
+ */
+export interface SinglePointQdrantOptions {
+  enabled: boolean;
+  collection?: string;
+  pointId: string;
+  payload: Record<string, unknown>;
+}
+
+/**
+ * Options for single-text embedding
+ */
+export interface EmbedTextOptions {
+  signal?: AbortSignal;
+  qdrant?: SinglePointQdrantOptions;
+}
+
+/**
  * Generate embedding for a single text
  *
  * @param text - Text to embed
  * @param opts - Request options (signal, qdrant indexing)
- * @returns Embedding vector (1536 dimensions)
+ * @returns Embedding vector (4096 dimensions for Qwen3-Embedding-8B)
  */
 export async function embedTextViaEdge(
   text: string,
-  opts?: EmbedRequestOptions & {
-    /** Qdrant indexing for single point */
-    qdrant?: { enabled: boolean; collection?: string; pointId: string; payload: Record<string, unknown> };
-  }
+  opts?: EmbedTextOptions
 ): Promise<number[]> {
   if (!text || text.trim().length === 0) {
     throw new EmbeddingApiError("text must be non-empty", 400, "VALIDATION_ERROR");
@@ -185,7 +205,7 @@ export async function embedTextViaEdge(
  *
  * @param texts - Array of texts to embed (max 32)
  * @param opts - Request options (signal, qdrant indexing)
- * @returns Array of embedding vectors (1536 dimensions each)
+ * @returns Array of embedding vectors (4096 dimensions each for Qwen3-Embedding-8B)
  */
 export async function embedManyViaEdge(
   texts: string[],
@@ -236,5 +256,39 @@ export async function embedManyViaEdge(
       throw new EmbeddingApiError(error.message, error.statusCode, error.code);
     }
     throw error;
+  }
+}
+
+/**
+ * Delete vectors from Qdrant by point IDs
+ *
+ * Used when documents or entities are deleted to remove orphaned vectors.
+ * This is a fire-and-forget operation - errors are logged but don't propagate.
+ *
+ * @param pointIds - Array of point IDs to delete (e.g., ["doc_123", "ent_456"])
+ * @param opts - Request options (signal for cancellation)
+ */
+export async function deleteVectorsViaEdge(
+  pointIds: string[],
+  opts?: { signal?: AbortSignal }
+): Promise<void> {
+  // Skip if embeddings are disabled
+  if (!EMBEDDINGS_ENABLED) {
+    return;
+  }
+
+  if (!pointIds || pointIds.length === 0) {
+    return;
+  }
+
+  try {
+    await callEdgeFunction<{ pointIds: string[] }, { deleted: number }>(
+      "ai-delete-vector",
+      { pointIds },
+      { signal: opts?.signal }
+    );
+  } catch (error) {
+    // Log but don't propagate - vector deletion failures shouldn't affect entity operations
+    console.warn("[deleteVectorsViaEdge] Failed to delete vectors:", error);
   }
 }

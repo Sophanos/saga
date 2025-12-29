@@ -87,7 +87,8 @@ function formatEntityForSearch(entity: Entity): string {
     parts.push(`Aliases: ${entity.aliases.join(", ")}`);
   }
 
-  const notes = (entity as Record<string, unknown>).notes;
+  const entityRecord = entity as unknown as Record<string, unknown>;
+  const notes = entityRecord["notes"];
   if (typeof notes === "string" && notes.trim()) {
     parts.push(`Notes: ${notes}`);
   }
@@ -180,7 +181,7 @@ export function useSearch(options?: UseSearchOptions): UseSearchResult {
    * Execute search
    */
   const executeSearch = useCallback(
-    async (query: string, mode: SearchMode, scope: SearchScope) => {
+    async (query: string, _mode: SearchMode, scope: SearchScope) => {
       const projectId = currentProject?.id;
       if (!projectId) {
         setSearchError("No project selected.");

@@ -11,3 +11,6 @@ export * from "./analysis";
 
 // Template system
 export * from "./templates";
+
+// Collaboration types
+export * from "./collaboration";

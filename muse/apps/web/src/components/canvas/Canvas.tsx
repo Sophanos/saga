@@ -22,7 +22,7 @@ import { useEntityDetection } from "../../hooks/useEntityDetection";
 import { useDynamicsExtraction } from "../../hooks/useDynamicsExtraction";
 import { useAutoSave } from "../../hooks/useAutoSave";
 import { useAutoApplyEntityMarks } from "../../hooks/useEntityMarks";
-import { useMythosStore, useEntities } from "../../stores";
+import { useMythosStore, useEntities, useCanvasView } from "../../stores";
 import {
   useMood,
   useStyleIssues,
@@ -35,6 +35,7 @@ import {
   EntitySuggestionList,
   type EntitySuggestionListRef,
 } from "../editor/EntitySuggestionList";
+import { WorldGraphView } from "../world-graph";
 
 /**
  * Placeholder content shown when no document is selected
@@ -42,6 +43,21 @@ import {
 const PLACEHOLDER_CONTENT = `<p>Select or create a document to begin writing...</p>`;
 
 export function Canvas() {
+  const canvasView = useCanvasView();
+
+  // Render World Graph if that view is selected
+  if (canvasView === "worldGraph") {
+    return <WorldGraphView />;
+  }
+
+  // Otherwise render the editor
+  return <EditorCanvas />;
+}
+
+/**
+ * The main editor canvas component
+ */
+function EditorCanvas() {
   const { handleEntityClick } = useEntityClick();
 
   // Store actions and state

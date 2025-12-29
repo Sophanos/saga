@@ -8,12 +8,18 @@ import { Canvas } from "./canvas/Canvas";
 import { Console } from "./console/Console";
 import { Header } from "./Header";
 import { AsciiHud } from "./hud/AsciiHud";
+import { CommandPalette } from "./command-palette";
+import { ModalHost } from "./modals";
 import { useMythosStore } from "../stores";
+import { useGlobalShortcuts } from "../hooks";
 
 export function Layout() {
   const hudEntity = useMythosStore((state) => state.ui.hudEntity);
   const hudPosition = useMythosStore((state) => state.ui.hudPosition);
   const showHud = useMythosStore((state) => state.showHud);
+
+  // Enable global keyboard shortcuts
+  useGlobalShortcuts();
 
   const handleClickOutside = () => {
     if (hudEntity) {
@@ -63,6 +69,12 @@ export function Layout() {
           position={hudPosition}
         />
       )}
+
+      {/* Command Palette */}
+      <CommandPalette />
+
+      {/* Global Modal Host */}
+      <ModalHost />
     </div>
   );
 }

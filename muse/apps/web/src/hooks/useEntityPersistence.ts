@@ -14,7 +14,7 @@ import {
   createPersistenceHook,
   type PersistenceResult,
 } from "./usePersistence";
-import { embedTextViaEdge, EmbeddingApiError } from "../services/ai";
+import { embedTextViaEdge, deleteVectorsViaEdge, EmbeddingApiError } from "../services/ai";
 
 /**
  * Check if embeddings feature is enabled (Qdrant-only architecture)
@@ -37,7 +37,8 @@ function formatEntityForEmbedding(entity: Entity): string {
   }
 
   // Add notes/description if available
-  const notes = (entity as Record<string, unknown>).notes;
+  const entityRecord = entity as unknown as Record<string, unknown>;
+  const notes = entityRecord["notes"];
   if (typeof notes === "string" && notes.trim()) {
     parts.push(`notes: ${notes}`);
   }
@@ -233,7 +234,16 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
   );
 
   const deleteEntity = useCallback(
-    (entityId: string) => remove(entityId),
+    async (entityId: string) => {
+      const result = await remove(entityId);
+
+      // Delete vector from Qdrant on success (fire-and-forget)
+      if (!result.error) {
+        void deleteVectorsViaEdge([`ent_${entityId}`]);
+      }
+
+      return result;
+    },
     [remove]
   );
 

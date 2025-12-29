@@ -1,21 +1,15 @@
-import { useState } from "react";
 import { BookOpen, Settings, Sparkles, Play, FileDown, FileUp } from "lucide-react";
 import { Button } from "@mythos/ui";
 import { ModeToggle } from "./ModeToggle";
-import { ApiKeySettings } from "./settings/ApiKeySettings";
-import { ExportModal } from "./modals/ExportModal";
-import { ImportModal } from "./modals/ImportModal";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { CollaboratorsBar } from "./collaboration/CollaboratorsBar";
 import { useApiKey } from "../hooks/useApiKey";
-import { useCurrentProject } from "../stores";
+import { useCurrentProject, useMythosStore } from "../stores";
 
 export function Header() {
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isExportOpen, setIsExportOpen] = useState(false);
-  const [isImportOpen, setIsImportOpen] = useState(false);
   const { hasKey } = useApiKey();
   const project = useCurrentProject();
+  const openModal = useMythosStore((s) => s.openModal);
 
   return (
     <header className="h-12 border-b border-mythos-text-muted/20 bg-mythos-bg-secondary flex items-center justify-between px-4">
@@ -53,7 +47,7 @@ export function Header() {
           variant="ghost"
           size="sm"
           className="gap-2"
-          onClick={() => setIsImportOpen(true)}
+          onClick={() => openModal({ type: "import" })}
         >
           <FileUp className="w-4 h-4" />
           <span className="hidden sm:inline">Import</span>
@@ -62,7 +56,7 @@ export function Header() {
           variant="ghost"
           size="sm"
           className="gap-2"
-          onClick={() => setIsExportOpen(true)}
+          onClick={() => openModal({ type: "export" })}
         >
           <FileDown className="w-4 h-4" />
           <span className="hidden sm:inline">Export</span>
@@ -73,7 +67,7 @@ export function Header() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setIsSettingsOpen(true)}
+          onClick={() => openModal({ type: "settings" })}
           className="relative"
           title="Settings"
         >
@@ -83,24 +77,6 @@ export function Header() {
           )}
         </Button>
       </div>
-
-      {/* Settings Modal */}
-      <ApiKeySettings
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
-
-      {/* Import Modal */}
-      <ImportModal
-        isOpen={isImportOpen}
-        onClose={() => setIsImportOpen(false)}
-      />
-
-      {/* Export Modal */}
-      <ExportModal
-        isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-      />
     </header>
   );
 }

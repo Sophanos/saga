@@ -41,6 +41,8 @@ export {
   deleteVectorsViaEdge,
   EmbeddingApiError,
   type EmbedRequestOptions,
+  type EmbedTextOptions,
+  type SinglePointQdrantOptions,
   type EmbedResponse,
   type QdrantPointMeta,
   type QdrantIndexOptions,
@@ -71,3 +73,15 @@ export {
   type ChatRequestOptions,
   type ChatStreamOptions,
 } from "./chatClient";
+
+export {
+  sendAgentMessageStreaming,
+  AgentApiError,
+  type AgentMessagePayload,
+  type AgentRequestPayload,
+  type AgentStreamEvent,
+  type AgentStreamEventType,
+  type AgentStreamOptions,
+  type ToolCallResult,
+  type EditorContext as AgentEditorContext,
+} from "./agentClient";

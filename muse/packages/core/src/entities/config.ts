@@ -5,7 +5,7 @@
  * colors, and labels. Icons are specified as string names (not React components)
  * so this can be used in the core package without React dependencies.
  */
-import type { EntityType } from "./types";
+import type { EntityType, RelationType } from "./types";
 
 /**
  * Icon names that map to lucide-react icons.
@@ -112,3 +112,186 @@ export function getEntityLabel(type: EntityType): string {
 export function getEntityIcon(type: EntityType): EntityIconName {
   return ENTITY_TYPE_CONFIG[type]?.icon ?? "Sparkles";
 }
+
+// ============================================================================
+// Relationship Configuration
+// ============================================================================
+
+/**
+ * Relationship categories for grouping and styling
+ */
+export type RelationshipCategory =
+  | "familial"
+  | "romantic"
+  | "social"
+  | "conflict"
+  | "ownership"
+  | "professional"
+  | "spatial"
+  | "magical"
+  | "mechanical"
+  | "narrative";
+
+/**
+ * Configuration for a relationship type
+ */
+export interface RelationTypeConfig {
+  /** Human-readable label */
+  label: string;
+  /** Category for grouping */
+  category: RelationshipCategory;
+  /** Tailwind CSS color class */
+  color: string;
+}
+
+/**
+ * Complete configuration for all relationship types
+ */
+export const RELATION_TYPE_CONFIG: Record<RelationType, RelationTypeConfig> = {
+  // Familial
+  parent_of: {
+    label: "Parent Of",
+    category: "familial",
+    color: "text-blue-400",
+  },
+  child_of: {
+    label: "Child Of",
+    category: "familial",
+    color: "text-blue-400",
+  },
+  sibling_of: {
+    label: "Sibling Of",
+    category: "familial",
+    color: "text-blue-400",
+  },
+  married_to: {
+    label: "Married To",
+    category: "familial",
+    color: "text-blue-400",
+  },
+  
+  // Romantic
+  loves: {
+    label: "Loves",
+    category: "romantic",
+    color: "text-pink-400",
+  },
+  
+  // Social
+  knows: {
+    label: "Knows",
+    category: "social",
+    color: "text-slate-400",
+  },
+  allied_with: {
+    label: "Allied With",
+    category: "social",
+    color: "text-slate-400",
+  },
+  
+  // Conflict
+  hates: {
+    label: "Hates",
+    category: "conflict",
+    color: "text-red-400",
+  },
+  enemy_of: {
+    label: "Enemy Of",
+    category: "conflict",
+    color: "text-red-400",
+  },
+  killed: {
+    label: "Killed",
+    category: "conflict",
+    color: "text-red-600",
+  },
+  
+  // Ownership
+  owns: {
+    label: "Owns",
+    category: "ownership",
+    color: "text-amber-400",
+  },
+  guards: {
+    label: "Guards",
+    category: "ownership",
+    color: "text-amber-400",
+  },
+  created: {
+    label: "Created",
+    category: "ownership",
+    color: "text-amber-400",
+  },
+  
+  // Professional
+  member_of: {
+    label: "Member Of",
+    category: "professional",
+    color: "text-purple-400",
+  },
+  rules: {
+    label: "Rules",
+    category: "professional",
+    color: "text-purple-400",
+  },
+  serves: {
+    label: "Serves",
+    category: "professional",
+    color: "text-purple-400",
+  },
+  
+  // Mechanical (for items/systems)
+  weakness: {
+    label: "Weakness",
+    category: "mechanical",
+    color: "text-orange-400",
+  },
+  strength: {
+    label: "Strength",
+    category: "mechanical",
+    color: "text-green-400",
+  },
+};
+
+/**
+ * Get the label for a relationship type
+ * @param type - The relationship type
+ * @returns Human-readable label
+ */
+export function getRelationLabel(type: RelationType): string {
+  return RELATION_TYPE_CONFIG[type]?.label ?? type.replace("_", " ");
+}
+
+/**
+ * Get the category for a relationship type
+ * @param type - The relationship type
+ * @returns Relationship category
+ */
+export function getRelationCategory(type: RelationType): RelationshipCategory {
+  return RELATION_TYPE_CONFIG[type]?.category ?? "social";
+}
+
+/**
+ * Get the color class for a relationship type
+ * @param type - The relationship type
+ * @returns Tailwind CSS color class
+ */
+export function getRelationColor(type: RelationType): string {
+  return RELATION_TYPE_CONFIG[type]?.color ?? "text-slate-400";
+}
+
+/**
+ * Color mapping for relationship categories (for graph edges)
+ */
+export const RELATIONSHIP_CATEGORY_COLORS: Record<RelationshipCategory, string> = {
+  familial: "#60a5fa",    // blue-400
+  romantic: "#f472b6",    // pink-400
+  social: "#94a3b8",      // slate-400
+  conflict: "#f87171",    // red-400
+  ownership: "#fbbf24",   // amber-400
+  professional: "#a78bfa", // purple-400
+  spatial: "#34d399",     // emerald-400
+  magical: "#a855f7",     // violet-500
+  mechanical: "#fb923c",  // orange-400
+  narrative: "#22d3ee",   // cyan-400
+};

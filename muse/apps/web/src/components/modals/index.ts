@@ -2,9 +2,9 @@ export { EntitySuggestionModal } from "./EntitySuggestionModal";
 export {
   EntityFormModal,
   type EntityFormData,
-  type FormMode,
   type EntityFormModalProps,
 } from "./EntityFormModal";
+export { ModalHost } from "./ModalHost";
 export {
   ProjectCreateModal,
   type ProjectCreateModalProps,

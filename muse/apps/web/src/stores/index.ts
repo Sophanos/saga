@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { immer } from "zustand/middleware/immer";
 import type {
   Entity,
+  EntityType,
   Character,
   Location,
   Relationship,
@@ -73,6 +74,24 @@ interface LinterState {
 // Console tab type - shared between UIState and setActiveTab action
 export type ConsoleTab = "chat" | "search" | "linter" | "dynamics" | "coach" | "history";
 
+// Canvas view type for switching between editor and world graph
+export type CanvasView = "editor" | "worldGraph";
+
+// Modal state types
+export type FormMode = "create" | "edit";
+
+export type ModalState =
+  | { type: "settings" }
+  | { type: "import" }
+  | { type: "export" }
+  | { type: "entityForm"; mode: FormMode; entityType?: EntityType; entityId?: string };
+
+// Recent items tracking
+export interface RecentItems {
+  documentIds: string[];
+  entityIds: string[];
+}
+
 // Search types
 export type SearchMode = "fulltext" | "semantic" | "hybrid";
 export type SearchScope = "all" | "documents" | "entities";
@@ -113,11 +132,21 @@ interface SearchState {
 
 // Chat types
 export type ChatMessageRole = "user" | "assistant" | "system";
+export type ChatMessageKind = "text" | "tool";
 
 export interface ChatMention {
   type: "entity" | "document";
   id: string;
   name: string;
+}
+
+export type ToolInvocationStatus = "proposed" | "accepted" | "rejected" | "executed" | "failed";
+
+export interface ChatToolInvocation {
+  toolName: "create_entity" | "update_entity" | "create_relationship" | "generate_content";
+  args: unknown;
+  status: ToolInvocationStatus;
+  error?: string;
 }
 
 export interface ChatMessage {
@@ -129,6 +158,10 @@ export interface ChatMessage {
   mentions?: ChatMention[];
   /** Whether this message is still being streamed */
   isStreaming?: boolean;
+  /** Message kind - text or tool invocation */
+  kind?: ChatMessageKind;
+  /** Tool invocation data (if kind === "tool") */
+  tool?: ChatToolInvocation;
 }
 
 export interface ChatContextItem {
@@ -158,11 +191,14 @@ interface ChatState {
 // UI slice
 interface UIState {
   activeTab: ConsoleTab;
+  canvasView: CanvasView;
   manifestCollapsed: boolean;
   consoleCollapsed: boolean;
   hudEntity: Entity | null; // Entity being shown in ASCII HUD
   hudPosition: { x: number; y: number } | null; // Position for HUD popup
   mode: "writer" | "dm"; // Current editor mode
+  modal: ModalState | null; // Currently open modal
+  recent: RecentItems; // Recently accessed items
 }
 
 // Combined store
@@ -235,6 +271,7 @@ interface MythosStore {
   addChatMessage: (message: ChatMessage) => void;
   updateChatMessage: (id: string, updates: Partial<ChatMessage>) => void;
   appendToChatMessage: (id: string, content: string) => void;
+  updateToolStatus: (messageId: string, status: ToolInvocationStatus, error?: string) => void;
   setChatStreaming: (streaming: boolean) => void;
   setChatError: (error: string | null) => void;
   setChatContext: (context: ChatContext | null) => void;
@@ -243,11 +280,14 @@ interface MythosStore {
 
   // UI actions
   setActiveTab: (tab: ConsoleTab) => void;
+  setCanvasView: (view: CanvasView) => void;
   toggleManifest: () => void;
   toggleConsole: () => void;
   showHud: (entity: Entity | null, position?: { x: number; y: number }) => void;
   setMode: (mode: "writer" | "dm") => void;
   toggleMode: () => void;
+  openModal: (modal: ModalState) => void;
+  closeModal: () => void;
 }
 
 export const useMythosStore = create<MythosStore>()(
@@ -302,11 +342,14 @@ export const useMythosStore = create<MythosStore>()(
     },
     ui: {
       activeTab: "linter",
+      canvasView: "editor",
       manifestCollapsed: false,
       consoleCollapsed: false,
       hudEntity: null,
       hudPosition: null,
       mode: "writer",
+      modal: null,
+      recent: { documentIds: [], entityIds: [] },
     },
 
     // Project actions
@@ -327,6 +370,11 @@ export const useMythosStore = create<MythosStore>()(
     setCurrentDocument: (document) =>
       set((state) => {
         state.document.currentDocument = document;
+        // Track recent documents
+        if (document) {
+          const recent = state.ui.recent.documentIds.filter(id => id !== document.id);
+          state.ui.recent.documentIds = [document.id, ...recent].slice(0, 10);
+        }
       }),
     addDocument: (document) =>
       set((state) => {
@@ -395,6 +443,11 @@ export const useMythosStore = create<MythosStore>()(
     setSelectedEntity: (id) =>
       set((state) => {
         state.world.selectedEntityId = id;
+        // Track recent entities
+        if (id) {
+          const recent = state.ui.recent.entityIds.filter(eid => eid !== id);
+          state.ui.recent.entityIds = [id, ...recent].slice(0, 10);
+        }
       }),
     setEntities: (entities) =>
       set((state) => {
@@ -581,6 +634,16 @@ export const useMythosStore = create<MythosStore>()(
           state.chat.messages[idx].content += content;
         }
       }),
+    updateToolStatus: (messageId, status, error) =>
+      set((state) => {
+        const idx = state.chat.messages.findIndex((m) => m.id === messageId);
+        if (idx !== -1 && state.chat.messages[idx].tool) {
+          state.chat.messages[idx].tool!.status = status;
+          if (error) {
+            state.chat.messages[idx].tool!.error = error;
+          }
+        }
+      }),
     setChatStreaming: (streaming) =>
       set((state) => {
         state.chat.isStreaming = streaming;
@@ -615,6 +678,10 @@ export const useMythosStore = create<MythosStore>()(
       set((state) => {
         state.ui.activeTab = tab;
       }),
+    setCanvasView: (view) =>
+      set((state) => {
+        state.ui.canvasView = view;
+      }),
     toggleManifest: () =>
       set((state) => {
         state.ui.manifestCollapsed = !state.ui.manifestCollapsed;
@@ -635,6 +702,14 @@ export const useMythosStore = create<MythosStore>()(
     toggleMode: () =>
       set((state) => {
         state.ui.mode = state.ui.mode === "writer" ? "dm" : "writer";
+      }),
+    openModal: (modal) =>
+      set((state) => {
+        state.ui.modal = modal;
+      }),
+    closeModal: () =>
+      set((state) => {
+        state.ui.modal = null;
       }),
   }))
 );
@@ -988,6 +1063,59 @@ export const useChatMessageCount = () =>
  */
 export const useHasChatMessages = () =>
   useMythosStore((s) => s.chat.messages.length > 0);
+
+// ============================================================================
+// UI Selectors
+// ============================================================================
+
+/**
+ * Get current canvas view (editor or worldGraph)
+ */
+export const useCanvasView = () =>
+  useMythosStore((s) => s.ui.canvasView);
+
+/**
+ * Get current modal state
+ */
+export const useModal = () =>
+  useMythosStore((s) => s.ui.modal);
+
+/**
+ * Get recent document IDs
+ */
+export const useRecentDocumentIds = () =>
+  useMythosStore(useShallow((s) => s.ui.recent.documentIds));
+
+/**
+ * Get recent entity IDs
+ */
+export const useRecentEntityIds = () =>
+  useMythosStore(useShallow((s) => s.ui.recent.entityIds));
+
+/**
+ * Get recent documents (resolved from IDs)
+ */
+export const useRecentDocuments = () =>
+  useMythosStore(
+    useShallow((s) => {
+      const docs = s.document.documents;
+      return s.ui.recent.documentIds
+        .map((id) => docs.find((d) => d.id === id))
+        .filter((d): d is Document => d !== undefined);
+    })
+  );
+
+/**
+ * Get recent entities (resolved from IDs)
+ */
+export const useRecentEntities = () =>
+  useMythosStore(
+    useShallow((s) => {
+      return s.ui.recent.entityIds
+        .map((id) => s.world.entities.get(id))
+        .filter((e): e is Entity => e !== undefined);
+    })
+  );
 
 // Re-export auth store
 export { useAuthStore } from "./auth";
