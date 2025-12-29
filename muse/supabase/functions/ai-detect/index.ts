@@ -33,7 +33,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { generateText } from "https://esm.sh/ai@3.4.0";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
-import { requireApiKey } from "../_shared/api-key.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
 import {
   createErrorResponse,
@@ -43,6 +42,12 @@ import {
   ErrorCode,
 } from "../_shared/errors.ts";
 import { ENTITY_DETECTOR_SYSTEM } from "../_shared/prompts/entity-detector.ts";
+import {
+  checkBillingAndGetKey,
+  createSupabaseClient,
+  recordAIRequest,
+  extractTokenUsage,
+} from "../_shared/billing.ts";
 
 // ============================================================================
 // Types
@@ -540,9 +545,18 @@ serve(async (req) => {
     );
   }
 
+  const supabase = createSupabaseClient();
+
   try {
-    // Extract API key (BYOK or env fallback)
-    const apiKey = requireApiKey(req);
+    // Check billing and get API key
+    const billing = await checkBillingAndGetKey(req, supabase);
+    if (!billing.canProceed) {
+      return createErrorResponse(
+        ErrorCode.FORBIDDEN,
+        billing.error ?? "Unable to process request",
+        origin
+      );
+    }
 
     // Parse request body
     let body: unknown;
@@ -590,7 +604,8 @@ serve(async (req) => {
         : undefined;
 
     // Get the model (analysis type for thorough entity detection)
-    const model = getOpenRouterModel(apiKey, "analysis");
+    const modelType = "analysis";
+    const model = getOpenRouterModel(billing.apiKey!, modelType);
 
     // Build the prompt
     const userPrompt = buildUserPrompt(request.text, existingEntities);
@@ -614,6 +629,16 @@ serve(async (req) => {
       maxTokens: 8192, // Allow for long responses with many entities
     });
 
+    // Record usage
+    const usage = extractTokenUsage(result.usage);
+    await recordAIRequest(supabase, billing, {
+      endpoint: "detect",
+      model: result.response?.modelId ?? "unknown",
+      modelType,
+      usage,
+      latencyMs: Date.now() - startTime,
+    });
+
     // Parse and return the response
     const detectionResult = parseResponse(
       result.text,
@@ -630,11 +655,6 @@ serve(async (req) => {
 
     return createSuccessResponse(detectionResult, origin);
   } catch (error) {
-    // Handle API key errors
-    if (error instanceof Error && error.message.includes("No API key")) {
-      return createErrorResponse(ErrorCode.UNAUTHORIZED, error.message, origin);
-    }
-
     // Handle AI provider errors
     return handleAIError(error, origin);
   }

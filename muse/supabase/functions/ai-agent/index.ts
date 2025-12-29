@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { streamText } from "https://esm.sh/ai@3.4.0";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
-import { requireApiKey } from "../_shared/api-key.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
 import {
   createErrorResponse,
@@ -24,6 +23,12 @@ import {
   AGENT_EDITOR_CONTEXT,
 } from "../_shared/prompts/mod.ts";
 import { agentTools } from "../_shared/tools/index.ts";
+import {
+  checkBillingAndGetKey,
+  createSupabaseClient,
+  recordAIRequest,
+  extractTokenUsage,
+} from "../_shared/billing.ts";
 
 // =============================================================================
 // Types
@@ -169,6 +174,9 @@ function getStreamingHeaders(origin: string | null): HeadersInit {
 // =============================================================================
 
 serve(async (req: Request): Promise<Response> => {
+  const startTime = Date.now();
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return handleCorsPreFlight(req);
@@ -179,9 +187,18 @@ serve(async (req: Request): Promise<Response> => {
     return createErrorResponse("Method not allowed", ErrorCode.VALIDATION_ERROR, 405);
   }
 
+  const supabase = createSupabaseClient();
+
   try {
-    // Get API key
-    const apiKey = requireApiKey(req);
+    // Check billing and get API key
+    const billing = await checkBillingAndGetKey(req, supabase);
+    if (!billing.canProceed) {
+      return createErrorResponse(
+        billing.error ?? "Unable to process request",
+        ErrorCode.FORBIDDEN,
+        403
+      );
+    }
 
     // Parse request body
     const body = await req.json();
@@ -216,7 +233,7 @@ serve(async (req: Request): Promise<Response> => {
     if (editorContext?.documentTitle) {
       let editorContextStr = AGENT_EDITOR_CONTEXT
         .replace("{documentTitle}", editorContext.documentTitle);
-      
+
       if (editorContext.selectionText) {
         editorContextStr = editorContextStr.replace(
           "{selectionContext}",
@@ -225,7 +242,7 @@ serve(async (req: Request): Promise<Response> => {
       } else {
         editorContextStr = editorContextStr.replace("{selectionContext}", "");
       }
-      
+
       systemPrompt += "\n\n" + editorContextStr;
     }
 
@@ -237,7 +254,8 @@ serve(async (req: Request): Promise<Response> => {
     ];
 
     // Get model
-    const model = getOpenRouterModel(apiKey, "chat");
+    const modelType = "chat";
+    const model = getOpenRouterModel(billing.apiKey!, modelType);
 
     // Stream response with tools using modular registry
     const result = streamText({
@@ -248,7 +266,6 @@ serve(async (req: Request): Promise<Response> => {
     });
 
     // Create streaming response
-    const origin = req.headers.get("Origin");
     const encoder = new TextEncoder();
 
     const readable = new ReadableStream({
@@ -297,6 +314,17 @@ serve(async (req: Request): Promise<Response> => {
                 break;
             }
           }
+
+          // Record usage after stream completes
+          const finalUsage = await result.usage;
+          await recordAIRequest(supabase, billing, {
+            endpoint: "agent",
+            model: "stream",
+            modelType,
+            usage: extractTokenUsage(finalUsage),
+            latencyMs: Date.now() - startTime,
+            metadata: { stream: true },
+          });
 
           // Send done event
           const doneEvent = `data: ${JSON.stringify({ type: "done" })}\n\n`;

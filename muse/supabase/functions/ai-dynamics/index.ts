@@ -25,7 +25,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { generateText } from "https://esm.sh/ai@3.4.0";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
-import { requireApiKey } from "../_shared/api-key.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
 import {
   createErrorResponse,
@@ -35,6 +34,12 @@ import {
   ErrorCode,
 } from "../_shared/errors.ts";
 import { DYNAMICS_EXTRACTOR_SYSTEM } from "../_shared/prompts/dynamics.ts";
+import {
+  checkBillingAndGetKey,
+  createSupabaseClient,
+  recordAIRequest,
+  extractTokenUsage,
+} from "../_shared/billing.ts";
 
 /**
  * Request body interface
@@ -276,9 +281,18 @@ serve(async (req) => {
     );
   }
 
+  const supabase = createSupabaseClient();
+
   try {
-    // Extract API key (BYOK or env fallback)
-    const apiKey = requireApiKey(req);
+    // Check billing and get API key
+    const billing = await checkBillingAndGetKey(req, supabase);
+    if (!billing.canProceed) {
+      return createErrorResponse(
+        ErrorCode.FORBIDDEN,
+        billing.error ?? "Unable to process request",
+        origin
+      );
+    }
 
     // Parse request body
     let body: unknown;
@@ -326,7 +340,8 @@ serve(async (req) => {
     }
 
     // Get the model (fast type for real-time extraction)
-    const model = getOpenRouterModel(apiKey, "fast");
+    const modelType = "fast";
+    const model = getOpenRouterModel(billing.apiKey!, modelType);
 
     // Build the prompt
     const userPrompt = buildExtractionPrompt(request);
@@ -340,6 +355,16 @@ serve(async (req) => {
       maxTokens: 4096,
     });
 
+    // Record usage
+    const usage = extractTokenUsage(result.usage);
+    await recordAIRequest(supabase, billing, {
+      endpoint: "dynamics",
+      model: result.response?.modelId ?? "unknown",
+      modelType,
+      usage,
+      latencyMs: Date.now() - startTime,
+    });
+
     // Parse and return the response
     const processingTimeMs = Date.now() - startTime;
     const dynamicsResult = parseResponse(
@@ -351,11 +376,6 @@ serve(async (req) => {
 
     return createSuccessResponse(dynamicsResult, origin);
   } catch (error) {
-    // Handle API key errors
-    if (error instanceof Error && error.message.includes("No API key")) {
-      return createErrorResponse(ErrorCode.UNAUTHORIZED, error.message, origin);
-    }
-
     // Handle AI provider errors
     return handleAIError(error, origin);
   }

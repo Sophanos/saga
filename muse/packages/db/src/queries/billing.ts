@@ -167,8 +167,20 @@ export interface TierConfig {
   updated_at: string;
 }
 
-// AI call types for token usage tracking
-export type AICallType = "chat" | "lint" | "coach" | "detect" | "search";
+// AI call types for token usage tracking (extended for all endpoints)
+export type AICallType =
+  | "chat"
+  | "lint"
+  | "coach"
+  | "detect"
+  | "search"
+  | "agent"
+  | "dynamics"
+  | "genesis"
+  | "embed";
+
+// AI endpoint types (same as AICallType but semantic clarity)
+export type AIEndpoint = AICallType;
 
 // AI feature types for permission checking
 export type AIFeature = "chat" | "lint" | "coach" | "detect" | "search";
@@ -602,4 +614,126 @@ function getDefaultTierConfig(): TierConfig[] {
       updated_at: now,
     },
   ];
+}
+
+// =============================================================================
+// AI Request Logs (detailed per-request tracking)
+// =============================================================================
+
+/**
+ * AI Request Log record (matches ai_request_logs table)
+ */
+export interface AIRequestLog {
+  id: string;
+  userId: string | null;
+  projectId: string | null;
+  endpoint: AIEndpoint;
+  requestId: string | null;
+  model: string;
+  modelType: string | null;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  latencyMs: number | null;
+  billingMode: BillingMode;
+  subscriptionTier: SubscriptionTier | null;
+  success: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+/**
+ * Request analytics aggregated by endpoint
+ */
+export interface RequestAnalytics {
+  endpoint: AIEndpoint;
+  requestCount: number;
+  totalTokens: number;
+  avgLatencyMs: number;
+  successRate: number;
+  byokCount: number;
+  managedCount: number;
+}
+
+/**
+ * Get user's AI request logs via get_user_request_logs RPC
+ */
+export async function getUserRequestLogs(
+  userId: string,
+  options?: {
+    limit?: number;
+    offset?: number;
+    endpoint?: AIEndpoint;
+  }
+): Promise<AIRequestLog[]> {
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase.rpc("get_user_request_logs", {
+    p_user_id: userId,
+    p_limit: options?.limit ?? 50,
+    p_offset: options?.offset ?? 0,
+    p_endpoint: options?.endpoint ?? null,
+  } as never);
+
+  if (error) {
+    throw new Error(`Failed to get request logs: ${error.message}`);
+  }
+
+  return ((data as unknown[]) ?? []).map((row: unknown) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: r.id as string,
+      userId: r.user_id as string | null,
+      projectId: r.project_id as string | null,
+      endpoint: r.endpoint as AIEndpoint,
+      requestId: r.request_id as string | null,
+      model: r.model as string,
+      modelType: r.model_type as string | null,
+      promptTokens: r.prompt_tokens as number,
+      completionTokens: r.completion_tokens as number,
+      totalTokens: r.total_tokens as number,
+      latencyMs: r.latency_ms as number | null,
+      billingMode: r.billing_mode as BillingMode,
+      subscriptionTier: r.subscription_tier as SubscriptionTier | null,
+      success: r.success as boolean,
+      errorCode: r.error_code as string | null,
+      errorMessage: r.error_message as string | null,
+      metadata: (r.metadata as Record<string, unknown>) ?? {},
+      createdAt: r.created_at as string,
+    };
+  });
+}
+
+/**
+ * Get user's request analytics via get_user_request_analytics RPC
+ */
+export async function getUserRequestAnalytics(
+  userId: string,
+  days: number = 30
+): Promise<RequestAnalytics[]> {
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase.rpc("get_user_request_analytics", {
+    p_user_id: userId,
+    p_days: days,
+  } as never);
+
+  if (error) {
+    throw new Error(`Failed to get request analytics: ${error.message}`);
+  }
+
+  return ((data as unknown[]) ?? []).map((row: unknown) => {
+    const r = row as Record<string, unknown>;
+    return {
+      endpoint: r.endpoint as AIEndpoint,
+      requestCount: Number(r.request_count),
+      totalTokens: Number(r.total_tokens),
+      avgLatencyMs: Number(r.avg_latency_ms),
+      successRate: Number(r.success_rate),
+      byokCount: Number(r.byok_count),
+      managedCount: Number(r.managed_count),
+    };
+  });
 }

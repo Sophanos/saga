@@ -298,3 +298,91 @@ export function createSupabaseClient(): SupabaseClient {
 
   return createClient(supabaseUrl, supabaseServiceKey);
 }
+
+// ============================================================================
+// Usage Tracking
+// ============================================================================
+
+/**
+ * Token usage from AI provider response
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Extract token usage from Vercel AI SDK result
+ */
+export function extractTokenUsage(
+  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }
+): TokenUsage {
+  return {
+    promptTokens: usage?.promptTokens ?? 0,
+    completionTokens: usage?.completionTokens ?? 0,
+    totalTokens: usage?.totalTokens ?? (usage?.promptTokens ?? 0) + (usage?.completionTokens ?? 0),
+  };
+}
+
+/**
+ * AI endpoint types
+ */
+export type AIEndpoint = "chat" | "lint" | "coach" | "detect" | "dynamics" | "search" | "agent" | "genesis" | "embed";
+
+/**
+ * Record AI request (detailed log + aggregate update)
+ * Tracks BOTH managed AND byok for analytics
+ */
+export async function recordAIRequest(
+  supabase: SupabaseClient,
+  billing: BillingCheck,
+  params: {
+    endpoint: AIEndpoint;
+    model: string;
+    modelType?: string;
+    usage: TokenUsage;
+    latencyMs?: number;
+    success?: boolean;
+    errorCode?: string;
+    errorMessage?: string;
+    projectId?: string;
+    requestId?: string;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<string | null> {
+  if (!billing.userId) {
+    // Skip logging for anonymous users
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc("record_ai_request", {
+      p_user_id: billing.userId,
+      p_endpoint: params.endpoint,
+      p_model: params.model,
+      p_model_type: params.modelType ?? null,
+      p_prompt_tokens: params.usage.promptTokens,
+      p_completion_tokens: params.usage.completionTokens,
+      p_total_tokens: params.usage.totalTokens,
+      p_latency_ms: params.latencyMs ?? null,
+      p_billing_mode: billing.billingMode,
+      p_success: params.success ?? true,
+      p_error_code: params.errorCode ?? null,
+      p_error_message: params.errorMessage ?? null,
+      p_project_id: params.projectId ?? null,
+      p_request_id: params.requestId ?? null,
+      p_metadata: params.metadata ?? {},
+    });
+
+    if (error) {
+      console.error("[billing] Failed to record AI request:", error);
+      return null;
+    }
+
+    return data as string;
+  } catch (error) {
+    console.error("[billing] Unexpected error recording AI request:", error);
+    return null;
+  }
+}

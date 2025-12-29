@@ -24,7 +24,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { streamText, generateText } from "https://esm.sh/ai@3.4.0";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
-import { requireApiKey } from "../_shared/api-key.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
 import {
   createErrorResponse,
@@ -49,6 +48,13 @@ import {
   CHAT_NO_CONTEXT,
   CHAT_MENTION_CONTEXT,
 } from "../_shared/prompts/mod.ts";
+import {
+  checkBillingAndGetKey,
+  createSupabaseClient,
+  recordAIRequest,
+  extractTokenUsage,
+  type BillingCheck,
+} from "../_shared/billing.ts";
 
 /**
  * Chat message role
@@ -217,6 +223,7 @@ function getStreamingHeaders(origin: string | null): HeadersInit {
 
 serve(async (req) => {
   const origin = req.headers.get("Origin");
+  const startTime = Date.now();
 
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -232,9 +239,18 @@ serve(async (req) => {
     );
   }
 
+  const supabase = createSupabaseClient();
+
   try {
-    // Extract API key (BYOK or env fallback)
-    const apiKey = requireApiKey(req);
+    // Check billing and get API key
+    const billing = await checkBillingAndGetKey(req, supabase);
+    if (!billing.canProceed) {
+      return createErrorResponse(
+        ErrorCode.FORBIDDEN,
+        billing.error ?? "Unable to process request",
+        origin
+      );
+    }
 
     // Parse request body
     let body: unknown;
@@ -306,7 +322,8 @@ serve(async (req) => {
     const systemPrompt = `${CHAT_SYSTEM}\n\n${contextString}`;
 
     // Get the model (use "analysis" for thoughtful responses)
-    const model = getOpenRouterModel(apiKey, "analysis");
+    const modelType = "analysis";
+    const model = getOpenRouterModel(billing.apiKey!, modelType);
 
     // Build messages for AI
     const aiMessages = request.messages.map((m) => ({
@@ -339,6 +356,17 @@ serve(async (req) => {
               controller.enqueue(encoder.encode(event));
             }
 
+            // Record usage after stream completes
+            const finalUsage = await result.usage;
+            await recordAIRequest(supabase, billing, {
+              endpoint: "chat",
+              model: "stream",
+              modelType,
+              usage: extractTokenUsage(finalUsage),
+              latencyMs: Date.now() - startTime,
+              metadata: { stream: true },
+            });
+
             // Send done event
             const doneEvent = `data: ${JSON.stringify({ type: "done" })}\n\n`;
             controller.enqueue(encoder.encode(doneEvent));
@@ -370,6 +398,16 @@ serve(async (req) => {
         maxTokens: 2048,
       });
 
+      // Record usage
+      const usage = extractTokenUsage(result.usage);
+      await recordAIRequest(supabase, billing, {
+        endpoint: "chat",
+        model: result.response?.modelId ?? "unknown",
+        modelType,
+        usage,
+        latencyMs: Date.now() - startTime,
+      });
+
       return new Response(
         JSON.stringify({
           content: result.text,
@@ -386,11 +424,6 @@ serve(async (req) => {
       );
     }
   } catch (error) {
-    // Handle API key errors
-    if (error instanceof Error && error.message.includes("No API key")) {
-      return createErrorResponse(ErrorCode.UNAUTHORIZED, error.message, origin);
-    }
-
     // Handle DeepInfra errors
     if (error instanceof DeepInfraError) {
       console.warn("[ai-chat] DeepInfra error during RAG:", error.message);
