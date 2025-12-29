@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Users, ChevronDown, Circle, UserPlus } from "lucide-react";
+import { Users, ChevronDown, Circle, UserPlus, Settings } from "lucide-react";
 import { Button, ScrollArea } from "@mythos/ui";
+import { MemberManagementModal } from "./MemberManagementModal";
 import {
   useProjectMembers,
   useActiveCollaborators,
@@ -152,14 +153,18 @@ interface CollaboratorsDropdownProps {
   members: ProjectMember[];
   activeCollaborators: CollaboratorPresence[];
   onInviteClick?: () => void;
+  onManageClick?: () => void;
   canInvite: boolean;
+  canManage: boolean;
 }
 
 function CollaboratorsDropdown({
   members,
   activeCollaborators,
   onInviteClick,
+  onManageClick,
   canInvite,
+  canManage,
 }: CollaboratorsDropdownProps) {
   const activeIds = new Set(activeCollaborators.map((c) => c.id));
 
@@ -186,17 +191,30 @@ function CollaboratorsDropdown({
               {onlineCount} online, {members.length} total
             </p>
           </div>
-          {canInvite && onInviteClick && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onInviteClick}
-              className="gap-1 text-mythos-accent-cyan hover:text-mythos-accent-cyan/80"
-            >
-              <UserPlus className="w-4 h-4" />
-              Invite
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {canManage && onManageClick && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onManageClick}
+                className="h-8 w-8 text-mythos-text-muted hover:text-mythos-text-primary"
+                title="Manage team"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
+            )}
+            {canInvite && onInviteClick && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onInviteClick}
+                className="gap-1 text-mythos-accent-cyan hover:text-mythos-accent-cyan/80"
+              >
+                <UserPlus className="w-4 h-4" />
+                Invite
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -241,6 +259,7 @@ export function CollaboratorsBar({
   className = "",
 }: CollaboratorsBarProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -249,6 +268,7 @@ export function CollaboratorsBar({
   const myRole = useMyRole();
 
   const canInvite = myRole === "owner" || myRole === "editor";
+  const canManage = myRole === "owner";
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -293,6 +313,11 @@ export function CollaboratorsBar({
   const handleInviteClick = () => {
     setIsOpen(false);
     onInviteClick?.();
+  };
+
+  const handleManageClick = () => {
+    setIsOpen(false);
+    setIsManageModalOpen(true);
   };
 
   return (
@@ -356,10 +381,18 @@ export function CollaboratorsBar({
             members={members}
             activeCollaborators={activeCollaborators}
             onInviteClick={handleInviteClick}
+            onManageClick={handleManageClick}
             canInvite={canInvite}
+            canManage={canManage}
           />
         </div>
       )}
+
+      {/* Member Management Modal */}
+      <MemberManagementModal
+        isOpen={isManageModalOpen}
+        onClose={() => setIsManageModalOpen(false)}
+      />
     </div>
   );
 }
