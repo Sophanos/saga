@@ -161,10 +161,10 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
   return (
     <div className="min-h-screen bg-bg-primary flex flex-col">
       {/* Top bar with back button */}
-      {onBack && (
+      {(onBack || mode === "forgot") && (
         <div className="absolute top-0 left-0 p-4 z-10">
           <button
-            onClick={onBack}
+            onClick={mode === "forgot" ? backToSignIn : onBack}
             className="flex items-center gap-2 text-text-muted hover:text-text-primary transition-colors text-sm"
           >
             <ArrowLeft className="w-4 h-4" />
