@@ -47,7 +47,9 @@ import {
 // Types
 // =============================================================================
 
-interface AIImageRequest {
+// Base generate request (original)
+interface GenerateRequest {
+  kind?: "generate";
   projectId: string;
   entityId?: string;
   assetType?: AssetType;
@@ -61,11 +63,50 @@ interface AIImageRequest {
   negativePrompt?: string;
 }
 
+// Phase 4: Scene illustration request
+type SceneFocus = "action" | "dialogue" | "establishing" | "dramatic";
+
+interface CharacterReference {
+  name: string;
+  entityId: string;
+  portraitUrl?: string;
+}
+
+interface SceneRequest {
+  kind: "scene";
+  projectId: string;
+  sceneText: string;
+  characterReferences?: CharacterReference[];
+  style?: ImageStyle;
+  aspectRatio?: AspectRatio;
+  assetType?: AssetType;
+  sceneFocus?: SceneFocus;
+  negativePrompt?: string;
+}
+
+type AIImageRequest = GenerateRequest | SceneRequest;
+
+function isSceneRequest(req: AIImageRequest): req is SceneRequest {
+  return req.kind === "scene";
+}
+
 interface AIImageResponse {
   assetId: string;
   storagePath: string;
   imageUrl: string;
   entityId?: string;
+}
+
+// Phase 4: Scene response
+interface SceneCharacter {
+  name: string;
+  entityId?: string;
+  hadPortraitReference: boolean;
+}
+
+interface SceneResponse extends AIImageResponse {
+  sceneDescription: string;
+  charactersIncluded: SceneCharacter[];
 }
 
 // =============================================================================
@@ -84,6 +125,16 @@ const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 const MAX_SUBJECT_LENGTH = 500;
 const MAX_PROMPT_LENGTH = 2000;
 const MAX_VISUAL_DESC_LENGTH = 1000;
+const MAX_SCENE_TEXT_LENGTH = 3000;
+const MAX_CHARACTER_REFS = 4; // Limit portraits to control payload size
+
+// Scene focus composition prompts
+const SCENE_FOCUS_PROMPTS: Record<SceneFocus, string> = {
+  action: "dynamic composition, motion blur, intense movement, action pose, dramatic angle",
+  dialogue: "conversational framing, eye contact, intimate composition, character interaction focus",
+  establishing: "wide shot, environmental focus, setting the scene, atmospheric perspective",
+  dramatic: "dramatic lighting, emotional intensity, key moment, cinematic composition",
+};
 
 // =============================================================================
 // Helpers
@@ -517,6 +568,381 @@ async function handleGenerateImage(
 }
 
 // =============================================================================
+// Scene Illustration Handler
+// =============================================================================
+
+/**
+ * Fetch portrait image data for character references.
+ */
+async function fetchPortraitData(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  portraitUrl: string,
+  logPrefix: string
+): Promise<string | null> {
+  try {
+    // Try to download from storage if it's a signed URL
+    const response = await fetch(portraitUrl, {
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      console.warn(`${logPrefix} Failed to fetch portrait: ${response.status}`);
+      return null;
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    const base64 = uint8ArrayToBase64(bytes);
+    const contentType = response.headers.get("content-type") || "image/png";
+
+    return `data:${contentType};base64,${base64}`;
+  } catch (error) {
+    console.warn(`${logPrefix} Failed to fetch portrait data:`, error);
+    return null;
+  }
+}
+
+/**
+ * Build scene illustration prompt with character context.
+ */
+function buildScenePrompt(
+  sceneText: string,
+  characterNames: string[],
+  style: ImageStyle,
+  sceneFocus: SceneFocus,
+  negativePrompt?: string
+): string {
+  const parts: string[] = [];
+
+  // Scene description
+  parts.push(`Illustrate this scene: ${sceneText}`);
+
+  // Characters
+  if (characterNames.length > 0) {
+    parts.push(`Characters present: ${characterNames.join(", ")}`);
+  }
+
+  // Style
+  parts.push(STYLE_PROMPTS[style]);
+
+  // Scene focus composition
+  parts.push(SCENE_FOCUS_PROMPTS[sceneFocus]);
+
+  // Always add quality guidance
+  parts.push("high quality, detailed, cinematic");
+  parts.push("no text, no watermarks, no signatures, no speech bubbles");
+
+  // Negative prompt
+  if (negativePrompt) {
+    parts.push(`avoid: ${negativePrompt}`);
+  }
+
+  return parts.join(", ");
+}
+
+/**
+ * Handle scene illustration request (Phase 4).
+ */
+async function handleIllustrateScene(
+  req: SceneRequest,
+  billing: BillingCheck,
+  supabase: ReturnType<typeof createSupabaseClient>,
+  origin: string | null
+): Promise<Response> {
+  const logPrefix = "[ai-image:scene]";
+  const startTime = Date.now();
+  console.log(`${logPrefix} Starting scene illustration for project: ${req.projectId}`);
+
+  try {
+    // 1. Verify project access
+    await assertProjectAccess(supabase, req.projectId, billing.userId);
+
+    // 2. Process character references
+    const charactersIncluded: SceneCharacter[] = [];
+    const portraitDataUrls: string[] = [];
+    const characterNames: string[] = [];
+
+    if (req.characterReferences && req.characterReferences.length > 0) {
+      // Limit to MAX_CHARACTER_REFS to control payload size
+      const refs = req.characterReferences.slice(0, MAX_CHARACTER_REFS);
+
+      for (const ref of refs) {
+        characterNames.push(ref.name);
+
+        // Verify entity belongs to project
+        let hasPortrait = false;
+        if (ref.entityId) {
+          try {
+            await assertEntityInProject(supabase, ref.entityId, req.projectId);
+
+            // Fetch portrait data if URL provided
+            if (ref.portraitUrl) {
+              const portraitData = await fetchPortraitData(supabase, ref.portraitUrl, logPrefix);
+              if (portraitData) {
+                portraitDataUrls.push(portraitData);
+                hasPortrait = true;
+              }
+            }
+          } catch (e) {
+            console.warn(`${logPrefix} Character ${ref.name} entity validation failed:`, e);
+          }
+        }
+
+        charactersIncluded.push({
+          name: ref.name,
+          entityId: ref.entityId,
+          hadPortraitReference: hasPortrait,
+        });
+      }
+    }
+
+    console.log(`${logPrefix} Processing ${charactersIncluded.length} characters, ${portraitDataUrls.length} with portraits`);
+
+    // 3. Build the generation prompt
+    const style = req.style ?? "fantasy_art";
+    const sceneFocus = req.sceneFocus ?? "dramatic";
+    const prompt = buildScenePrompt(
+      req.sceneText,
+      characterNames,
+      style,
+      sceneFocus,
+      req.negativePrompt
+    );
+
+    console.log(`${logPrefix} Generating with prompt: ${prompt.slice(0, 100)}...`);
+
+    // 4. Get API keys
+    const openRouterKey = billing.apiKey;
+    const geminiKey = Deno.env.get("GOOGLE_GENERATIVE_AI_API_KEY") ?? null;
+
+    // 5. Generate image
+    // If we have portrait references, use multimodal with images
+    let generated: GeneratedImage;
+
+    if (portraitDataUrls.length > 0 && openRouterKey) {
+      // Use multimodal generation with portrait references
+      console.log(`${logPrefix} Using multimodal generation with ${portraitDataUrls.length} portrait refs`);
+      try {
+        const openRouter = createDynamicOpenRouter(openRouterKey);
+
+        // Build message with images and text
+        const content: Array<{ type: "text" | "image"; text?: string; image?: string }> = [];
+        
+        // Add portrait references first
+        for (const dataUrl of portraitDataUrls) {
+          content.push({ type: "image", image: dataUrl });
+        }
+        
+        // Add the prompt
+        content.push({
+          type: "text",
+          text: `Using the character portraits above as visual references for consistency, ${prompt}`,
+        });
+
+        const result = await generateText({
+          model: openRouter(OPENROUTER_IMAGE_MODEL),
+          messages: [{ role: "user", content }],
+          abortSignal: AbortSignal.timeout(IMAGE_GEN_TIMEOUT_MS),
+        });
+
+        const imageFile = result.files?.find((f) => f.mediaType.startsWith("image/"));
+        if (imageFile) {
+          generated = {
+            uint8Array: imageFile.uint8Array,
+            mimeType: imageFile.mediaType,
+            model: OPENROUTER_IMAGE_MODEL,
+            usage: result.usage,
+          };
+        } else {
+          throw new Error("No image in multimodal response");
+        }
+      } catch (error) {
+        console.warn(`${logPrefix} Multimodal generation failed, falling back to text-only:`, error);
+        generated = await generateImageWithFallback(prompt, openRouterKey, geminiKey, logPrefix);
+      }
+    } else {
+      // Standard text-only generation
+      generated = await generateImageWithFallback(prompt, openRouterKey, geminiKey, logPrefix);
+    }
+
+    // Validate size
+    if (generated.uint8Array.length > MAX_IMAGE_SIZE_BYTES) {
+      throw new Error(`Image too large: ${Math.round(generated.uint8Array.length / 1024 / 1024)}MB exceeds 10MB limit`);
+    }
+
+    console.log(`${logPrefix} Image generated (${generated.mimeType}, ${generated.uint8Array.length} bytes), uploading...`);
+
+    // 6. Prepare for upload
+    const ext = getExtFromMimeType(generated.mimeType);
+    const storagePath = generateStoragePath(req.projectId, undefined, ext);
+
+    // 7. Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(storagePath, generated.uint8Array, {
+        contentType: generated.mimeType,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error(`${logPrefix} Storage upload failed:`, uploadError);
+      throw new Error(`Failed to upload image: ${uploadError.message}`);
+    }
+
+    console.log(`${logPrefix} Uploaded to: ${storagePath}`);
+
+    let uploadedPath: string | null = storagePath;
+
+    try {
+      // 8. Create signed URL
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .createSignedUrl(storagePath, SIGNED_URL_EXPIRY_SECONDS);
+
+      if (signedUrlError || !signedUrlData?.signedUrl) {
+        throw new Error("Failed to create signed URL");
+      }
+
+      const signedUrl = signedUrlData.signedUrl;
+
+      // 9. Create project_assets record
+      const assetType = req.assetType ?? "scene";
+      const { data: assetData, error: assetError } = await supabase
+        .from("project_assets")
+        .insert({
+          project_id: req.projectId,
+          entity_id: null, // Scenes aren't tied to single entity
+          asset_type: assetType,
+          storage_path: storagePath,
+          public_url: signedUrl,
+          generation_prompt: prompt,
+          generation_model: generated.model,
+          generation_params: {
+            kind: "scene",
+            style,
+            aspectRatio: req.aspectRatio ?? "16:9",
+            sceneFocus,
+            sceneText: req.sceneText.slice(0, 500),
+            characterNames,
+          },
+          mime_type: generated.mimeType,
+        })
+        .select("id")
+        .single();
+
+      if (assetError || !assetData) {
+        console.error(`${logPrefix} Failed to create asset record:`, assetError);
+        throw new Error("Failed to save asset record");
+      }
+
+      const assetId = assetData.id;
+      console.log(`${logPrefix} Created asset record: ${assetId}`);
+
+      uploadedPath = null;
+
+      // 10. CLIP embedding and Qdrant sync
+      try {
+        if (isClipConfigured() && isQdrantConfigured()) {
+          console.log(`${logPrefix} Generating CLIP embedding...`);
+
+          const imageBase64 = uint8ArrayToBase64(generated.uint8Array);
+          const clipResult = await generateClipImageEmbedding(imageBase64, {
+            mimeType: generated.mimeType,
+          });
+
+          const qdrantPayload = {
+            project_id: req.projectId,
+            asset_id: assetId,
+            entity_id: null,
+            entity_type: null,
+            asset_type: assetType,
+            style: style,
+            storage_path: storagePath,
+            public_url: signedUrl,
+            created_at: new Date().toISOString(),
+          };
+
+          await upsertPoints(
+            [{ id: assetId, vector: clipResult.embedding, payload: qdrantPayload }],
+            { collection: "saga_images" }
+          );
+
+          console.log(`${logPrefix} Synced to Qdrant saga_images collection`);
+
+          await supabase
+            .from("project_assets")
+            .update({
+              clip_embedding: toPgVector(clipResult.embedding),
+              clip_sync_status: "synced",
+              clip_synced_at: new Date().toISOString(),
+              clip_last_error: null,
+            })
+            .eq("id", assetId);
+        }
+      } catch (clipError) {
+        console.error(`${logPrefix} CLIP sync failed:`, clipError);
+        try {
+          await supabase
+            .from("project_assets")
+            .update({
+              clip_sync_status: "error",
+              clip_last_error: clipError instanceof Error ? clipError.message : String(clipError),
+            })
+            .eq("id", assetId);
+        } catch (e) {
+          console.error(`${logPrefix} Failed to update CLIP error status:`, e);
+        }
+      }
+
+      // 11. Record AI request
+      try {
+        await recordAIRequest(supabase, billing, {
+          endpoint: "image-scene",
+          model: generated.model,
+          modelType: "image",
+          usage: {
+            promptTokens: generated.usage?.promptTokens ?? 0,
+            completionTokens: generated.usage?.completionTokens ?? 0,
+            totalTokens: generated.usage?.totalTokens ?? 0,
+          },
+          success: true,
+          latencyMs: Date.now() - startTime,
+        });
+      } catch (e) {
+        console.warn(`${logPrefix} Failed to record AI request:`, e);
+      }
+
+      // 12. Build scene description
+      const sceneDescription = req.sceneText.length > 100
+        ? req.sceneText.slice(0, 100) + "..."
+        : req.sceneText;
+
+      // 13. Return success response
+      const response: SceneResponse = {
+        assetId,
+        storagePath,
+        imageUrl: signedUrl,
+        sceneDescription,
+        charactersIncluded,
+      };
+
+      console.log(`${logPrefix} Scene illustration complete`);
+      return createSuccessResponse(response, origin);
+
+    } catch (error) {
+      if (uploadedPath) {
+        await cleanupStorageBlob(supabase, uploadedPath, logPrefix);
+      }
+      throw error;
+    }
+
+  } catch (error) {
+    console.error(`${logPrefix} Error:`, error);
+    return handleAIError(error, origin, { providerName: "ai-image-scene" });
+  }
+}
+
+// =============================================================================
 // Serve
 // =============================================================================
 
@@ -539,23 +965,6 @@ serve(async (req: Request): Promise<Response> => {
       return createErrorResponse(ErrorCode.VALIDATION_ERROR, "projectId is required", origin);
     }
 
-    if (!body.subject) {
-      return createErrorResponse(ErrorCode.VALIDATION_ERROR, "subject is required", origin);
-    }
-
-    // Input length validation
-    if (body.subject.length > MAX_SUBJECT_LENGTH) {
-      return createErrorResponse(ErrorCode.VALIDATION_ERROR, `subject exceeds ${MAX_SUBJECT_LENGTH} characters`, origin);
-    }
-
-    if (body.promptOverride && body.promptOverride.length > MAX_PROMPT_LENGTH) {
-      return createErrorResponse(ErrorCode.VALIDATION_ERROR, `promptOverride exceeds ${MAX_PROMPT_LENGTH} characters`, origin);
-    }
-
-    if (body.visualDescription && body.visualDescription.length > MAX_VISUAL_DESC_LENGTH) {
-      return createErrorResponse(ErrorCode.VALIDATION_ERROR, `visualDescription exceeds ${MAX_VISUAL_DESC_LENGTH} characters`, origin);
-    }
-
     // Check billing
     const supabase = createSupabaseClient();
     const billing = await checkBillingAndGetKey(req, supabase, {
@@ -571,7 +980,32 @@ serve(async (req: Request): Promise<Response> => {
       return createErrorResponse(ErrorCode.FORBIDDEN, "API key required for image generation", origin);
     }
 
-    return handleGenerateImage(body, billing, supabase, origin);
+    // Route to appropriate handler
+    if (isSceneRequest(body)) {
+      // Scene illustration request
+      if (!body.sceneText) {
+        return createErrorResponse(ErrorCode.VALIDATION_ERROR, "sceneText is required for scene generation", origin);
+      }
+      if (body.sceneText.length > MAX_SCENE_TEXT_LENGTH) {
+        return createErrorResponse(ErrorCode.VALIDATION_ERROR, `sceneText exceeds ${MAX_SCENE_TEXT_LENGTH} characters`, origin);
+      }
+      return handleIllustrateScene(body, billing, supabase, origin);
+    } else {
+      // Standard generate request
+      if (!body.subject) {
+        return createErrorResponse(ErrorCode.VALIDATION_ERROR, "subject is required", origin);
+      }
+      if (body.subject.length > MAX_SUBJECT_LENGTH) {
+        return createErrorResponse(ErrorCode.VALIDATION_ERROR, `subject exceeds ${MAX_SUBJECT_LENGTH} characters`, origin);
+      }
+      if (body.promptOverride && body.promptOverride.length > MAX_PROMPT_LENGTH) {
+        return createErrorResponse(ErrorCode.VALIDATION_ERROR, `promptOverride exceeds ${MAX_PROMPT_LENGTH} characters`, origin);
+      }
+      if (body.visualDescription && body.visualDescription.length > MAX_VISUAL_DESC_LENGTH) {
+        return createErrorResponse(ErrorCode.VALIDATION_ERROR, `visualDescription exceeds ${MAX_VISUAL_DESC_LENGTH} characters`, origin);
+      }
+      return handleGenerateImage(body, billing, supabase, origin);
+    }
 
   } catch (error) {
     console.error("[ai-image] Handler error:", error);

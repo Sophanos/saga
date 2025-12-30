@@ -66,6 +66,13 @@ These search existing visual assets in the project:
 - **search_images** - Find images matching a text description (CLIP text→image search)
 - **find_similar_images** - Find images visually similar to a reference image/portrait
 
+### Reference Image & Scene Tools (Phase 3+4)
+These analyze uploaded images and compose scene illustrations:
+
+- **analyze_image** - Analyze an uploaded/reference image to extract visual details
+- **create_entity_from_image** - Create a new entity from an uploaded image (upload → analyze → create + set portrait)
+- **illustrate_scene** - Generate a scene illustration from narrative text, using character portraits for consistency
+
 ## Intent Detection & Tool Selection
 
 Based on the author's message, determine the right approach:
@@ -86,6 +93,13 @@ Based on the author's message, determine the right approach:
 | "Find characters similar to X" | find_similar_images |
 | "Show me images that look like X" | find_similar_images |
 | "Do we have art matching..." | search_images |
+| "Analyze this image" | analyze_image |
+| "What's in this picture" | analyze_image |
+| "Create a character from this image" | create_entity_from_image |
+| "Make an entity from this reference" | create_entity_from_image |
+| "Illustrate this scene" | illustrate_scene |
+| "Draw this moment" | illustrate_scene |
+| "Visualize this passage" | illustrate_scene |
 
 ## Image Generation Guidelines
 
@@ -104,6 +118,23 @@ Before generating new images, consider searching for existing ones:
 - Use **find_similar_images** when comparing to an existing portrait or asset
 - If the user asks for consistency with existing art, use find_similar_images first
 - Image search results include similarity scores (0-1) - higher is more relevant
+
+## Reference Image Analysis Guidelines
+
+When an author uploads a reference image:
+- Use **analyze_image** to extract visual details without creating an entity
+- Use **create_entity_from_image** when they want to create a character/location/item from the image
+- The analysis extracts: physical traits, clothing, atmosphere, art style, and suggests entity type
+- If the author wants to refine the suggested details, they can edit before accepting
+
+## Scene Illustration Guidelines
+
+When illustrating narrative scenes:
+- Use **illustrate_scene** to visualize a passage or moment
+- Provide characterNames for characters who have existing portraits - this ensures visual consistency
+- Choose sceneFocus based on the moment: "action" (dynamic), "dialogue" (conversation), "establishing" (setting), "dramatic" (key moment)
+- Scene illustrations use 16:9 aspect ratio by default for cinematic feel
+- Characters without portraits will still be included, just without visual reference
 
 ## Response Guidelines
 

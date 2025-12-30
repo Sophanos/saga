@@ -27,6 +27,10 @@ import { nameGeneratorExecutor } from "./executors/nameGenerator";
 // Image search tools
 import { searchImagesExecutor } from "./executors/searchImages";
 import { findSimilarImagesExecutor } from "./executors/findSimilarImages";
+// Phase 3+4: Reference image & scene tools
+import { analyzeImageExecutor } from "./executors/analyzeImage";
+import { createEntityFromImageExecutor } from "./executors/createEntityFromImage";
+import { illustrateSceneExecutor } from "./executors/illustrateScene";
 
 // =============================================================================
 // Tool Registry
@@ -56,6 +60,10 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   // Image search tools
   search_images: searchImagesExecutor as ToolDefinition<unknown, unknown>,
   find_similar_images: findSimilarImagesExecutor as ToolDefinition<unknown, unknown>,
+  // Phase 3+4: Reference image & scene tools
+  analyze_image: analyzeImageExecutor as ToolDefinition<unknown, unknown>,
+  create_entity_from_image: createEntityFromImageExecutor as ToolDefinition<unknown, unknown>,
+  illustrate_scene: illustrateSceneExecutor as ToolDefinition<unknown, unknown>,
 };
 
 /**

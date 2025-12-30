@@ -28,6 +28,11 @@ export { nameGeneratorTool, nameGeneratorParameters, type NameGeneratorArgs } fr
 export { searchImagesTool, searchImagesParameters, type SearchImagesArgs } from "./search-images.ts";
 export { findSimilarImagesTool, findSimilarImagesParameters, type FindSimilarImagesArgs } from "./find-similar-images.ts";
 
+// Export Phase 3+4 tools
+export { analyzeImageTool, analyzeImageParameters, type AnalyzeImageArgs } from "./analyze-image.ts";
+export { createEntityFromImageTool, createEntityFromImageParameters, type CreateEntityFromImageArgs } from "./create-entity-from-image.ts";
+export { illustrateSceneTool, illustrateSceneParameters, sceneFocusSchema, SCENE_FOCUS_PROMPTS, type IllustrateSceneArgs } from "./illustrate-scene.ts";
+
 // Export types
 export * from "./types.ts";
 
@@ -53,6 +58,11 @@ import { nameGeneratorTool } from "./name-generator.ts";
 // Import image search tools for registry
 import { searchImagesTool } from "./search-images.ts";
 import { findSimilarImagesTool } from "./find-similar-images.ts";
+
+// Import Phase 3+4 tools for registry
+import { analyzeImageTool } from "./analyze-image.ts";
+import { createEntityFromImageTool } from "./create-entity-from-image.ts";
+import { illustrateSceneTool } from "./illustrate-scene.ts";
 
 /**
  * All agent tools bundled for streamText() usage.
@@ -80,6 +90,9 @@ export const coreTools = {
   delete_relationship: deleteRelationshipTool,
   generate_content: generateContentTool,
   generate_image: generateImageTool,
+  // Phase 3+4: World-modifying image tools
+  create_entity_from_image: createEntityFromImageTool,
+  illustrate_scene: illustrateSceneTool,
 } as const;
 
 /**
@@ -96,6 +109,8 @@ export const sagaTools = {
   // Image search tools
   search_images: searchImagesTool,
   find_similar_images: findSimilarImagesTool,
+  // Phase 3: Image analysis (read-only)
+  analyze_image: analyzeImageTool,
 } as const;
 
 /**
