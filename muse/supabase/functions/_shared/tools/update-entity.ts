@@ -5,6 +5,7 @@
 import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { entityTypeSchema, itemCategorySchema, type ToolExecuteResult } from "./types.ts";
+import { hasIdentityChange, isSensitiveEntityType } from "./approval-config.ts";
 
 export const updateEntityParameters = z.object({
   entityName: z.string().describe("The current name of the entity to update"),
@@ -42,16 +43,13 @@ export type UpdateEntityArgs = z.infer<typeof updateEntityParameters>;
  */
 async function updateEntityNeedsApproval({ updates, entityType }: UpdateEntityArgs): Promise<boolean> {
   // Identity-changing updates always require approval
-  const sensitiveFields = ["name", "archetype", "backstory", "goals"];
-  const hasIdentityChange = sensitiveFields.some(
-    (field) => updates[field as keyof typeof updates] !== undefined
-  );
+  const updatesRecord = updates as Record<string, unknown>;
+  const identityChange = hasIdentityChange(updatesRecord);
 
   // Character and faction updates are more sensitive
-  const sensitiveTypes = ["character", "faction", "magic_system"];
-  const isSensitiveType = entityType && sensitiveTypes.includes(entityType);
+  const sensitiveType = isSensitiveEntityType(entityType);
 
-  return hasIdentityChange || isSensitiveType;
+  return identityChange || sensitiveType;
 }
 
 export const updateEntityTool = tool({

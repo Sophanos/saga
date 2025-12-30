@@ -209,6 +209,119 @@ function parseSSELine(line: string): SagaStreamEvent | null {
   }
 }
 
+/**
+ * Handle a single SSE event by dispatching to the appropriate callback.
+ * Shared between sendSagaChatStreaming and sendToolApprovalResponse.
+ */
+function handleSSEEvent(
+  event: SagaStreamEvent,
+  callbacks: Pick<SagaStreamOptions, 'onContext' | 'onDelta' | 'onTool' | 'onToolApprovalRequest' | 'onProgress' | 'onDone' | 'onError'>
+): boolean {
+  const { onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError } = callbacks;
+
+  switch (event.type) {
+    case "context":
+      onContext?.(event.data as ChatContext);
+      return false;
+
+    case "delta":
+      if (event.content) {
+        onDelta?.(event.content);
+      }
+      return false;
+
+    case "tool":
+      if (event.toolName && event.toolCallId) {
+        onTool?.({
+          toolCallId: event.toolCallId,
+          toolName: event.toolName as ToolName,
+          args: event.args,
+        });
+      }
+      return false;
+
+    case "tool-approval-request":
+      if (event.toolName && event.toolCallId) {
+        onToolApprovalRequest?.({
+          toolCallId: event.toolCallId,
+          toolName: event.toolName as ToolName,
+          args: event.args,
+        });
+      }
+      return false;
+
+    case "progress":
+      if (event.toolCallId && event.progress) {
+        onProgress?.(event.toolCallId, event.progress);
+      }
+      return false;
+
+    case "done":
+      onDone?.();
+      return true; // doneReceived
+
+    case "error":
+      onError?.(new SagaApiError(event.message ?? "Unknown error"));
+      return false;
+
+    default:
+      return false;
+  }
+}
+
+/**
+ * Process an SSE stream, dispatching events to callbacks.
+ * Shared between sendSagaChatStreaming and sendToolApprovalResponse.
+ */
+async function processSSEStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  callbacks: Pick<SagaStreamOptions, 'onContext' | 'onDelta' | 'onTool' | 'onToolApprovalRequest' | 'onProgress' | 'onDone' | 'onError'>
+): Promise<void> {
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let doneReceived = false;
+
+  try {
+    while (true) {
+      const { done, value } = await readWithTimeout(reader);
+      if (done) break;
+
+      chunks.push(decoder.decode(value, { stream: true }));
+      const buffer = chunks.join("");
+      const lines = buffer.split("\n");
+      const remainder = lines.pop() ?? "";
+      chunks.length = 0;
+      if (remainder) chunks.push(remainder);
+
+      for (const line of lines) {
+        const event = parseSSELine(line);
+        if (!event) continue;
+        if (handleSSEEvent(event, callbacks)) {
+          doneReceived = true;
+        }
+      }
+    }
+
+    // Process remaining buffer
+    const remainingBuffer = chunks.join("");
+    if (remainingBuffer.trim()) {
+      const event = parseSSELine(remainingBuffer);
+      if (event) {
+        if (handleSSEEvent(event, callbacks)) {
+          doneReceived = true;
+        }
+      }
+    }
+
+    // If stream ended naturally without "done" event, call onDone
+    if (!doneReceived) {
+      callbacks.onDone?.();
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 // =============================================================================
 // Streaming Chat API
 // =============================================================================
@@ -267,132 +380,8 @@ export async function sendSagaChatStreaming(
       throw new SagaApiError("No response body", 500);
     }
 
-    const decoder = new TextDecoder();
-    const chunks: string[] = [];
-    let doneReceived = false;
-
-    try {
-      while (true) {
-        const { done, value } = await readWithTimeout(reader);
-        if (done) break;
-
-        chunks.push(decoder.decode(value, { stream: true }));
-        const buffer = chunks.join("");
-        const lines = buffer.split("\n");
-        const remainder = lines.pop() ?? "";
-        chunks.length = 0;
-        if (remainder) chunks.push(remainder);
-
-        for (const line of lines) {
-          const event = parseSSELine(line);
-          if (!event) continue;
-
-          switch (event.type) {
-            case "context":
-              onContext?.(event.data as ChatContext);
-              break;
-
-            case "delta":
-              if (event.content) {
-                onDelta?.(event.content);
-              }
-              break;
-
-            case "tool":
-              if (event.toolName && event.toolCallId) {
-                onTool?.({
-                  toolCallId: event.toolCallId,
-                  toolName: event.toolName as ToolName,
-                  args: event.args,
-                });
-              }
-              break;
-
-            case "tool-approval-request":
-              // AI SDK 6: Tool needs user approval before execution
-              if (event.toolName && event.toolCallId) {
-                onToolApprovalRequest?.({
-                  toolCallId: event.toolCallId,
-                  toolName: event.toolName as ToolName,
-                  args: event.args,
-                });
-              }
-              break;
-
-            case "progress":
-              if (event.toolCallId && event.progress) {
-                onProgress?.(event.toolCallId, event.progress);
-              }
-              break;
-
-            case "done":
-              doneReceived = true;
-              onDone?.();
-              break;
-
-            case "error":
-              onError?.(new SagaApiError(event.message ?? "Unknown error"));
-              break;
-          }
-        }
-      }
-
-      // Process remaining buffer - handle ALL event types, not just done/error
-      const remainingBuffer = chunks.join("");
-      if (remainingBuffer.trim()) {
-        const event = parseSSELine(remainingBuffer);
-        if (event) {
-          switch (event.type) {
-            case "context":
-              onContext?.(event.data as ChatContext);
-              break;
-            case "delta":
-              if (event.content) {
-                onDelta?.(event.content);
-              }
-              break;
-            case "tool":
-              if (event.toolName && event.toolCallId) {
-                onTool?.({
-                  toolCallId: event.toolCallId,
-                  toolName: event.toolName as ToolName,
-                  args: event.args,
-                });
-              }
-              break;
-            case "tool-approval-request":
-              if (event.toolName && event.toolCallId) {
-                onToolApprovalRequest?.({
-                  toolCallId: event.toolCallId,
-                  toolName: event.toolName as ToolName,
-                  args: event.args,
-                });
-              }
-              break;
-            case "progress":
-              if (event.toolCallId && event.progress) {
-                onProgress?.(event.toolCallId, event.progress);
-              }
-              break;
-            case "done":
-              doneReceived = true;
-              onDone?.();
-              break;
-            case "error":
-              onError?.(new SagaApiError(event.message ?? "Unknown error"));
-              break;
-          }
-        }
-      }
-
-      // Issue 2 fix: If stream ended naturally without "done" event, call onDone
-      if (!doneReceived) {
-        onDone?.();
-      }
-    } finally {
-      // Issue 1 fix: Always release the reader lock
-      reader.releaseLock();
-    }
+    // Process the SSE stream using shared helper
+    await processSSEStream(reader, { onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError });
   } catch (error) {
     if (error instanceof SagaApiError) {
       onError?.(error);
@@ -640,7 +629,7 @@ export async function sendToolApprovalResponse(
 
     // If denied, the response is JSON, not a stream
     if (!payload.approved) {
-      const data = await response.json() as ToolApprovalDeniedResponse;
+      await response.json(); // Consume JSON response body
       onDone?.();
       return;
     }
@@ -651,81 +640,8 @@ export async function sendToolApprovalResponse(
       throw new SagaApiError("No response body", 500);
     }
 
-    const decoder = new TextDecoder();
-    const chunks: string[] = [];
-    let doneReceived = false;
-
-    try {
-      while (true) {
-        const { done, value } = await readWithTimeout(reader);
-        if (done) break;
-
-        chunks.push(decoder.decode(value, { stream: true }));
-        const buffer = chunks.join("");
-        const lines = buffer.split("\n");
-        const remainder = lines.pop() ?? "";
-        chunks.length = 0;
-        if (remainder) chunks.push(remainder);
-
-        for (const line of lines) {
-          const event = parseSSELine(line);
-          if (!event) continue;
-
-          switch (event.type) {
-            case "context":
-              onContext?.(event.data as ChatContext);
-              break;
-
-            case "delta":
-              if (event.content) {
-                onDelta?.(event.content);
-              }
-              break;
-
-            case "tool":
-              if (event.toolName && event.toolCallId) {
-                onTool?.({
-                  toolCallId: event.toolCallId,
-                  toolName: event.toolName as ToolName,
-                  args: event.args,
-                });
-              }
-              break;
-
-            case "tool-approval-request":
-              if (event.toolName && event.toolCallId) {
-                onToolApprovalRequest?.({
-                  toolCallId: event.toolCallId,
-                  toolName: event.toolName as ToolName,
-                  args: event.args,
-                });
-              }
-              break;
-
-            case "progress":
-              if (event.toolCallId && event.progress) {
-                onProgress?.(event.toolCallId, event.progress);
-              }
-              break;
-
-            case "done":
-              doneReceived = true;
-              onDone?.();
-              break;
-
-            case "error":
-              onError?.(new SagaApiError(event.message ?? "Unknown error"));
-              break;
-          }
-        }
-      }
-
-      if (!doneReceived) {
-        onDone?.();
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    // Process the SSE stream using shared helper
+    await processSSEStream(reader, { onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError });
   } catch (error) {
     if (error instanceof SagaApiError) {
       onError?.(error);

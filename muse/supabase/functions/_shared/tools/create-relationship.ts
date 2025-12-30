@@ -5,6 +5,7 @@
 import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { relationTypeSchema, type ToolExecuteResult } from "./types.ts";
+import { isHighImpactRelationshipType } from "./approval-config.ts";
 
 export const createRelationshipParameters = z.object({
   sourceName: z.string().describe("Name of the source entity"),
@@ -22,13 +23,7 @@ export type CreateRelationshipArgs = z.infer<typeof createRelationshipParameters
  * Familial and power relationships are more impactful and need approval.
  */
 async function createRelationshipNeedsApproval({ type }: CreateRelationshipArgs): Promise<boolean> {
-  // High-impact relationship types that affect world structure
-  const highImpactTypes = [
-    "parent_of", "child_of", "sibling_of", "married_to",  // Familial
-    "rules", "serves", "member_of",                        // Power dynamics
-    "killed", "created",                                   // Story-critical
-  ];
-  return highImpactTypes.includes(type);
+  return isHighImpactRelationshipType(type);
 }
 
 export const createRelationshipTool = tool({

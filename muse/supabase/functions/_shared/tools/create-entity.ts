@@ -5,6 +5,7 @@
 import { tool } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { entityTypeSchema, itemCategorySchema, type ToolExecuteResult } from "./types.ts";
+import { isHighImpactEntityType } from "./approval-config.ts";
 
 export const createEntityParameters = z.object({
   type: entityTypeSchema.describe("The type of entity to create"),
@@ -39,9 +40,7 @@ export type CreateEntityArgs = z.infer<typeof createEntityParameters>;
  * Other types are auto-approved for faster workflow.
  */
 async function createEntityNeedsApproval({ type }: CreateEntityArgs): Promise<boolean> {
-  // High-impact entity types always require approval
-  const highImpactTypes = ["character", "magic_system", "faction"];
-  return highImpactTypes.includes(type);
+  return isHighImpactEntityType(type);
 }
 
 export const createEntityTool = tool({

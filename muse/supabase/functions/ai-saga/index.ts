@@ -48,6 +48,8 @@ import {
   executeCheckConsistency,
   executeGenerateTemplate,
   executeClarityCheck,
+  executeCheckLogic,
+  executeNameGenerator,
 } from "../_shared/saga/executors.ts";
 import {
   checkBillingAndGetKey,
@@ -392,10 +394,64 @@ async function handleExecuteTool(
         break;
       }
 
+      case "check_logic": {
+        const typedInput = input as {
+          text: string;
+          focus?: string[];
+          strictness?: "strict" | "balanced" | "lenient";
+          magicSystems?: Array<{
+            id: string;
+            name: string;
+            rules: string[];
+            limitations: string[];
+            costs?: string[];
+          }>;
+          characters?: Array<{
+            id: string;
+            name: string;
+            powerLevel?: number;
+            knowledge?: string[];
+          }>;
+          preferences?: Record<string, unknown>;
+        };
+        if (!typedInput.text) {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            "Text is required for logic check",
+            origin
+          );
+        }
+        result = await executeCheckLogic(typedInput, apiKey);
+        break;
+      }
+
+      case "name_generator": {
+        const typedInput = input as {
+          entityType: string;
+          genre?: string;
+          culture?: string;
+          count?: number;
+          seed?: string;
+          avoid?: string[];
+          tone?: string;
+          style?: string;
+          preferences?: Record<string, unknown>;
+        };
+        if (!typedInput.entityType) {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            "Entity type is required for name generation",
+            origin
+          );
+        }
+        result = await executeNameGenerator(typedInput, apiKey);
+        break;
+      }
+
       default:
         return createErrorResponse(
           ErrorCode.VALIDATION_ERROR,
-          `Unknown tool: ${toolName}. Supported tools: genesis_world, detect_entities, check_consistency, generate_template, clarity_check`,
+          `Unknown tool: ${toolName}. Supported tools: genesis_world, detect_entities, check_consistency, generate_template, clarity_check, check_logic, name_generator`,
           origin
         );
     }
