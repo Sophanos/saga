@@ -219,6 +219,9 @@ BEGIN
   UPDATE chat_sessions
   SET
     message_count = GREATEST(0, message_count - 1),
+    last_message_at = (
+      SELECT MAX(created_at) FROM chat_messages WHERE session_id = OLD.session_id
+    ),
     updated_at = now()
   WHERE id = OLD.session_id;
 

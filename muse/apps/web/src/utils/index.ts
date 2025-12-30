@@ -1,5 +1,6 @@
 // Utility functions
 export { simpleHash } from "./hash";
+export { formatRelativeTime } from "./time";
 
 // Entity configuration utilities
 export {

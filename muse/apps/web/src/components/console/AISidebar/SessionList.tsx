@@ -2,24 +2,7 @@ import { useState } from "react";
 import { Trash2, MessageSquare, Clock, Loader2, History, ChevronDown, ChevronUp } from "lucide-react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
 import type { ChatSessionSummary } from "../../../stores";
-
-/**
- * Format a date as a relative time string (e.g., "5m ago", "2h ago", "3d ago")
- */
-function formatRelativeTime(date: Date): string {
-  const now = Date.now();
-  const diff = now - date.getTime();
-
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  if (minutes > 0) return `${minutes}m ago`;
-  return "Just now";
-}
+import { formatRelativeTime } from "../../../utils/time";
 
 interface SessionListProps {
   sessions: ChatSessionSummary[];
@@ -107,10 +90,13 @@ export function SessionList({
                 {sessionsWithMessages.map((session) => {
                   const isActive = session.id === activeSessionId;
                   return (
-                    <div
+                    <button
                       key={session.id}
+                      type="button"
+                      aria-pressed={isActive}
+                      aria-label={`${isActive ? "Current session: " : "Switch to session: "}${formatSessionName(session)}`}
                       className={cn(
-                        "group flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-colors",
+                        "group flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-colors w-full text-left",
                         isActive
                           ? "bg-mythos-accent-purple/10 text-mythos-accent-purple"
                           : "hover:bg-mythos-bg-elevated/50"
@@ -156,7 +142,7 @@ export function SessionList({
                           <Trash2 className="w-3 h-3 text-mythos-text-muted hover:text-mythos-accent-red" />
                         </Button>
                       )}
-                    </div>
+                    </button>
                   );
                 })}
               </div>

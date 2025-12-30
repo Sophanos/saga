@@ -129,8 +129,8 @@ export function useSessionHistory(): UseSessionHistoryResult {
   const setConversationName = useMythosStore((s) => s.setConversationName);
   const stopStreaming = useMythosStore((s) => s.setChatStreaming);
 
-  // Track if session has been ensured in DB
-  const sessionEnsuredRef = useRef<Set<string>>(new Set());
+  // Track pending session ensure promises to deduplicate concurrent calls
+  const sessionEnsurePromises = useRef<Map<string, Promise<boolean>>>(new Map());
 
   /**
    * Ensure the current session exists in the database
@@ -139,34 +139,39 @@ export function useSessionHistory(): UseSessionHistoryResult {
     const projectId = currentProject?.id;
     if (!projectId || !conversationId) return false;
 
-    // Skip if already ensured
-    if (sessionEnsuredRef.current.has(conversationId)) {
-      return true;
-    }
+    // Check if there's already a pending/completed promise for this session
+    const existing = sessionEnsurePromises.current.get(conversationId);
+    if (existing) return existing;
 
-    try {
-      const sessionInsert: ChatSessionInsert = {
-        id: conversationId,
-        project_id: projectId,
-        name: conversationName,
-      };
-      await ensureSession(sessionInsert);
-      sessionEnsuredRef.current.add(conversationId);
+    const promise = (async () => {
+      try {
+        const sessionInsert: ChatSessionInsert = {
+          id: conversationId,
+          project_id: projectId,
+          user_id: user?.id, // Explicitly pass user_id
+          name: conversationName,
+        };
+        await ensureSession(sessionInsert);
 
-      // Update session list if this is a new session
-      addSessionToList({
-        id: conversationId,
-        name: conversationName,
-        lastMessageAt: null,
-        messageCount: 0,
-      });
+        // Update session list if this is a new session
+        addSessionToList({
+          id: conversationId,
+          name: conversationName,
+          lastMessageAt: null,
+          messageCount: 0,
+        });
 
-      return true;
-    } catch (error) {
-      console.error("Failed to ensure session:", error);
-      return false;
-    }
-  }, [currentProject?.id, conversationId, conversationName, addSessionToList]);
+        return true;
+      } catch (error) {
+        console.error("Failed to ensure session:", error);
+        sessionEnsurePromises.current.delete(conversationId); // Allow retry on failure
+        return false;
+      }
+    })();
+
+    sessionEnsurePromises.current.set(conversationId, promise);
+    return promise;
+  }, [currentProject?.id, conversationId, conversationName, user?.id, addSessionToList]);
 
   /**
    * Refresh session list from database
@@ -208,12 +213,13 @@ export function useSessionHistory(): UseSessionHistoryResult {
         loadSessionMessages(messages, sessionId, session.name);
 
         // Mark session as ensured (we just loaded it from DB)
-        sessionEnsuredRef.current.add(sessionId);
+        sessionEnsurePromises.current.set(sessionId, Promise.resolve(true));
       } catch (error) {
         console.error("Failed to open session:", error);
+        setSessionsError(error instanceof Error ? error.message : "Failed to load session");
       }
     },
-    [loadSessionMessages, stopStreaming]
+    [loadSessionMessages, stopStreaming, setSessionsError]
   );
 
   /**
@@ -224,7 +230,7 @@ export function useSessionHistory(): UseSessionHistoryResult {
       try {
         await deleteSessionDb(sessionId);
         removeSessionFromList(sessionId);
-        sessionEnsuredRef.current.delete(sessionId);
+        sessionEnsurePromises.current.delete(sessionId);
 
         // If we deleted the current session, start a new one
         if (sessionId === conversationId) {
@@ -263,57 +269,17 @@ export function useSessionHistory(): UseSessionHistoryResult {
   );
 
   /**
-   * Persist a user message to DB (fire-and-forget)
+   * Persist a message to DB (fire-and-forget)
    */
-  const persistUserMessage = useCallback(
-    (message: ChatMessage) => {
+  const persistMessage = useCallback(
+    (message: ChatMessage, role: "user" | "assistant" | "tool") => {
       (async () => {
         try {
           const ensured = await ensureCurrentSession();
           if (!ensured) return;
-
           await createMessage(toChatMessageInsert(conversationId, message));
         } catch (error) {
-          console.error("Failed to persist user message:", error);
-        }
-      })();
-    },
-    [conversationId, ensureCurrentSession]
-  );
-
-  /**
-   * Persist an assistant message to DB (fire-and-forget)
-   * Called when streaming is complete
-   */
-  const persistAssistantMessage = useCallback(
-    (message: ChatMessage) => {
-      (async () => {
-        try {
-          const ensured = await ensureCurrentSession();
-          if (!ensured) return;
-
-          await createMessage(toChatMessageInsert(conversationId, message));
-        } catch (error) {
-          console.error("Failed to persist assistant message:", error);
-        }
-      })();
-    },
-    [conversationId, ensureCurrentSession]
-  );
-
-  /**
-   * Persist a tool message to DB (fire-and-forget)
-   */
-  const persistToolMessage = useCallback(
-    (message: ChatMessage) => {
-      (async () => {
-        try {
-          const ensured = await ensureCurrentSession();
-          if (!ensured) return;
-
-          await createMessage(toChatMessageInsert(conversationId, message));
-        } catch (error) {
-          console.error("Failed to persist tool message:", error);
+          console.error(`Failed to persist ${role} message:`, error);
         }
       })();
     },
@@ -328,13 +294,22 @@ export function useSessionHistory(): UseSessionHistoryResult {
       refreshSessions();
     }
     // Clear ensured cache on project change
-    sessionEnsuredRef.current.clear();
+    sessionEnsurePromises.current.clear();
   }, [currentProject?.id, refreshSessions]);
 
+  /**
+   * Clear session promises on unmount
+   */
+  useEffect(() => {
+    return () => {
+      sessionEnsurePromises.current.clear();
+    };
+  }, []);
+
   const sessionWriter: SagaSessionWriter = {
-    persistUserMessage,
-    persistAssistantMessage,
-    persistToolMessage,
+    persistUserMessage: (m) => persistMessage(m, "user"),
+    persistAssistantMessage: (m) => persistMessage(m, "assistant"),
+    persistToolMessage: (m) => persistMessage(m, "tool"),
   };
 
   return {
