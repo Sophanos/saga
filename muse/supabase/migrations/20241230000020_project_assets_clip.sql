@@ -58,7 +58,7 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER SET search_path = public
-AS $
+AS $$
 BEGIN
   RETURN QUERY
   SELECT
@@ -78,7 +78,7 @@ BEGIN
   ORDER BY pa.clip_embedding <=> query_embedding
   LIMIT match_count;
 END;
-$;
+$$;
 
 /**
  * Get assets pending CLIP sync (for retry queue).
@@ -93,7 +93,7 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 SECURITY DEFINER SET search_path = public
-AS $
+AS $$
   SELECT id, storage_path, clip_sync_status, created_at
   FROM project_assets
   WHERE clip_sync_status IN ('pending', 'error')
@@ -101,4 +101,4 @@ AS $
     CASE WHEN clip_sync_status = 'pending' THEN 0 ELSE 1 END,
     created_at ASC
   LIMIT batch_size;
-$;
+$$;

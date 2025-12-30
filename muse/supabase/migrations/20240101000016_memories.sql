@@ -125,8 +125,8 @@ BEGIN
   SELECT EXISTS (
     SELECT 1 FROM projects WHERE id = p_project_id AND user_id = v_user_id
     UNION
-    SELECT 1 FROM project_collaborators
-    WHERE project_id = p_project_id AND user_id = v_user_id
+    SELECT 1 FROM project_members
+    WHERE project_id = p_project_id AND user_id = v_user_id AND accepted_at IS NOT NULL
   ) INTO v_has_project_access;
 
   IF NOT v_has_project_access THEN

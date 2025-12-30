@@ -72,8 +72,10 @@ CREATE POLICY "Users can view project assets"
     EXISTS (
       SELECT 1 FROM projects WHERE id = project_id AND user_id = auth.uid()
       UNION
-      SELECT 1 FROM project_collaborators
-      WHERE project_id = project_assets.project_id AND user_id = auth.uid()
+      SELECT 1 FROM project_members
+      WHERE project_id = project_assets.project_id
+        AND user_id = auth.uid()
+        AND accepted_at IS NOT NULL
     )
   );
 
