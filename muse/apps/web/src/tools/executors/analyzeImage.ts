@@ -105,10 +105,15 @@ export const analyzeImageExecutor: ToolDefinition<AnalyzeImageArgs, AnalyzeImage
 
       ctx.onProgress?.({ pct: 20, stage: "Analyzing image with AI..." });
 
-      // Call the edge function
+      // Call the edge function with combined timeout
       const ANALYSIS_TIMEOUT_MS = 60_000; // 60 seconds
       const timeoutController = new AbortController();
       const timeoutId = setTimeout(() => timeoutController.abort(), ANALYSIS_TIMEOUT_MS);
+
+      // Combine user signal with timeout signal
+      const combinedSignal = ctx.signal
+        ? AbortSignal.any([ctx.signal, timeoutController.signal])
+        : timeoutController.signal;
 
       let response: AIImageAnalyzeResponse;
       try {
@@ -117,7 +122,7 @@ export const analyzeImageExecutor: ToolDefinition<AnalyzeImageArgs, AnalyzeImage
           request,
           {
             apiKey: ctx.apiKey,
-            signal: ctx.signal,
+            signal: combinedSignal,
           }
         );
         clearTimeout(timeoutId);

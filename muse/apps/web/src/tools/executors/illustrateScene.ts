@@ -148,6 +148,11 @@ export const illustrateSceneExecutor: ToolDefinition<IllustrateSceneArgs, Illust
       const timeoutController = new AbortController();
       const timeoutId = setTimeout(() => timeoutController.abort(), SCENE_GEN_TIMEOUT_MS);
 
+      // Combine user signal with timeout signal
+      const combinedSignal = ctx.signal
+        ? AbortSignal.any([ctx.signal, timeoutController.signal])
+        : timeoutController.signal;
+
       let response: AIImageSceneResponse;
       try {
         response = await callEdgeFunction<AIImageSceneRequest, AIImageSceneResponse>(
@@ -155,7 +160,7 @@ export const illustrateSceneExecutor: ToolDefinition<IllustrateSceneArgs, Illust
           request,
           {
             apiKey: ctx.apiKey,
-            signal: ctx.signal,
+            signal: combinedSignal,
           }
         );
         clearTimeout(timeoutId);

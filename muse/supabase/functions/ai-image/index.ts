@@ -31,6 +31,7 @@ import {
 } from "../_shared/providers.ts";
 import {
   buildImagePrompt,
+  STYLE_PROMPTS,
 } from "../_shared/tools/generate-image.ts";
 import type { ImageStyle, AspectRatio, AssetType } from "../_shared/tools/types.ts";
 import {
@@ -182,7 +183,7 @@ async function assertProjectAccess(
 
   if (error || !project) {
     const { data: collab, error: collabError } = await supabase
-      .from("project_collaborators")
+      .from("project_members")
       .select("project_id")
       .eq("project_id", projectId)
       .eq("user_id", userId)

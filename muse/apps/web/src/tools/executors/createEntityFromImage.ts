@@ -160,6 +160,11 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
       const timeoutController = new AbortController();
       const timeoutId = setTimeout(() => timeoutController.abort(), ANALYSIS_TIMEOUT_MS);
 
+      // Combine user signal with timeout signal
+      const combinedSignal = ctx.signal
+        ? AbortSignal.any([ctx.signal, timeoutController.signal])
+        : timeoutController.signal;
+
       let analysisResponse: AIImageAnalyzeResponse;
       try {
         analysisResponse = await callEdgeFunction<AIImageAnalyzeRequest, AIImageAnalyzeResponse>(
@@ -167,7 +172,7 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
           analysisRequest,
           {
             apiKey: ctx.apiKey,
-            signal: ctx.signal,
+            signal: combinedSignal,
           }
         );
         clearTimeout(timeoutId);
@@ -215,18 +220,24 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
 
       // Update entity with portrait URL from analysis if available
       if (args.setAsPortrait !== false && analysisResponse.assetId && analysisResponse.imageUrl) {
-        // Update the entity with portrait info
-        const updateResult = await ctx.updateEntity(newEntity.id, {
-          portraitUrl: analysisResponse.imageUrl,
-          portraitAssetId: analysisResponse.assetId,
-        });
-
-        if (updateResult.data) {
-          ctx.addEntity(updateResult.data);
-        } else {
-          // Portrait linking failed but entity was created - log warning
-          console.warn("Failed to link portrait to entity:", updateResult.error);
+        // Validate updateEntity is available before use
+        if (!ctx.updateEntity) {
+          console.warn("Entity update not available - portrait will not be linked");
           ctx.addEntity(newEntity);
+        } else {
+          // Update the entity with portrait info
+          const updateResult = await ctx.updateEntity(newEntity.id, {
+            portraitUrl: analysisResponse.imageUrl,
+            portraitAssetId: analysisResponse.assetId,
+          });
+
+          if (updateResult.data) {
+            ctx.addEntity(updateResult.data);
+          } else {
+            // Portrait linking failed but entity was created - log warning
+            console.warn("Failed to link portrait to entity:", updateResult.error);
+            ctx.addEntity(newEntity);
+          }
         }
       } else {
         ctx.addEntity(newEntity);

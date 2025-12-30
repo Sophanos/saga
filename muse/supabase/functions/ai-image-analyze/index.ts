@@ -145,6 +145,19 @@ function generateStoragePath(projectId: string, entityId: string | undefined, ex
   return `${projectId}/${folder}/${timestamp}-${uuid}.${ext}`;
 }
 
+async function cleanupStorageBlob(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  path: string,
+  logPrefix: string
+): Promise<void> {
+  try {
+    await supabase.storage.from(STORAGE_BUCKET).remove([path]);
+    console.log(`${logPrefix} Cleaned up orphan file: ${path}`);
+  } catch (e) {
+    console.error(`${logPrefix} Failed to cleanup orphan blob: ${path}`, e);
+  }
+}
+
 async function assertProjectAccess(
   supabase: ReturnType<typeof createSupabaseClient>,
   projectId: string,
@@ -163,7 +176,7 @@ async function assertProjectAccess(
 
   if (error || !project) {
     const { data: collab, error: collabError } = await supabase
-      .from("project_collaborators")
+      .from("project_members")
       .select("project_id")
       .eq("project_id", projectId)
       .eq("user_id", userId)
@@ -418,9 +431,10 @@ async function handleAnalyzeImage(
 
     console.log(`${logPrefix} Analysis complete: ${analysisResult.object.suggestedEntityType}`);
 
-    // 6. Store image in Supabase Storage
+    // 6. Store image in Supabase Storage (with cleanup on failure)
     const ext = getExtFromMimeType(mimeType);
     const storagePath = generateStoragePath(req.projectId, req.entityId, ext);
+    let uploadedPath: string | null = null;
 
     const { error: uploadError } = await supabase.storage
       .from(STORAGE_BUCKET)
@@ -434,6 +448,8 @@ async function handleAnalyzeImage(
       throw new Error(`Failed to upload image: ${uploadError.message}`);
     }
 
+    // Track uploaded path for cleanup on subsequent failures
+    uploadedPath = storagePath;
     console.log(`${logPrefix} Uploaded to: ${storagePath}`);
 
     // 7. Create signed URL
@@ -442,6 +458,7 @@ async function handleAnalyzeImage(
       .createSignedUrl(storagePath, SIGNED_URL_EXPIRY_SECONDS);
 
     if (signedUrlError || !signedUrlData?.signedUrl) {
+      await cleanupStorageBlob(supabase, uploadedPath, logPrefix);
       throw new Error("Failed to create signed URL");
     }
 
@@ -472,6 +489,7 @@ async function handleAnalyzeImage(
 
     if (assetError || !assetData) {
       console.error(`${logPrefix} Failed to create asset record:`, assetError);
+      await cleanupStorageBlob(supabase, uploadedPath, logPrefix);
       throw new Error("Failed to save asset record");
     }
 
