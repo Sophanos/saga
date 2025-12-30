@@ -24,6 +24,10 @@ export { clarityCheckTool, clarityCheckParameters, type ClarityCheckArgs } from 
 export { checkLogicTool, checkLogicParameters, type CheckLogicArgs } from "./check-logic.ts";
 export { nameGeneratorTool, nameGeneratorParameters, type NameGeneratorArgs } from "./name-generator.ts";
 
+// Export image search tools
+export { searchImagesTool, searchImagesParameters, type SearchImagesArgs } from "./search-images.ts";
+export { findSimilarImagesTool, findSimilarImagesParameters, type FindSimilarImagesArgs } from "./find-similar-images.ts";
+
 // Export types
 export * from "./types.ts";
 
@@ -45,6 +49,10 @@ import { generateTemplateTool } from "./generate-template.ts";
 import { clarityCheckTool } from "./clarity-check.ts";
 import { checkLogicTool } from "./check-logic.ts";
 import { nameGeneratorTool } from "./name-generator.ts";
+
+// Import image search tools for registry
+import { searchImagesTool } from "./search-images.ts";
+import { findSimilarImagesTool } from "./find-similar-images.ts";
 
 /**
  * All agent tools bundled for streamText() usage.
@@ -85,6 +93,9 @@ export const sagaTools = {
   clarity_check: clarityCheckTool,
   check_logic: checkLogicTool,
   name_generator: nameGeneratorTool,
+  // Image search tools
+  search_images: searchImagesTool,
+  find_similar_images: findSimilarImagesTool,
 } as const;
 
 /**

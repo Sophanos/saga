@@ -33,6 +33,15 @@ import {
   buildImagePrompt,
 } from "../_shared/tools/generate-image.ts";
 import type { ImageStyle, AspectRatio, AssetType } from "../_shared/tools/types.ts";
+import {
+  generateClipImageEmbedding,
+  toPgVector,
+  isClipConfigured,
+} from "../_shared/clip.ts";
+import {
+  upsertPoints,
+  isQdrantConfigured,
+} from "../_shared/qdrant.ts";
 
 // =============================================================================
 // Types
@@ -138,10 +147,10 @@ async function assertEntityInProject(
   supabase: ReturnType<typeof createSupabaseClient>,
   entityId: string,
   projectId: string
-): Promise<void> {
+): Promise<{ id: string; type: string | null }> {
   const { data, error } = await supabase
     .from("entities")
-    .select("id")
+    .select("id, type")
     .eq("id", entityId)
     .eq("project_id", projectId)
     .single();
@@ -149,6 +158,8 @@ async function assertEntityInProject(
   if (error || !data) {
     throw new Error("Entity not found in project");
   }
+
+  return { id: data.id, type: data.type ?? null };
 }
 
 function getExtFromMimeType(mimeType: string): string {
@@ -156,6 +167,17 @@ function getExtFromMimeType(mimeType: string): string {
   if (mimeType.includes("jpeg") || mimeType.includes("jpg")) return "jpg";
   if (mimeType.includes("webp")) return "webp";
   return "png";
+}
+
+/**
+ * Convert Uint8Array to base64 string
+ */
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }
 
 // =============================================================================
@@ -254,9 +276,11 @@ async function handleGenerateImage(
     // 1. Verify project access
     await assertProjectAccess(supabase, req.projectId, billing.userId);
 
-    // 2. Verify entity if provided
+    // 2. Verify entity if provided and get entity type
+    let entityType: string | null = null;
     if (req.entityId) {
-      await assertEntityInProject(supabase, req.entityId, req.projectId);
+      const entity = await assertEntityInProject(supabase, req.entityId, req.projectId);
+      entityType = entity.type;
     }
 
     // 3. Build the generation prompt
@@ -375,7 +399,82 @@ async function handleGenerateImage(
         }
       }
 
-      // 11. Record AI request
+      // 11. Generate CLIP embedding and sync to Qdrant (non-blocking failure)
+      try {
+        if (isClipConfigured() && isQdrantConfigured()) {
+          console.log(`${logPrefix} Generating CLIP embedding...`);
+
+          // Convert image bytes to base64
+          const imageBase64 = uint8ArrayToBase64(generated.uint8Array);
+
+          // Generate CLIP embedding
+          const clipResult = await generateClipImageEmbedding(imageBase64, {
+            mimeType: generated.mimeType,
+          });
+
+          console.log(`${logPrefix} CLIP embedding generated (${clipResult.embedding.length} dims)`);
+
+          // Prepare Qdrant payload (snake_case keys)
+          const qdrantPayload = {
+            project_id: req.projectId,
+            asset_id: assetId,
+            entity_id: req.entityId ?? null,
+            entity_type: entityType,
+            asset_type: assetType,
+            style: req.style ?? null,
+            storage_path: storagePath,
+            public_url: signedUrl,
+            created_at: new Date().toISOString(),
+          };
+
+          // Upsert to Qdrant saga_images collection
+          await upsertPoints(
+            [
+              {
+                id: assetId,
+                vector: clipResult.embedding,
+                payload: qdrantPayload,
+              },
+            ],
+            { collection: "saga_images" }
+          );
+
+          console.log(`${logPrefix} Synced to Qdrant saga_images collection`);
+
+          // Update project_assets with CLIP embedding and sync status
+          const { error: clipUpdateError } = await supabase
+            .from("project_assets")
+            .update({
+              clip_embedding: toPgVector(clipResult.embedding),
+              clip_sync_status: "synced",
+              clip_synced_at: new Date().toISOString(),
+              clip_last_error: null,
+            })
+            .eq("id", assetId);
+
+          if (clipUpdateError) {
+            console.warn(`${logPrefix} Failed to update CLIP columns:`, clipUpdateError);
+          }
+        } else {
+          console.log(`${logPrefix} CLIP/Qdrant not configured, skipping embedding sync`);
+        }
+      } catch (clipError) {
+        // CLIP failure is non-fatal - log and update status
+        console.error(`${logPrefix} CLIP sync failed:`, clipError);
+        try {
+          await supabase
+            .from("project_assets")
+            .update({
+              clip_sync_status: "error",
+              clip_last_error: clipError instanceof Error ? clipError.message : String(clipError),
+            })
+            .eq("id", assetId);
+        } catch (updateErr) {
+          console.error(`${logPrefix} Failed to update CLIP error status:`, updateErr);
+        }
+      }
+
+      // 12. Record AI request
       try {
         await recordAIRequest(supabase, billing, {
           endpoint: "image",
@@ -393,7 +492,7 @@ async function handleGenerateImage(
         console.warn(`${logPrefix} Failed to record AI request:`, e);
       }
 
-      // 12. Return success response
+      // 13. Return success response
       const response: AIImageResponse = {
         assetId,
         storagePath,

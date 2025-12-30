@@ -42,7 +42,10 @@ export type ToolName =
   | "generate_template"
   | "clarity_check"
   | "check_logic"
-  | "name_generator";
+  | "name_generator"
+  // Image search tools
+  | "search_images"
+  | "find_similar_images";
 
 // =============================================================================
 // Tool Invocation Lifecycle
@@ -389,6 +392,61 @@ export interface NameGeneratorArgs {
   style?: NameStyle;
 }
 
+// =============================================================================
+// Image Search Tool Arguments
+// =============================================================================
+
+/**
+ * A single image search result hit.
+ */
+export interface ImageSearchHit {
+  assetId: string;
+  imageUrl: string;
+  score: number;
+  storagePath?: string;
+  entityId?: string;
+  entityType?: EntityType;
+  assetType?: AssetType;
+  style?: ImageStyle;
+  createdAt?: string;
+}
+
+/**
+ * Arguments for search_images tool.
+ * Text→image search using CLIP embeddings.
+ */
+export interface SearchImagesArgs {
+  /** Text query describing the visual content to find */
+  query: string;
+  /** Maximum number of results (1-20) */
+  limit?: number;
+  /** Filter by asset type */
+  assetType?: AssetType;
+  /** Filter by entity name */
+  entityName?: string;
+  /** Filter by entity type */
+  entityType?: EntityType;
+  /** Filter by art style */
+  style?: ImageStyle;
+}
+
+/**
+ * Arguments for find_similar_images tool.
+ * Image→image similarity search using CLIP embeddings.
+ */
+export interface FindSimilarImagesArgs {
+  /** UUID of the reference image */
+  assetId?: string;
+  /** Entity name to use their portrait as reference */
+  entityName?: string;
+  /** Entity type for disambiguation */
+  entityType?: EntityType;
+  /** Maximum number of results (1-20) */
+  limit?: number;
+  /** Filter by asset type */
+  assetType?: AssetType;
+}
+
 /**
  * Map of tool names to their argument types.
  */
@@ -409,6 +467,9 @@ export interface ToolArgsMap {
   clarity_check: ClarityCheckArgs;
   check_logic: CheckLogicArgs;
   name_generator: NameGeneratorArgs;
+  // Image search tools
+  search_images: SearchImagesArgs;
+  find_similar_images: FindSimilarImagesArgs;
 }
 
 // =============================================================================
@@ -806,6 +867,30 @@ export interface NameGeneratorResult {
   culture?: NameCulture;
 }
 
+// =============================================================================
+// Image Search Tool Results
+// =============================================================================
+
+/**
+ * Result of search_images tool.
+ */
+export interface SearchImagesResult {
+  /** The original query */
+  query: string;
+  /** Matching images */
+  results: ImageSearchHit[];
+}
+
+/**
+ * Result of find_similar_images tool.
+ */
+export interface FindSimilarImagesResult {
+  /** ID of the reference image used */
+  referenceAssetId: string;
+  /** Similar images found */
+  results: ImageSearchHit[];
+}
+
 /**
  * Map of tool names to their result types.
  */
@@ -826,6 +911,9 @@ export interface ToolResultsMap {
   clarity_check: ClarityCheckResult;
   check_logic: CheckLogicResult;
   name_generator: NameGeneratorResult;
+  // Image search tools
+  search_images: SearchImagesResult;
+  find_similar_images: FindSimilarImagesResult;
 }
 
 // =============================================================================

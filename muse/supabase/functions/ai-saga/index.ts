@@ -52,6 +52,11 @@ import {
   executeNameGenerator,
 } from "../_shared/saga/executors.ts";
 import {
+  executeSearchImages,
+  executeFindSimilarImages,
+  resolveEntityPortraitAssetId,
+} from "../_shared/images/executors.ts";
+import {
   checkBillingAndGetKey,
   createSupabaseClient,
   type BillingCheck,
@@ -298,7 +303,9 @@ async function handleChat(
 async function handleExecuteTool(
   req: SagaExecuteToolRequest,
   apiKey: string,
-  origin: string | null
+  origin: string | null,
+  billing: BillingCheck,
+  supabase: ReturnType<typeof createSupabaseClient>
 ): Promise<Response> {
   const { toolName, input } = req;
 
@@ -448,10 +455,124 @@ async function handleExecuteTool(
         break;
       }
 
+      case "search_images": {
+        const typedInput = input as {
+          projectId?: string;
+          query: string;
+          limit?: number;
+          assetType?: string;
+          entityName?: string;
+          entityType?: string;
+          style?: string;
+        };
+        const projectId = typedInput.projectId ?? req.projectId;
+        if (!projectId) {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            "projectId is required for image search",
+            origin
+          );
+        }
+        if (!typedInput.query) {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            "query is required for image search",
+            origin
+          );
+        }
+        // Resolve entityName to entityId if provided
+        let entityId: string | undefined;
+        if (typedInput.entityName) {
+          const resolved = await resolveEntityPortraitAssetId(
+            supabase,
+            projectId,
+            typedInput.entityName,
+            typedInput.entityType as EntityType | undefined
+          );
+          // For search, we use the entity filter, not asset ID
+          // So we need a different resolution - just get entity ID
+          const { data: entity } = await supabase
+            .from("entities")
+            .select("id")
+            .eq("project_id", projectId)
+            .ilike("name", typedInput.entityName)
+            .limit(1)
+            .single();
+          entityId = entity?.id;
+        }
+        result = await executeSearchImages(
+          {
+            projectId,
+            query: typedInput.query,
+            limit: typedInput.limit,
+            assetType: typedInput.assetType as import("../_shared/tools/types.ts").AssetType | undefined,
+            entityId,
+            entityType: typedInput.entityType as EntityType | undefined,
+            style: typedInput.style as import("../_shared/tools/types.ts").ImageStyle | undefined,
+          },
+          { supabase, billing }
+        );
+        break;
+      }
+
+      case "find_similar_images": {
+        const typedInput = input as {
+          projectId?: string;
+          assetId?: string;
+          entityName?: string;
+          entityType?: string;
+          limit?: number;
+          assetType?: string;
+        };
+        const projectId = typedInput.projectId ?? req.projectId;
+        if (!projectId) {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            "projectId is required for similar image search",
+            origin
+          );
+        }
+        // Resolve assetId from entityName if not provided directly
+        let assetId = typedInput.assetId;
+        if (!assetId && typedInput.entityName) {
+          const resolved = await resolveEntityPortraitAssetId(
+            supabase,
+            projectId,
+            typedInput.entityName,
+            typedInput.entityType as EntityType | undefined
+          );
+          if (!resolved) {
+            return createErrorResponse(
+              ErrorCode.NOT_FOUND,
+              `Entity "${typedInput.entityName}" not found or has no portrait`,
+              origin
+            );
+          }
+          assetId = resolved;
+        }
+        if (!assetId) {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            "Either assetId or entityName is required for similar image search",
+            origin
+          );
+        }
+        result = await executeFindSimilarImages(
+          {
+            projectId,
+            assetId,
+            limit: typedInput.limit,
+            assetType: typedInput.assetType as import("../_shared/tools/types.ts").AssetType | undefined,
+          },
+          { supabase, billing }
+        );
+        break;
+      }
+
       default:
         return createErrorResponse(
           ErrorCode.VALIDATION_ERROR,
-          `Unknown tool: ${toolName}. Supported tools: genesis_world, detect_entities, check_consistency, generate_template, clarity_check, check_logic, name_generator`,
+          `Unknown tool: ${toolName}. Supported tools: genesis_world, detect_entities, check_consistency, generate_template, clarity_check, check_logic, name_generator, search_images, find_similar_images`,
           origin
         );
     }
@@ -581,7 +702,7 @@ serve(async (req: Request): Promise<Response> => {
           origin
         );
       }
-      return handleExecuteTool(body, billing.apiKey, origin);
+      return handleExecuteTool(body, billing.apiKey, origin, billing, supabase);
     } else if (body.kind === "tool-approval") {
       // AI SDK 6: Handle tool approval response
       if (!body.projectId || !body.toolCallId || body.approved === undefined) {

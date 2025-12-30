@@ -24,6 +24,9 @@ import { generateTemplateExecutor } from "./executors/generateTemplate";
 import { clarityCheckExecutor } from "./executors/clarityCheck";
 import { checkLogicExecutor } from "./executors/checkLogic";
 import { nameGeneratorExecutor } from "./executors/nameGenerator";
+// Image search tools
+import { searchImagesExecutor } from "./executors/searchImages";
+import { findSimilarImagesExecutor } from "./executors/findSimilarImages";
 
 // =============================================================================
 // Tool Registry
@@ -50,6 +53,9 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   clarity_check: clarityCheckExecutor as ToolDefinition<unknown, unknown>,
   check_logic: checkLogicExecutor as ToolDefinition<unknown, unknown>,
   name_generator: nameGeneratorExecutor as ToolDefinition<unknown, unknown>,
+  // Image search tools
+  search_images: searchImagesExecutor as ToolDefinition<unknown, unknown>,
+  find_similar_images: findSimilarImagesExecutor as ToolDefinition<unknown, unknown>,
 };
 
 /**
