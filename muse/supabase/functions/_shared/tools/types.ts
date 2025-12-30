@@ -162,6 +162,69 @@ export const nameStyleSchema = z.enum(["short", "standard", "long"]);
 export type NameStyle = z.infer<typeof nameStyleSchema>;
 
 // =============================================================================
+// Image Generation Schemas
+// =============================================================================
+
+/**
+ * ImageStyle - Style presets for AI image generation.
+ * Covers a wide range of artistic styles for different creative genres.
+ */
+export const imageStyleSchema = z.enum([
+  // Fantasy
+  "fantasy_art",        // Epic fantasy book cover style
+  "dark_fantasy",       // Grimdark, gothic
+  "high_fantasy",       // Bright, magical, Tolkien-esque
+  // Manga/Anime
+  "manga",              // B&W manga panel style
+  "anime",              // Color anime style
+  "light_novel",        // Light novel illustration
+  "visual_novel",       // VN character sprite style
+  // Realistic/Artistic
+  "realistic",          // Photorealistic
+  "oil_painting",       // Classical oil painting
+  "watercolor",         // Soft watercolor
+  "concept_art",        // Game/film concept art
+  "portrait_photo",     // Studio portrait style
+  // Genre-specific
+  "sci_fi",             // Science fiction
+  "horror",             // Dark, unsettling
+  "romance",            // Soft, romantic lighting
+  "noir",               // High contrast, moody
+  // Stylized
+  "comic_book",         // Western comic style
+  "pixel_art",          // Retro pixel art
+  "chibi",              // Cute chibi style
+]);
+export type ImageStyle = z.infer<typeof imageStyleSchema>;
+
+/**
+ * AspectRatio - Standard aspect ratios for AI image generation.
+ */
+export const aspectRatioSchema = z.enum([
+  "1:1",      // Square - avatars, icons
+  "3:4",      // Portrait - character cards
+  "4:3",      // Landscape - scenes
+  "9:16",     // Tall portrait - full body, mobile
+  "16:9",     // Wide landscape - panoramas, banners
+  "2:3",      // Book cover ratio
+  "3:2",      // Photo ratio
+]);
+export type AspectRatio = z.infer<typeof aspectRatioSchema>;
+
+/**
+ * AssetType - Classification for generated or uploaded assets.
+ */
+export const assetTypeSchema = z.enum([
+  "portrait",     // Face/bust character portraits
+  "scene",        // Narrative scene illustrations
+  "location",     // Location/environment art
+  "item",         // Item icons and detail views
+  "reference",    // Uploaded reference images
+  "other",        // Miscellaneous assets
+]);
+export type AssetType = z.infer<typeof assetTypeSchema>;
+
+// =============================================================================
 // Saga Mode and Editor Context
 // (Aligned with @mythos/agent-protocol)
 // =============================================================================

@@ -118,6 +118,9 @@ export interface Entity {
   createdAt: Date;
   updatedAt: Date;
   notes?: string;
+  // Portrait support (Migration 019)
+  portraitUrl?: string;
+  portraitAssetId?: string;
 }
 
 // Character Entity

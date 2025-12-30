@@ -105,6 +105,9 @@ export interface Database {
           visible_in: string | null;
           icon: string | null;
           color: string | null;
+          // Migration 019: Portrait support
+          portrait_url: string | null;
+          portrait_asset_id: string | null;
         };
         Insert: {
           id?: string;
@@ -123,6 +126,9 @@ export interface Database {
           visible_in?: string | null;
           icon?: string | null;
           color?: string | null;
+          // Migration 019: Portrait support
+          portrait_url?: string | null;
+          portrait_asset_id?: string | null;
         };
         Update: {
           id?: string;
@@ -141,6 +147,9 @@ export interface Database {
           visible_in?: string | null;
           icon?: string | null;
           color?: string | null;
+          // Migration 019: Portrait support
+          portrait_url?: string | null;
+          portrait_asset_id?: string | null;
         };
       };
       relationships: {
@@ -573,6 +582,54 @@ export interface Database {
           content?: string;
           mentions?: Record<string, unknown>[] | null;
           tool?: Record<string, unknown> | null;
+          created_at?: string;
+        };
+      };
+      // Migration 019: Project Assets
+      project_assets: {
+        Row: {
+          id: string;
+          project_id: string;
+          entity_id: string | null;
+          asset_type: string;
+          storage_path: string;
+          public_url: string | null;
+          generation_prompt: string | null;
+          generation_model: string | null;
+          generation_params: Record<string, unknown>;
+          mime_type: string | null;
+          width: number | null;
+          height: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          entity_id?: string | null;
+          asset_type: string;
+          storage_path: string;
+          public_url?: string | null;
+          generation_prompt?: string | null;
+          generation_model?: string | null;
+          generation_params?: Record<string, unknown>;
+          mime_type?: string | null;
+          width?: number | null;
+          height?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          entity_id?: string | null;
+          asset_type?: string;
+          storage_path?: string;
+          public_url?: string | null;
+          generation_prompt?: string | null;
+          generation_model?: string | null;
+          generation_params?: Record<string, unknown>;
+          mime_type?: string | null;
+          width?: number | null;
+          height?: number | null;
           created_at?: string;
         };
       };

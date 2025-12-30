@@ -227,13 +227,49 @@ export interface GenerateContentArgs {
 }
 
 /**
- * Arguments for generate_image tool (future).
+ * Image style presets for AI generation.
+ */
+export type ImageStyle =
+  | "fantasy_art" | "dark_fantasy" | "high_fantasy"
+  | "manga" | "anime" | "light_novel" | "visual_novel"
+  | "realistic" | "oil_painting" | "watercolor" | "concept_art" | "portrait_photo"
+  | "sci_fi" | "horror" | "romance" | "noir"
+  | "comic_book" | "pixel_art" | "chibi";
+
+/**
+ * Aspect ratios for image generation.
+ */
+export type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9" | "2:3" | "3:2";
+
+/**
+ * Asset type classification.
+ */
+export type AssetType = "portrait" | "scene" | "location" | "item" | "reference" | "other";
+
+/**
+ * Arguments for generate_image tool.
  */
 export interface GenerateImageArgs {
+  /** Main subject description */
   subject: string;
-  style?: string;
-  aspectRatio?: "square" | "portrait" | "landscape";
-  entityId?: string; // Link result to an entity
+  /** Entity name for linking the result */
+  entityName?: string;
+  /** Entity type for context */
+  entityType?: EntityType;
+  /** Entity ID if known (for direct linking) */
+  entityId?: string;
+  /** Visual description from entity data */
+  visualDescription?: string;
+  /** Art style preset */
+  style?: ImageStyle;
+  /** Image aspect ratio */
+  aspectRatio?: AspectRatio;
+  /** Asset type classification */
+  assetType?: AssetType;
+  /** Whether to set as entity portrait */
+  setAsPortrait?: boolean;
+  /** Negative prompt - what to avoid */
+  negativePrompt?: string;
 }
 
 // =============================================================================

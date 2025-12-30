@@ -15,6 +15,7 @@ import { createRelationshipExecutor } from "./executors/createRelationship";
 import { updateRelationshipExecutor } from "./executors/updateRelationship";
 import { deleteRelationshipExecutor } from "./executors/deleteRelationship";
 import { generateContentExecutor } from "./executors/generateContent";
+import { generateImageExecutor } from "./executors/generateImage";
 // Saga tools
 import { genesisWorldExecutor } from "./executors/genesisWorld";
 import { detectEntitiesExecutor } from "./executors/detectEntities";
@@ -40,6 +41,7 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   update_relationship: updateRelationshipExecutor as ToolDefinition<unknown, unknown>,
   delete_relationship: deleteRelationshipExecutor as ToolDefinition<unknown, unknown>,
   generate_content: generateContentExecutor as ToolDefinition<unknown, unknown>,
+  generate_image: generateImageExecutor as ToolDefinition<unknown, unknown>,
   // Saga unified agent tools
   genesis_world: genesisWorldExecutor as ToolDefinition<unknown, unknown>,
   detect_entities: detectEntitiesExecutor as ToolDefinition<unknown, unknown>,

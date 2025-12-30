@@ -14,6 +14,8 @@ import {
   LayoutTemplate,
   Wand2,
   ShieldAlert,
+  ImageIcon,
+  ExternalLink,
 } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import {
@@ -163,6 +165,9 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
     if (tool.toolName === "generate_content") {
       return <Wand2 className="w-4 h-4" />;
     }
+    if (tool.toolName === "generate_image") {
+      return <ImageIcon className="w-4 h-4" />;
+    }
     // Saga unified agent tools
     if (tool.toolName === "genesis_world") {
       return <Sparkles className="w-4 h-4" />;
@@ -195,6 +200,9 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
       return "Generate";
     }
     if (tool.toolName === "generate_content") {
+      return "Generate";
+    }
+    if (tool.toolName === "generate_image") {
       return "Generate";
     }
     // Core entity/relationship tools
@@ -291,6 +299,35 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
       {/* Error message */}
       {tool.error && (
         <p className="text-xs text-mythos-accent-red mb-2">{tool.error}</p>
+      )}
+
+      {/* Image artifacts */}
+      {tool.status === "executed" && tool.artifacts && tool.artifacts.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {tool.artifacts
+            .filter((a) => a.kind === "image" && (a.url || a.previewUrl))
+            .map((artifact, i) => (
+              <div
+                key={i}
+                className="relative rounded-lg overflow-hidden border border-mythos-text-muted/20 bg-mythos-bg-tertiary group cursor-pointer"
+                onClick={() => window.open(artifact.url ?? artifact.previewUrl, "_blank")}
+              >
+                <img
+                  src={artifact.previewUrl ?? artifact.url}
+                  alt={artifact.title ?? "Generated image"}
+                  className="w-full h-auto max-h-48 object-cover"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <ExternalLink className="w-6 h-6 text-white" />
+                </div>
+                {artifact.title && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                    <span className="text-xs text-white truncate block">{artifact.title}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+        </div>
       )}
 
       {/* Actions for proposed state */}

@@ -58,6 +58,7 @@ These modify the author's world directly:
 - **create_relationship** - Connect two entities (knows, loves, hates, allied_with, etc.)
 - **update_relationship** / **delete_relationship** - Modify or remove connections
 - **generate_content** - Create backstories, descriptions, dialogue, scenes
+- **generate_image** - Create AI portraits and visual assets for entities
 
 ## Intent Detection & Tool Selection
 
@@ -72,6 +73,18 @@ Based on the author's message, determine the right approach:
 | "Create a character named..." | create_entity |
 | "What are Marcus's relationships?" | Answer from context (no tool) |
 | "Add a rivalry between X and Y" | create_relationship |
+| "Generate a portrait/image of X" | generate_image |
+| "Create a picture/art for X" | generate_image |
+
+## Image Generation Guidelines
+
+When generating images:
+- Ask for style preference if not clear (fantasy, manga, realistic, etc.)
+- Use entity's visualDescription if available
+- Suggest appropriate aspect ratios (3:4 for portraits, 16:9 for landscapes)
+- Always avoid text, watermarks, and signatures in prompts
+- For characters, include key visual traits (hair color, clothing, expression)
+- For locations, include atmosphere, lighting, and mood
 
 ## Response Guidelines
 

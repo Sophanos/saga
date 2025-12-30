@@ -13,6 +13,7 @@ export { createRelationshipTool, createRelationshipParameters, type CreateRelati
 export { updateRelationshipTool, updateRelationshipParameters, type UpdateRelationshipArgs } from "./update-relationship.ts";
 export { deleteRelationshipTool, deleteRelationshipParameters, type DeleteRelationshipArgs } from "./delete-relationship.ts";
 export { generateContentTool, generateContentParameters, type GenerateContentArgs } from "./generate-content.ts";
+export { generateImageTool, generateImageParameters, buildImagePrompt, STYLE_PROMPTS, type GenerateImageArgs } from "./generate-image.ts";
 
 // Export individual tools - Saga unified agent
 export { genesisWorldTool, genesisWorldParameters, type GenesisWorldArgs } from "./genesis-world.ts";
@@ -34,6 +35,7 @@ import { createRelationshipTool } from "./create-relationship.ts";
 import { updateRelationshipTool } from "./update-relationship.ts";
 import { deleteRelationshipTool } from "./delete-relationship.ts";
 import { generateContentTool } from "./generate-content.ts";
+import { generateImageTool } from "./generate-image.ts";
 
 // Import Saga tools for registry
 import { genesisWorldTool } from "./genesis-world.ts";
@@ -69,6 +71,7 @@ export const coreTools = {
   update_relationship: updateRelationshipTool,
   delete_relationship: deleteRelationshipTool,
   generate_content: generateContentTool,
+  generate_image: generateImageTool,
 } as const;
 
 /**
