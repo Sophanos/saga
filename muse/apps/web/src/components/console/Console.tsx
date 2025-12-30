@@ -56,7 +56,14 @@ function findTextPosition(content: string, targetText: string, lineHint?: number
   return globalIndex !== -1 ? globalIndex : 0;
 }
 
-export function Console() {
+interface ConsoleProps {
+  /** Anonymous trial mode */
+  isAnonymous?: boolean;
+  /** Callback for signup (anonymous mode) */
+  onSignUp?: () => void;
+}
+
+export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
   const activeTab = useMythosStore((state) => state.ui.activeTab);
   const setActiveTab = useMythosStore((state) => state.setActiveTab);
   const issueCounts = useLinterIssueCounts();
@@ -279,7 +286,9 @@ export function Console() {
         ) : (
           <ChatPanel
             mode="docked"
+            variant={isAnonymous ? "trial" : "full"}
             onHide={() => setActiveTab("search")}
+            onSignUp={onSignUp}
           />
         )
       ) : activeTab === "search" ? (

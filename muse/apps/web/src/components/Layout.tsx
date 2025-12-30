@@ -88,7 +88,7 @@ export function Layout({ isAnonymous = false, onSignUp }: LayoutProps) {
               maxSize={40}
               className="bg-mythos-bg-secondary"
             >
-              <Console />
+              <Console isAnonymous={isAnonymous} onSignUp={onSignUp} />
             </Panel>
           </>
         )}
@@ -120,8 +120,8 @@ export function Layout({ isAnonymous = false, onSignUp }: LayoutProps) {
         }}
       />
 
-      {/* Floating Chat - always show in anonymous mode, otherwise only in floating mode */}
-      {(isAnonymous || chatMode === "floating") && (
+      {/* Floating Chat - show when chatMode is "floating" for all users */}
+      {chatMode === "floating" && (
         <ChatPanel
           mode="floating"
           variant={isAnonymous ? "trial" : "full"}

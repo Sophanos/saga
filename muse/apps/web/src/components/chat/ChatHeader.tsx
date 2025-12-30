@@ -230,20 +230,18 @@ export function ChatHeader({
           </button>
         )}
 
-        {/* Mode Toggle */}
-        {!isTrial && (
-          <button
-            onClick={handleModeToggle}
-            className="p-1.5 rounded-md hover:bg-[rgba(255,255,255,0.06)] transition-colors"
-            title={mode === "docked" ? "Pop out to floating" : "Dock to sidebar"}
-          >
-            {mode === "docked" ? (
-              <ExternalLink className="w-4 h-4" />
-            ) : (
-              <PanelRightClose className="w-4 h-4" style={{ color: text.secondary }} />
-            )}
-          </button>
-        )}
+        {/* Mode Toggle - available for all users */}
+        <button
+          onClick={handleModeToggle}
+          className="p-1.5 rounded-md hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+          title={mode === "docked" ? "Pop out to floating" : "Dock to sidebar"}
+        >
+          {mode === "docked" ? (
+            <ExternalLink className="w-4 h-4" />
+          ) : (
+            <PanelRightClose className="w-4 h-4" style={{ color: text.secondary }} />
+          )}
+        </button>
 
         {/* Hide/Minimize */}
         <button
