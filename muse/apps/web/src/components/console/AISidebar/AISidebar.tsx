@@ -12,6 +12,7 @@ import {
   type ChatMention,
 } from "../../../stores";
 import { useSagaAgent } from "../../../hooks/useSagaAgent";
+import { useSessionHistory } from "../../../hooks/useSessionHistory";
 import { useEditorSelection } from "../../../hooks/useEditorSelection";
 import { useApiKey } from "../../../hooks/useApiKey";
 import { ContextBar } from "./ContextBar";
@@ -19,6 +20,7 @@ import { QuickActions } from "./QuickActions";
 import { ChatMessages } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 import { SessionIndicator } from "./SessionIndicator";
+import { SessionList } from "./SessionList";
 import type { Editor } from "@mythos/editor";
 import type { Capability, CapabilityContext } from "@mythos/capabilities";
 import {
@@ -42,9 +44,21 @@ export function AISidebar({ className }: AISidebarProps) {
   const conversationId = useConversationId();
   const conversationName = useConversationName();
   const isNewConversation = useIsNewConversation();
-  const setConversationName = useMythosStore((s) => s.setConversationName);
 
-  const { sendMessage, stopStreaming, clearChat, newConversation } = useSagaAgent({ mode: "editing" });
+  // Session history hook
+  const {
+    sessions,
+    sessionsLoading,
+    openSession,
+    removeSession,
+    renameActiveSession,
+    sessionWriter,
+  } = useSessionHistory();
+
+  const { sendMessage, stopStreaming, clearChat, newConversation } = useSagaAgent({
+    mode: "editing",
+    sessionWriter,
+  });
 
   // Get current document and editor for context
   const currentDocument = useMythosStore((s) => s.document.currentDocument);
@@ -115,7 +129,7 @@ export function AISidebar({ className }: AISidebarProps) {
           conversationId={conversationId}
           conversationName={conversationName}
           isNewConversation={isNewConversation}
-          onRename={setConversationName}
+          onRename={renameActiveSession}
           className="min-w-0 flex-1"
         />
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -151,6 +165,15 @@ export function AISidebar({ className }: AISidebarProps) {
           )}
         </div>
       </div>
+
+      {/* Session history */}
+      <SessionList
+        sessions={sessions}
+        activeSessionId={conversationId}
+        loading={sessionsLoading}
+        onSelect={openSession}
+        onDelete={removeSession}
+      />
 
       {/* Context bar - shows current doc/selection */}
       <ContextBar

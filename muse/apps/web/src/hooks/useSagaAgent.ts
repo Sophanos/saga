@@ -37,6 +37,7 @@ import {
 import { useEditorChatContext } from "./useEditorChatContext";
 import { useApiKey } from "./useApiKey";
 import type { ToolName } from "@mythos/agent-protocol";
+import type { SagaSessionWriter } from "./useSessionHistory";
 
 /**
  * Options for the useSagaAgent hook
@@ -46,6 +47,8 @@ export interface UseSagaAgentOptions {
   enabled?: boolean;
   /** Current saga mode for context-aware prompts */
   mode?: SagaMode;
+  /** Optional session writer for DB persistence */
+  sessionWriter?: SagaSessionWriter;
 }
 
 /**
@@ -93,7 +96,7 @@ const getErrorMessage = createGetErrorMessage({
  * - Tool proposal lifecycle integration
  */
 export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult {
-  const { enabled = true, mode: initialMode = "editing" } = options ?? {};
+  const { enabled = true, mode: initialMode = "editing", sessionWriter } = options ?? {};
 
   // Store state and actions
   const currentProject = useMythosStore((s) => s.project.currentProject);
@@ -176,6 +179,9 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
       // Add user message to store
       addChatMessage(userMessage);
 
+      // Persist user message to DB (fire-and-forget)
+      sessionWriter?.persistUserMessage?.(userMessage);
+
       // Create placeholder for assistant response
       const assistantMessageId = generateMessageId();
       const assistantMessage: ChatMessage = {
@@ -239,6 +245,8 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
               },
             };
             addChatMessage(toolMessage);
+            // Persist tool message to DB (fire-and-forget)
+            sessionWriter?.persistToolMessage?.(toolMessage);
           },
           onToolApprovalRequest: (request: ToolApprovalRequest) => {
             // AI SDK 6: Tool needs user approval before execution
@@ -260,6 +268,8 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
               },
             };
             addChatMessage(toolMessage);
+            // Persist tool message to DB (fire-and-forget)
+            sessionWriter?.persistToolMessage?.(toolMessage);
           },
           onProgress: (toolCallId: string, progress) => {
             // Update tool progress for long-running operations
@@ -268,6 +278,12 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
           onDone: () => {
             updateChatMessage(assistantMessageId, { isStreaming: false });
             setChatStreaming(false);
+            // Persist final assistant message to DB (fire-and-forget)
+            const currentMsgs = useMythosStore.getState().chat.messages;
+            const finalMessage = currentMsgs.find(m => m.id === assistantMessageId);
+            if (finalMessage && finalMessage.content) {
+              sessionWriter?.persistAssistantMessage?.(finalMessage);
+            }
           },
           onError: (err: Error) => {
             const message = getErrorMessage(err);
@@ -316,6 +332,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
       setChatContext,
       updateToolInvocation,
       buildEditorContext,
+      sessionWriter,
     ]
   );
 

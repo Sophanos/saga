@@ -514,6 +514,68 @@ export interface Database {
           created_at?: string;
         };
       };
+      // Migration 019: Chat sessions
+      chat_sessions: {
+        Row: {
+          id: string;
+          project_id: string;
+          user_id: string;
+          name: string | null;
+          created_at: string;
+          updated_at: string;
+          last_message_at: string | null;
+          message_count: number;
+        };
+        Insert: {
+          id: string;
+          project_id: string;
+          user_id?: string;
+          name?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          last_message_at?: string | null;
+          message_count?: number;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          user_id?: string;
+          name?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          last_message_at?: string | null;
+          message_count?: number;
+        };
+      };
+      chat_messages: {
+        Row: {
+          id: string;
+          session_id: string;
+          role: string;
+          content: string;
+          mentions: Record<string, unknown>[] | null;
+          tool: Record<string, unknown> | null;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          session_id: string;
+          role: string;
+          content: string;
+          mentions?: Record<string, unknown>[] | null;
+          tool?: Record<string, unknown> | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          role?: string;
+          content?: string;
+          mentions?: Record<string, unknown>[] | null;
+          tool?: Record<string, unknown> | null;
+          created_at?: string;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: {

@@ -10,7 +10,7 @@ interface SessionIndicatorProps {
   /** Whether this is a new conversation */
   isNewConversation: boolean;
   /** Callback when user renames the conversation */
-  onRename: (name: string | null) => void;
+  onRename: (name: string | null) => void | Promise<void>;
   className?: string;
 }
 

@@ -21,3 +21,6 @@ export * from "./captures";
 
 // Progressive state persistence
 export * from "./progressive";
+
+// Chat session history
+export * from "./chat-sessions";

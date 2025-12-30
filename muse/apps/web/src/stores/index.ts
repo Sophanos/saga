@@ -159,6 +159,16 @@ interface SearchState {
 export type ChatMessageRole = "user" | "assistant" | "system";
 export type ChatMessageKind = "text" | "tool";
 
+/**
+ * Summary of a chat session for the session list
+ */
+export interface ChatSessionSummary {
+  id: string;
+  name: string | null;
+  lastMessageAt: Date | null;
+  messageCount: number;
+}
+
 export interface ChatMention {
   type: "entity" | "document";
   id: string;
@@ -245,6 +255,12 @@ interface ChatState {
   isNewConversation: boolean;
   /** Last retrieved context for debugging/display */
   lastContext: ChatContext | null;
+  /** Session history for session list */
+  sessions: ChatSessionSummary[];
+  /** Whether sessions are loading */
+  sessionsLoading: boolean;
+  /** Error loading sessions */
+  sessionsError: string | null;
 }
 
 // UI slice
@@ -338,6 +354,14 @@ interface MythosStore {
   setConversationName: (name: string | null) => void;
   clearChat: () => void;
   startNewConversation: () => void;
+  // Session history actions
+  setSessions: (sessions: ChatSessionSummary[]) => void;
+  setSessionsLoading: (loading: boolean) => void;
+  setSessionsError: (error: string | null) => void;
+  addSession: (session: ChatSessionSummary) => void;
+  removeSession: (id: string) => void;
+  updateSessionInList: (id: string, updates: Partial<ChatSessionSummary>) => void;
+  loadSessionMessages: (messages: ChatMessage[], sessionId: string, sessionName: string | null) => void;
 
   // UI actions
   setActiveTab: (tab: ConsoleTab) => void;
@@ -402,6 +426,9 @@ export const useMythosStore = create<MythosStore>()(
       conversationName: persistedSession?.conversationName ?? null,
       isNewConversation: persistedSession?.isNewConversation ?? true,
       lastContext: null,
+      sessions: [],
+      sessionsLoading: false,
+      sessionsError: null,
     },
     ui: {
       activeTab: "linter",
@@ -559,6 +586,10 @@ export const useMythosStore = create<MythosStore>()(
         state.chat.conversationName = null;
         state.chat.isNewConversation = true;
         state.chat.lastContext = null;
+        // Clear session history
+        state.chat.sessions = [];
+        state.chat.sessionsLoading = false;
+        state.chat.sessionsError = null;
         // Persist new session (outside immer callback)
         saveChatSession({
           conversationId: newConversationId,
@@ -777,6 +808,59 @@ export const useMythosStore = create<MythosStore>()(
         conversationId: newId,
         conversationName: null,
         isNewConversation: true,
+      });
+    },
+
+    // Session history actions
+    setSessions: (sessions) =>
+      set((state) => {
+        state.chat.sessions = sessions;
+        state.chat.sessionsLoading = false;
+        state.chat.sessionsError = null;
+      }),
+    setSessionsLoading: (loading) =>
+      set((state) => {
+        state.chat.sessionsLoading = loading;
+        if (loading) {
+          state.chat.sessionsError = null;
+        }
+      }),
+    setSessionsError: (error) =>
+      set((state) => {
+        state.chat.sessionsError = error;
+        state.chat.sessionsLoading = false;
+      }),
+    addSession: (session) =>
+      set((state) => {
+        // Add to front (most recent)
+        state.chat.sessions = [session, ...state.chat.sessions.filter((s) => s.id !== session.id)];
+      }),
+    removeSession: (id) =>
+      set((state) => {
+        state.chat.sessions = state.chat.sessions.filter((s) => s.id !== id);
+      }),
+    updateSessionInList: (id, updates) =>
+      set((state) => {
+        const idx = state.chat.sessions.findIndex((s) => s.id === id);
+        if (idx !== -1) {
+          state.chat.sessions[idx] = { ...state.chat.sessions[idx], ...updates };
+        }
+      }),
+    loadSessionMessages: (messages, sessionId, sessionName) => {
+      set((state) => {
+        state.chat.messages = messages;
+        state.chat.conversationId = sessionId;
+        state.chat.conversationName = sessionName;
+        state.chat.isNewConversation = messages.length === 0;
+        state.chat.error = null;
+        state.chat.isStreaming = false;
+        state.chat.lastContext = null;
+      });
+      // Persist session metadata
+      saveChatSession({
+        conversationId: sessionId,
+        conversationName: sessionName,
+        isNewConversation: messages.length === 0,
       });
     },
 
@@ -1182,6 +1266,24 @@ export const useChatMessageCount = () =>
  */
 export const useHasChatMessages = () =>
   useMythosStore((s) => s.chat.messages.length > 0);
+
+/**
+ * Get chat session history
+ */
+export const useChatSessions = () =>
+  useMythosStore(useShallow((s) => s.chat.sessions));
+
+/**
+ * Get sessions loading state
+ */
+export const useSessionsLoading = () =>
+  useMythosStore((s) => s.chat.sessionsLoading);
+
+/**
+ * Get sessions error
+ */
+export const useSessionsError = () =>
+  useMythosStore((s) => s.chat.sessionsError);
 
 // ============================================================================
 // UI Selectors
