@@ -10,13 +10,22 @@ import { Header } from "./Header";
 import { AsciiHud } from "./hud/AsciiHud";
 import { CommandPalette } from "./command-palette";
 import { ModalHost } from "./modals";
+import { ChatPanel } from "./chat";
+import { SaveWorkPrompt } from "./auth/SaveWorkPrompt";
 import { ProgressiveNudge, ProgressiveStructureController } from "./progressive";
-import { useMythosStore, useCurrentProject } from "../stores";
+import { useMythosStore, useCurrentProject, useChatMode } from "../stores";
 import { useGlobalShortcuts, useProgressiveLinter } from "../hooks";
 import { useCollaboration } from "../hooks/useCollaboration";
 import { useProgressivePanelVisibility } from "@mythos/state";
 
-export function Layout() {
+interface LayoutProps {
+  /** Anonymous trial mode - shows trial variant of FloatingChat */
+  isAnonymous?: boolean;
+  /** Callback for signup (anonymous mode) */
+  onSignUp?: () => void;
+}
+
+export function Layout({ isAnonymous = false, onSignUp }: LayoutProps) {
   // Get current project for collaboration
   const project = useCurrentProject();
 
@@ -26,6 +35,9 @@ export function Layout() {
   const hudEntity = useMythosStore((state) => state.ui.hudEntity);
   const hudPosition = useMythosStore((state) => state.ui.hudPosition);
   const showHud = useMythosStore((state) => state.showHud);
+
+  // Chat mode (floating vs docked)
+  const chatMode = useChatMode();
 
   // Progressive panel visibility (gardener mode hides panels until unlocked)
   const { showManifest, showConsole } = useProgressivePanelVisibility();
@@ -57,7 +69,7 @@ export function Layout() {
             >
               <Manifest />
             </Panel>
-            <PanelResizeHandle className="w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-cyan/30 transition-colors" />
+            <PanelResizeHandle className="w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-primary/30 transition-colors" />
           </>
         )}
 
@@ -69,7 +81,7 @@ export function Layout() {
         {/* Right Pane: The Console (hidden in gardener mode until unlocked) */}
         {showConsole && (
           <>
-            <PanelResizeHandle className="w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-cyan/30 transition-colors" />
+            <PanelResizeHandle className="w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-primary/30 transition-colors" />
             <Panel
               defaultSize={25}
               minSize={20}
@@ -107,6 +119,18 @@ export function Layout() {
           console.log('[Progressive] Track entities requested');
         }}
       />
+
+      {/* Floating Chat - always show in anonymous mode, otherwise only in floating mode */}
+      {(isAnonymous || chatMode === "floating") && (
+        <ChatPanel
+          mode="floating"
+          variant={isAnonymous ? "trial" : "full"}
+          onSignUp={onSignUp}
+        />
+      )}
+
+      {/* Save work prompt (anonymous mode only) */}
+      {isAnonymous && onSignUp && <SaveWorkPrompt onSignUp={onSignUp} />}
     </div>
   );
 }

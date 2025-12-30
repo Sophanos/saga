@@ -5,6 +5,8 @@ import {
   BarChart3,
   Search,
   Activity as ActivityIcon,
+  Sparkles,
+  ExternalLink,
 } from "lucide-react";
 import { jumpToPosition } from "@mythos/editor";
 import { DynamicsView } from "./DynamicsView";
@@ -12,12 +14,13 @@ import { CoachView } from "./CoachView";
 import { LinterView } from "./LinterView";
 import { AnalysisDashboard } from "./AnalysisDashboard";
 import { SearchPanel } from "./SearchPanel";
-import { AISidebar } from "./AISidebar";
+import { ChatPanel } from "../chat";
 import { ActivityFeed } from "../collaboration";
 import {
   useLinterIssueCounts,
   useMythosStore,
   useEditorInstance,
+  useChatMode,
 } from "../../stores";
 import { useHistoryCount } from "../../stores/history";
 import { useLinterFixes } from "../../hooks/useLinterFixes";
@@ -60,6 +63,8 @@ export function Console() {
   const linterIssues = useMythosStore((state) => state.linter.issues);
   const editor = useEditorInstance();
   const historyCount = useHistoryCount();
+  const chatMode = useChatMode();
+  const setChatMode = useMythosStore((s) => s.setChatMode);
 
   // Track editor content for linter hook
   const [editorContent, setEditorContent] = useState("");
@@ -154,19 +159,19 @@ export function Console() {
   const getBadgeClass = () => {
     if (issueCounts.error > 0) return "bg-mythos-accent-red/20 text-mythos-accent-red";
     if (issueCounts.warning > 0) return "bg-mythos-accent-amber/20 text-mythos-accent-amber";
-    if (issueCounts.info > 0) return "bg-mythos-accent-cyan/20 text-mythos-accent-cyan";
+    if (issueCounts.info > 0) return "bg-mythos-accent-primary/20 text-mythos-accent-primary";
     return "bg-green-500/20 text-green-400";
   };
 
   return (
     <div className="h-full flex flex-col">
       {/* Tabs */}
-      <div className="flex border-b border-mythos-text-muted/20">
+      <div className="flex border-b border-mythos-border-default">
         <button
           onClick={() => setActiveTab("chat")}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === "chat"
-              ? "text-mythos-accent-cyan border-b-2 border-mythos-accent-cyan"
+              ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
               : "text-mythos-text-muted hover:text-mythos-text-secondary"
           }`}
         >
@@ -176,7 +181,7 @@ export function Console() {
           onClick={() => setActiveTab("search")}
           className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
             activeTab === "search"
-              ? "text-mythos-accent-cyan border-b-2 border-mythos-accent-cyan"
+              ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
               : "text-mythos-text-muted hover:text-mythos-text-secondary"
           }`}
         >
@@ -187,7 +192,7 @@ export function Console() {
           onClick={() => setActiveTab("linter")}
           className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
             activeTab === "linter"
-              ? "text-mythos-accent-cyan border-b-2 border-mythos-accent-cyan"
+              ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
               : "text-mythos-text-muted hover:text-mythos-text-secondary"
           }`}
         >
@@ -202,7 +207,7 @@ export function Console() {
           onClick={() => setActiveTab("activity")}
           className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
             activeTab === "activity"
-              ? "text-mythos-accent-cyan border-b-2 border-mythos-accent-cyan"
+              ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
               : "text-mythos-text-muted hover:text-mythos-text-secondary"
           }`}
         >
@@ -213,7 +218,7 @@ export function Console() {
           onClick={() => setActiveTab("dynamics")}
           className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
             activeTab === "dynamics"
-              ? "text-mythos-accent-cyan border-b-2 border-mythos-accent-cyan"
+              ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
               : "text-mythos-text-muted hover:text-mythos-text-secondary"
           }`}
         >
@@ -224,7 +229,7 @@ export function Console() {
           onClick={() => setActiveTab("coach")}
           className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
             activeTab === "coach"
-              ? "text-mythos-accent-cyan border-b-2 border-mythos-accent-cyan"
+              ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
               : "text-mythos-text-muted hover:text-mythos-text-secondary"
           }`}
         >
@@ -235,7 +240,7 @@ export function Console() {
           onClick={() => setActiveTab("history")}
           className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
             activeTab === "history"
-              ? "text-mythos-accent-cyan border-b-2 border-mythos-accent-cyan"
+              ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
               : "text-mythos-text-muted hover:text-mythos-text-secondary"
           }`}
         >
@@ -251,7 +256,32 @@ export function Console() {
 
       {/* Content */}
       {activeTab === "chat" ? (
-        <AISidebar />
+        chatMode === "floating" ? (
+          /* Show placeholder when chat is in floating mode */
+          <div className="flex-1 flex flex-col items-center justify-center p-6">
+            <div className="w-14 h-14 mb-4 rounded-full bg-gradient-to-br from-[#7C5CFF]/20 to-[#5C9EFF]/20 flex items-center justify-center">
+              <Sparkles className="w-7 h-7 text-[#7C5CFF]" />
+            </div>
+            <h3 className="text-sm font-medium text-mythos-text-primary mb-2">
+              Chat is floating
+            </h3>
+            <p className="text-xs text-mythos-text-muted text-center mb-4 max-w-[200px]">
+              The AI chat is currently in floating mode. Click the button to dock it here.
+            </p>
+            <button
+              onClick={() => setChatMode("docked")}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-mythos-bg-tertiary hover:bg-mythos-accent-purple/10 text-sm text-mythos-text-secondary hover:text-mythos-text-primary transition-colors border border-mythos-border-default"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Dock to sidebar
+            </button>
+          </div>
+        ) : (
+          <ChatPanel
+            mode="docked"
+            onHide={() => setActiveTab("search")}
+          />
+        )
       ) : activeTab === "search" ? (
         <SearchPanel />
       ) : activeTab === "linter" ? (
