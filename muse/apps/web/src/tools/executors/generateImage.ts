@@ -5,15 +5,15 @@
  * Calls the ai-image edge function and updates entity portraits.
  */
 
-import type { EntityType, Entity } from "@mythos/core";
+import type { Entity } from "@mythos/core";
 import type {
   ImageStyle,
   AspectRatio,
   AssetType,
-  GenerateImageArgs as ProtocolGenerateImageArgs,
+  GenerateImageArgs,
   GenerateImageResult,
 } from "@mythos/agent-protocol";
-import type { ToolDefinition, ToolExecutionResult, ToolExecutionContext } from "../types";
+import type { ToolDefinition, ToolExecutionResult } from "../types";
 import { resolveEntityByName } from "../types";
 import { callEdgeFunction } from "../../services/api-client";
 
@@ -21,29 +21,7 @@ import { callEdgeFunction } from "../../services/api-client";
 // Types
 // =============================================================================
 
-export interface GenerateImageArgs {
-  /** Main subject description */
-  subject: string;
-  /** Entity name for linking the result */
-  entityName?: string;
-  /** Entity type for context */
-  entityType?: EntityType;
-  /** Entity ID if known (for direct linking) */
-  entityId?: string;
-  /** Visual description from entity data */
-  visualDescription?: string;
-  /** Art style preset */
-  style?: ImageStyle;
-  /** Image aspect ratio */
-  aspectRatio?: AspectRatio;
-  /** Asset type classification */
-  assetType?: AssetType;
-  /** Whether to set as entity portrait */
-  setAsPortrait?: boolean;
-  /** Negative prompt - what to avoid */
-  negativePrompt?: string;
-}
-
+// Edge function API contract - matches ai-image/index.ts
 interface AIImageRequest {
   projectId: string;
   entityId?: string;
@@ -165,8 +143,16 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
         if (resolution.found && resolution.entity) {
           entityId = resolution.entity.id;
           entity = resolution.entity;
-        } else if (resolution.candidates && resolution.candidates.length > 0) {
-          // Ambiguous - pick the first match of the specified type or just the first
+        } else if (resolution.candidates && resolution.candidates.length > 1) {
+          // Multiple matches - require user to specify
+          return {
+            success: false,
+            error: `Multiple entities named "${args.entityName}" found: ${
+              resolution.candidates.map(c => `${c.name} (${c.type})`).join(", ")
+            }. Please specify entityId or entityType to disambiguate.`,
+          };
+        } else if (resolution.candidates && resolution.candidates.length === 1) {
+          // Single candidate is fine
           entity = resolution.candidates[0];
           entityId = entity.id;
         }
@@ -196,15 +182,32 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
         negativePrompt: args.negativePrompt,
       };
 
-      // Call the edge function
-      const response = await callEdgeFunction<AIImageRequest, AIImageResponse>(
-        "ai-image",
-        request,
-        {
-          apiKey: ctx.apiKey,
-          signal: ctx.signal,
+      // Call the edge function with timeout
+      const IMAGE_GEN_TIMEOUT_MS = 90_000; // 90 seconds for client
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => timeoutController.abort(), IMAGE_GEN_TIMEOUT_MS);
+
+      let response: AIImageResponse;
+      try {
+        response = await callEdgeFunction<AIImageRequest, AIImageResponse>(
+          "ai-image",
+          request,
+          {
+            apiKey: ctx.apiKey,
+            signal: ctx.signal,
+          }
+        );
+        clearTimeout(timeoutId);
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === "AbortError") {
+          return {
+            success: false,
+            error: "Image generation timed out. Please try again.",
+          };
         }
-      );
+        throw error;
+      }
 
       ctx.onProgress?.({ pct: 90, stage: "Updating entity..." });
 
@@ -220,6 +223,9 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
 
       ctx.onProgress?.({ pct: 100, stage: "Complete" });
 
+      // Determine resolved entity name for artifact title
+      const resolvedEntityName = args.entityName ?? entity?.name ?? args.subject.slice(0, 30);
+
       // Return result with artifacts
       return {
         success: true,
@@ -227,14 +233,16 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
           imageUrl: response.imageUrl,
           previewUrl: response.imageUrl,
           entityId: response.entityId,
+          assetId: response.assetId,
+          storagePath: response.storagePath,
         },
         artifacts: [
           {
-            kind: "image",
-            title: args.entityName ?? args.subject.slice(0, 50),
+            kind: "image" as const,
             url: response.imageUrl,
             previewUrl: response.imageUrl,
-            mimeType: "image/png",
+            title: `${request.style ?? "fantasy_art"} ${request.assetType ?? "portrait"} for ${resolvedEntityName}`,
+            mimeType: "image/png", // TODO: get from response
           },
         ],
       };

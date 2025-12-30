@@ -466,6 +466,8 @@ export interface GenerateImageResult {
   imageUrl: string;
   previewUrl?: string;
   entityId?: string;
+  assetId?: string;
+  storagePath?: string;
 }
 
 // =============================================================================
