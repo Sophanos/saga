@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   LayoutTemplate,
   Wand2,
+  ShieldAlert,
 } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import {
@@ -69,8 +70,16 @@ function getStatusLabel(status: ToolInvocationStatus): string {
   }
 }
 
-function getCardStyles(status: ToolInvocationStatus, danger: "safe" | "destructive" | "costly") {
+function getCardStyles(
+  status: ToolInvocationStatus,
+  danger: "safe" | "destructive" | "costly",
+  needsApproval?: boolean
+) {
   if (status === "proposed") {
+    // SDK-level approval gets a more prominent style
+    if (needsApproval) {
+      return "border-mythos-accent-yellow/40 bg-mythos-accent-yellow/10";
+    }
     if (danger === "destructive") {
       return "border-mythos-accent-red/30 bg-mythos-accent-red/5";
     }
@@ -101,6 +110,7 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
   const danger = getToolDanger(tool.toolName);
   const label = getToolLabel(tool.toolName);
   const summary = renderToolSummary(tool.toolName, tool.args);
+  const needsApproval = tool.needsApproval;
 
   // Handle accepting the tool proposal
   const handleAccept = useCallback(async () => {
@@ -201,7 +211,7 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
     <div
       className={cn(
         "rounded-lg border p-3 my-2",
-        getCardStyles(tool.status, danger)
+        getCardStyles(tool.status, danger, needsApproval)
       )}
     >
       {/* Header */}
@@ -209,16 +219,29 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
         <div
           className={cn(
             "w-6 h-6 rounded flex items-center justify-center",
-            danger === "destructive"
-              ? "bg-mythos-accent-red/20 text-mythos-accent-red"
-              : "bg-mythos-bg-tertiary text-mythos-accent-purple"
+            needsApproval && isProposed
+              ? "bg-mythos-accent-yellow/20 text-mythos-accent-yellow"
+              : danger === "destructive"
+                ? "bg-mythos-accent-red/20 text-mythos-accent-red"
+                : "bg-mythos-bg-tertiary text-mythos-accent-purple"
           )}
         >
-          {getIcon()}
+          {needsApproval && isProposed ? (
+            <ShieldAlert className="w-4 h-4" />
+          ) : (
+            getIcon()
+          )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium text-mythos-text-primary truncate">
-            {label}
+          <div className="flex items-center gap-1">
+            <span className="text-xs font-medium text-mythos-text-primary truncate">
+              {label}
+            </span>
+            {needsApproval && isProposed && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-mythos-accent-yellow/20 text-mythos-accent-yellow font-medium">
+                Approval Required
+              </span>
+            )}
           </div>
           <div className="text-[10px] text-mythos-text-muted truncate">
             {summary}
@@ -276,11 +299,20 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
           <Button
             size="sm"
             onClick={handleAccept}
-            variant={danger === "destructive" ? "destructive" : "default"}
-            className="flex-1 h-7 text-xs gap-1"
+            variant={
+              needsApproval
+                ? "default"
+                : danger === "destructive"
+                  ? "destructive"
+                  : "default"
+            }
+            className={cn(
+              "flex-1 h-7 text-xs gap-1",
+              needsApproval && "bg-mythos-accent-yellow hover:bg-mythos-accent-yellow/90 text-black"
+            )}
           >
             <Check className="w-3 h-3" />
-            {getActionLabel()}
+            {needsApproval ? "Approve" : getActionLabel()}
           </Button>
           <Button
             variant="outline"
@@ -289,7 +321,7 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
             className="flex-1 h-7 text-xs gap-1"
           >
             <X className="w-3 h-3" />
-            Cancel
+            {needsApproval ? "Deny" : "Cancel"}
           </Button>
         </div>
       )}

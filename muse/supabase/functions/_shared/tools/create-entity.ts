@@ -33,9 +33,22 @@ export const createEntityParameters = z.object({
 
 export type CreateEntityArgs = z.infer<typeof createEntityParameters>;
 
+/**
+ * Determines if create_entity needs approval based on entity type.
+ * Characters and magic systems always need approval as they are core world elements.
+ * Other types are auto-approved for faster workflow.
+ */
+async function createEntityNeedsApproval({ type }: CreateEntityArgs): Promise<boolean> {
+  // High-impact entity types always require approval
+  const highImpactTypes = ["character", "magic_system", "faction"];
+  return highImpactTypes.includes(type);
+}
+
 export const createEntityTool = tool({
   description: "Propose creating a new entity (character, location, item, faction, magic system, event, or concept) in the author's world",
   inputSchema: createEntityParameters,
+  // AI SDK 6 native tool approval - dynamic based on entity type
+  needsApproval: createEntityNeedsApproval,
   execute: async (args) => {
     return {
       toolName: "create_entity",

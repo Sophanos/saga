@@ -97,7 +97,29 @@ interface SagaExecuteToolRequest {
   projectId?: string;
 }
 
-type SagaRequest = SagaChatRequest | SagaExecuteToolRequest;
+/**
+ * Request to respond to a tool approval (AI SDK 6 needsApproval flow)
+ */
+interface SagaToolApprovalRequest {
+  kind: "tool-approval";
+  projectId: string;
+  /** The tool call ID from the original tool-approval-request */
+  toolCallId: string;
+  /** Whether the user approved or denied the tool */
+  approved: boolean;
+  /** Original messages to continue the conversation */
+  messages: Message[];
+  /** Optional mentions for context */
+  mentions?: Mention[];
+  /** Editor context for prompts */
+  editorContext?: EditorContext;
+  /** Current saga mode */
+  mode?: SagaMode;
+  /** Conversation ID for memory continuity */
+  conversationId?: string;
+}
+
+type SagaRequest = SagaChatRequest | SagaExecuteToolRequest | SagaToolApprovalRequest;
 
 // RAGContext type imported from ../shared/rag.ts
 
@@ -177,7 +199,7 @@ async function handleChat(
     // Send context metadata first
     sse.sendContext(ragContext);
 
-    // Use fullStream to get tool call IDs
+    // Use fullStream to get tool call IDs and tool-approval-request parts
     const fullStream = result.fullStream;
 
     for await (const part of fullStream) {
@@ -187,7 +209,18 @@ async function handleChat(
           break;
 
         case "tool-call":
+          // Regular tool call (no approval needed or approval already granted)
           sse.sendTool(part.toolCallId, part.toolName, part.input);
+          break;
+
+        case "tool-approval-request":
+          // AI SDK 6: Tool has needsApproval=true and requires user consent
+          // Send as proposal to client for HITL approval flow
+          sse.sendToolApprovalRequest(
+            part.toolCallId,
+            part.toolName,
+            part.input
+          );
           break;
 
         case "finish":
@@ -326,6 +359,135 @@ async function handleExecuteTool(
 }
 
 // =============================================================================
+// Tool Approval Handler (AI SDK 6 needsApproval flow)
+// =============================================================================
+
+async function handleToolApproval(
+  req: SagaToolApprovalRequest,
+  apiKey: string,
+  origin: string | null,
+  billing: BillingCheck,
+  supabase: ReturnType<typeof createSupabaseClient>
+): Promise<Response> {
+  const { projectId, toolCallId, approved, messages, editorContext, mode, conversationId } = req;
+
+  console.log(`[ai-saga] Tool approval response: ${toolCallId} = ${approved ? "approved" : "denied"}`);
+
+  // If denied, just return a success response - client handles UI state
+  if (!approved) {
+    return createSuccessResponse({
+      toolCallId,
+      approved: false,
+      message: "Tool execution was denied by user"
+    }, origin);
+  }
+
+  // If approved, continue the conversation with tool-approval-response
+  // This follows the AI SDK 6 pattern for continuing after approval
+
+  // Get last user message for RAG query
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+  const query = lastUserMessage?.content ?? "";
+
+  // Determine owner ID for memory isolation
+  const ownerId = billing.userId ?? billing.anonDeviceId ?? null;
+
+  // Retrieve contexts in parallel
+  const [ragContext, memoryContext, profileContext] = await Promise.all([
+    retrieveRAGContext(query, projectId, {
+      logPrefix: "[ai-saga-approval]",
+      excludeMemories: true,
+    }),
+    retrieveMemoryContext(query, projectId, ownerId, conversationId, DEFAULT_SAGA_LIMITS, "[ai-saga-approval]"),
+    retrieveProfileContext(supabase, billing.userId, "[ai-saga-approval]"),
+  ]);
+
+  // Build system prompt with contexts
+  const systemPrompt = buildSagaSystemPrompt({
+    mode,
+    ragContext,
+    editorContext,
+    profileContext,
+    memoryContext,
+  });
+
+  // Build messages array with sliding window
+  const recentMessages = messages.slice(-MAX_HISTORY_MESSAGES);
+  const apiMessages = [
+    { role: "system" as const, content: systemPrompt },
+    ...recentMessages.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
+  ];
+
+  // Get model
+  const model = getOpenRouterModel(apiKey, "creative");
+
+  // Continue with tool approval response added to messages
+  // AI SDK 6: Add tool-approval-response to indicate user approved the tool
+  const result = await streamText({
+    model,
+    messages: [
+      ...apiMessages,
+      // Add tool approval response to indicate the user approved
+      {
+        role: "assistant" as const,
+        content: [
+          {
+            type: "tool-approval-response" as const,
+            toolCallId,
+            approved: true,
+          },
+        ],
+      },
+    ],
+    tools: agentTools,
+    maxSteps: 5,
+  });
+
+  // Stream the response
+  const stream = createSSEStream(async (sse: SSEStreamController) => {
+    sse.sendContext(ragContext);
+
+    const fullStream = result.fullStream;
+
+    for await (const part of fullStream) {
+      switch (part.type) {
+        case "text-delta":
+          sse.sendDelta(part.text);
+          break;
+
+        case "tool-call":
+          sse.sendTool(part.toolCallId, part.toolName, part.input);
+          break;
+
+        case "tool-approval-request":
+          sse.sendToolApprovalRequest(
+            part.toolCallId,
+            part.toolName,
+            part.input
+          );
+          break;
+
+        case "finish":
+          break;
+
+        case "error":
+          sse.sendError(part.error);
+          break;
+      }
+    }
+
+    sse.complete();
+  });
+
+  return new Response(stream, {
+    headers: getStreamingHeaders(origin),
+  });
+}
+
+// =============================================================================
 // Main Handler
 // =============================================================================
 
@@ -372,6 +534,16 @@ serve(async (req: Request): Promise<Response> => {
         );
       }
       return handleExecuteTool(body, billing.apiKey, origin);
+    } else if (body.kind === "tool-approval") {
+      // AI SDK 6: Handle tool approval response
+      if (!body.projectId || !body.toolCallId || body.approved === undefined) {
+        return createErrorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          "projectId, toolCallId, and approved are required for tool-approval",
+          origin
+        );
+      }
+      return handleToolApproval(body, billing.apiKey, origin, billing, supabase);
     } else {
       // Default to chat
       if (!body.messages || !body.projectId) {

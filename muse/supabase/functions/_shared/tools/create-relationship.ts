@@ -17,9 +17,25 @@ export const createRelationshipParameters = z.object({
 
 export type CreateRelationshipArgs = z.infer<typeof createRelationshipParameters>;
 
+/**
+ * Determines if create_relationship needs approval based on relationship type.
+ * Familial and power relationships are more impactful and need approval.
+ */
+async function createRelationshipNeedsApproval({ type }: CreateRelationshipArgs): Promise<boolean> {
+  // High-impact relationship types that affect world structure
+  const highImpactTypes = [
+    "parent_of", "child_of", "sibling_of", "married_to",  // Familial
+    "rules", "serves", "member_of",                        // Power dynamics
+    "killed", "created",                                   // Story-critical
+  ];
+  return highImpactTypes.includes(type);
+}
+
 export const createRelationshipTool = tool({
   description: "Propose creating a relationship between two entities in the author's world",
   inputSchema: createRelationshipParameters,
+  // AI SDK 6 native tool approval - dynamic based on relationship type
+  needsApproval: createRelationshipNeedsApproval,
   execute: async (args) => {
     return {
       toolName: "create_relationship",

@@ -19,9 +19,25 @@ export const updateRelationshipParameters = z.object({
 
 export type UpdateRelationshipArgs = z.infer<typeof updateRelationshipParameters>;
 
+/**
+ * Determines if update_relationship needs approval.
+ * Strength changes below 0.3 (weakening) are considered significant.
+ */
+async function updateRelationshipNeedsApproval({ updates, type }: UpdateRelationshipArgs): Promise<boolean> {
+  // Significant relationship changes need approval
+  if (updates.bidirectional !== undefined) return true;
+  if (updates.strength !== undefined && updates.strength < 0.3) return true;
+
+  // High-impact relationship types need approval for any update
+  const highImpactTypes = ["parent_of", "child_of", "sibling_of", "married_to", "killed", "created"];
+  return highImpactTypes.includes(type);
+}
+
 export const updateRelationshipTool = tool({
   description: "Propose updating an existing relationship between two entities",
   inputSchema: updateRelationshipParameters,
+  // AI SDK 6 native tool approval - dynamic based on update impact
+  needsApproval: updateRelationshipNeedsApproval,
   execute: async (args) => {
     const updatedFields = Object.keys(args.updates).filter(
       (k) => args.updates[k as keyof typeof args.updates] !== undefined

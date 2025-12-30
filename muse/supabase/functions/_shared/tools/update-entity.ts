@@ -36,9 +36,29 @@ export const updateEntityParameters = z.object({
 
 export type UpdateEntityArgs = z.infer<typeof updateEntityParameters>;
 
+/**
+ * Determines if update_entity needs approval based on what's being updated.
+ * Name changes and archetype changes always need approval as they affect identity.
+ */
+async function updateEntityNeedsApproval({ updates, entityType }: UpdateEntityArgs): Promise<boolean> {
+  // Identity-changing updates always require approval
+  const sensitiveFields = ["name", "archetype", "backstory", "goals"];
+  const hasIdentityChange = sensitiveFields.some(
+    (field) => updates[field as keyof typeof updates] !== undefined
+  );
+
+  // Character and faction updates are more sensitive
+  const sensitiveTypes = ["character", "faction", "magic_system"];
+  const isSensitiveType = entityType && sensitiveTypes.includes(entityType);
+
+  return hasIdentityChange || isSensitiveType;
+}
+
 export const updateEntityTool = tool({
   description: "Propose updating an existing entity's properties. Use entityName to identify the entity (LLM doesn't have access to IDs).",
   inputSchema: updateEntityParameters,
+  // AI SDK 6 native tool approval - dynamic based on update content
+  needsApproval: updateEntityNeedsApproval,
   execute: async (args) => {
     const updatedFields = Object.keys(args.updates).filter(
       (k) => args.updates[k as keyof typeof args.updates] !== undefined

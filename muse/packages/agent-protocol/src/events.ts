@@ -35,12 +35,13 @@ export interface RAGContext {
  * SSE event types for agent streaming.
  */
 export type AgentStreamEventType =
-  | "context"  // RAG context metadata
-  | "delta"    // Text chunk
-  | "tool"     // Tool call proposal
-  | "progress" // Tool progress update
-  | "done"     // Stream complete
-  | "error";   // Error occurred
+  | "context"              // RAG context metadata
+  | "delta"                // Text chunk
+  | "tool"                 // Tool call (no approval needed)
+  | "tool-approval-request" // AI SDK 6: Tool requires user approval
+  | "progress"             // Tool progress update
+  | "done"                 // Stream complete
+  | "error";               // Error occurred
 
 /**
  * SSE event payload for context.
@@ -59,10 +60,21 @@ export interface DeltaEvent {
 }
 
 /**
- * SSE event payload for tool call.
+ * SSE event payload for tool call (tool does not need approval).
  */
 export interface ToolEvent {
   type: "tool";
+  toolCallId: string;
+  toolName: ToolName;
+  args: unknown;
+}
+
+/**
+ * SSE event payload for tool approval request (AI SDK 6 needsApproval).
+ * Sent when a tool with needsApproval=true needs user consent before execution.
+ */
+export interface ToolApprovalRequestEvent {
+  type: "tool-approval-request";
   toolCallId: string;
   toolName: ToolName;
   args: unknown;
@@ -100,6 +112,7 @@ export type AgentStreamEvent =
   | ContextEvent
   | DeltaEvent
   | ToolEvent
+  | ToolApprovalRequestEvent
   | ProgressEvent
   | DoneEvent
   | ErrorEvent;

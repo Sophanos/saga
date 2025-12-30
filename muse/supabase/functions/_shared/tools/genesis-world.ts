@@ -40,6 +40,8 @@ export const genesisWorldTool = tool({
   description:
     "Propose generating a complete world scaffold with entities, relationships, and optional story outline from a story description",
   inputSchema: genesisWorldParameters,
+  // AI SDK 6 native tool approval - major world generation always requires approval
+  needsApproval: true,
   execute: async (args) => {
     const preview = args.prompt.length > 80 ? args.prompt.slice(0, 80) + "..." : args.prompt;
     return {

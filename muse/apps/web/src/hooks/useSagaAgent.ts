@@ -32,6 +32,7 @@ import {
   type SagaChatPayload,
   type SagaMode,
   type EditorContext,
+  type ToolApprovalRequest,
 } from "../services/ai/sagaClient";
 import { useEditorChatContext } from "./useEditorChatContext";
 import { useApiKey } from "./useApiKey";
@@ -224,6 +225,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
             appendToChatMessage(assistantMessageId, delta);
           },
           onTool: (tool: ToolCallResult) => {
+            // Regular tool call (no approval needed or auto-approved)
             // Create a tool message with the stable toolCallId from the LLM
             const toolMessage: ChatMessage = {
               id: tool.toolCallId, // Use the stable ID from the LLM
@@ -236,6 +238,27 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
                 toolName: tool.toolName as ToolName,
                 args: tool.args,
                 status: "proposed",
+              },
+            };
+            addChatMessage(toolMessage);
+          },
+          onToolApprovalRequest: (request: ToolApprovalRequest) => {
+            // AI SDK 6: Tool needs user approval before execution
+            // Create a tool message in "proposed" state (same as regular tools)
+            // The ToolResultCard will show approval UI
+            const toolMessage: ChatMessage = {
+              id: request.toolCallId,
+              role: "assistant",
+              content: "",
+              timestamp: new Date(),
+              kind: "tool",
+              tool: {
+                toolCallId: request.toolCallId,
+                toolName: request.toolName as ToolName,
+                args: request.args,
+                status: "proposed",
+                // Flag to indicate this came from SDK-level approval
+                needsApproval: true,
               },
             };
             addChatMessage(toolMessage);

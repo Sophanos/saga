@@ -123,6 +123,15 @@ export interface SagaStreamEvent {
   progress?: { pct?: number; stage?: string };
 }
 
+/**
+ * Result of a tool that requires approval (AI SDK 6 needsApproval)
+ */
+export interface ToolApprovalRequest {
+  toolCallId: string;
+  toolName: ToolName;
+  args: unknown;
+}
+
 export interface SagaStreamOptions {
   signal?: AbortSignal;
   /** OpenRouter API key for BYOK mode */
@@ -132,6 +141,8 @@ export interface SagaStreamOptions {
   onContext?: (context: ChatContext) => void;
   onDelta?: (delta: string) => void;
   onTool?: (tool: ToolCallResult) => void;
+  /** AI SDK 6: Called when a tool needs approval before execution */
+  onToolApprovalRequest?: (request: ToolApprovalRequest) => void;
   onProgress?: (toolCallId: string, progress: { pct?: number; stage?: string }) => void;
   onDone?: () => void;
   onError?: (error: Error) => void;
@@ -210,7 +221,7 @@ export async function sendSagaChatStreaming(
   payload: SagaChatPayload,
   opts?: SagaStreamOptions
 ): Promise<void> {
-  const { signal, apiKey, authToken, onContext, onDelta, onTool, onProgress, onDone, onError } =
+  const { signal, apiKey, authToken, onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError } =
     opts ?? {};
 
   const url = `${SUPABASE_URL}/functions/v1/ai-saga`;
@@ -297,6 +308,17 @@ export async function sendSagaChatStreaming(
               }
               break;
 
+            case "tool-approval-request":
+              // AI SDK 6: Tool needs user approval before execution
+              if (event.toolName && event.toolCallId) {
+                onToolApprovalRequest?.({
+                  toolCallId: event.toolCallId,
+                  toolName: event.toolName as ToolName,
+                  args: event.args,
+                });
+              }
+              break;
+
             case "progress":
               if (event.toolCallId && event.progress) {
                 onProgress?.(event.toolCallId, event.progress);
@@ -332,6 +354,15 @@ export async function sendSagaChatStreaming(
             case "tool":
               if (event.toolName && event.toolCallId) {
                 onTool?.({
+                  toolCallId: event.toolCallId,
+                  toolName: event.toolName as ToolName,
+                  args: event.args,
+                });
+              }
+              break;
+            case "tool-approval-request":
+              if (event.toolName && event.toolCallId) {
+                onToolApprovalRequest?.({
                   toolCallId: event.toolCallId,
                   toolName: event.toolName as ToolName,
                   args: event.args,
@@ -525,4 +556,186 @@ export async function executeNameGenerator(
   opts?: ExecuteToolOptions
 ): Promise<NameGeneratorResult> {
   return executeSagaTool<NameGeneratorResult>("name_generator", input, opts);
+}
+
+// =============================================================================
+// Tool Approval API (AI SDK 6 needsApproval flow)
+// =============================================================================
+
+/**
+ * Payload for responding to a tool approval request
+ */
+export interface ToolApprovalPayload {
+  projectId: string;
+  toolCallId: string;
+  approved: boolean;
+  messages: SagaMessagePayload[];
+  mentions?: ChatMention[];
+  editorContext?: EditorContext;
+  mode?: SagaMode;
+  conversationId?: string;
+}
+
+/**
+ * Response when user denies a tool
+ */
+export interface ToolApprovalDeniedResponse {
+  toolCallId: string;
+  approved: false;
+  message: string;
+}
+
+/**
+ * Send a tool approval response (AI SDK 6 needsApproval flow).
+ *
+ * If approved=true, this triggers continuation of the AI conversation
+ * with the tool now allowed to execute. The response is streamed.
+ *
+ * If approved=false, returns a simple confirmation that the tool was denied.
+ */
+export async function sendToolApprovalResponse(
+  payload: ToolApprovalPayload,
+  opts?: SagaStreamOptions
+): Promise<void> {
+  const { signal, apiKey, authToken, onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError } =
+    opts ?? {};
+
+  const url = `${SUPABASE_URL}/functions/v1/ai-saga`;
+
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+
+  if (apiKey) {
+    headers["x-openrouter-key"] = apiKey;
+  }
+
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ kind: "tool-approval", ...payload }),
+      signal: createTimeoutSignal(API_TIMEOUTS.SSE_CONNECTION_MS, signal),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Tool approval failed: ${response.status}`;
+      let errorCode: SagaApiErrorCode = "UNKNOWN_ERROR";
+
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorMessage;
+        errorCode = errorJson.code || errorCode;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+
+      throw new SagaApiError(errorMessage, response.status, errorCode);
+    }
+
+    // If denied, the response is JSON, not a stream
+    if (!payload.approved) {
+      const data = await response.json() as ToolApprovalDeniedResponse;
+      onDone?.();
+      return;
+    }
+
+    // If approved, we get a streaming response (same as chat)
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new SagaApiError("No response body", 500);
+    }
+
+    const decoder = new TextDecoder();
+    const chunks: string[] = [];
+    let doneReceived = false;
+
+    try {
+      while (true) {
+        const { done, value } = await readWithTimeout(reader);
+        if (done) break;
+
+        chunks.push(decoder.decode(value, { stream: true }));
+        const buffer = chunks.join("");
+        const lines = buffer.split("\n");
+        const remainder = lines.pop() ?? "";
+        chunks.length = 0;
+        if (remainder) chunks.push(remainder);
+
+        for (const line of lines) {
+          const event = parseSSELine(line);
+          if (!event) continue;
+
+          switch (event.type) {
+            case "context":
+              onContext?.(event.data as ChatContext);
+              break;
+
+            case "delta":
+              if (event.content) {
+                onDelta?.(event.content);
+              }
+              break;
+
+            case "tool":
+              if (event.toolName && event.toolCallId) {
+                onTool?.({
+                  toolCallId: event.toolCallId,
+                  toolName: event.toolName as ToolName,
+                  args: event.args,
+                });
+              }
+              break;
+
+            case "tool-approval-request":
+              if (event.toolName && event.toolCallId) {
+                onToolApprovalRequest?.({
+                  toolCallId: event.toolCallId,
+                  toolName: event.toolName as ToolName,
+                  args: event.args,
+                });
+              }
+              break;
+
+            case "progress":
+              if (event.toolCallId && event.progress) {
+                onProgress?.(event.toolCallId, event.progress);
+              }
+              break;
+
+            case "done":
+              doneReceived = true;
+              onDone?.();
+              break;
+
+            case "error":
+              onError?.(new SagaApiError(event.message ?? "Unknown error"));
+              break;
+          }
+        }
+      }
+
+      if (!doneReceived) {
+        onDone?.();
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  } catch (error) {
+    if (error instanceof SagaApiError) {
+      onError?.(error);
+    } else if (error instanceof Error) {
+      if (error.name === "AbortError") {
+        return;
+      }
+      onError?.(new SagaApiError(error.message));
+    } else {
+      onError?.(new SagaApiError("Unknown error occurred"));
+    }
+  }
 }

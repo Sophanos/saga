@@ -187,6 +187,12 @@ export interface ChatToolInvocation {
   error?: string;
   /** Workflow grouping (for multi-tool operations) */
   workflowId?: string;
+  /**
+   * AI SDK 6: Indicates this tool requires SDK-level approval.
+   * When true, the tool came from a tool-approval-request event
+   * and approval must be sent back to continue the AI conversation.
+   */
+  needsApproval?: boolean;
 }
 
 export interface ChatMessage {

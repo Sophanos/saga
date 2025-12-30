@@ -18,6 +18,8 @@ export type DeleteRelationshipArgs = z.infer<typeof deleteRelationshipParameters
 export const deleteRelationshipTool = tool({
   description: "Propose deleting a relationship between two entities",
   inputSchema: deleteRelationshipParameters,
+  // AI SDK 6 native tool approval - destructive actions always require approval
+  needsApproval: true,
   execute: async (args) => {
     return {
       toolName: "delete_relationship",

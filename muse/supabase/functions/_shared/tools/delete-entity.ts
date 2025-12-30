@@ -17,6 +17,8 @@ export type DeleteEntityArgs = z.infer<typeof deleteEntityParameters>;
 export const deleteEntityTool = tool({
   description: "Propose deleting an entity from the author's world. This is a destructive action that will remove the entity and its relationships.",
   inputSchema: deleteEntityParameters,
+  // AI SDK 6 native tool approval - destructive actions always require approval
+  needsApproval: true,
   execute: async (args) => {
     return {
       toolName: "delete_entity",
