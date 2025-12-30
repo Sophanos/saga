@@ -265,8 +265,8 @@ export function useToolRuntime(): UseToolRuntimeResult {
         return { success: false, error: "No project selected" };
       }
 
-      // Update status to executing
-      updateToolInvocation(messageId, { status: "executing" });
+      // Update status to executing with startedAt timestamp
+      updateToolInvocation(messageId, { status: "executing", startedAt: new Date() });
 
       try {
         // Execute the tool
@@ -393,6 +393,11 @@ export function useToolRuntime(): UseToolRuntimeResult {
    */
   const retryTool = useCallback(
     async (messageId: string): Promise<ToolRuntimeResult> => {
+      // Prevent double-execution race condition (same guard as acceptTool)
+      if (executingRef.current.has(messageId)) {
+        return { success: false, error: "Tool is already executing" };
+      }
+
       const invocation = findToolInvocation(messageId);
       if (!invocation) {
         return { success: false, error: "Tool invocation not found" };
@@ -402,10 +407,25 @@ export function useToolRuntime(): UseToolRuntimeResult {
         return { success: false, error: `Cannot retry tool in status: ${invocation.status}` };
       }
 
-      // Reset to accepted and clear previous error before re-executing
-      updateToolInvocation(messageId, { status: "accepted", error: undefined });
+      // Mark as executing to prevent race condition
+      executingRef.current.add(messageId);
 
-      return executeToolInvocation(messageId, invocation);
+      try {
+        // Increment retry count and reset status/error
+        const currentRetryCount = invocation.retryCount ?? 0;
+        updateToolInvocation(messageId, {
+          status: "accepted",
+          error: undefined,
+          errorCode: undefined,
+          errorStatusCode: undefined,
+          retryCount: currentRetryCount + 1,
+        });
+
+        return await executeToolInvocation(messageId, invocation);
+      } finally {
+        // Clean up executing flag
+        executingRef.current.delete(messageId);
+      }
     },
     [findToolInvocation, updateToolInvocation, executeToolInvocation]
   );

@@ -96,6 +96,9 @@ export type ConsoleTab = "chat" | "search" | "linter" | "activity" | "dynamics" 
 // Canvas view type for switching between editor and world graph
 export type CanvasView = "editor" | "worldGraph";
 
+// Chat mode type for floating vs docked AI chat panel
+export type ChatMode = "docked" | "floating";
+
 // Modal state types
 export type FormMode = "create" | "edit";
 
@@ -196,6 +199,10 @@ export interface ChatToolInvocation {
   progress?: ToolProgress;
   /** Error message if failed */
   error?: string;
+  /** Structured error code from API */
+  errorCode?: string;
+  /** HTTP status code of the error */
+  errorStatusCode?: number;
   /** Workflow grouping (for multi-tool operations) */
   workflowId?: string;
   /**
@@ -204,6 +211,10 @@ export interface ChatToolInvocation {
    * and approval must be sent back to continue the AI conversation.
    */
   needsApproval?: boolean;
+  /** Number of retry attempts for this tool invocation */
+  retryCount?: number;
+  /** Timestamp when execution started */
+  startedAt?: Date;
 }
 
 export interface ChatMessage {
@@ -267,6 +278,7 @@ interface ChatState {
 interface UIState {
   activeTab: ConsoleTab;
   canvasView: CanvasView;
+  chatMode: ChatMode; // Floating vs docked AI chat panel
   manifestCollapsed: boolean;
   consoleCollapsed: boolean;
   hudEntity: Entity | null; // Entity being shown in ASCII HUD
@@ -366,6 +378,8 @@ interface MythosStore {
   // UI actions
   setActiveTab: (tab: ConsoleTab) => void;
   setCanvasView: (view: CanvasView) => void;
+  setChatMode: (mode: ChatMode) => void;
+  toggleChatMode: () => void;
   toggleManifest: () => void;
   toggleConsole: () => void;
   showHud: (entity: Entity | null, position?: { x: number; y: number }) => void;
@@ -433,6 +447,7 @@ export const useMythosStore = create<MythosStore>()(
     ui: {
       activeTab: "linter",
       canvasView: "editor",
+      chatMode: "docked",
       manifestCollapsed: false,
       consoleCollapsed: false,
       hudEntity: null,
@@ -872,6 +887,14 @@ export const useMythosStore = create<MythosStore>()(
     setCanvasView: (view) =>
       set((state) => {
         state.ui.canvasView = view;
+      }),
+    setChatMode: (mode) =>
+      set((state) => {
+        state.ui.chatMode = mode;
+      }),
+    toggleChatMode: () =>
+      set((state) => {
+        state.ui.chatMode = state.ui.chatMode === "docked" ? "floating" : "docked";
       }),
     toggleManifest: () =>
       set((state) => {
@@ -1337,6 +1360,18 @@ export const useRecentEntities = () =>
         .filter((e): e is Entity => e !== undefined);
     })
   );
+
+/**
+ * Get chat mode (docked or floating)
+ */
+export const useChatMode = () =>
+  useMythosStore((s) => s.ui.chatMode);
+
+/**
+ * Check if chat is in floating mode
+ */
+export const useIsChatFloating = () =>
+  useMythosStore((s) => s.ui.chatMode === "floating");
 
 // Re-export auth store
 export { useAuthStore } from "./auth";

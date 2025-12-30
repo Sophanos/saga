@@ -15,7 +15,8 @@ import type {
 } from "@mythos/agent-protocol";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 import { resolveEntityByName } from "../types";
-import { callEdgeFunction } from "../../services/api-client";
+import { callEdgeFunction, ApiError } from "../../services/api-client";
+import { API_TIMEOUTS } from "../../services/config";
 
 // =============================================================================
 // Types
@@ -183,9 +184,17 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
       };
 
       // Call the edge function with timeout
-      const IMAGE_GEN_TIMEOUT_MS = 90_000; // 90 seconds for client
+      // Use centralized timeout config and combine with user cancellation signal
       const timeoutController = new AbortController();
-      const timeoutId = setTimeout(() => timeoutController.abort(), IMAGE_GEN_TIMEOUT_MS);
+      const timeoutId = setTimeout(
+        () => timeoutController.abort(),
+        API_TIMEOUTS.IMAGE_GENERATION_MS
+      );
+
+      // Combine user signal with timeout signal
+      const combinedSignal = ctx.signal
+        ? AbortSignal.any([ctx.signal, timeoutController.signal])
+        : timeoutController.signal;
 
       let response: AIImageResponse;
       try {
@@ -194,16 +203,26 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
           request,
           {
             apiKey: ctx.apiKey,
-            signal: ctx.signal,
+            signal: combinedSignal,
+            // Disable auto-retry for costly image generation to prevent duplicate assets
+            retry: false,
           }
         );
         clearTimeout(timeoutId);
       } catch (error) {
         clearTimeout(timeoutId);
-        if (error instanceof Error && error.name === "AbortError") {
+        // Handle abort/timeout - callEdgeFunction wraps AbortError as ApiError(code="ABORTED")
+        if (error instanceof ApiError && error.code === "ABORTED") {
+          // Check if it was a timeout vs user cancellation
+          if (timeoutController.signal.aborted) {
+            return {
+              success: false,
+              error: "Image generation timed out. Please try again.",
+            };
+          }
           return {
             success: false,
-            error: "Image generation timed out. Please try again.",
+            error: "Image generation was cancelled.",
           };
         }
         throw error;

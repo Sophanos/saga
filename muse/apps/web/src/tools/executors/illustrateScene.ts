@@ -16,7 +16,8 @@ import type {
 } from "@mythos/agent-protocol";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 import { resolveEntityByName } from "../types";
-import { callEdgeFunction } from "../../services/api-client";
+import { callEdgeFunction, ApiError } from "../../services/api-client";
+import { API_TIMEOUTS } from "../../services/config";
 
 // =============================================================================
 // Types
@@ -144,9 +145,12 @@ export const illustrateSceneExecutor: ToolDefinition<IllustrateSceneArgs, Illust
       ctx.onProgress?.({ pct: 25, stage: "Generating scene illustration..." });
 
       // Call the edge function with extended timeout for scene generation
-      const SCENE_GEN_TIMEOUT_MS = 120_000; // 120 seconds for scenes
+      // Use centralized timeout config
       const timeoutController = new AbortController();
-      const timeoutId = setTimeout(() => timeoutController.abort(), SCENE_GEN_TIMEOUT_MS);
+      const timeoutId = setTimeout(
+        () => timeoutController.abort(),
+        API_TIMEOUTS.SCENE_ILLUSTRATION_MS
+      );
 
       // Combine user signal with timeout signal
       const combinedSignal = ctx.signal
@@ -161,15 +165,25 @@ export const illustrateSceneExecutor: ToolDefinition<IllustrateSceneArgs, Illust
           {
             apiKey: ctx.apiKey,
             signal: combinedSignal,
+            // Disable auto-retry for costly scene generation to prevent duplicate assets
+            retry: false,
           }
         );
         clearTimeout(timeoutId);
       } catch (error) {
         clearTimeout(timeoutId);
-        if (error instanceof Error && error.name === "AbortError") {
+        // Handle abort/timeout - callEdgeFunction wraps AbortError as ApiError(code="ABORTED")
+        if (error instanceof ApiError && error.code === "ABORTED") {
+          // Check if it was a timeout vs user cancellation
+          if (timeoutController.signal.aborted) {
+            return {
+              success: false,
+              error: "Scene generation timed out. Please try again with a shorter scene description.",
+            };
+          }
           return {
             success: false,
-            error: "Scene generation timed out. Please try again with a shorter scene description.",
+            error: "Scene illustration was cancelled.",
           };
         }
         throw error;

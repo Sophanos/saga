@@ -31,6 +31,19 @@ export const API_TIMEOUTS = {
 
   /** Timeout for embedding generation (45 seconds) */
   EMBEDDING_MS: 45_000,
+
+  // ==========================================================================
+  // Image Tool Timeouts
+  // ==========================================================================
+
+  /** Timeout for image analysis operations (60 seconds) */
+  IMAGE_ANALYSIS_MS: 60_000,
+
+  /** Timeout for image generation operations (90 seconds) */
+  IMAGE_GENERATION_MS: 90_000,
+
+  /** Timeout for scene illustration operations (120 seconds) */
+  SCENE_ILLUSTRATION_MS: 120_000,
 } as const;
 
 // =============================================================================

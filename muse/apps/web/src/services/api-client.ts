@@ -49,8 +49,15 @@ export interface RetryConfig {
 // Error Types
 // =============================================================================
 
-/** Standard error codes for API responses */
+/**
+ * Standard error codes for API responses.
+ *
+ * These codes align with the server-side ErrorCode enum in
+ * supabase/functions/_shared/errors.ts to provide consistent
+ * error handling across client and server.
+ */
 export type ApiErrorCode =
+  // Client-side error codes
   | "VALIDATION_ERROR"
   | "CONFIGURATION_ERROR"
   | "ABORTED"
@@ -58,7 +65,12 @@ export type ApiErrorCode =
   | "UNAUTHORIZED"
   | "NOT_FOUND"
   | "SERVER_ERROR"
-  | "UNKNOWN_ERROR";
+  | "UNKNOWN_ERROR"
+  // Server-side error codes (from _shared/errors.ts ErrorCode enum)
+  | "FORBIDDEN"
+  | "AI_ERROR"
+  | "BILLING_ERROR"
+  | "QUOTA_EXCEEDED";
 
 /**
  * Base API error class for all edge function calls.

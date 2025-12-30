@@ -13,7 +13,15 @@ import type {
   EntityType,
 } from "@mythos/agent-protocol";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
-import { callEdgeFunction } from "../../services/api-client";
+import { callEdgeFunction, ApiError } from "../../services/api-client";
+import { API_TIMEOUTS } from "../../services/config";
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+/** Maximum base64 image size in bytes (10MB - matches server limit) */
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
 // =============================================================================
 // Types
@@ -117,6 +125,21 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
     if (!args.imageData.startsWith("data:image/")) {
       return { valid: false, error: "Image must be a base64 data URL" };
     }
+
+    // Client-side size validation for base64 data URLs
+    const base64Part = args.imageData.split(",")[1];
+    if (base64Part) {
+      // Estimate actual bytes from base64 (roughly 3/4 of base64 length)
+      const estimatedBytes = Math.ceil(base64Part.length * 0.75);
+      if (estimatedBytes > MAX_IMAGE_SIZE_BYTES) {
+        const sizeMB = (estimatedBytes / (1024 * 1024)).toFixed(1);
+        return {
+          valid: false,
+          error: `Image is too large (${sizeMB}MB). Maximum size is 10MB.`,
+        };
+      }
+    }
+
     return { valid: true };
   },
 
@@ -156,9 +179,12 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
         extractionFocus: args.entityType === "character" ? "appearance" : "full",
       };
 
-      const ANALYSIS_TIMEOUT_MS = 60_000;
+      // Use centralized timeout config
       const timeoutController = new AbortController();
-      const timeoutId = setTimeout(() => timeoutController.abort(), ANALYSIS_TIMEOUT_MS);
+      const timeoutId = setTimeout(
+        () => timeoutController.abort(),
+        API_TIMEOUTS.IMAGE_ANALYSIS_MS
+      );
 
       // Combine user signal with timeout signal
       const combinedSignal = ctx.signal
@@ -173,15 +199,25 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
           {
             apiKey: ctx.apiKey,
             signal: combinedSignal,
+            // Disable auto-retry for costly composite operation
+            retry: false,
           }
         );
         clearTimeout(timeoutId);
       } catch (error) {
         clearTimeout(timeoutId);
-        if (error instanceof Error && error.name === "AbortError") {
+        // Handle abort/timeout - callEdgeFunction wraps AbortError as ApiError(code="ABORTED")
+        if (error instanceof ApiError && error.code === "ABORTED") {
+          // Check if it was a timeout vs user cancellation
+          if (timeoutController.signal.aborted) {
+            return {
+              success: false,
+              error: "Image analysis timed out. Please try again.",
+            };
+          }
           return {
             success: false,
-            error: "Image analysis timed out. Please try again.",
+            error: "Entity creation was cancelled.",
           };
         }
         throw error;
