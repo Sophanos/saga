@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef, type KeyboardEvent } from "react";
+import { useState, useCallback, useRef, useMemo, type KeyboardEvent } from "react";
 import { Send, AtSign, X } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
+import { useShallow } from "zustand/react/shallow";
 import { useMythosStore, type ChatMention } from "../../../stores";
 
 interface ChatInputProps {
@@ -30,12 +31,20 @@ export function ChatInput({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Get entities and documents for mention candidates
-  const entities = useMythosStore((s) => Array.from(s.world.entities.values()));
-  const documents = useMythosStore((s) => s.document.documents);
+  // Get entity and document IDs for stable dependency tracking
+  const entitiesMap = useMythosStore((s) => s.world.entities);
+  const documents = useMythosStore(useShallow((s) => s.document.documents));
 
-  // Build mention candidates
-  const candidates: MentionCandidate[] = [
+  // Memoize entities array from map
+  const entityIds = useMemo(() => Array.from(entitiesMap.keys()).join(","), [entitiesMap]);
+  const entities = useMemo(
+    () => Array.from(entitiesMap.values()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entityIds]
+  );
+
+  // Build mention candidates (memoized)
+  const candidates: MentionCandidate[] = useMemo(() => [
     ...entities.map((e) => ({
       type: "entity" as const,
       id: e.id,
@@ -47,7 +56,7 @@ export function ChatInput({
       id: d.id,
       name: d.title ?? "Untitled",
     })),
-  ];
+  ], [entities, documents]);
 
   // Filter candidates by query
   const filteredCandidates = mentionQuery

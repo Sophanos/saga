@@ -3,6 +3,7 @@
  *
  * Initializes anonymous session and hydrates main stores with anonymous project data.
  * Enables anonymous users to use the real Layout.
+ * Creates a "Getting Started" document with onboarding content for new users.
  */
 
 import { useEffect, useState, useRef } from "react";
@@ -10,6 +11,110 @@ import { useMythosStore } from "../stores";
 import { useAnonymousStore } from "../stores/anonymous";
 import { ensureAnonSession } from "../services/anonymousSession";
 import type { Project, Document, Entity, Relationship } from "@mythos/core";
+
+/**
+ * Creates the onboarding document content in Tiptap JSON format.
+ * Uses only basic nodes that are guaranteed to be supported.
+ */
+function createOnboardingContent(): unknown {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "heading",
+        attrs: { level: 1 },
+        content: [{ type: "text", text: "Welcome to Mythos" }],
+      },
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            text: "Your story's database. Write below and watch AI extract your characters, locations, and world.",
+          },
+        ],
+      },
+      {
+        type: "paragraph",
+        content: [],
+      },
+      {
+        type: "heading",
+        attrs: { level: 2 },
+        content: [{ type: "text", text: "Quick Start" }],
+      },
+      {
+        type: "bulletList",
+        content: [
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", marks: [{ type: "bold" }], text: "Write or paste your story" },
+                  { type: "text", text: " below the line" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", marks: [{ type: "bold" }], text: "AI detects characters" },
+                  { type: "text", text: " automatically in the sidebar" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", marks: [{ type: "bold" }], text: "Ask the AI" },
+                  { type: "text", text: " using the button in the corner" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: "paragraph",
+        content: [],
+      },
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "---" },
+        ],
+      },
+      {
+        type: "paragraph",
+        content: [],
+      },
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            marks: [{ type: "italic" }],
+            text: "Your story begins here...",
+          },
+        ],
+      },
+      {
+        type: "paragraph",
+        content: [],
+      },
+    ],
+  };
+}
 
 interface UseAnonymousProjectLoaderResult {
   isLoading: boolean;
@@ -28,6 +133,7 @@ export function useAnonymousProjectLoader(): UseAnonymousProjectLoaderResult {
   // Anonymous store actions
   const startSession = useAnonymousStore((s) => s.startSession);
   const createProject = useAnonymousStore((s) => s.createProject);
+  const addDocument = useAnonymousStore((s) => s.addDocument);
   const setServerTrialStatus = useAnonymousStore((s) => s.setServerTrialStatus);
   const anonProject = useAnonymousStore((s) => s.project);
   const anonDocuments = useAnonymousStore((s) => s.documents);
@@ -60,14 +166,26 @@ export function useAnonymousProjectLoader(): UseAnonymousProjectLoaderResult {
 
         // Create project if none exists
         let projectId = anonProject?.id;
+        const hasExistingDocuments = useAnonymousStore.getState().documents.length > 0;
+
         if (!projectId) {
           // Check if user came from landing page with draft content
           const draftContent = sessionStorage.getItem("mythos_trial_draft");
 
           projectId = createProject({
-            name: draftContent ? "Imported Story" : "Untitled Project",
+            name: draftContent ? "Imported Story" : "My Story",
             description: draftContent ? "Imported from trial" : undefined,
           });
+
+          // Create the onboarding "Getting Started" document for new users
+          if (!draftContent && !hasExistingDocuments) {
+            addDocument({
+              projectId,
+              title: "Getting Started",
+              content: createOnboardingContent(),
+              type: "chapter",
+            });
+          }
 
           // Clear the draft from session storage
           if (draftContent) {
@@ -84,7 +202,7 @@ export function useAnonymousProjectLoader(): UseAnonymousProjectLoaderResult {
     }
 
     init();
-  }, [startSession, createProject, setServerTrialStatus, anonProject?.id]);
+  }, [startSession, createProject, addDocument, setServerTrialStatus, anonProject?.id]);
 
   // Hydrate main stores when anonymous data changes
   useEffect(() => {
