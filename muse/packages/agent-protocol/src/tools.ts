@@ -35,6 +35,7 @@ export type ToolName =
   | "delete_relationship"
   | "generate_content"
   | "generate_image"
+  | "edit_image"
   // Saga unified agent tools
   | "genesis_world"
   | "detect_entities"
@@ -254,6 +255,11 @@ export type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9" | "2:3" | "3:2
 export type AssetType = "portrait" | "scene" | "location" | "item" | "reference" | "other";
 
 /**
+ * Image edit modes.
+ */
+export type EditMode = "inpaint" | "outpaint" | "remix" | "style_transfer";
+
+/**
  * Arguments for generate_image tool.
  */
 export interface GenerateImageArgs {
@@ -276,6 +282,30 @@ export interface GenerateImageArgs {
   /** Whether to set as entity portrait */
   setAsPortrait?: boolean;
   /** Negative prompt - what to avoid */
+  negativePrompt?: string;
+}
+
+/**
+ * Arguments for edit_image tool.
+ */
+export interface EditImageArgs {
+  /** ID of the existing asset to edit */
+  assetId: string;
+  /** What to change */
+  editInstruction: string;
+  /** How to interpret the change */
+  editMode?: EditMode;
+  /** Optional target style */
+  style?: ImageStyle;
+  /** Optional target aspect ratio */
+  aspectRatio?: AspectRatio;
+  /** Preserve original aspect ratio if possible (default true) */
+  preserveAspectRatio?: boolean;
+  /** Optional output asset type */
+  assetType?: AssetType;
+  /** If linked to an entity, set as portrait (default true) */
+  setAsPortrait?: boolean;
+  /** Negative prompt */
   negativePrompt?: string;
 }
 
@@ -617,6 +647,7 @@ export interface ToolArgsMap {
   delete_relationship: DeleteRelationshipArgs;
   generate_content: GenerateContentArgs;
   generate_image: GenerateImageArgs;
+  edit_image: EditImageArgs;
   // Saga tools
   genesis_world: GenesisWorldArgs;
   detect_entities: DetectEntitiesArgs;
@@ -691,6 +722,18 @@ export interface GenerateImageResult {
   entityId?: string;
   assetId?: string;
   storagePath?: string;
+}
+
+/**
+ * Result of edit_image tool.
+ */
+export interface EditImageResult {
+  imageUrl: string;
+  previewUrl?: string;
+  entityId?: string;
+  assetId?: string;
+  storagePath?: string;
+  parentAssetId: string;
 }
 
 // =============================================================================
@@ -1065,6 +1108,7 @@ export interface ToolResultsMap {
   delete_relationship: DeleteEntityResult; // Same shape
   generate_content: GenerateContentResult;
   generate_image: GenerateImageResult;
+  edit_image: EditImageResult;
   // Saga tools
   genesis_world: GenesisWorldResult;
   detect_entities: DetectEntitiesResult;

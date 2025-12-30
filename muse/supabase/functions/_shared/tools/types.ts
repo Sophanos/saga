@@ -225,6 +225,22 @@ export const assetTypeSchema = z.enum([
 export type AssetType = z.infer<typeof assetTypeSchema>;
 
 // =============================================================================
+// Image Editing Schemas
+// =============================================================================
+
+/**
+ * EditMode - How the model should interpret the edit request.
+ */
+export const editModeSchema = z.enum([
+  "inpaint",         // Modify specific elements while keeping the rest
+  "outpaint",        // Extend/expand the image beyond its frame
+  "remix",           // General variation/edit using the reference as guidance
+  "style_transfer",  // Re-render in a target style while preserving subject
+]);
+
+export type EditMode = z.infer<typeof editModeSchema>;
+
+// =============================================================================
 // Saga Mode and Editor Context
 // (Aligned with @mythos/agent-protocol)
 // =============================================================================

@@ -33,6 +33,7 @@ import {
   buildImagePrompt,
   STYLE_PROMPTS,
 } from "../_shared/tools/generate-image.ts";
+import { buildEditPrompt } from "../_shared/tools/edit-image.ts";
 import type { ImageStyle, AspectRatio, AssetType } from "../_shared/tools/types.ts";
 import {
   generateClipImageEmbedding,
@@ -85,10 +86,31 @@ interface SceneRequest {
   negativePrompt?: string;
 }
 
-type AIImageRequest = GenerateRequest | SceneRequest;
+// Image edit request
+type EditMode = "inpaint" | "outpaint" | "remix" | "style_transfer";
+
+interface EditRequest {
+  kind: "edit";
+  projectId: string;
+  assetId: string;
+  editInstruction: string;
+  editMode?: EditMode;
+  style?: ImageStyle;
+  aspectRatio?: AspectRatio;
+  preserveAspectRatio?: boolean;
+  assetType?: AssetType;
+  setAsPortrait?: boolean;
+  negativePrompt?: string;
+}
+
+type AIImageRequest = GenerateRequest | SceneRequest | EditRequest;
 
 function isSceneRequest(req: AIImageRequest): req is SceneRequest {
   return req.kind === "scene";
+}
+
+function isEditRequest(req: AIImageRequest): req is EditRequest {
+  return req.kind === "edit";
 }
 
 interface AIImageResponse {
@@ -128,6 +150,7 @@ const MAX_PROMPT_LENGTH = 2000;
 const MAX_VISUAL_DESC_LENGTH = 1000;
 const MAX_SCENE_TEXT_LENGTH = 3000;
 const MAX_CHARACTER_REFS = 4; // Limit portraits to control payload size
+const MAX_EDIT_INSTRUCTION_LENGTH = 1200;
 
 // Scene focus composition prompts
 const SCENE_FOCUS_PROMPTS: Record<SceneFocus, string> = {
@@ -310,6 +333,106 @@ async function generateImageWithFallback(
   }
 
   throw new Error("No API key available for image generation");
+}
+
+/**
+ * Generate image using multimodal content (images + text) with fallback.
+ * Used for image editing and scene illustration with reference images.
+ */
+async function generateImageWithFallbackFromContent(
+  content: Array<{ type: "text" | "image"; text?: string; image?: string }>,
+  openRouterKey: string | null,
+  geminiKey: string | null,
+  logPrefix: string
+): Promise<GeneratedImage> {
+  // Try OpenRouter first
+  if (openRouterKey) {
+    try {
+      console.log(`${logPrefix} Trying OpenRouter multimodal with ${OPENROUTER_IMAGE_MODEL}...`);
+      const openRouter = createDynamicOpenRouter(openRouterKey);
+
+      const result = await generateText({
+        model: openRouter(OPENROUTER_IMAGE_MODEL),
+        messages: [{ role: "user", content }],
+        abortSignal: AbortSignal.timeout(IMAGE_GEN_TIMEOUT_MS),
+      });
+
+      const imageFile = result.files?.find((f) => f.mediaType.startsWith("image/"));
+      if (imageFile) {
+        console.log(`${logPrefix} OpenRouter multimodal success`);
+        return {
+          uint8Array: imageFile.uint8Array,
+          mimeType: imageFile.mediaType,
+          model: OPENROUTER_IMAGE_MODEL,
+          usage: result.usage,
+        };
+      }
+
+      console.warn(`${logPrefix} OpenRouter multimodal returned no image, falling back...`);
+    } catch (error) {
+      console.warn(`${logPrefix} OpenRouter multimodal failed:`, error);
+    }
+  }
+
+  // Fallback to Gemini direct
+  if (geminiKey) {
+    console.log(`${logPrefix} Using Gemini direct multimodal with ${GEMINI_IMAGE_MODEL}...`);
+    const gemini = createDynamicGemini(geminiKey);
+
+    const result = await generateText({
+      model: gemini(GEMINI_IMAGE_MODEL),
+      messages: [{ role: "user", content }],
+      abortSignal: AbortSignal.timeout(IMAGE_GEN_TIMEOUT_MS),
+    });
+
+    const imageFile = result.files?.find((f) => f.mediaType.startsWith("image/"));
+    if (imageFile) {
+      console.log(`${logPrefix} Gemini multimodal success`);
+      return {
+        uint8Array: imageFile.uint8Array,
+        mimeType: imageFile.mediaType,
+        model: GEMINI_IMAGE_MODEL,
+        usage: result.usage,
+      };
+    }
+
+    throw new Error("Gemini returned no image (multimodal)");
+  }
+
+  throw new Error("No API key available for image editing");
+}
+
+/**
+ * Download an existing asset from Storage and convert to data URL.
+ */
+async function downloadAssetAsDataUrl(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  storagePath: string,
+  mimeTypeHint: string | null,
+  logPrefix: string
+): Promise<{ dataUrl: string; mimeType: string; bytes: Uint8Array }> {
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(storagePath);
+  if (error || !data) {
+    console.error(`${logPrefix} Failed to download asset from storage:`, error);
+    throw new Error("Failed to download source asset");
+  }
+
+  const arrayBuffer = await data.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+
+  if (bytes.length > MAX_IMAGE_SIZE_BYTES) {
+    throw new Error(
+      `Source image too large: ${Math.round(bytes.length / 1024 / 1024)}MB exceeds 10MB limit`
+    );
+  }
+
+  const mimeType = data.type || mimeTypeHint || "image/png";
+  const base64 = uint8ArrayToBase64(bytes);
+  return {
+    bytes,
+    mimeType,
+    dataUrl: `data:${mimeType};base64,${base64}`,
+  };
 }
 
 // =============================================================================
@@ -962,6 +1085,270 @@ async function handleIllustrateScene(
 }
 
 // =============================================================================
+// Image Edit Handler
+// =============================================================================
+
+/**
+ * Handle image edit request.
+ * Downloads existing asset, applies multimodal edit, stores as new asset.
+ */
+async function handleEditImage(
+  req: EditRequest,
+  billing: BillingCheck,
+  supabase: ReturnType<typeof createSupabaseClient>,
+  origin: string | null
+): Promise<Response> {
+  const logPrefix = "[ai-image:edit]";
+  const startTime = Date.now();
+
+  console.log(`${logPrefix} Starting image edit for project: ${req.projectId}, asset: ${req.assetId}`);
+
+  try {
+    // 1) Verify project access
+    await assertProjectAccess(supabase, req.projectId, billing.userId);
+
+    // 2) Fetch the source asset (must belong to project)
+    const { data: sourceAsset, error: sourceErr } = await supabase
+      .from("project_assets")
+      .select("id, entity_id, asset_type, storage_path, mime_type, generation_prompt, generation_params")
+      .eq("id", req.assetId)
+      .eq("project_id", req.projectId)
+      .single();
+
+    if (sourceErr || !sourceAsset) {
+      console.error(`${logPrefix} Source asset lookup failed:`, sourceErr);
+      throw new Error("Source asset not found in project");
+    }
+
+    const entityId = sourceAsset.entity_id ?? undefined;
+
+    // 3) Determine defaults from source
+    const srcParams = (sourceAsset.generation_params ?? {}) as Record<string, unknown>;
+    const srcStyle = typeof srcParams.style === "string" ? (srcParams.style as ImageStyle) : undefined;
+    const srcAspectRatio =
+      typeof srcParams.aspectRatio === "string" ? (srcParams.aspectRatio as AspectRatio) : undefined;
+
+    const preserveAspectRatio = req.preserveAspectRatio !== false;
+    const style = req.style ?? srcStyle ?? "fantasy_art";
+    const aspectRatio = preserveAspectRatio
+      ? (srcAspectRatio ?? req.aspectRatio)
+      : (req.aspectRatio ?? srcAspectRatio);
+
+    const assetType: AssetType =
+      req.assetType ?? (sourceAsset.asset_type as AssetType | null) ?? (entityId ? "portrait" : "other");
+
+    const editMode = req.editMode ?? "remix";
+
+    // 4) Download source image as data URL
+    const source = await downloadAssetAsDataUrl(
+      supabase,
+      sourceAsset.storage_path,
+      sourceAsset.mime_type ?? null,
+      logPrefix
+    );
+
+    // 5) Build edit prompt text
+    const prompt = buildEditPrompt({
+      editInstruction: req.editInstruction,
+      editMode,
+      style,
+      aspectRatio,
+      originalPrompt: sourceAsset.generation_prompt ?? undefined,
+      negativePrompt: req.negativePrompt,
+    });
+
+    console.log(`${logPrefix} Editing prompt: ${prompt.slice(0, 120)}...`);
+
+    // 6) Generate edited image (multimodal: reference image + instruction)
+    const openRouterKey = billing.apiKey;
+    const geminiKey = Deno.env.get("GOOGLE_GENERATIVE_AI_API_KEY") ?? null;
+
+    const content: Array<{ type: "text" | "image"; text?: string; image?: string }> = [
+      { type: "image", image: source.dataUrl },
+      { type: "text", text: prompt },
+    ];
+
+    const generated = await generateImageWithFallbackFromContent(content, openRouterKey, geminiKey, logPrefix);
+
+    if (generated.uint8Array.length > MAX_IMAGE_SIZE_BYTES) {
+      throw new Error(
+        `Edited image too large: ${Math.round(generated.uint8Array.length / 1024 / 1024)}MB exceeds 10MB limit`
+      );
+    }
+
+    // 7) Upload edited image
+    const ext = getExtFromMimeType(generated.mimeType);
+    const storagePath = generateStoragePath(req.projectId, entityId, ext);
+
+    const { error: uploadError } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(storagePath, generated.uint8Array, {
+        contentType: generated.mimeType,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error(`${logPrefix} Storage upload failed:`, uploadError);
+      throw new Error(`Failed to upload edited image: ${uploadError.message}`);
+    }
+
+    let uploadedPath: string | null = storagePath;
+
+    try {
+      // 8) Signed URL
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .createSignedUrl(storagePath, SIGNED_URL_EXPIRY_SECONDS);
+
+      if (signedUrlError || !signedUrlData?.signedUrl) {
+        throw new Error("Failed to create signed URL");
+      }
+
+      const signedUrl = signedUrlData.signedUrl;
+
+      // 9) Insert new project_assets row (non-destructive)
+      const insertPayload: Record<string, unknown> = {
+        project_id: req.projectId,
+        entity_id: entityId ?? null,
+        asset_type: assetType,
+        storage_path: storagePath,
+        public_url: signedUrl,
+        generation_prompt: prompt,
+        generation_model: generated.model,
+        generation_params: {
+          kind: "edit",
+          parentAssetId: req.assetId,
+          editMode,
+          editInstruction: req.editInstruction.slice(0, 500),
+          style,
+          aspectRatio: aspectRatio ?? null,
+          preserveAspectRatio,
+        },
+        mime_type: generated.mimeType,
+        parent_asset_id: req.assetId,
+      };
+
+      const { data: assetData, error: assetError } = await supabase
+        .from("project_assets")
+        .insert(insertPayload)
+        .select("id")
+        .single();
+
+      if (assetError || !assetData) {
+        console.error(`${logPrefix} Failed to create edited asset record:`, assetError);
+        throw new Error("Failed to save edited asset record");
+      }
+
+      const newAssetId = assetData.id as string;
+      uploadedPath = null;
+
+      // 10) Update entity portrait if requested
+      const setAsPortrait = req.setAsPortrait !== false;
+      if (setAsPortrait && entityId) {
+        const { error: updateError } = await supabase
+          .from("entities")
+          .update({
+            portrait_url: signedUrl,
+            portrait_asset_id: newAssetId,
+          })
+          .eq("id", entityId)
+          .eq("project_id", req.projectId);
+
+        if (updateError) {
+          console.warn(`${logPrefix} Failed to update entity portrait:`, updateError);
+        }
+      }
+
+      // 11) CLIP embedding + Qdrant (non-fatal)
+      try {
+        if (isClipConfigured() && isQdrantConfigured()) {
+          const imageBase64 = uint8ArrayToBase64(generated.uint8Array);
+          const clipResult = await generateClipImageEmbedding(imageBase64, { mimeType: generated.mimeType });
+
+          const qdrantPayload = {
+            project_id: req.projectId,
+            asset_id: newAssetId,
+            parent_asset_id: req.assetId,
+            entity_id: entityId ?? null,
+            entity_type: null,
+            asset_type: assetType,
+            style: style ?? null,
+            storage_path: storagePath,
+            public_url: signedUrl,
+            created_at: new Date().toISOString(),
+          };
+
+          await upsertPoints(
+            [{ id: newAssetId, vector: clipResult.embedding, payload: qdrantPayload }],
+            { collection: "saga_images" }
+          );
+
+          await supabase
+            .from("project_assets")
+            .update({
+              clip_embedding: toPgVector(clipResult.embedding),
+              clip_sync_status: "synced",
+              clip_synced_at: new Date().toISOString(),
+              clip_last_error: null,
+            })
+            .eq("id", newAssetId);
+        }
+      } catch (clipError) {
+        console.error(`${logPrefix} CLIP sync failed:`, clipError);
+        try {
+          await supabase
+            .from("project_assets")
+            .update({
+              clip_sync_status: "error",
+              clip_last_error: clipError instanceof Error ? clipError.message : String(clipError),
+            })
+            .eq("id", newAssetId);
+        } catch (e) {
+          console.error(`${logPrefix} Failed to update CLIP error status:`, e);
+        }
+      }
+
+      // 12) Record AI request
+      try {
+        await recordAIRequest(supabase, billing, {
+          endpoint: "image-edit",
+          model: generated.model,
+          modelType: "image",
+          usage: {
+            promptTokens: generated.usage?.promptTokens ?? 0,
+            completionTokens: generated.usage?.completionTokens ?? 0,
+            totalTokens: generated.usage?.totalTokens ?? 0,
+          },
+          success: true,
+          latencyMs: Date.now() - startTime,
+        });
+      } catch (e) {
+        console.warn(`${logPrefix} Failed to record AI request:`, e);
+      }
+
+      return createSuccessResponse(
+        {
+          assetId: newAssetId,
+          storagePath,
+          imageUrl: signedUrl,
+          entityId,
+          parentAssetId: req.assetId,
+        },
+        origin
+      );
+    } catch (error) {
+      if (uploadedPath) {
+        await cleanupStorageBlob(supabase, uploadedPath, logPrefix);
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error(`${logPrefix} Error:`, error);
+    return handleAIError(error, origin, { providerName: "ai-image-edit" });
+  }
+}
+
+// =============================================================================
 // Serve
 // =============================================================================
 
@@ -1009,6 +1396,22 @@ serve(async (req: Request): Promise<Response> => {
         return createErrorResponse(ErrorCode.VALIDATION_ERROR, `sceneText exceeds ${MAX_SCENE_TEXT_LENGTH} characters`, origin);
       }
       return handleIllustrateScene(body, billing, supabase, origin);
+    } else if (isEditRequest(body)) {
+      // Image edit request
+      if (!body.assetId) {
+        return createErrorResponse(ErrorCode.VALIDATION_ERROR, "assetId is required for image editing", origin);
+      }
+      if (!body.editInstruction) {
+        return createErrorResponse(ErrorCode.VALIDATION_ERROR, "editInstruction is required for image editing", origin);
+      }
+      if (body.editInstruction.length > MAX_EDIT_INSTRUCTION_LENGTH) {
+        return createErrorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          `editInstruction exceeds ${MAX_EDIT_INSTRUCTION_LENGTH} characters`,
+          origin
+        );
+      }
+      return handleEditImage(body, billing, supabase, origin);
     } else {
       // Standard generate request
       if (!body.subject) {

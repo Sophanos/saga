@@ -402,6 +402,27 @@ export const CAPABILITIES: Capability[] = [
       assetType: "scene",
     }),
   },
+  {
+    id: "tool.edit-image",
+    kind: "tool",
+    label: "Edit Image",
+    description: "Modify an existing asset (e.g., change hair color, add sunset background)",
+    icon: "Paintbrush",
+    category: "generation",
+    surfaces: ["command_palette"],
+    requiresProject: true,
+    requiresApiKey: true,
+    keywords: ["edit", "image", "remix", "refine", "variation", "portrait", "scene", "modify"],
+    order: 240,
+    toolName: "edit_image",
+    danger: "costly",
+    requiresConfirmation: true,
+    buildDefaultArgs: () => ({
+      editMode: "remix",
+      preserveAspectRatio: true,
+      setAsPortrait: true,
+    }),
+  },
 ];
 
 // =============================================================================
