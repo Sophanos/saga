@@ -1,4 +1,4 @@
-import { generateText, streamText, type CoreMessage } from "ai";
+import { generateText, streamText, type ModelMessage } from "ai";
 import type { LanguageModel } from "ai";
 import { getModel, type UnifiedModelType } from "../providers";
 
@@ -7,7 +7,7 @@ export interface AnalysisContext {
   entities?: unknown[];
   relationships?: unknown[];
   projectConfig?: unknown;
-  previousMessages?: CoreMessage[];
+  previousMessages?: ModelMessage[];
 }
 
 export interface StreamChunk {
@@ -48,7 +48,7 @@ export abstract class NarrativeAgent {
       system: this.config.systemPrompt,
       messages,
       temperature: this.config.temperature ?? 0.3,
-      maxTokens: this.config.maxTokens ?? 4096,
+      maxOutputTokens: this.config.maxTokens ?? 4096,
     });
 
     return result.text;
@@ -62,7 +62,7 @@ export abstract class NarrativeAgent {
       system: this.config.systemPrompt,
       messages,
       temperature: this.config.temperature ?? 0.3,
-      maxTokens: this.config.maxTokens ?? 4096,
+      maxOutputTokens: this.config.maxTokens ?? 4096,
     });
 
     for await (const chunk of (await result).textStream) {
@@ -70,8 +70,8 @@ export abstract class NarrativeAgent {
     }
   }
 
-  protected buildMessages(context: AnalysisContext): CoreMessage[] {
-    const messages: CoreMessage[] = context.previousMessages || [];
+  protected buildMessages(context: AnalysisContext): ModelMessage[] {
+    const messages: ModelMessage[] = context.previousMessages || [];
 
     // Build context message
     let contextMessage = `## Document Content:\n${context.documentContent}`;

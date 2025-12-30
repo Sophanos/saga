@@ -1,4 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
+import type { LanguageModel } from "ai";
 
 // OpenRouter provides access to multiple LLMs through a unified API
 // https://openrouter.ai/docs
@@ -12,7 +13,14 @@ export const openrouter = createOpenAI({
 });
 
 // Task-based model routing
-export const openrouterModels = {
+export const openrouterModels: {
+  analysis: LanguageModel;
+  fast: LanguageModel;
+  grammar: LanguageModel;
+  image: LanguageModel;
+  thinking: LanguageModel;
+  creative: LanguageModel;
+} = {
   // Gemini 3 models
   analysis: openrouter("google/gemini-3-pro-preview"),
   fast: openrouter("google/gemini-3-flash-preview"),
@@ -22,6 +30,6 @@ export const openrouterModels = {
   // Kimi K2 for thinking & creative
   thinking: openrouter("moonshotai/kimi-k2-thinking"),
   creative: openrouter("moonshotai/kimi-k2-thinking"),
-} as const;
+};
 
 export type OpenRouterModelType = keyof typeof openrouterModels;

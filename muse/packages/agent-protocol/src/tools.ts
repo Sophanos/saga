@@ -45,7 +45,11 @@ export type ToolName =
   | "name_generator"
   // Image search tools
   | "search_images"
-  | "find_similar_images";
+  | "find_similar_images"
+  // Phase 3+4: Reference image & scene composition
+  | "analyze_image"
+  | "create_entity_from_image"
+  | "illustrate_scene";
 
 // =============================================================================
 // Tool Invocation Lifecycle
@@ -447,6 +451,160 @@ export interface FindSimilarImagesArgs {
   assetType?: AssetType;
 }
 
+// =============================================================================
+// Phase 3: Reference Image → Entity
+// =============================================================================
+
+/**
+ * Focus area for image analysis extraction.
+ */
+export type ExtractionFocus = "full" | "appearance" | "environment" | "object";
+
+/**
+ * Scene focus for illustration composition.
+ */
+export type SceneFocus = "action" | "dialogue" | "establishing" | "dramatic";
+
+/**
+ * Arguments for analyze_image tool.
+ * Analyzes an uploaded/reference image to extract visual details.
+ */
+export interface AnalyzeImageArgs {
+  /** Base64 data URL or storage path of the image */
+  imageSource: string;
+  /** Optional entity type hint for better extraction */
+  entityTypeHint?: EntityType;
+  /** What aspect to focus extraction on */
+  extractionFocus?: ExtractionFocus;
+}
+
+/**
+ * Structured visual description extracted from an image.
+ */
+export interface VisualDescription {
+  // Character-specific
+  height?: string;
+  build?: string;
+  hairColor?: string;
+  hairStyle?: string;
+  eyeColor?: string;
+  skinTone?: string;
+  distinguishingFeatures?: string[];
+  clothing?: string;
+  accessories?: string[];
+  // Location-specific
+  climate?: string;
+  atmosphere?: string;
+  // Item-specific
+  category?: string;
+  material?: string;
+  // General
+  artStyle?: string;
+  mood?: string;
+}
+
+/**
+ * Result of analyze_image tool.
+ */
+export interface AnalyzeImageResult {
+  /** Suggested entity type based on image content */
+  suggestedEntityType: EntityType;
+  /** Optional suggested name if discernible */
+  suggestedName?: string;
+  /** Structured visual description */
+  visualDescription: VisualDescription;
+  /** Natural language description of the image */
+  description: string;
+  /** Confidence score (0-1) */
+  confidence: number;
+  /** Asset ID if image was stored */
+  assetId?: string;
+  /** Public URL to the stored image */
+  imageUrl?: string;
+}
+
+/**
+ * Arguments for create_entity_from_image tool.
+ * Composite operation: upload → analyze → create entity + set portrait.
+ */
+export interface CreateEntityFromImageArgs {
+  /** Base64 encoded image data (data URL) */
+  imageData: string;
+  /** Optional name for the entity */
+  name?: string;
+  /** Optional entity type (defaults to character) */
+  entityType?: EntityType;
+  /** Whether to set the image as entity portrait (default true) */
+  setAsPortrait?: boolean;
+}
+
+/**
+ * Result of create_entity_from_image tool.
+ */
+export interface CreateEntityFromImageResult {
+  /** ID of the created entity */
+  entityId: string;
+  /** Type of the created entity */
+  entityType: EntityType;
+  /** Name of the created entity */
+  name: string;
+  /** Asset ID of the stored image */
+  assetId?: string;
+  /** Public URL to the image */
+  imageUrl?: string;
+  /** Analysis result for reference */
+  analysis?: AnalyzeImageResult;
+}
+
+// =============================================================================
+// Phase 4: Scene Composition
+// =============================================================================
+
+/**
+ * Arguments for illustrate_scene tool.
+ * Generates a scene illustration from narrative text.
+ */
+export interface IllustrateSceneArgs {
+  /** The narrative text describing the scene */
+  sceneText: string;
+  /** Names of characters to include (will use their portraits for consistency) */
+  characterNames?: string[];
+  /** Art style for the illustration */
+  style?: ImageStyle;
+  /** Aspect ratio (default 16:9 for scenes) */
+  aspectRatio?: AspectRatio;
+  /** Composition focus */
+  sceneFocus?: SceneFocus;
+  /** Negative prompt - what to avoid */
+  negativePrompt?: string;
+}
+
+/**
+ * Character included in an illustrated scene.
+ */
+export interface SceneCharacter {
+  /** Character name */
+  name: string;
+  /** Entity ID if resolved */
+  entityId?: string;
+  /** Whether a portrait reference was available */
+  hadPortraitReference: boolean;
+}
+
+/**
+ * Result of illustrate_scene tool.
+ */
+export interface IllustrateSceneResult {
+  /** Public URL to the generated image */
+  imageUrl: string;
+  /** Asset ID of the stored image */
+  assetId: string;
+  /** Description/caption of the scene */
+  sceneDescription: string;
+  /** Characters included in the illustration */
+  charactersIncluded: SceneCharacter[];
+}
+
 /**
  * Map of tool names to their argument types.
  */
@@ -470,6 +628,10 @@ export interface ToolArgsMap {
   // Image search tools
   search_images: SearchImagesArgs;
   find_similar_images: FindSimilarImagesArgs;
+  // Phase 3+4 tools
+  analyze_image: AnalyzeImageArgs;
+  create_entity_from_image: CreateEntityFromImageArgs;
+  illustrate_scene: IllustrateSceneArgs;
 }
 
 // =============================================================================
@@ -914,6 +1076,10 @@ export interface ToolResultsMap {
   // Image search tools
   search_images: SearchImagesResult;
   find_similar_images: FindSimilarImagesResult;
+  // Phase 3+4 tools
+  analyze_image: AnalyzeImageResult;
+  create_entity_from_image: CreateEntityFromImageResult;
+  illustrate_scene: IllustrateSceneResult;
 }
 
 // =============================================================================
@@ -923,7 +1089,7 @@ export interface ToolResultsMap {
 /**
  * Type-safe tool invocation with specific args and result.
  */
-export type TypedToolInvocation<T extends ToolName> = Omit<
+export type TypedToolInvocation<T extends ToolName & keyof ToolArgsMap & keyof ToolResultsMap> = Omit<
   ToolInvocation,
   "toolName" | "args" | "result"
 > & {

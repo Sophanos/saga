@@ -40,7 +40,7 @@ export async function runGenesis(input: GenesisInput): Promise<GenesisResult> {
     system: GENESIS_SYSTEM,
     messages: [{ role: "user", content: userMessage }],
     temperature: 0.7,
-    maxTokens: 4096,
+    maxOutputTokens: 4096,
   });
 
   try {
@@ -98,7 +98,7 @@ Return JSON: { "genre": "genre_enum", "confidence": 0.0-1.0 }
 Valid genres: high_fantasy, urban_fantasy, science_fiction, horror, mystery, romance, thriller, literary, manga_shounen, manga_seinen, manga_shoujo, manga_josei, litrpg, progression_fantasy, grimdark, slice_of_life`,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.1,
-    maxTokens: 100,
+    maxOutputTokens: 100,
   });
 
   try {

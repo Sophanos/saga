@@ -52,25 +52,25 @@ interface AIImageResponse {
 function getEntityVisualDescription(entity: Entity): string | undefined {
   // Check for character visual description
   const props = entity.properties as Record<string, unknown>;
-  const visualDesc = props.visualDescription as Record<string, unknown> | undefined;
-  
+  const visualDesc = props["visualDescription"] as Record<string, unknown> | undefined;
+
   if (visualDesc) {
     const parts: string[] = [];
-    
-    if (visualDesc.height) parts.push(`height: ${visualDesc.height}`);
-    if (visualDesc.build) parts.push(`build: ${visualDesc.build}`);
-    if (visualDesc.hairColor) parts.push(`${visualDesc.hairColor} hair`);
-    if (visualDesc.hairStyle) parts.push(`${visualDesc.hairStyle} hairstyle`);
-    if (visualDesc.eyeColor) parts.push(`${visualDesc.eyeColor} eyes`);
-    if (visualDesc.skinTone) parts.push(`${visualDesc.skinTone} skin`);
-    if (visualDesc.clothing) parts.push(`wearing ${visualDesc.clothing}`);
-    if (Array.isArray(visualDesc.distinguishingFeatures)) {
-      parts.push(...visualDesc.distinguishingFeatures.map(f => String(f)));
+
+    if (visualDesc["height"]) parts.push(`height: ${visualDesc["height"]}`);
+    if (visualDesc["build"]) parts.push(`build: ${visualDesc["build"]}`);
+    if (visualDesc["hairColor"]) parts.push(`${visualDesc["hairColor"]} hair`);
+    if (visualDesc["hairStyle"]) parts.push(`${visualDesc["hairStyle"]} hairstyle`);
+    if (visualDesc["eyeColor"]) parts.push(`${visualDesc["eyeColor"]} eyes`);
+    if (visualDesc["skinTone"]) parts.push(`${visualDesc["skinTone"]} skin`);
+    if (visualDesc["clothing"]) parts.push(`wearing ${visualDesc["clothing"]}`);
+    if (Array.isArray(visualDesc["distinguishingFeatures"])) {
+      parts.push(...visualDesc["distinguishingFeatures"].map(f => String(f)));
     }
-    if (Array.isArray(visualDesc.accessories)) {
-      parts.push(`with ${visualDesc.accessories.join(", ")}`);
+    if (Array.isArray(visualDesc["accessories"])) {
+      parts.push(`with ${visualDesc["accessories"].join(", ")}`);
     }
-    
+
     if (parts.length > 0) {
       return parts.join(", ");
     }

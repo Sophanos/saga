@@ -1,4 +1,5 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import type { LanguageModel } from "ai";
 
 // Create Gemini provider
 export const google = createGoogleGenerativeAI({
@@ -6,7 +7,12 @@ export const google = createGoogleGenerativeAI({
 });
 
 // Model configurations (Gemini 3 models)
-export const models = {
+export const models: {
+  analysis: LanguageModel;
+  fast: LanguageModel;
+  grammar: LanguageModel;
+  image: LanguageModel;
+} = {
   // Primary model for analysis (large context window)
   analysis: google("gemini-3-pro-preview"),
 
@@ -18,6 +24,6 @@ export const models = {
 
   // Image generation (Nano Banana Pro)
   image: google("gemini-3-pro-image-preview"),
-} as const;
+};
 
 export type ModelType = keyof typeof models;

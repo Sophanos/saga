@@ -5,6 +5,7 @@ export { openrouter, openrouterModels, type OpenRouterModelType } from "./openro
 // Unified model selector with fallback support
 import { models } from "./gemini";
 import { openrouterModels } from "./openrouter";
+import type { LanguageModel } from "ai";
 
 export type UnifiedModelType =
   | "analysis"
@@ -18,7 +19,7 @@ export type UnifiedModelType =
  * Get the best available model for a task type.
  * OpenRouter is primary, direct Gemini is fallback.
  */
-export function getModel(type: UnifiedModelType) {
+export function getModel(type: UnifiedModelType): LanguageModel {
   const hasOpenRouter = !!import.meta.env["VITE_OPENROUTER_API_KEY"];
   const hasGemini = !!import.meta.env["VITE_GOOGLE_GENERATIVE_AI_API_KEY"];
 

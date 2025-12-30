@@ -96,7 +96,7 @@ export class DynamicsExtractor {
         schema: dynamicsExtractionResultSchema,
         prompt: userMessage,
         temperature: 0.3,
-        maxTokens: 4096,
+        maxOutputTokens: 4096,
       });
 
       // Convert extracted interactions to core Interaction type

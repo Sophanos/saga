@@ -68,7 +68,7 @@ export class EntityDetector {
       system: ENTITY_DETECTOR_SYSTEM,
       messages: [{ role: "user", content: userMessage }],
       temperature: 0.2, // Low temperature for accurate position detection
-      maxTokens: 8192, // Allow for long responses with many entities
+      maxOutputTokens: 8192, // Allow for long responses with many entities
     });
 
     // Parse and validate the response
