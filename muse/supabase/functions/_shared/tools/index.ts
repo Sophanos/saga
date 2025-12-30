@@ -29,7 +29,7 @@ export { searchImagesTool, searchImagesParameters, type SearchImagesArgs } from 
 export { findSimilarImagesTool, findSimilarImagesParameters, type FindSimilarImagesArgs } from "./find-similar-images.ts";
 
 // Export Phase 3+4 tools
-export { analyzeImageTool, analyzeImageParameters, type AnalyzeImageArgs } from "./analyze-image.ts";
+export { analyzeImageTool, analyzeImageParameters, extractionFocusSchema, type AnalyzeImageArgs } from "./analyze-image.ts";
 export { createEntityFromImageTool, createEntityFromImageParameters, type CreateEntityFromImageArgs } from "./create-entity-from-image.ts";
 export { illustrateSceneTool, illustrateSceneParameters, sceneFocusSchema, SCENE_FOCUS_PROMPTS, type IllustrateSceneArgs } from "./illustrate-scene.ts";
 

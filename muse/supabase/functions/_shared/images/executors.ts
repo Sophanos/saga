@@ -34,9 +34,9 @@ export interface ImageSearchHit {
   score: number;
   storagePath?: string;
   entityId?: string;
-  entityType?: string;
-  assetType?: string;
-  style?: string;
+  entityType?: EntityType;
+  assetType?: AssetType;
+  style?: ImageStyle;
   createdAt?: string;
 }
 
@@ -103,7 +103,7 @@ async function assertProjectAccess(
 
   if (error || !project) {
     const { data: collab, error: collabError } = await supabase
-      .from("project_collaborators")
+      .from("project_members")
       .select("project_id")
       .eq("project_id", projectId)
       .eq("user_id", userId)
@@ -170,9 +170,9 @@ function transformResults(results: QdrantSearchResult[]): ImageSearchHit[] {
     score: hit.score,
     storagePath: hit.payload.storage_path as string | undefined,
     entityId: hit.payload.entity_id as string | undefined,
-    entityType: hit.payload.entity_type as string | undefined,
-    assetType: hit.payload.asset_type as string | undefined,
-    style: hit.payload.style as string | undefined,
+    entityType: hit.payload.entity_type as EntityType | undefined,
+    assetType: hit.payload.asset_type as AssetType | undefined,
+    style: hit.payload.style as ImageStyle | undefined,
     createdAt: hit.payload.created_at as string | undefined,
   }));
 }

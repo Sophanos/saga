@@ -483,14 +483,8 @@ async function handleExecuteTool(
         // Resolve entityName to entityId if provided
         let entityId: string | undefined;
         if (typedInput.entityName) {
-          const resolved = await resolveEntityPortraitAssetId(
-            supabase,
-            projectId,
-            typedInput.entityName,
-            typedInput.entityType as EntityType | undefined
-          );
           // For search, we use the entity filter, not asset ID
-          // So we need a different resolution - just get entity ID
+          // So we just need to get the entity ID
           const { data: entity } = await supabase
             .from("entities")
             .select("id")

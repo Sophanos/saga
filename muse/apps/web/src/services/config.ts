@@ -44,6 +44,9 @@ export const API_TIMEOUTS = {
 
   /** Timeout for scene illustration operations (120 seconds) */
   SCENE_ILLUSTRATION_MS: 120_000,
+
+  /** Timeout for image search operations (30 seconds) */
+  IMAGE_SEARCH_MS: 30_000,
 } as const;
 
 // =============================================================================

@@ -15,13 +15,10 @@ import type {
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 import { callEdgeFunction, ApiError } from "../../services/api-client";
 import { API_TIMEOUTS } from "../../services/config";
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-/** Maximum base64 image size in bytes (10MB - matches server limit) */
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+import {
+  validateBase64ImageSize,
+  validateImageToolContext,
+} from "./_shared/image-utils";
 
 // =============================================================================
 // Types
@@ -127,17 +124,9 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
     }
 
     // Client-side size validation for base64 data URLs
-    const base64Part = args.imageData.split(",")[1];
-    if (base64Part) {
-      // Estimate actual bytes from base64 (roughly 3/4 of base64 length)
-      const estimatedBytes = Math.ceil(base64Part.length * 0.75);
-      if (estimatedBytes > MAX_IMAGE_SIZE_BYTES) {
-        const sizeMB = (estimatedBytes / (1024 * 1024)).toFixed(1);
-        return {
-          valid: false,
-          error: `Image is too large (${sizeMB}MB). Maximum size is 10MB.`,
-        };
-      }
+    const sizeValidation = validateBase64ImageSize(args.imageData);
+    if (!sizeValidation.valid) {
+      return sizeValidation;
     }
 
     return { valid: true };
@@ -145,20 +134,10 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
 
   execute: async (args, ctx): Promise<ToolExecutionResult<CreateEntityFromImageResult>> => {
     try {
-      // Validate project context
-      if (!ctx.projectId) {
-        return {
-          success: false,
-          error: "Project ID is required",
-        };
-      }
-
-      // Validate API key
-      if (!ctx.apiKey) {
-        return {
-          success: false,
-          error: "API key is required for image analysis",
-        };
+      // Validate project context and API key
+      const ctxValidation = validateImageToolContext(ctx, "entity creation from image");
+      if (!ctxValidation.valid) {
+        return { success: false, error: ctxValidation.error };
       }
 
       // Validate entity creation capability
@@ -212,7 +191,7 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
           if (timeoutController.signal.aborted) {
             return {
               success: false,
-              error: "Image analysis timed out. Please try again.",
+              error: "Entity creation timed out. Please try again.",
             };
           }
           return {

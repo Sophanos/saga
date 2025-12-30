@@ -222,14 +222,16 @@ function getExtFromMimeType(mimeType: string): string {
 }
 
 /**
- * Convert Uint8Array to base64 string
+ * Convert Uint8Array to base64 string (chunk-based for performance)
  */
 function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  const CHUNK_SIZE = 0x8000; // 32KB chunks
+  const chunks: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    const chunk = bytes.subarray(i, i + CHUNK_SIZE);
+    chunks.push(String.fromCharCode.apply(null, chunk as unknown as number[]));
   }
-  return btoa(binary);
+  return btoa(chunks.join(""));
 }
 
 // =============================================================================
@@ -667,32 +669,48 @@ async function handleIllustrateScene(
       // Limit to MAX_CHARACTER_REFS to control payload size
       const refs = req.characterReferences.slice(0, MAX_CHARACTER_REFS);
 
-      for (const ref of refs) {
-        characterNames.push(ref.name);
+      // Process all character references in parallel
+      const processedRefs = await Promise.all(
+        refs.map(async (ref) => {
+          let hasPortrait = false;
+          let portraitData: string | null = null;
 
-        // Verify entity belongs to project
-        let hasPortrait = false;
-        if (ref.entityId) {
-          try {
-            await assertEntityInProject(supabase, ref.entityId, req.projectId);
+          // Verify entity belongs to project
+          if (ref.entityId) {
+            try {
+              await assertEntityInProject(supabase, ref.entityId, req.projectId);
 
-            // Fetch portrait data if URL provided
-            if (ref.portraitUrl) {
-              const portraitData = await fetchPortraitData(supabase, ref.portraitUrl, logPrefix);
-              if (portraitData) {
-                portraitDataUrls.push(portraitData);
-                hasPortrait = true;
+              // Fetch portrait data if URL provided
+              if (ref.portraitUrl) {
+                portraitData = await fetchPortraitData(supabase, ref.portraitUrl, logPrefix);
+                if (portraitData) {
+                  hasPortrait = true;
+                }
               }
+            } catch (e) {
+              console.warn(`${logPrefix} Character ${ref.name} entity validation failed:`, e);
             }
-          } catch (e) {
-            console.warn(`${logPrefix} Character ${ref.name} entity validation failed:`, e);
           }
-        }
 
+          return {
+            name: ref.name,
+            entityId: ref.entityId,
+            hasPortrait,
+            portraitData,
+          };
+        })
+      );
+
+      // Collect results from parallel processing
+      for (const processed of processedRefs) {
+        characterNames.push(processed.name);
+        if (processed.portraitData) {
+          portraitDataUrls.push(processed.portraitData);
+        }
         charactersIncluded.push({
-          name: ref.name,
-          entityId: ref.entityId,
-          hadPortraitReference: hasPortrait,
+          name: processed.name,
+          entityId: processed.entityId,
+          hadPortraitReference: processed.hasPortrait,
         });
       }
     }

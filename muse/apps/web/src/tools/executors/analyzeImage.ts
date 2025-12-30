@@ -13,13 +13,10 @@ import type {
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 import { callEdgeFunction, ApiError } from "../../services/api-client";
 import { API_TIMEOUTS } from "../../services/config";
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-/** Maximum base64 image size in bytes (10MB - matches server limit) */
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+import {
+  validateBase64ImageSize,
+  validateImageToolContext,
+} from "./_shared/image-utils";
 
 // =============================================================================
 // Types
@@ -82,19 +79,9 @@ export const analyzeImageExecutor: ToolDefinition<AnalyzeImageArgs, AnalyzeImage
     }
 
     // Client-side size validation for base64 data URLs
-    if (args.imageSource.startsWith("data:image/")) {
-      // Estimate actual bytes from base64 (roughly 3/4 of base64 length)
-      const base64Part = args.imageSource.split(",")[1];
-      if (base64Part) {
-        const estimatedBytes = Math.ceil(base64Part.length * 0.75);
-        if (estimatedBytes > MAX_IMAGE_SIZE_BYTES) {
-          const sizeMB = (estimatedBytes / (1024 * 1024)).toFixed(1);
-          return {
-            valid: false,
-            error: `Image is too large (${sizeMB}MB). Maximum size is 10MB.`,
-          };
-        }
-      }
+    const sizeValidation = validateBase64ImageSize(args.imageSource);
+    if (!sizeValidation.valid) {
+      return sizeValidation;
     }
 
     return { valid: true };
@@ -102,20 +89,10 @@ export const analyzeImageExecutor: ToolDefinition<AnalyzeImageArgs, AnalyzeImage
 
   execute: async (args, ctx): Promise<ToolExecutionResult<AnalyzeImageResult>> => {
     try {
-      // Validate project context
-      if (!ctx.projectId) {
-        return {
-          success: false,
-          error: "Project ID is required for image analysis",
-        };
-      }
-
-      // Validate API key
-      if (!ctx.apiKey) {
-        return {
-          success: false,
-          error: "API key is required for image analysis",
-        };
+      // Validate project context and API key
+      const ctxValidation = validateImageToolContext(ctx, "image analysis");
+      if (!ctxValidation.valid) {
+        return { success: false, error: ctxValidation.error };
       }
 
       ctx.onProgress?.({ pct: 5, stage: "Preparing image analysis..." });

@@ -12,7 +12,8 @@ import type {
 } from "@mythos/agent-protocol";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 import { resolveEntityByName } from "../types";
-import { callEdgeFunction } from "../../services/api-client";
+import { callEdgeFunction, ApiError } from "../../services/api-client";
+import { API_TIMEOUTS } from "../../services/config";
 
 // =============================================================================
 // Types
@@ -108,15 +109,47 @@ export const searchImagesExecutor: ToolDefinition<SearchImagesArgs, SearchImages
 
       ctx.onProgress?.({ pct: 30, stage: "Generating embeddings..." });
 
-      // Call the saga endpoint
-      const response = await callEdgeFunction<SagaExecuteToolRequest, SagaExecuteToolResponse>(
-        "ai-saga",
-        request,
-        {
-          apiKey: ctx.apiKey,
-          signal: ctx.signal,
-        }
+      // Set up timeout handling
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(
+        () => timeoutController.abort(),
+        API_TIMEOUTS.IMAGE_SEARCH_MS
       );
+
+      // Combine user signal with timeout signal
+      const combinedSignal = ctx.signal
+        ? AbortSignal.any([ctx.signal, timeoutController.signal])
+        : timeoutController.signal;
+
+      // Call the saga endpoint
+      let response: SagaExecuteToolResponse;
+      try {
+        response = await callEdgeFunction<SagaExecuteToolRequest, SagaExecuteToolResponse>(
+          "ai-saga",
+          request,
+          {
+            apiKey: ctx.apiKey,
+            signal: combinedSignal,
+          }
+        );
+        clearTimeout(timeoutId);
+      } catch (error) {
+        clearTimeout(timeoutId);
+        // Handle abort/timeout
+        if (error instanceof ApiError && error.code === "ABORTED") {
+          if (timeoutController.signal.aborted) {
+            return {
+              success: false,
+              error: "Image search timed out. Please try again.",
+            };
+          }
+          return {
+            success: false,
+            error: "Image search was cancelled.",
+          };
+        }
+        throw error;
+      }
 
       ctx.onProgress?.({ pct: 100, stage: "Complete" });
 

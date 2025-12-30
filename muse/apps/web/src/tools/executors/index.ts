@@ -12,6 +12,18 @@ export { deleteRelationshipExecutor, type DeleteRelationshipArgs, type DeleteRel
 export { generateContentExecutor, type GenerateContentArgs, type GenerateContentResult } from "./generateContent";
 export { generateImageExecutor } from "./generateImage";
 export type { GenerateImageArgs, GenerateImageResult } from "@mythos/agent-protocol";
+export { searchImagesExecutor } from "./searchImages";
+export type { SearchImagesArgs, SearchImagesResult } from "@mythos/agent-protocol";
+export { findSimilarImagesExecutor } from "./findSimilarImages";
+export type { FindSimilarImagesArgs, FindSimilarImagesResult } from "@mythos/agent-protocol";
+
+// Phase 3+4 image tools
+export { analyzeImageExecutor } from "./analyzeImage";
+export type { AnalyzeImageArgs, AnalyzeImageResult } from "@mythos/agent-protocol";
+export { createEntityFromImageExecutor } from "./createEntityFromImage";
+export type { CreateEntityFromImageArgs, CreateEntityFromImageResult } from "@mythos/agent-protocol";
+export { illustrateSceneExecutor } from "./illustrateScene";
+export type { IllustrateSceneArgs, IllustrateSceneResult } from "@mythos/agent-protocol";
 
 // Saga unified agent tools
 export { genesisWorldExecutor, type GenesisWorldExecutionResult } from "./genesisWorld";
