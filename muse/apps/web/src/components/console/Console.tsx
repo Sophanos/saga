@@ -5,8 +5,6 @@ import {
   BarChart3,
   Search,
   Activity as ActivityIcon,
-  Sparkles,
-  ExternalLink,
 } from "lucide-react";
 import { jumpToPosition } from "@mythos/editor";
 import { DynamicsView } from "./DynamicsView";
@@ -71,7 +69,13 @@ export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
   const editor = useEditorInstance();
   const historyCount = useHistoryCount();
   const chatMode = useChatMode();
-  const setChatMode = useMythosStore((s) => s.setChatMode);
+
+  // Auto-switch away from Chat tab when chat mode becomes floating
+  useEffect(() => {
+    if (chatMode === "floating" && activeTab === "chat") {
+      setActiveTab("search");
+    }
+  }, [chatMode, activeTab, setActiveTab]);
 
   // Track editor content for linter hook
   const [editorContent, setEditorContent] = useState("");
@@ -174,16 +178,19 @@ export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
     <div className="h-full flex flex-col">
       {/* Tabs */}
       <div className="flex border-b border-mythos-border-default">
-        <button
-          onClick={() => setActiveTab("chat")}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === "chat"
-              ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
-              : "text-mythos-text-muted hover:text-mythos-text-secondary"
-          }`}
-        >
-          Chat
-        </button>
+        {/* Chat tab - hidden when chat is in floating mode */}
+        {chatMode !== "floating" && (
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "chat"
+                ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
+                : "text-mythos-text-muted hover:text-mythos-text-secondary"
+            }`}
+          >
+            Chat
+          </button>
+        )}
         <button
           onClick={() => setActiveTab("search")}
           className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
@@ -262,35 +269,13 @@ export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
       </div>
 
       {/* Content */}
-      {activeTab === "chat" ? (
-        chatMode === "floating" ? (
-          /* Show placeholder when chat is in floating mode */
-          <div className="flex-1 flex flex-col items-center justify-center p-6">
-            <div className="w-14 h-14 mb-4 rounded-full bg-gradient-to-br from-[#7C5CFF]/20 to-[#5C9EFF]/20 flex items-center justify-center">
-              <Sparkles className="w-7 h-7 text-[#7C5CFF]" />
-            </div>
-            <h3 className="text-sm font-medium text-mythos-text-primary mb-2">
-              Chat is floating
-            </h3>
-            <p className="text-xs text-mythos-text-muted text-center mb-4 max-w-[200px]">
-              The AI chat is currently in floating mode. Click the button to dock it here.
-            </p>
-            <button
-              onClick={() => setChatMode("docked")}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-mythos-bg-tertiary hover:bg-mythos-accent-purple/10 text-sm text-mythos-text-secondary hover:text-mythos-text-primary transition-colors border border-mythos-border-default"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Dock to sidebar
-            </button>
-          </div>
-        ) : (
-          <ChatPanel
-            mode="docked"
-            variant={isAnonymous ? "trial" : "full"}
-            onHide={() => setActiveTab("search")}
-            onSignUp={onSignUp}
-          />
-        )
+      {activeTab === "chat" && chatMode !== "floating" ? (
+        <ChatPanel
+          mode="docked"
+          variant={isAnonymous ? "trial" : "full"}
+          onHide={() => setActiveTab("search")}
+          onSignUp={onSignUp}
+        />
       ) : activeTab === "search" ? (
         <SearchPanel />
       ) : activeTab === "linter" ? (
