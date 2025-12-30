@@ -134,17 +134,32 @@ const MAX_HISTORY_MESSAGES = 20;
 // Memory retrieval extracted to ../_shared/memory/retrieval.ts
 
 // =============================================================================
-// Chat Handler (Streaming)
+// Shared Context Preparation
 // =============================================================================
 
-async function handleChat(
-  req: SagaChatRequest,
-  apiKey: string,
-  origin: string | null,
-  billing: BillingCheck,
-  supabase: ReturnType<typeof createSupabaseClient>
-): Promise<Response> {
-  const { messages, projectId, mentions, editorContext, mode, conversationId } = req;
+interface SagaContextParams {
+  messages: Message[];
+  projectId: string;
+  editorContext?: EditorContext;
+  mode?: SagaMode;
+  conversationId?: string;
+  billing: BillingCheck;
+  supabase: ReturnType<typeof createSupabaseClient>;
+  logPrefix: string;
+}
+
+interface PreparedContext {
+  ragContext: RAGContext;
+  systemPrompt: string;
+  apiMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+}
+
+/**
+ * Prepare context for a Saga conversation.
+ * Shared between handleChat and handleToolApproval.
+ */
+async function prepareSagaContext(params: SagaContextParams): Promise<PreparedContext> {
+  const { messages, projectId, editorContext, mode, conversationId, billing, supabase, logPrefix } = params;
 
   // Get last user message for RAG query
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
@@ -156,12 +171,11 @@ async function handleChat(
   // Retrieve all contexts in parallel
   const [ragContext, memoryContext, profileContext] = await Promise.all([
     retrieveRAGContext(query, projectId, {
-      logPrefix: "[ai-saga]",
+      logPrefix,
       excludeMemories: true,
     }),
-    // Pass ownerId for proper user/conversation scope isolation
-    retrieveMemoryContext(query, projectId, ownerId, conversationId, DEFAULT_SAGA_LIMITS, "[ai-saga]"),
-    retrieveProfileContext(supabase, billing.userId, "[ai-saga]"),
+    retrieveMemoryContext(query, projectId, ownerId, conversationId, DEFAULT_SAGA_LIMITS, logPrefix, supabase),
+    retrieveProfileContext(supabase, billing.userId, logPrefix),
   ]);
 
   // Build system prompt with all contexts
@@ -183,6 +197,74 @@ async function handleChat(
     })),
   ];
 
+  return { ragContext, systemPrompt, apiMessages };
+}
+
+/**
+ * Stream AI SDK response to SSE.
+ * Shared between handleChat and handleToolApproval.
+ */
+async function streamToSSE(
+  sse: SSEStreamController,
+  result: Awaited<ReturnType<typeof streamText>>
+): Promise<void> {
+  const fullStream = result.fullStream;
+
+  for await (const part of fullStream) {
+    switch (part.type) {
+      case "text-delta":
+        sse.sendDelta(part.text);
+        break;
+
+      case "tool-call":
+        sse.sendTool(part.toolCallId, part.toolName, part.input);
+        break;
+
+      case "tool-approval-request":
+        sse.sendToolApprovalRequest(
+          part.toolCallId,
+          part.toolName,
+          part.input
+        );
+        break;
+
+      case "finish":
+        break;
+
+      case "error":
+        sse.sendError(part.error);
+        break;
+    }
+  }
+
+  sse.complete();
+}
+
+// =============================================================================
+// Chat Handler (Streaming)
+// =============================================================================
+
+async function handleChat(
+  req: SagaChatRequest,
+  apiKey: string,
+  origin: string | null,
+  billing: BillingCheck,
+  supabase: ReturnType<typeof createSupabaseClient>
+): Promise<Response> {
+  const { messages, projectId, editorContext, mode, conversationId } = req;
+
+  // Prepare context using shared helper
+  const { ragContext, apiMessages } = await prepareSagaContext({
+    messages,
+    projectId,
+    editorContext,
+    mode,
+    conversationId,
+    billing,
+    supabase,
+    logPrefix: "[ai-saga]",
+  });
+
   // Get model
   const model = getOpenRouterModel(apiKey, "creative");
 
@@ -198,41 +280,8 @@ async function handleChat(
   const stream = createSSEStream(async (sse: SSEStreamController) => {
     // Send context metadata first
     sse.sendContext(ragContext);
-
-    // Use fullStream to get tool call IDs and tool-approval-request parts
-    const fullStream = result.fullStream;
-
-    for await (const part of fullStream) {
-      switch (part.type) {
-        case "text-delta":
-          sse.sendDelta(part.text);
-          break;
-
-        case "tool-call":
-          // Regular tool call (no approval needed or approval already granted)
-          sse.sendTool(part.toolCallId, part.toolName, part.input);
-          break;
-
-        case "tool-approval-request":
-          // AI SDK 6: Tool has needsApproval=true and requires user consent
-          // Send as proposal to client for HITL approval flow
-          sse.sendToolApprovalRequest(
-            part.toolCallId,
-            part.toolName,
-            part.input
-          );
-          break;
-
-        case "finish":
-          break;
-
-        case "error":
-          sse.sendError(part.error);
-          break;
-      }
-    }
-
-    sse.complete();
+    // Stream using shared helper
+    await streamToSSE(sse, result);
   });
 
   return new Response(stream, {
@@ -382,44 +431,17 @@ async function handleToolApproval(
     }, origin);
   }
 
-  // If approved, continue the conversation with tool-approval-response
-  // This follows the AI SDK 6 pattern for continuing after approval
-
-  // Get last user message for RAG query
-  const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
-  const query = lastUserMessage?.content ?? "";
-
-  // Determine owner ID for memory isolation
-  const ownerId = billing.userId ?? billing.anonDeviceId ?? null;
-
-  // Retrieve contexts in parallel
-  const [ragContext, memoryContext, profileContext] = await Promise.all([
-    retrieveRAGContext(query, projectId, {
-      logPrefix: "[ai-saga-approval]",
-      excludeMemories: true,
-    }),
-    retrieveMemoryContext(query, projectId, ownerId, conversationId, DEFAULT_SAGA_LIMITS, "[ai-saga-approval]"),
-    retrieveProfileContext(supabase, billing.userId, "[ai-saga-approval]"),
-  ]);
-
-  // Build system prompt with contexts
-  const systemPrompt = buildSagaSystemPrompt({
-    mode,
-    ragContext,
+  // Prepare context using shared helper
+  const { ragContext, apiMessages } = await prepareSagaContext({
+    messages,
+    projectId,
     editorContext,
-    profileContext,
-    memoryContext,
+    mode,
+    conversationId,
+    billing,
+    supabase,
+    logPrefix: "[ai-saga-approval]",
   });
-
-  // Build messages array with sliding window
-  const recentMessages = messages.slice(-MAX_HISTORY_MESSAGES);
-  const apiMessages = [
-    { role: "system" as const, content: systemPrompt },
-    ...recentMessages.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    })),
-  ];
 
   // Get model
   const model = getOpenRouterModel(apiKey, "creative");
@@ -449,37 +471,7 @@ async function handleToolApproval(
   // Stream the response
   const stream = createSSEStream(async (sse: SSEStreamController) => {
     sse.sendContext(ragContext);
-
-    const fullStream = result.fullStream;
-
-    for await (const part of fullStream) {
-      switch (part.type) {
-        case "text-delta":
-          sse.sendDelta(part.text);
-          break;
-
-        case "tool-call":
-          sse.sendTool(part.toolCallId, part.toolName, part.input);
-          break;
-
-        case "tool-approval-request":
-          sse.sendToolApprovalRequest(
-            part.toolCallId,
-            part.toolName,
-            part.input
-          );
-          break;
-
-        case "finish":
-          break;
-
-        case "error":
-          sse.sendError(part.error);
-          break;
-      }
-    }
-
-    sse.complete();
+    await streamToSSE(sse, result);
   });
 
   return new Response(stream, {
