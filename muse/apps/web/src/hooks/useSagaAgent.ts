@@ -56,8 +56,10 @@ export interface UseSagaAgentResult {
   sendMessage: (content: string, mentions?: ChatMention[]) => Promise<void>;
   /** Stop streaming the current response */
   stopStreaming: () => void;
-  /** Clear all messages and start fresh */
+  /** Clear messages (keeps same conversation) */
   clearChat: () => void;
+  /** Start a new conversation (new ID, clears messages) */
+  newConversation: () => void;
   /** Whether currently streaming */
   isStreaming: boolean;
   /** Current error if any */
@@ -105,6 +107,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
   const setChatError = useMythosStore((s) => s.setChatError);
   const setChatContext = useMythosStore((s) => s.setChatContext);
   const startNewConversation = useMythosStore((s) => s.startNewConversation);
+  const clearChatMessages = useMythosStore((s) => s.clearChat);
   const updateToolInvocation = useMythosStore((s) => s.updateToolInvocation);
 
   // Get API key
@@ -118,9 +121,6 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
 
   // Ref for current mode (avoids re-renders for mode changes)
   const modeRef = useRef<SagaMode>(initialMode);
-
-  // Ref for conversation ID (persists across messages in the same conversation)
-  const conversationIdRef = useRef<string | null>(null);
 
   /**
    * Set the current saga mode
@@ -200,10 +200,8 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
             content: m.content,
           }));
 
-        // Generate conversationId if not already set
-        if (!conversationIdRef.current) {
-          conversationIdRef.current = crypto.randomUUID();
-        }
+        // Get conversationId from store (single source of truth)
+        const conversationId = useMythosStore.getState().chat.conversationId;
 
         // Build the payload with editor context
         const payload: SagaChatPayload = {
@@ -212,7 +210,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
           mentions,
           editorContext: buildEditorContext(),
           mode: modeRef.current,
-          conversationId: conversationIdRef.current,
+          conversationId,
         };
 
         await sendSagaChatStreaming(payload, {
@@ -330,11 +328,18 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
   }, [setChatStreaming]);
 
   /**
-   * Clear chat and start fresh
+   * Clear chat messages (keeps same conversation ID)
    */
   const clearChat = useCallback(() => {
     abortControllerRef.current?.abort();
-    conversationIdRef.current = null; // Reset conversationId for new conversation
+    clearChatMessages();
+  }, [clearChatMessages]);
+
+  /**
+   * Start a new conversation (new ID, clears messages)
+   */
+  const newConversation = useCallback(() => {
+    abortControllerRef.current?.abort();
     startNewConversation();
   }, [startNewConversation]);
 
@@ -351,6 +356,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
     sendMessage,
     stopStreaming,
     clearChat,
+    newConversation,
     isStreaming,
     error,
     setMode,

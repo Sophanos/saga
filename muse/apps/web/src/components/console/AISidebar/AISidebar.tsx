@@ -1,11 +1,14 @@
 import { useCallback, useMemo } from "react";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import {
   useMythosStore,
   useChatMessages,
   useIsChatStreaming,
   useChatError,
+  useConversationId,
+  useConversationName,
+  useIsNewConversation,
   type ChatMention,
 } from "../../../stores";
 import { useSagaAgent } from "../../../hooks/useSagaAgent";
@@ -15,6 +18,7 @@ import { ContextBar } from "./ContextBar";
 import { QuickActions } from "./QuickActions";
 import { ChatMessages } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
+import { SessionIndicator } from "./SessionIndicator";
 import type { Editor } from "@mythos/editor";
 import type { Capability, CapabilityContext } from "@mythos/capabilities";
 import {
@@ -35,8 +39,12 @@ export function AISidebar({ className }: AISidebarProps) {
   const messages = useChatMessages();
   const isStreaming = useIsChatStreaming();
   const error = useChatError();
+  const conversationId = useConversationId();
+  const conversationName = useConversationName();
+  const isNewConversation = useIsNewConversation();
+  const setConversationName = useMythosStore((s) => s.setConversationName);
 
-  const { sendMessage, stopStreaming, clearChat } = useSagaAgent({ mode: "editing" });
+  const { sendMessage, stopStreaming, clearChat, newConversation } = useSagaAgent({ mode: "editing" });
 
   // Get current document and editor for context
   const currentDocument = useMythosStore((s) => s.document.currentDocument);
@@ -102,11 +110,15 @@ export function AISidebar({ className }: AISidebarProps) {
   return (
     <div className={cn("h-full flex flex-col", className)}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-mythos-text-muted/20">
-        <span className="text-sm font-medium text-mythos-text-primary">
-          AI Assistant
-        </span>
-        <div className="flex items-center gap-1">
+      <div className="group flex items-center justify-between px-3 py-2 border-b border-mythos-text-muted/20">
+        <SessionIndicator
+          conversationId={conversationId}
+          conversationName={conversationName}
+          isNewConversation={isNewConversation}
+          onRename={setConversationName}
+          className="min-w-0 flex-1"
+        />
+        <div className="flex items-center gap-1 flex-shrink-0">
           {isStreaming && (
             <Button
               variant="ghost"
@@ -117,13 +129,22 @@ export function AISidebar({ className }: AISidebarProps) {
               Stop
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={newConversation}
+            className="h-6 w-6"
+            title="New conversation"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
           {messages.length > 0 && (
             <Button
               variant="ghost"
               size="icon"
               onClick={clearChat}
               className="h-6 w-6"
-              title="Clear chat"
+              title="Clear messages"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { immer } from "zustand/middleware/immer";
+import { loadChatSession, saveChatSession } from "./chatSessionStorage";
 import type {
   Entity,
   EntityType,
@@ -224,12 +225,24 @@ export interface ChatContext {
   entities: ChatContextItem[];
 }
 
+// UUID generator helper
+const generateConversationId = (): string =>
+  crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+// Load persisted session for hydration
+const persistedSession = loadChatSession();
+
 // Chat slice
 interface ChatState {
   messages: ChatMessage[];
   isStreaming: boolean;
   error: string | null;
-  conversationId: string | null;
+  /** Active conversation ID - single source of truth */
+  conversationId: string;
+  /** User-defined conversation name */
+  conversationName: string | null;
+  /** Whether this is a new conversation (no messages sent yet) */
+  isNewConversation: boolean;
   /** Last retrieved context for debugging/display */
   lastContext: ChatContext | null;
 }
@@ -322,6 +335,7 @@ interface MythosStore {
   setChatStreaming: (streaming: boolean) => void;
   setChatError: (error: string | null) => void;
   setChatContext: (context: ChatContext | null) => void;
+  setConversationName: (name: string | null) => void;
   clearChat: () => void;
   startNewConversation: () => void;
 
@@ -338,7 +352,7 @@ interface MythosStore {
 }
 
 export const useMythosStore = create<MythosStore>()(
-  immer((set) => ({
+  immer((set, get) => ({
     // Initial state
     project: {
       currentProject: null,
@@ -384,7 +398,9 @@ export const useMythosStore = create<MythosStore>()(
       messages: [],
       isStreaming: false,
       error: null,
-      conversationId: null,
+      conversationId: persistedSession?.conversationId ?? generateConversationId(),
+      conversationName: persistedSession?.conversationName ?? null,
+      isNewConversation: persistedSession?.isNewConversation ?? true,
       lastContext: null,
     },
     ui: {
@@ -534,12 +550,21 @@ export const useMythosStore = create<MythosStore>()(
         state.search.error = null;
         state.search.lastRunAt = null;
         state.search.source = { kind: "query" };
-        // Clear chat
+        // Clear chat and start fresh session
+        const newConversationId = generateConversationId();
         state.chat.messages = [];
         state.chat.isStreaming = false;
         state.chat.error = null;
-        state.chat.conversationId = null;
+        state.chat.conversationId = newConversationId;
+        state.chat.conversationName = null;
+        state.chat.isNewConversation = true;
         state.chat.lastContext = null;
+        // Persist new session (outside immer callback)
+        saveChatSession({
+          conversationId: newConversationId,
+          conversationName: null,
+          isNewConversation: true,
+        });
         // Reset editor dirty state
         state.editor.isDirty = false;
       }),
@@ -662,11 +687,21 @@ export const useMythosStore = create<MythosStore>()(
       }),
 
     // Chat actions
-    addChatMessage: (message) =>
+    addChatMessage: (message) => {
       set((state) => {
         state.chat.messages.push(message);
         state.chat.error = null;
-      }),
+        // Flip isNewConversation on first user message
+        if (message.role === "user" && state.chat.isNewConversation) {
+          state.chat.isNewConversation = false;
+        }
+      });
+      // Persist session state on user messages
+      if (message.role === "user") {
+        const { conversationId, conversationName, isNewConversation } = get().chat;
+        saveChatSession({ conversationId, conversationName, isNewConversation });
+      }
+    },
     updateChatMessage: (id, updates) =>
       set((state) => {
         const idx = state.chat.messages.findIndex((m) => m.id === id);
@@ -711,6 +746,14 @@ export const useMythosStore = create<MythosStore>()(
       set((state) => {
         state.chat.lastContext = context;
       }),
+    setConversationName: (name) => {
+      set((state) => {
+        state.chat.conversationName = name;
+      });
+      // Persist updated session
+      const { conversationId, conversationName, isNewConversation } = get().chat;
+      saveChatSession({ conversationId, conversationName, isNewConversation });
+    },
     clearChat: () =>
       set((state) => {
         state.chat.messages = [];
@@ -718,14 +761,24 @@ export const useMythosStore = create<MythosStore>()(
         state.chat.isStreaming = false;
         state.chat.lastContext = null;
       }),
-    startNewConversation: () =>
+    startNewConversation: () => {
+      const newId = generateConversationId();
       set((state) => {
         state.chat.messages = [];
         state.chat.error = null;
         state.chat.isStreaming = false;
         state.chat.lastContext = null;
-        state.chat.conversationId = crypto.randomUUID();
-      }),
+        state.chat.conversationId = newId;
+        state.chat.conversationName = null;
+        state.chat.isNewConversation = true;
+      });
+      // Persist new session
+      saveChatSession({
+        conversationId: newId,
+        conversationName: null,
+        isNewConversation: true,
+      });
+    },
 
     // UI actions
     setActiveTab: (tab) =>
@@ -1099,6 +1152,18 @@ export const useChatError = () =>
  */
 export const useConversationId = () =>
   useMythosStore((s) => s.chat.conversationId);
+
+/**
+ * Get conversation name
+ */
+export const useConversationName = () =>
+  useMythosStore((s) => s.chat.conversationName);
+
+/**
+ * Get whether this is a new conversation
+ */
+export const useIsNewConversation = () =>
+  useMythosStore((s) => s.chat.isNewConversation);
 
 /**
  * Get last retrieved RAG context
