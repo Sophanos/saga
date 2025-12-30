@@ -1,1 +1,1 @@
-export { AnonymousApp } from "./AnonymousApp";
+export { AnonymousLayout } from "./AnonymousLayout";

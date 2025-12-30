@@ -4,6 +4,7 @@
  */
 
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { immer } from "zustand/middleware/immer";
 import type { ProjectRole, ActivityLogEntry } from "@mythos/core";
 
@@ -206,30 +207,34 @@ export const useCollaborationStore = create<CollaborationState>()(
 );
 
 // Selectors
-export const useProjectMembers = () => useCollaborationStore((s) => s.members);
-export const useCollaboratorPresence = () => useCollaborationStore((s) => s.presence);
-export const useActivityLog = () => useCollaborationStore((s) => s.activity);
+export const useProjectMembers = () => useCollaborationStore(useShallow((s) => s.members));
+export const useCollaboratorPresence = () => useCollaborationStore(useShallow((s) => s.presence));
+export const useActivityLog = () => useCollaborationStore(useShallow((s) => s.activity));
 export const useMyRole = () => useCollaborationStore((s) => s.myRole);
 export const useIsReadOnly = () => useCollaborationStore((s) => s.isReadOnly);
 export const useIsConnected = () => useCollaborationStore((s) => s.isConnected);
 
-// Computed selectors
+// Computed selectors - use useShallow for array/object returns to prevent infinite loops
 export const useActiveCollaborators = () =>
-  useCollaborationStore((s) => {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    return s.presence.filter((p) => p.lastSeen > fiveMinutesAgo);
-  });
+  useCollaborationStore(
+    useShallow((s) => {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      return s.presence.filter((p) => p.lastSeen > fiveMinutesAgo);
+    })
+  );
 
 export const useCollaboratorsInDocument = (documentId: string) =>
-  useCollaborationStore((s) =>
-    s.presence.filter((p) => p.documentId === documentId)
+  useCollaborationStore(
+    useShallow((s) => s.presence.filter((p) => p.documentId === documentId))
   );
 
 export const useMemberById = (memberId: string) =>
   useCollaborationStore((s) => s.members.find((m) => m.id === memberId));
 
 export const useMembersByRole = (role: ProjectRole) =>
-  useCollaborationStore((s) => s.members.filter((m) => m.role === role));
+  useCollaborationStore(
+    useShallow((s) => s.members.filter((m) => m.role === role))
+  );
 
 export const useRecentActivity = (limit = 10) =>
-  useCollaborationStore((s) => s.activity.slice(0, limit));
+  useCollaborationStore(useShallow((s) => s.activity.slice(0, limit)));

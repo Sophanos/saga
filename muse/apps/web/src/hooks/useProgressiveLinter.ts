@@ -6,7 +6,7 @@
  * and trigger the Phase 2 → 3 transition.
  */
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import {
   useProgressiveStore,
   useIsGardenerMode,
@@ -91,8 +91,12 @@ export function useProgressiveLinter(
   const documentIds = useMythosStore((s) =>
     Array.from(s.document.documents.keys()).sort().join(",")
   );
-  const documents = useMythosStore((s) =>
-    Array.from(s.document.documents.values())
+  // Memoize documents array based on documentIds to prevent new array on every render
+  const documentsMap = useMythosStore((s) => s.document.documents);
+  const documents = useMemo(
+    () => Array.from(documentsMap.values()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [documentIds]
   );
 
   // Issue 2 fix: Capture current project/document at callback creation time via refs

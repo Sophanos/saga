@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useRef, useCallback, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useMythosStore } from "../../stores";
 import {
   useProgressiveStore,
@@ -128,8 +129,10 @@ function useWordCount(): number {
 // ============================================================================
 
 function useCharacterCount(): number {
-  const entities = useMythosStore((s) => 
-    Array.from(s.world.entities.values()).filter((e) => e.type === "character")
+  const entities = useMythosStore(
+    useShallow((s) =>
+      Array.from(s.world.entities.values()).filter((e) => e.type === "character")
+    )
   );
   return entities.length;
 }

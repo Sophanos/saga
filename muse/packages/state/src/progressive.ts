@@ -5,6 +5,7 @@
 
 import { useCallback } from "react";
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import type { EntityType } from "@mythos/core";
@@ -1377,28 +1378,31 @@ export function useProgressiveNudgeActions(
 /**
  * Get UI panel visibility based on progressive state
  * Returns which panels should be shown in the layout
+ * Uses useShallow to prevent infinite re-renders when returning objects
  */
 export const useProgressivePanelVisibility = () =>
-  useProgressiveStore((s) => {
-    // Default to all visible
-    const defaultVisibility = {
-      showManifest: true,
-      showConsole: true,
-      showWorldGraph: true,
-    };
+  useProgressiveStore(
+    useShallow((s) => {
+      // Default to all visible
+      const defaultVisibility = {
+        showManifest: true,
+        showConsole: true,
+        showWorldGraph: true,
+      };
 
-    if (!s.activeProjectId) return defaultVisibility;
-    
-    const projectState = s.projects[s.activeProjectId];
-    if (!projectState) return defaultVisibility;
+      if (!s.activeProjectId) return defaultVisibility;
 
-    // For architect mode, everything is visible
-    if (projectState.creationMode !== "gardener") return defaultVisibility;
+      const projectState = s.projects[s.activeProjectId];
+      if (!projectState) return defaultVisibility;
 
-    // For gardener mode, check unlocked modules
-    return {
-      showManifest: projectState.unlockedModules.manifest === true,
-      showConsole: projectState.unlockedModules.console === true,
-      showWorldGraph: projectState.unlockedModules.world_graph === true,
-    };
-  });
+      // For architect mode, everything is visible
+      if (projectState.creationMode !== "gardener") return defaultVisibility;
+
+      // For gardener mode, check unlocked modules
+      return {
+        showManifest: projectState.unlockedModules.manifest === true,
+        showConsole: projectState.unlockedModules.console === true,
+        showWorldGraph: projectState.unlockedModules.world_graph === true,
+      };
+    })
+  );

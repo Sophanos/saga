@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { immer } from "zustand/middleware/immer";
 import type { SceneMetrics, StyleIssue, ReadabilityMetrics } from "@mythos/core";
 
@@ -336,13 +337,15 @@ export const useAnalysisStore = create<AnalysisStore>()(
  * Get tension array from metrics
  */
 export const useTension = () =>
-  useAnalysisStore((state) => state.metrics?.tension ?? []);
+  useAnalysisStore(useShallow((state) => state.metrics?.tension ?? []));
 
 /**
  * Get sensory balance from metrics
  */
 export const useSensoryBalance = () =>
-  useAnalysisStore((state) => state.metrics?.sensory ?? defaultMetrics.sensory);
+  useAnalysisStore(
+    useShallow((state) => state.metrics?.sensory ?? defaultMetrics.sensory)
+  );
 
 /**
  * Get pacing from metrics
@@ -375,19 +378,21 @@ export const useShowDontTellGrade = () =>
  * Get combined style issues (coach + clarity)
  */
 export const useStyleIssues = () =>
-  useAnalysisStore((state) => [...state.issues, ...state.clarityIssues]);
+  useAnalysisStore(
+    useShallow((state) => [...state.issues, ...state.clarityIssues])
+  );
 
 /**
  * Get readability metrics from clarity analysis
  */
 export const useReadabilityMetrics = () =>
-  useAnalysisStore((state) => state.readabilityMetrics);
+  useAnalysisStore(useShallow((state) => state.readabilityMetrics));
 
 /**
  * Get insights
  */
 export const useInsights = () =>
-  useAnalysisStore((state) => state.insights);
+  useAnalysisStore(useShallow((state) => state.insights));
 
 /**
  * Get analyzing state
@@ -461,7 +466,7 @@ export const useSelectedStyleIssue = () =>
  * Get the persistence state
  */
 export const usePersistenceState = () =>
-  useAnalysisStore((state) => state.persistence);
+  useAnalysisStore(useShallow((state) => state.persistence));
 
 /**
  * Check if there are pending persistence operations
@@ -481,4 +486,4 @@ export const useHasFailedPersistence = () =>
  * Get persistence errors
  */
 export const usePersistenceErrors = () =>
-  useAnalysisStore((state) => state.persistence.persistenceErrors);
+  useAnalysisStore(useShallow((state) => state.persistence.persistenceErrors));

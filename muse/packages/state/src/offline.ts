@@ -4,6 +4,7 @@
  */
 
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { immer } from "zustand/middleware/immer";
 
 /**
@@ -177,22 +178,24 @@ export const useSyncStatus = (): SyncStatus =>
   });
 
 export const useOfflineIndicatorData = () =>
-  useOfflineStore((s) => ({
-    isOnline: s.isOnline,
-    isSyncing: s.isSyncing,
-    pendingCount: s.pendingMutations + s.pendingAiRequests,
-    hasError: !!s.syncError,
-    lastSyncAt: s.lastSyncAt,
-  }));
+  useOfflineStore(
+    useShallow((s) => ({
+      isOnline: s.isOnline,
+      isSyncing: s.isSyncing,
+      pendingCount: s.pendingMutations + s.pendingAiRequests,
+      hasError: !!s.syncError,
+      lastSyncAt: s.lastSyncAt,
+    }))
+  );
 
 export const useFailedMutations = () =>
-  useOfflineStore((s) =>
-    s.pendingMutationsList.filter((m) => m.status === "error")
+  useOfflineStore(
+    useShallow((s) => s.pendingMutationsList.filter((m) => m.status === "error"))
   );
 
 export const usePendingMutationsByTable = (table: string) =>
-  useOfflineStore((s) =>
-    s.pendingMutationsList.filter((m) => m.table === table)
+  useOfflineStore(
+    useShallow((s) => s.pendingMutationsList.filter((m) => m.table === table))
   );
 
 /**

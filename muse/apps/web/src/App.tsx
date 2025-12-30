@@ -4,7 +4,7 @@ import { ProjectSelectorScreen } from "./components/projects";
 import { TemplatePickerModal } from "./components/modals";
 import { AuthScreen, AuthCallback } from "./components/auth";
 import { InviteAcceptPage } from "./components/collaboration";
-import { AnonymousApp } from "./components/anonymous";
+import { AnonymousLayout } from "./components/anonymous";
 import { LAST_PROJECT_KEY, PENDING_INVITE_TOKEN_KEY } from "./constants/storageKeys";
 import { LandingPage } from "@mythos/website/pages";
 import { useProjects } from "./hooks/useProjects";
@@ -220,10 +220,10 @@ function App() {
     return <InviteAcceptPage token={inviteToken} />;
   }
 
-  // Handle /try route (anonymous trial) - even if authenticated, but redirect if so
+  // Handle /try route (anonymous trial) - shows real app with trial limits
   if (isTryRoute && !isAuthenticated) {
     return (
-      <AnonymousApp
+      <AnonymousLayout
         onSignUp={() => {
           // Navigate to signup
           window.history.pushState({}, "", "/signup");
