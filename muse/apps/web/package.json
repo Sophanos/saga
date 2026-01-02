@@ -14,7 +14,6 @@
     "@mythos/agent-protocol": "workspace:*",
     "@mythos/ai": "workspace:*",
     "@mythos/capabilities": "workspace:*",
-    "@mythos/context": "workspace:*",
     "@mythos/core": "workspace:*",
     "@mythos/context": "workspace:*",
     "@mythos/db": "workspace:*",
