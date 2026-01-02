@@ -48,6 +48,9 @@ import {
   ErrorCode,
 } from "../_shared/errors.ts";
 import { CONSISTENCY_LINTER_SYSTEM } from "../_shared/prompts/linter.ts";
+import { retrieveMemoryContext } from "../_shared/memory/retrieval.ts";
+import type { RetrievedMemoryRecord } from "../_shared/memory/types.ts";
+import { assertProjectAccess, ProjectAccessError } from "../_shared/projects.ts";
 import {
   checkBillingAndGetKey,
   createSupabaseClient,
@@ -61,6 +64,8 @@ import {
  */
 interface LintRequest {
   documentContent: string;
+  projectId?: string;
+  documentId?: string;
   entities?: unknown[];
   relationships?: unknown[];
   projectConfig?: unknown;
@@ -76,13 +81,37 @@ interface ConsistencyIssue {
   message: string;
   suggestion: string;
   relatedLocations?: { line: number; text: string }[];
+  canonCitations?: Array<{
+    memoryId: string;
+    excerpt?: string;
+    reason?: string;
+  }>;
+}
+
+function formatCanonDecisions(decisions: RetrievedMemoryRecord[]): string {
+  if (!decisions || decisions.length === 0) {
+    return "None recorded.";
+  }
+
+  const sorted = [...decisions].sort(
+    (a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+  );
+
+  return sorted.map((decision) => `- [M:${decision.id}] ${decision.content}`).join("\n");
 }
 
 /**
  * Build the analysis prompt from context
  */
-function buildAnalysisPrompt(request: LintRequest): string {
+function buildAnalysisPrompt(
+  request: LintRequest,
+  canonDecisions: string
+): string {
   let prompt = `## Document Content:\n${request.documentContent}`;
+
+  if (canonDecisions) {
+    prompt += `\n\n## Canon Decisions (cite [M:...] tags when flagging contradictions):\n${canonDecisions}`;
+  }
 
   if (request.entities && request.entities.length > 0) {
     prompt += `\n\n## Known Entities:\n${JSON.stringify(request.entities, null, 2)}`;
@@ -186,11 +215,33 @@ serve(async (req) => {
       );
     }
 
+    let canonDecisions = "";
+    if (request.projectId) {
+      try {
+        await assertProjectAccess(supabase, request.projectId, billing.userId ?? null);
+      } catch (error) {
+        if (error instanceof ProjectAccessError) {
+          return createErrorResponse(ErrorCode.FORBIDDEN, error.message, origin);
+        }
+        throw error;
+      }
+
+      canonDecisions = await retrieveMemoryContext(
+        "",
+        request.projectId,
+        null,
+        undefined,
+        { decisions: 12, style: 0, preferences: 0, session: 0 },
+        "[ai-lint]",
+        supabase
+      ).then((context) => formatCanonDecisions(context.decisions));
+    }
+
     // Get the model (analysis type for thorough checking)
     const model = getOpenRouterModel(billing.apiKey!, modelType);
 
     // Build the prompt
-    const userPrompt = buildAnalysisPrompt(request);
+    const userPrompt = buildAnalysisPrompt(request, canonDecisions);
 
     // Call the AI
     const result = await generateText({

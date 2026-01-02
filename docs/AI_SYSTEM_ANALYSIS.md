@@ -263,6 +263,28 @@ getEntitiesWithoutEmbeddings(projectId, limit)
 getDocumentsWithoutEmbeddings(projectId, limit)
 ```
 
+### Story Bible & Memory Controls
+
+The memory layer backs the Story Bible UI and canon system. Memories are stored as RAG-style records and injected into prompts with provenance tags.
+
+Key behaviors:
+- Canon decisions are project-scoped `decision` memories and can be pinned for priority.
+- Memory metadata tracks `pinned`/`redacted` state; redaction overwrites content + embeddings.
+- Read options support `includeExpired`, `includeRedacted`, `pinnedOnly`, and `maxAgeDays` for UI toggles.
+- Prompt injection uses `[M:<id>]` tags so linter/chat can cite canon facts.
+
+Example read request:
+
+```json
+{
+  "projectId": "proj_123",
+  "categories": ["decision", "style"],
+  "maxAgeDays": 30,
+  "includeExpired": false,
+  "includeRedacted": false
+}
+```
+
 ### Current Status
 
 | Component | Status |

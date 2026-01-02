@@ -61,6 +61,10 @@ export interface MemoryPayload extends BasePayload {
   created_at: string;
   created_at_ts: number; // Unix ms for range queries
   expires_at?: string;
+  pinned?: boolean;
+  redacted?: boolean;
+  redacted_at?: string;
+  redaction_reason?: string;
 }
 
 /**
@@ -262,8 +266,17 @@ export function buildMemoryPayload(params: {
   toolCallId?: string;
   toolName?: string;
   expiresAt?: string;
+  pinned?: boolean;
+  redacted?: boolean;
+  redactedAt?: string;
+  redactionReason?: string;
+  createdAt?: string;
+  createdAtTs?: number;
+  updatedAt?: string;
 }): MemoryPayload {
   const now = new Date();
+  const createdAt = params.createdAt ?? now.toISOString();
+  const createdAtTs = params.createdAtTs ?? now.getTime();
   return {
     type: "memory",
     project_id: params.projectId,
@@ -280,9 +293,13 @@ export function buildMemoryPayload(params: {
     document_id: params.documentId,
     tool_call_id: params.toolCallId,
     tool_name: params.toolName,
-    created_at: now.toISOString(),
-    created_at_ts: now.getTime(),
-    updated_at: now.toISOString(),
+    created_at: createdAt,
+    created_at_ts: createdAtTs,
+    updated_at: params.updatedAt ?? now.toISOString(),
     expires_at: params.expiresAt,
+    pinned: params.pinned,
+    redacted: params.redacted,
+    redacted_at: params.redactedAt,
+    redaction_reason: params.redactionReason,
   };
 }

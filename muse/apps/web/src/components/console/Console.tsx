@@ -64,6 +64,9 @@ interface ConsoleProps {
 export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
   const activeTab = useMythosStore((state) => state.ui.activeTab);
   const setActiveTab = useMythosStore((state) => state.setActiveTab);
+  const manifestCollapsed = useMythosStore((state) => state.ui.manifestCollapsed);
+  const toggleManifest = useMythosStore((state) => state.toggleManifest);
+  const setSelectedMemoryId = useMythosStore((state) => state.setSelectedMemoryId);
   const issueCounts = useLinterIssueCounts();
   const linterIssues = useMythosStore((state) => state.linter.issues);
   const editor = useEditorInstance();
@@ -134,6 +137,16 @@ export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
     jumpToPosition(editor, position);
     editor.commands.focus();
   }, [editor, linterIssues]);
+
+  const handleJumpToCanon = useCallback(
+    (memoryId: string) => {
+      setSelectedMemoryId(memoryId);
+      if (manifestCollapsed) {
+        toggleManifest();
+      }
+    },
+    [manifestCollapsed, setSelectedMemoryId, toggleManifest]
+  );
 
   // Callback to jump to a related location (uses line and text search)
   const handleJumpToRelatedLocation = useCallback((line: number, text: string) => {
@@ -282,6 +295,7 @@ export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
         <LinterView
           onJumpToPosition={handleJumpToPosition}
           onJumpToRelatedLocation={handleJumpToRelatedLocation}
+          onJumpToCanon={handleJumpToCanon}
           onApplyFix={handleApplyFix}
           onUndo={handleUndo}
           onRedo={handleRedo}

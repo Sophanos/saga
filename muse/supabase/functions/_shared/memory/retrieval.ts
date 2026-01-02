@@ -68,12 +68,35 @@ export const DEFAULT_CHAT_LIMITS: RetrievalLimits = {
 // =============================================================================
 
 /**
- * Filter out expired memories.
+ * Filter memories for visibility rules.
  */
-function filterExpired(memories: RetrievedMemoryRecord[]): RetrievedMemoryRecord[] {
+function filterVisible(
+  memories: RetrievedMemoryRecord[],
+  options?: {
+    includeExpired?: boolean;
+    includeRedacted?: boolean;
+    maxAgeMs?: number;
+  }
+): RetrievedMemoryRecord[] {
   const nowMs = Date.now();
+  const includeExpired = options?.includeExpired === true;
+  const includeRedacted = options?.includeRedacted === true;
+  const maxAgeMs = options?.maxAgeMs;
+
   return memories.filter((m) => {
+    if (!includeRedacted && m.redacted) {
+      return false;
+    }
+
     const createdAtTs = m.createdAtTs ?? new Date(m.createdAt ?? Date.now()).getTime();
+    if (maxAgeMs !== undefined && nowMs - createdAtTs > maxAgeMs) {
+      return false;
+    }
+
+    if (includeExpired) {
+      return true;
+    }
+
     const expiresAtTs = m.expiresAt ? new Date(m.expiresAt).getTime() : undefined;
 
     return !isMemoryExpired({
@@ -154,7 +177,7 @@ async function retrieveMemoriesFromPostgres(
     const memories = data.map(parseMemoryFromPostgres);
 
     // Filter expired and limit results
-    return filterExpired(memories).slice(0, limit);
+    return filterVisible(memories).slice(0, limit);
   } catch (error) {
     console.warn(`${logPrefix} Postgres fallback error:`, error);
     return [];
@@ -333,12 +356,12 @@ export async function retrieveMemoryContext(
       if (query && isDeepInfraConfigured()) {
         const embedding = await generateEmbedding(query);
         const decisions = await searchPoints(embedding, limits.decisions * 2, decisionFilter);
-        result.decisions = filterExpired(
+        result.decisions = filterVisible(
           decisions.map((p) => parseMemoryFromPayload(String(p.id), p.payload, p.score))
         ).slice(0, limits.decisions);
       } else {
         const decisions = await scrollPoints(decisionFilter, limits.decisions * 2);
-        result.decisions = filterExpired(
+        result.decisions = filterVisible(
           decisions.map((p) => parseMemoryFromPayload(p.id, p.payload))
         ).slice(0, limits.decisions);
       }
@@ -351,7 +374,7 @@ export async function retrieveMemoryContext(
       if (limits.style > 0) {
         const styleFilter = buildStyleFilter(projectId, ownerId);
         const styleResults = await scrollPoints(styleFilter, limits.style * 2);
-        result.style = filterExpired(
+        result.style = filterVisible(
           styleResults.map((p) => parseMemoryFromPayload(p.id, p.payload))
         ).slice(0, limits.style);
       }
@@ -360,7 +383,7 @@ export async function retrieveMemoryContext(
       if (limits.preferences > 0) {
         const prefFilter = buildPreferenceFilter(projectId, ownerId);
         const prefResults = await scrollPoints(prefFilter, limits.preferences * 2);
-        result.preferences = filterExpired(
+        result.preferences = filterVisible(
           prefResults.map((p) => parseMemoryFromPayload(p.id, p.payload))
         ).slice(0, limits.preferences);
       }
@@ -370,7 +393,7 @@ export async function retrieveMemoryContext(
       if (conversationId && limits.session > 0) {
         const sessionFilter = buildSessionFilter(projectId, ownerId, conversationId);
         const sessionResults = await scrollPoints(sessionFilter, limits.session * 2);
-        result.session = filterExpired(
+        result.session = filterVisible(
           sessionResults.map((p) => parseMemoryFromPayload(p.id, p.payload))
         ).slice(0, limits.session);
       }

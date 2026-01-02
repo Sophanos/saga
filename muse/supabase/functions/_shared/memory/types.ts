@@ -34,6 +34,28 @@ export function getDefaultScope(category: MemoryCategory): MemoryScope {
   }
 }
 
+// Memory metadata interface
+export interface MemoryMetadata {
+  source?: string;
+  confidence?: number;
+  entityIds?: string[];
+  documentId?: string;
+  conversationId?: string;
+  toolCallId?: string;
+  toolName?: string;
+  expiresAt?: string;
+  pinned?: boolean;
+  redacted?: boolean;
+  redactedAt?: string;
+  redactionReason?: string;
+  scoreBreakdown?: {
+    similarityScore?: number;
+    decayFactor?: number;
+    combinedScore?: number;
+    ageMs?: number;
+  };
+}
+
 // Memory record interface
 export interface MemoryRecord {
   id: string;
@@ -42,7 +64,7 @@ export interface MemoryRecord {
   category: MemoryCategory;
   scope: MemoryScope;
   content: string;
-  metadata?: Record<string, unknown>;
+  metadata?: MemoryMetadata;
   createdAt: string;
   updatedAt?: string;
   expiresAt?: string;
@@ -56,7 +78,7 @@ export interface MemoryWriteRequest {
   content: string;
   scope?: MemoryScope;
   conversationId?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: MemoryMetadata;
   ttlMinutes?: number;
 }
 
@@ -68,6 +90,11 @@ export interface MemoryReadRequest {
   conversationId?: string;
   limit?: number;
   includeExpired?: boolean;
+  recencyWeight?: number;
+  includeRedacted?: boolean;
+  pinnedOnly?: boolean;
+  maxAgeDays?: number;
+  explain?: boolean;
 }
 
 export interface MemoryDeleteRequest {
@@ -110,6 +137,8 @@ export interface RetrievedMemoryRecord {
   createdAt?: string;
   createdAtTs?: number;
   expiresAt?: string;
+  pinned?: boolean;
+  redacted?: boolean;
 }
 
 /**

@@ -49,6 +49,12 @@ export interface UseMemoryResult {
   read: (params?: Omit<MemoryReadRequest, "projectId">) => Promise<MemoryRecord[]>;
   /** Delete memories */
   remove: (memoryIds: string[]) => Promise<number>;
+  /** Forget memories (alias for remove) */
+  forget: (memoryIds: string[]) => Promise<number>;
+  /** Pin or unpin a memory */
+  pin: (memoryId: string, pinned: boolean) => Promise<boolean>;
+  /** Redact a memory */
+  redact: (memoryId: string, reason?: string) => Promise<boolean>;
   /** Learn style from content */
   learnStyle: (documentId: string, content: string) => Promise<Array<{ id: string; content: string }>>;
   /** Loading state */
@@ -125,6 +131,45 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
     },
     [projectId, getByCategory]
   );
+
+  const buildUpdatePayload = useCallback((memory: MemoryRecord) => {
+    const metadata = memory.metadata ?? {};
+    const {
+      conversationId,
+      source,
+      confidence,
+      entityIds,
+      documentId,
+      toolCallId,
+      toolName,
+      expiresAt,
+      pinned,
+      redacted,
+      redactedAt,
+      redactionReason,
+    } = metadata;
+
+    return {
+      id: memory.id,
+      category: memory.category,
+      content: memory.content,
+      scope: memory.scope,
+      conversationId,
+      metadata: {
+        source,
+        confidence,
+        entityIds,
+        documentId,
+        toolCallId,
+        toolName,
+        expiresAt,
+        pinned,
+        redacted,
+        redactedAt,
+        redactionReason,
+      },
+    } satisfies Omit<MemoryWriteRequest, "projectId">;
+  }, []);
 
   // Write a memory
   const write = useCallback(
@@ -239,6 +284,66 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
     [client, projectId, removeLocal]
   );
 
+  const forget = useCallback(
+    async (memoryIds: string[]): Promise<number> => {
+      return remove(memoryIds);
+    },
+    [remove]
+  );
+
+  const pin = useCallback(
+    async (memoryId: string, pinned: boolean): Promise<boolean> => {
+      if (!projectId) {
+        return false;
+      }
+
+      const memory = memories.find((item) => item.id === memoryId);
+      if (!memory) {
+        setError("Memory not found in cache");
+        return false;
+      }
+
+      const payload = buildUpdatePayload(memory);
+      const result = await write({
+        ...payload,
+        metadata: {
+          ...payload.metadata,
+          pinned,
+        },
+      });
+
+      return Boolean(result);
+    },
+    [memories, projectId, buildUpdatePayload, write]
+  );
+
+  const redact = useCallback(
+    async (memoryId: string, reason?: string): Promise<boolean> => {
+      if (!projectId) {
+        return false;
+      }
+
+      const memory = memories.find((item) => item.id === memoryId);
+      if (!memory) {
+        setError("Memory not found in cache");
+        return false;
+      }
+
+      const payload = buildUpdatePayload(memory);
+      const result = await write({
+        ...payload,
+        metadata: {
+          ...payload.metadata,
+          redacted: true,
+          redactionReason: reason,
+        },
+      });
+
+      return Boolean(result);
+    },
+    [memories, projectId, buildUpdatePayload, write]
+  );
+
   // Learn style
   const learnStyle = useCallback(
     async (documentId: string, content: string): Promise<Array<{ id: string; content: string }>> => {
@@ -311,6 +416,9 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
     write,
     read,
     remove,
+    forget,
+    pin,
+    redact,
     learnStyle,
     isLoading,
     error,

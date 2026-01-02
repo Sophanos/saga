@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -21,23 +21,32 @@ import {
   X,
   Plus,
   Pencil,
+  Bookmark,
+  Lock,
+  Unlock,
+  EyeOff,
+  Trash2,
 } from "lucide-react";
 import { ScrollArea, Input, Button, Select } from "@mythos/ui";
 import type { Entity, EntityType, Document, DocumentType, Character, Location, Item, MagicSystem, Faction } from "@mythos/core";
+import type { MemoryRecord, MemoryCategory } from "@mythos/memory";
 import { useEntities, useDocuments, useMythosStore, useCurrentProject } from "../../stores";
 import { EntityFormModal, type EntityFormData } from "../modals";
 import { useEntityPersistence } from "../../hooks";
+import { useMemory } from "../../hooks/useMemory";
 import { useRequestProjectStartAction } from "../../stores/projectStart";
 
 interface TreeNode {
   id: string;
   name: string;
-  type: "folder" | "file" | "entity";
+  type: "folder" | "file" | "entity" | "memory";
   entityType?: EntityType;
   documentType?: DocumentType;
+  memoryCategory?: MemoryCategory;
   children?: TreeNode[];
   entity?: Entity;
   document?: Document;
+  memory?: MemoryRecord;
   wordCount?: number;
   parentId?: string;
 }
@@ -87,6 +96,39 @@ function getEntityIcon(entityType?: string) {
   }
 }
 
+function getMemoryIcon(memory?: MemoryRecord) {
+  if (!memory) {
+    return <FileText className="w-4 h-4 text-mythos-text-muted" />;
+  }
+
+  if (memory.metadata?.redacted) {
+    return <EyeOff className="w-4 h-4 text-mythos-text-muted" />;
+  }
+
+  if (memory.category === "decision") {
+    return memory.metadata?.pinned
+      ? <Lock className="w-4 h-4 text-mythos-accent-amber" />
+      : <Bookmark className="w-4 h-4 text-mythos-accent-amber" />;
+  }
+
+  if (memory.category === "style") {
+    return <Sparkles className="w-4 h-4 text-mythos-accent-purple" />;
+  }
+
+  if (memory.category === "preference") {
+    return <Filter className="w-4 h-4 text-mythos-accent-cyan" />;
+  }
+
+  return <FileText className="w-4 h-4 text-mythos-text-muted" />;
+}
+
+function formatMemoryLabel(memory: MemoryRecord): string {
+  const text = memory.content.trim();
+  if (!text) return "Untitled memory";
+  const firstLine = text.split("\n")[0] ?? text;
+  return firstLine.length > 80 ? `${firstLine.slice(0, 77)}...` : firstLine;
+}
+
 const START_ACTIONS = [
   { label: "Page", action: "start-blank", icon: FileText },
   { label: "AI Notes", action: "ai-builder", icon: Sparkles },
@@ -94,21 +136,64 @@ const START_ACTIONS = [
   { label: "Templates", action: "browse-templates", icon: LayoutGrid },
 ] as const;
 
+const MEMORY_CATEGORY_OPTIONS: Array<{ id: MemoryCategory; label: string }> = [
+  { id: "decision", label: "Canon" },
+  { id: "style", label: "Style" },
+  { id: "preference", label: "Preferences" },
+];
+
+const STORY_BIBLE_CATEGORIES: MemoryCategory[] = [
+  "decision",
+  "style",
+  "preference",
+];
+
+const DEFAULT_MEMORY_CATEGORY_CONTROLS: Record<MemoryCategory, boolean> = {
+  decision: true,
+  style: true,
+  preference: true,
+  session: false,
+};
+
+const DEFAULT_MEMORY_RETENTION_DAYS: Record<MemoryCategory, string> = {
+  decision: "",
+  style: "",
+  preference: "",
+  session: "",
+};
+
 interface TreeItemProps {
   node: TreeNode;
   depth?: number;
   selectedId: string | null;
   currentDocumentId: string | null;
+  selectedMemoryId: string | null;
   onSelect: (node: TreeNode) => void;
   onEdit?: (entity: Entity) => void;
+  onPinMemory?: (memoryId: string, pinned: boolean) => void;
+  onRedactMemory?: (memoryId: string) => void;
+  onForgetMemory?: (memoryId: string) => void;
 }
 
-function TreeItem({ node, depth = 0, selectedId, currentDocumentId, onSelect, onEdit }: TreeItemProps) {
+function TreeItem({
+  node,
+  depth = 0,
+  selectedId,
+  currentDocumentId,
+  selectedMemoryId,
+  onSelect,
+  onEdit,
+  onPinMemory,
+  onRedactMemory,
+  onForgetMemory,
+}: TreeItemProps) {
   const [isOpen, setIsOpen] = useState(true);
   const hasChildren = node.children && node.children.length > 0;
   const isSelectedEntity = node.type === "entity" && node.id === selectedId;
   const isSelectedDocument = node.type === "file" && node.id === currentDocumentId;
-  const isSelected = isSelectedEntity || isSelectedDocument;
+  const isSelectedMemory = node.type === "memory" && node.id === selectedMemoryId;
+  const isSelected = isSelectedEntity || isSelectedDocument || isSelectedMemory;
+  const isRedactedMemory = node.type === "memory" && node.memory?.metadata?.redacted === true;
 
   const handleClick = () => {
     if (hasChildren && node.type === "folder") {
@@ -125,6 +210,9 @@ function TreeItem({ node, depth = 0, selectedId, currentDocumentId, onSelect, on
     }
     if (node.type === "file" && node.documentType) {
       return getDocumentIcon(node.documentType);
+    }
+    if (node.type === "memory") {
+      return getMemoryIcon(node.memory);
     }
     return getEntityIcon(node.entityType);
   };
@@ -146,7 +234,7 @@ function TreeItem({ node, depth = 0, selectedId, currentDocumentId, onSelect, on
           isSelected
             ? "bg-mythos-accent-purple/20 text-mythos-accent-purple"
             : "hover:bg-mythos-bg-tertiary text-mythos-text-secondary"
-        }`}
+        } ${isRedactedMemory ? "opacity-70" : ""}`}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
       >
         {hasChildren ? (
@@ -181,6 +269,54 @@ function TreeItem({ node, depth = 0, selectedId, currentDocumentId, onSelect, on
             <Pencil className="w-3 h-3" />
           </span>
         )}
+        {node.type === "memory" && node.memory && (
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            {node.memory.category === "decision" && onPinMemory && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPinMemory(node.memory!.id, !node.memory!.metadata?.pinned);
+                }}
+                className="p-0.5 rounded hover:bg-mythos-bg-primary"
+                title={node.memory.metadata?.pinned ? "Unpin canon" : "Pin as canon"}
+              >
+                {node.memory.metadata?.pinned ? (
+                  <Unlock className="w-3 h-3 text-mythos-accent-amber" />
+                ) : (
+                  <Lock className="w-3 h-3 text-mythos-accent-amber" />
+                )}
+              </button>
+            )}
+            {onRedactMemory && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRedactMemory(node.memory!.id);
+                }}
+                disabled={node.memory.metadata?.redacted === true}
+                className="p-0.5 rounded hover:bg-mythos-bg-primary disabled:opacity-50"
+                title={node.memory.metadata?.redacted ? "Already redacted" : "Redact memory"}
+              >
+                <EyeOff className="w-3 h-3 text-mythos-text-muted" />
+              </button>
+            )}
+            {onForgetMemory && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onForgetMemory(node.memory!.id);
+                }}
+                className="p-0.5 rounded hover:bg-mythos-bg-primary"
+                title="Forget memory"
+              >
+                <Trash2 className="w-3 h-3 text-mythos-text-muted" />
+              </button>
+            )}
+          </div>
+        )}
         {node.wordCount !== undefined && node.wordCount > 0 && (
           <span className="text-xs text-mythos-text-muted opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
             {formatWordCount(node.wordCount)}
@@ -196,8 +332,12 @@ function TreeItem({ node, depth = 0, selectedId, currentDocumentId, onSelect, on
               depth={depth + 1}
               selectedId={selectedId}
               currentDocumentId={currentDocumentId}
+              selectedMemoryId={selectedMemoryId}
               onSelect={onSelect}
               onEdit={onEdit}
+              onPinMemory={onPinMemory}
+              onRedactMemory={onRedactMemory}
+              onForgetMemory={onForgetMemory}
             />
           ))}
         </div>
@@ -231,15 +371,36 @@ function documentMatchesSearch(doc: Document, query: string): boolean {
   return matchesSearch(title, query);
 }
 
+function memoryMatchesSearch(memory: MemoryRecord, query: string): boolean {
+  if (!query) return true;
+  return matchesSearch(memory.content, query);
+}
+
+function parseRetentionDays(value: string): number | undefined {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
+function formatRetentionDays(value?: number): string {
+  if (!value || value <= 0) return "";
+  return String(value);
+}
+
 interface UseManifestTreeOptions {
   searchQuery: string;
   documentTypeFilter: DocumentType | "all";
+  memoryBuckets: Record<MemoryCategory, MemoryRecord[]>;
 }
 
 /**
  * Build the manifest tree from real store data with search and filter support
  */
-function useManifestTree({ searchQuery, documentTypeFilter }: UseManifestTreeOptions): TreeNode[] {
+function useManifestTree({
+  searchQuery,
+  documentTypeFilter,
+  memoryBuckets,
+}: UseManifestTreeOptions): TreeNode[] {
   const entities = useEntities();
   const documents = useDocuments();
 
@@ -306,6 +467,79 @@ function useManifestTree({ searchQuery, documentTypeFilter }: UseManifestTreeOpt
     );
 
     const tree: TreeNode[] = [];
+
+    const sortMemories = (memories: MemoryRecord[]) =>
+      [...memories].sort((a, b) => {
+        const pinnedDelta =
+          Number(Boolean(b.metadata?.pinned)) - Number(Boolean(a.metadata?.pinned));
+        if (pinnedDelta !== 0) return pinnedDelta;
+        return b.createdAt.localeCompare(a.createdAt);
+      });
+
+    const storyBibleChildren: TreeNode[] = [];
+    const decisionMemories = searchQuery
+      ? memoryBuckets.decision.filter((m) => memoryMatchesSearch(m, searchQuery))
+      : memoryBuckets.decision;
+    const styleMemories = searchQuery
+      ? memoryBuckets.style.filter((m) => memoryMatchesSearch(m, searchQuery))
+      : memoryBuckets.style;
+    const preferenceMemories = searchQuery
+      ? memoryBuckets.preference.filter((m) => memoryMatchesSearch(m, searchQuery))
+      : memoryBuckets.preference;
+
+    if (decisionMemories.length > 0) {
+      storyBibleChildren.push({
+        id: "canon",
+        name: "Canon",
+        type: "folder",
+        children: sortMemories(decisionMemories).map((memory) => ({
+          id: memory.id,
+          name: formatMemoryLabel(memory),
+          type: "memory",
+          memoryCategory: "decision",
+          memory,
+        })),
+      });
+    }
+
+    if (styleMemories.length > 0) {
+      storyBibleChildren.push({
+        id: "style",
+        name: "Style",
+        type: "folder",
+        children: sortMemories(styleMemories).map((memory) => ({
+          id: memory.id,
+          name: formatMemoryLabel(memory),
+          type: "memory",
+          memoryCategory: "style",
+          memory,
+        })),
+      });
+    }
+
+    if (preferenceMemories.length > 0) {
+      storyBibleChildren.push({
+        id: "preferences",
+        name: "Preferences",
+        type: "folder",
+        children: sortMemories(preferenceMemories).map((memory) => ({
+          id: memory.id,
+          name: formatMemoryLabel(memory),
+          type: "memory",
+          memoryCategory: "preference",
+          memory,
+        })),
+      });
+    }
+
+    if (storyBibleChildren.length > 0) {
+      tree.push({
+        id: "story-bible",
+        name: "Story Bible",
+        type: "folder",
+        children: storyBibleChildren,
+      });
+    }
 
     // Chapters folder (with nested scenes)
     if (chapters.length > 0 || orphanScenes.length > 0) {
@@ -471,7 +705,7 @@ function useManifestTree({ searchQuery, documentTypeFilter }: UseManifestTreeOpt
     }
 
     return tree;
-  }, [entities, documents, searchQuery, documentTypeFilter]);
+  }, [entities, documents, searchQuery, documentTypeFilter, memoryBuckets]);
 }
 
 export function Manifest() {
@@ -479,17 +713,114 @@ export function Manifest() {
   const [searchQuery, setSearchQuery] = useState("");
   const [documentTypeFilter, setDocumentTypeFilter] = useState<DocumentType | "all">("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [memoryCategoryControls, setMemoryCategoryControls] = useState<Record<MemoryCategory, boolean>>(
+    () => ({ ...DEFAULT_MEMORY_CATEGORY_CONTROLS })
+  );
+  const [memoryRetentionDays, setMemoryRetentionDays] = useState<Record<MemoryCategory, string>>(
+    () => ({ ...DEFAULT_MEMORY_RETENTION_DAYS })
+  );
 
   // Entity form modal state
   const [isEntityFormOpen, setIsEntityFormOpen] = useState(false);
   const [entityFormMode, setEntityFormMode] = useState<"create" | "edit">("create");
   const [editingEntity, setEditingEntity] = useState<Entity | undefined>(undefined);
 
-  const tree = useManifestTree({ searchQuery, documentTypeFilter });
+  const {
+    byCategory,
+    read,
+    pin: pinMemory,
+    redact: redactMemory,
+    forget: forgetMemory,
+  } = useMemory({
+    autoFetch: false,
+  });
+
+  const currentProject = useCurrentProject();
+
+  useEffect(() => {
+    if (!currentProject?.id) return;
+
+    const controls = currentProject.config?.memoryControls;
+    if (!controls) {
+      setMemoryCategoryControls({ ...DEFAULT_MEMORY_CATEGORY_CONTROLS });
+      setMemoryRetentionDays({ ...DEFAULT_MEMORY_RETENTION_DAYS });
+      return;
+    }
+
+    const categories = controls.categories ?? {};
+    setMemoryCategoryControls({
+      decision: categories.decision?.enabled ?? DEFAULT_MEMORY_CATEGORY_CONTROLS.decision,
+      style: categories.style?.enabled ?? DEFAULT_MEMORY_CATEGORY_CONTROLS.style,
+      preference: categories.preference?.enabled ?? DEFAULT_MEMORY_CATEGORY_CONTROLS.preference,
+      session: categories.session?.enabled ?? DEFAULT_MEMORY_CATEGORY_CONTROLS.session,
+    });
+
+    setMemoryRetentionDays({
+      decision: formatRetentionDays(categories.decision?.maxAgeDays),
+      style: formatRetentionDays(categories.style?.maxAgeDays),
+      preference: formatRetentionDays(categories.preference?.maxAgeDays),
+      session: formatRetentionDays(categories.session?.maxAgeDays),
+    });
+  }, [currentProject?.id]);
+
+  const enabledMemoryCategories = useMemo(
+    () => STORY_BIBLE_CATEGORIES.filter((category) => memoryCategoryControls[category]),
+    [memoryCategoryControls]
+  );
+
+  const filterMemoriesByRetention = useCallback(
+    (memories: MemoryRecord[], category: MemoryCategory) => {
+      const maxAgeDays = parseRetentionDays(memoryRetentionDays[category]);
+      if (!maxAgeDays) return memories;
+      const cutoffMs = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+      return memories.filter((memory) => {
+        const createdAt = memory.createdAt ? new Date(memory.createdAt).getTime() : 0;
+        return createdAt >= cutoffMs;
+      });
+    },
+    [memoryRetentionDays]
+  );
+
+  useEffect(() => {
+    if (!currentProject?.id || enabledMemoryCategories.length === 0) {
+      return;
+    }
+
+    void (async () => {
+      await Promise.all(
+        enabledMemoryCategories.map((category) => {
+          const maxAgeDays = parseRetentionDays(memoryRetentionDays[category]);
+          return read({
+            categories: [category],
+            includeExpired: false,
+            includeRedacted: false,
+            maxAgeDays,
+          });
+        })
+      );
+    })();
+  }, [currentProject?.id, enabledMemoryCategories, memoryRetentionDays, read]);
+
+  const memoryBuckets: Record<MemoryCategory, MemoryRecord[]> = {
+    decision: memoryCategoryControls.decision
+      ? filterMemoriesByRetention(byCategory("decision"), "decision")
+      : [],
+    style: memoryCategoryControls.style
+      ? filterMemoriesByRetention(byCategory("style"), "style")
+      : [],
+    preference: memoryCategoryControls.preference
+      ? filterMemoriesByRetention(byCategory("preference"), "preference")
+      : [],
+    session: [],
+  };
+
+  const tree = useManifestTree({ searchQuery, documentTypeFilter, memoryBuckets });
   const selectedEntityId = useMythosStore((state) => state.world.selectedEntityId);
   const currentDocument = useMythosStore((state) => state.document.currentDocument);
+  const selectedMemoryId = useMythosStore((state) => state.ui.selectedMemoryId);
   const setSelectedEntity = useMythosStore((state) => state.setSelectedEntity);
   const setCurrentDocument = useMythosStore((state) => state.setCurrentDocument);
+  const setSelectedMemoryId = useMythosStore((state) => state.setSelectedMemoryId);
   const showHud = useMythosStore((state) => state.showHud);
 
   // Entity persistence hook for DB + store sync
@@ -501,14 +832,59 @@ export function Manifest() {
     (node: TreeNode) => {
       if (node.type === "entity" && node.entity) {
         setSelectedEntity(node.entity.id);
+        setSelectedMemoryId(null);
         // Show HUD at a fixed position in the manifest area
         showHud(node.entity, { x: 280, y: 200 });
       } else if (node.type === "file" && node.document) {
         // Set the document as current document in the store
         setCurrentDocument(node.document);
+        setSelectedMemoryId(null);
+      } else if (node.type === "memory" && node.memory) {
+        setSelectedMemoryId(node.memory.id);
       }
     },
-    [setSelectedEntity, showHud, setCurrentDocument]
+    [setSelectedEntity, setSelectedMemoryId, showHud, setCurrentDocument]
+  );
+
+  const handlePinMemory = useCallback(
+    async (memoryId: string, pinned: boolean) => {
+      await pinMemory(memoryId, pinned);
+    },
+    [pinMemory]
+  );
+
+  const handleRedactMemory = useCallback(
+    async (memoryId: string) => {
+      await redactMemory(memoryId);
+    },
+    [redactMemory]
+  );
+
+  const handleForgetMemory = useCallback(
+    async (memoryId: string) => {
+      await forgetMemory([memoryId]);
+    },
+    [forgetMemory]
+  );
+
+  const handleToggleMemoryCategory = useCallback(
+    (category: MemoryCategory) => {
+      setMemoryCategoryControls((prev) => ({
+        ...prev,
+        [category]: !prev[category],
+      }));
+    },
+    []
+  );
+
+  const handleRetentionChange = useCallback(
+    (category: MemoryCategory, value: string) => {
+      setMemoryRetentionDays((prev) => ({
+        ...prev,
+        [category]: value,
+      }));
+    },
+    []
   );
 
   // Clear search
@@ -521,12 +897,32 @@ export function Manifest() {
     setDocumentTypeFilter("all");
   }, []);
 
+  const disabledMemoryCategories = useMemo(
+    () => MEMORY_CATEGORY_OPTIONS.filter((option) => !memoryCategoryControls[option.id]),
+    [memoryCategoryControls]
+  );
+
+  const retentionFilters = useMemo(
+    () => (
+      MEMORY_CATEGORY_OPTIONS
+        .map((option) => ({
+          option,
+          days: parseRetentionDays(memoryRetentionDays[option.id]),
+        }))
+        .filter((entry) => entry.days !== undefined)
+    ),
+    [memoryRetentionDays]
+  );
+
   // Check if filters are active
-  const hasActiveFilters = searchQuery.length > 0 || documentTypeFilter !== "all";
+  const hasActiveFilters =
+    searchQuery.length > 0
+    || documentTypeFilter !== "all"
+    || disabledMemoryCategories.length > 0
+    || retentionFilters.length > 0;
 
   // Show empty state if no data
   const isEmpty = tree.length === 0;
-  const currentProject = useCurrentProject();
   const requestProjectStartAction = useRequestProjectStartAction();
 
   // Open create entity modal
@@ -753,7 +1149,7 @@ export function Manifest() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-mythos-text-muted" />
           <Input
             type="text"
-            placeholder="Search documents & entities..."
+            placeholder="Search documents, entities, canon..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-8 pl-8 pr-8 text-xs bg-mythos-bg-primary"
@@ -770,7 +1166,7 @@ export function Manifest() {
 
         {/* Filter Dropdown */}
         {showFilters && (
-          <div className="mt-2 space-y-2">
+          <div className="mt-2 space-y-3">
             <div className="flex items-center gap-2">
               <label className="text-xs text-mythos-text-muted whitespace-nowrap">
                 Type:
@@ -781,6 +1177,51 @@ export function Manifest() {
                 options={DOCUMENT_TYPE_FILTERS}
                 className="flex-1 h-7 text-xs"
               />
+            </div>
+
+            <div className="pt-2 border-t border-mythos-border-default/40">
+              <p className="text-[10px] uppercase tracking-wide text-mythos-text-muted mb-2">
+                Story Bible
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {MEMORY_CATEGORY_OPTIONS.map((option) => {
+                  const isEnabled = memoryCategoryControls[option.id];
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => handleToggleMemoryCategory(option.id)}
+                      className={`px-2 py-1 rounded border text-[11px] transition-colors ${
+                        isEnabled
+                          ? "border-mythos-accent-cyan/40 bg-mythos-accent-cyan/10 text-mythos-accent-cyan"
+                          : "border-mythos-border-default text-mythos-text-muted hover:text-mythos-text-secondary"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 space-y-1.5">
+                {MEMORY_CATEGORY_OPTIONS.map((option) => (
+                  <label
+                    key={option.id}
+                    className="flex items-center justify-between gap-2 text-xs text-mythos-text-muted"
+                  >
+                    <span>{option.label} retention</span>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      placeholder="Days"
+                      value={memoryRetentionDays[option.id]}
+                      onChange={(e) => handleRetentionChange(option.id, e.target.value)}
+                      disabled={!memoryCategoryControls[option.id]}
+                      className="h-7 w-20 text-xs bg-mythos-bg-primary"
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -805,6 +1246,34 @@ export function Manifest() {
                 </button>
               </span>
             )}
+            {disabledMemoryCategories.map((option) => (
+              <span
+                key={`memory-off-${option.id}`}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-mythos-bg-tertiary text-mythos-text-muted"
+              >
+                Hide {option.label}
+                <button
+                  onClick={() => handleToggleMemoryCategory(option.id)}
+                  className="hover:text-mythos-text-primary"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+            {retentionFilters.map(({ option, days }) => (
+              <span
+                key={`memory-retention-${option.id}`}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-mythos-accent-amber/20 text-mythos-accent-amber"
+              >
+                {option.label} ≤ {days}d
+                <button
+                  onClick={() => handleRetentionChange(option.id, "")}
+                  className="hover:text-white"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
           </div>
         )}
       </div>
@@ -858,8 +1327,12 @@ export function Manifest() {
               node={node}
               selectedId={selectedEntityId}
               currentDocumentId={currentDocument?.id ?? null}
+              selectedMemoryId={selectedMemoryId}
               onSelect={handleSelect}
               onEdit={handleEditEntity}
+              onPinMemory={handlePinMemory}
+              onRedactMemory={handleRedactMemory}
+              onForgetMemory={handleForgetMemory}
             />
           ))
         )}

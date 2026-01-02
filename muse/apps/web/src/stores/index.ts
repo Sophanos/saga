@@ -286,6 +286,7 @@ interface UIState {
   mode: "writer" | "dm"; // Current editor mode
   modal: ModalState | null; // Currently open modal
   recent: RecentItems; // Recently accessed items
+  selectedMemoryId: string | null; // Story Bible selection
 }
 
 // Combined store
@@ -387,6 +388,7 @@ interface MythosStore {
   toggleMode: () => void;
   openModal: (modal: ModalState) => void;
   closeModal: () => void;
+  setSelectedMemoryId: (id: string | null) => void;
 }
 
 export const useMythosStore = create<MythosStore>()(
@@ -455,6 +457,7 @@ export const useMythosStore = create<MythosStore>()(
       mode: "writer",
       modal: null,
       recent: { documentIds: [], entityIds: [] },
+      selectedMemoryId: null,
     },
 
     // Project actions
@@ -924,6 +927,10 @@ export const useMythosStore = create<MythosStore>()(
     closeModal: () =>
       set((state) => {
         state.ui.modal = null;
+      }),
+    setSelectedMemoryId: (id) =>
+      set((state) => {
+        state.ui.selectedMemoryId = id;
       }),
   }))
 );

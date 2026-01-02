@@ -38,6 +38,8 @@ export function parseMemoryFromPayload(
     createdAt: payload.created_at as string | undefined,
     createdAtTs: payload.created_at_ts as number | undefined,
     expiresAt: payload.expires_at as string | undefined,
+    pinned: payload.pinned as boolean | undefined,
+    redacted: payload.redacted as boolean | undefined,
   };
 }
 
@@ -57,6 +59,16 @@ export interface ScoredMemoryMetadata {
   toolCallId?: unknown;
   toolName?: unknown;
   expiresAt?: string;
+  pinned?: boolean;
+  redacted?: boolean;
+  redactedAt?: string;
+  redactionReason?: string;
+  scoreBreakdown?: {
+    similarityScore?: number;
+    decayFactor?: number;
+    combinedScore?: number;
+    ageMs?: number;
+  };
 }
 
 /**
@@ -97,6 +109,16 @@ export function parseFullMemoryFromPayload(
       toolCallId: payload.tool_call_id,
       toolName: payload.tool_name,
       expiresAt: payload.expires_at as string | undefined,
+      pinned: payload.pinned as boolean | undefined,
+      redacted: payload.redacted as boolean | undefined,
+      redactedAt: payload.redacted_at as string | undefined,
+      redactionReason: payload.redaction_reason as string | undefined,
+      scoreBreakdown: payload.score_breakdown as {
+        similarityScore?: number;
+        decayFactor?: number;
+        combinedScore?: number;
+        ageMs?: number;
+      } | undefined,
     },
     createdAt: String(payload.created_at ?? new Date().toISOString()),
     updatedAt: payload.updated_at ? String(payload.updated_at) : undefined,

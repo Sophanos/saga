@@ -501,6 +501,8 @@ export interface CommitDecisionArgs {
   documentId?: string;
   /** Confidence score (0-1) */
   confidence?: number;
+  /** Pin decision as canon (default true on server) */
+  pinned?: boolean;
 }
 
 // =============================================================================

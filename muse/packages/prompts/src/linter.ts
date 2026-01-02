@@ -42,6 +42,7 @@ Return issues in this JSON structure:
       "message": "description of the issue",
       "suggestion": "EXACT replacement text (not instructions - this text will directly replace location.text)",
       "relatedLocations": [{ "line": number, "text": "related text" }],
+      "canonCitations": [{ "memoryId": "id", "excerpt": "optional excerpt", "reason": "optional reason" }],
       "isContradiction": boolean,
       "canonQuestion": "optional - question asking which version is correct",
       "canonChoices": [
@@ -64,6 +65,7 @@ When you detect a TRUE CONTRADICTION (not just an inconsistency that could be ex
 1. canonQuestion: A clear question asking the writer which version is correct
 2. canonChoices: 2-4 options for resolving the contradiction
 3. evidence: Array of text excerpts that conflict with each other
+4. canonCitations: If canon decisions were provided, include the memoryId(s) that justify the contradiction
 
 ### Example Contradiction:
 If a character's scar is described as "from childhood" in one place and "from the Battle of Thornwood" elsewhere:
@@ -103,7 +105,9 @@ The "suggestion" field must contain the EXACT TEXT that will replace "location.t
 - DO write the actual corrected text that should appear in the document
 - Example: If location.text is "blue eyes" and should be "brown eyes", suggestion should be "brown eyes" (not "Change 'blue eyes' to 'brown eyes'")
 
-Be thorough but avoid false positives. Consider intentional unreliable narration or character development.`;
+Be thorough but avoid false positives. Consider intentional unreliable narration or character development.
+
+When canon decisions are provided, cite them using canonCitations (memoryId values match [M:...] tags).`;
 
 export const ARCHETYPE_LINTER_SYSTEM = `You are a Jungian archetype analyst for a creative writing IDE called Mythos.
 Your role is to analyze character behavior against their assigned archetypes.

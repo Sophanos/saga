@@ -66,6 +66,45 @@ export const linterConfigSchema = z.object({
   symbolismConsistency: linterSeveritySchema.default("off"),
 });
 
+// Memory controls configuration
+const memoryPolicyOverrideSchema = z.object({
+  halfLife: z.string().optional(),
+  ttl: z.string().optional(),
+});
+
+const memoryCategoryControlsSchema = z.object({
+  enabled: z.boolean().optional(),
+  maxAgeDays: z.number().optional(),
+});
+
+const memoryControlsSchema = z.object({
+  categories: z
+    .object({
+      decision: memoryCategoryControlsSchema.optional(),
+      style: memoryCategoryControlsSchema.optional(),
+      preference: memoryCategoryControlsSchema.optional(),
+      session: memoryCategoryControlsSchema.optional(),
+    })
+    .optional(),
+  policyOverrides: z
+    .object({
+      decision: memoryPolicyOverrideSchema.optional(),
+      style: memoryPolicyOverrideSchema.optional(),
+      preference: memoryPolicyOverrideSchema.optional(),
+      session: memoryPolicyOverrideSchema.optional(),
+    })
+    .optional(),
+  injectionBudgets: z
+    .object({
+      decisions: z.number().optional(),
+      style: z.number().optional(),
+      preferences: z.number().optional(),
+      session: z.number().optional(),
+    })
+    .optional(),
+  recencyWeight: z.number().min(0).max(1).optional(),
+});
+
 // Arc structure templates
 export const arcTemplateSchema = z.enum([
   "heros_journey", // Campbell's monomyth
@@ -129,6 +168,7 @@ export const projectConfigSchema = z.object({
   styleMode: styleModeSchema.default("manga"),
   arcTemplate: arcTemplateSchema.default("three_act"),
   linterConfig: linterConfigSchema.default({}),
+  memoryControls: memoryControlsSchema.optional(),
 
   // Custom rules
   customRules: z

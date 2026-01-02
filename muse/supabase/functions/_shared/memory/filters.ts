@@ -21,6 +21,7 @@ export interface MemoryFilterParams {
   scope?: MemoryScope;
   ownerId?: string;
   conversationId?: string;
+  pinnedOnly?: boolean;
 }
 
 // =============================================================================
@@ -90,6 +91,10 @@ export function buildMemoryFilter(params: MemoryFilterParams): QdrantFilter {
   // Conversation ID for conversation-scoped queries
   if (params.conversationId) {
     must.push({ key: "conversation_id", match: { value: params.conversationId } });
+  }
+
+  if (params.pinnedOnly) {
+    must.push({ key: "pinned", match: { value: true } });
   }
 
   return { must };

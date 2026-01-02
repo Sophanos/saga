@@ -46,6 +46,8 @@ interface LinterViewProps {
   onJumpToPosition?: (issueId: string) => void;
   /** Callback to jump to a related location by line number and text */
   onJumpToRelatedLocation?: (line: number, text: string) => void;
+  /** Callback to jump to a cited canon memory by memoryId */
+  onJumpToCanon?: (memoryId: string) => void;
   /** Callback to apply a fix for an issue */
   onApplyFix?: (issueId: string, fix: string) => void;
   /** Callback to undo the last fix */
@@ -158,6 +160,7 @@ function IssueItem({
   issueId,
   onJumpToPosition,
   onJumpToRelatedLocation,
+  onJumpToCanon,
   onApplyFix,
   onPreview,
 }: {
@@ -165,6 +168,7 @@ function IssueItem({
   issueId: string;
   onJumpToPosition?: (issueId: string) => void;
   onJumpToRelatedLocation?: (line: number, text: string) => void;
+  onJumpToCanon?: (memoryId: string) => void;
   onApplyFix?: (issueId: string, fix: string) => void;
   onPreview?: (issue: LinterIssue) => void;
 }) {
@@ -259,6 +263,41 @@ function IssueItem({
         </div>
       )}
 
+      {/* Canon citations */}
+      {issue.canonCitations && issue.canonCitations.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-mythos-text-muted/10">
+          <p className="text-xs text-mythos-text-muted mb-1">
+            Canon cited:
+          </p>
+          <div className="space-y-1">
+            {issue.canonCitations.map((citation, idx) => {
+              const shortId = citation.memoryId.slice(0, 8);
+              const tooltip = [citation.excerpt, citation.reason]
+                .filter(Boolean)
+                .join(" — ");
+              return (
+                <button
+                  key={`${citation.memoryId}-${idx}`}
+                  onClick={() => onJumpToCanon?.(citation.memoryId)}
+                  className={cn(
+                    "flex items-center gap-2 text-xs text-mythos-text-secondary transition-colors w-full text-left",
+                    onJumpToCanon ? "hover:text-mythos-accent-cyan" : "opacity-70"
+                  )}
+                  title={tooltip}
+                  type="button"
+                  disabled={!onJumpToCanon}
+                >
+                  <span className="font-mono">M:{shortId}</span>
+                  {citation.excerpt && (
+                    <span className="truncate opacity-60">"{citation.excerpt}"</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       {hasFix && (
         <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-mythos-text-muted/10">
@@ -294,6 +333,7 @@ function SeveritySection({
   issues,
   onJumpToPosition,
   onJumpToRelatedLocation,
+  onJumpToCanon,
   onApplyFix,
   onPreview,
 }: {
@@ -301,6 +341,7 @@ function SeveritySection({
   issues: Array<{ issue: LinterIssue; id: string }>;
   onJumpToPosition?: (issueId: string) => void;
   onJumpToRelatedLocation?: (line: number, text: string) => void;
+  onJumpToCanon?: (memoryId: string) => void;
   onApplyFix?: (issueId: string, fix: string) => void;
   onPreview?: (issue: LinterIssue) => void;
 }) {
@@ -358,6 +399,7 @@ function SeveritySection({
               issueId={id}
               onJumpToPosition={onJumpToPosition}
               onJumpToRelatedLocation={onJumpToRelatedLocation}
+              onJumpToCanon={onJumpToCanon}
               onApplyFix={onApplyFix}
               onPreview={onPreview}
             />
@@ -517,6 +559,7 @@ function LinterHeader({
 export function LinterView({
   onJumpToPosition,
   onJumpToRelatedLocation,
+  onJumpToCanon,
   onApplyFix,
   onUndo,
   onRedo,
@@ -668,6 +711,7 @@ export function LinterView({
                   issues={groupedIssues[severity]}
                   onJumpToPosition={onJumpToPosition}
                   onJumpToRelatedLocation={onJumpToRelatedLocation}
+                  onJumpToCanon={onJumpToCanon}
                   onApplyFix={onApplyFix}
                   onPreview={handleOpenPreview}
                 />

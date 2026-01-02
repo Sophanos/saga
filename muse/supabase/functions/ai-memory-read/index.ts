@@ -55,7 +55,6 @@ import {
   getMemoryPolicyConfig,
   isMemoryExpired,
   calculateCombinedScore,
-  type MemoryPolicyConfig,
 } from "../_shared/memoryPolicy.ts";
 import {
   parseFullMemoryFromPayload,
@@ -74,6 +73,11 @@ interface MemoryReadRequest {
   conversationId?: string;
   limit?: number;
   recencyWeight?: number;
+  includeExpired?: boolean;
+  includeRedacted?: boolean;
+  pinnedOnly?: boolean;
+  maxAgeDays?: number;
+  explain?: boolean;
 }
 
 // =============================================================================
@@ -110,6 +114,10 @@ function parseMemoryFromRow(row: Record<string, unknown>): ScoredMemoryRecord {
           toolCallId: metadata.tool_call_id as string | undefined,
           toolName: metadata.tool_name as string | undefined,
           expiresAt: row.expires_at as string | undefined,
+          pinned: metadata.pinned as boolean | undefined,
+          redacted: metadata.redacted as boolean | undefined,
+          redactedAt: metadata.redacted_at as string | undefined,
+          redactionReason: metadata.redaction_reason as string | undefined,
         }
       : undefined,
     createdAt: String(row.created_at),
@@ -127,6 +135,7 @@ function buildQdrantFilter(params: {
   scope?: MemoryScope;
   ownerId?: string;
   conversationId?: string;
+  pinnedOnly?: boolean;
 }): QdrantFilter {
   return buildMemoryFilter({
     projectId: params.projectId,
@@ -134,6 +143,7 @@ function buildQdrantFilter(params: {
     scope: params.scope,
     ownerId: params.ownerId,
     conversationId: params.conversationId,
+    pinnedOnly: params.pinnedOnly,
   });
 }
 
@@ -217,15 +227,41 @@ function mergeAndSortMemories(
  */
 function filterAndScoreMemories(
   memories: ScoredMemoryRecord[],
-  recencyWeight: number
+  recencyWeight: number,
+  options?: {
+    includeExpired?: boolean;
+    includeRedacted?: boolean;
+    pinnedOnly?: boolean;
+    explain?: boolean;
+    maxAgeMs?: number;
+  }
 ): ScoredMemoryRecord[] {
   const nowMs = Date.now();
-  const policyConfig = getMemoryPolicyConfig();
+  const memoryPolicyConfig = getMemoryPolicyConfig();
+  const includeExpired = options?.includeExpired === true;
+  const includeRedacted = options?.includeRedacted === true;
+  const pinnedOnly = options?.pinnedOnly === true;
+  const explain = options?.explain === true;
+  const maxAgeMs = options?.maxAgeMs;
 
   return memories
     .filter((m) => {
+      if (pinnedOnly && !m.metadata?.pinned) {
+        return false;
+      }
+
+      if (!includeRedacted && m.metadata?.redacted) {
+        return false;
+      }
+
       // Check expiration using policy
       const createdAtTs = new Date(m.createdAt).getTime();
+      if (maxAgeMs !== undefined && nowMs - createdAtTs > maxAgeMs) {
+        return false;
+      }
+      if (includeExpired) {
+        return true;
+      }
       const expiresAtTs = m.metadata?.expiresAt
         ? new Date(m.metadata.expiresAt).getTime()
         : undefined;
@@ -247,6 +283,24 @@ function filterAndScoreMemories(
           similarityWeight: 1 - recencyWeight,
           nowMs,
         });
+        if (explain) {
+          const ageMs = nowMs - createdAtTs;
+          const halfLifeMs = memoryPolicyConfig[m.category as keyof typeof memoryPolicyConfig]?.halfLifeMs;
+          const decayFactor = halfLifeMs ? Math.pow(0.5, ageMs / halfLifeMs) : 1;
+          return {
+            ...m,
+            score: combinedScore,
+            metadata: {
+              ...(m.metadata ?? {}),
+              scoreBreakdown: {
+                similarityScore: m.score,
+                decayFactor,
+                combinedScore,
+                ageMs,
+              },
+            },
+          };
+        }
         return { ...m, score: combinedScore };
       }
       return m;
@@ -261,6 +315,11 @@ async function queryQdrant(params: {
   filter: QdrantFilter;
   limit: number;
   recencyWeight: number;
+  includeExpired?: boolean;
+  includeRedacted?: boolean;
+  pinnedOnly?: boolean;
+  explain?: boolean;
+  maxAgeMs?: number;
 }): Promise<ScoredMemoryRecord[]> {
   const embedding = await generateEmbedding(params.query);
   const results = await searchPoints(embedding, params.limit * 2, params.filter);
@@ -269,7 +328,13 @@ async function queryQdrant(params: {
     parseFullMemoryFromPayload(String(result.id), result.payload, result.score)
   );
 
-  return filterAndScoreMemories(memories, params.recencyWeight)
+  return filterAndScoreMemories(memories, params.recencyWeight, {
+    includeExpired: params.includeExpired,
+    includeRedacted: params.includeRedacted,
+    pinnedOnly: params.pinnedOnly,
+    maxAgeMs: params.maxAgeMs,
+    explain: params.explain,
+  })
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, params.limit);
 }
@@ -281,6 +346,11 @@ async function scrollQdrant(params: {
   filter: QdrantFilter;
   limit: number;
   recencyWeight: number;
+  includeExpired?: boolean;
+  includeRedacted?: boolean;
+  pinnedOnly?: boolean;
+  explain?: boolean;
+  maxAgeMs?: number;
 }): Promise<ScoredMemoryRecord[]> {
   const results = await scrollPoints(params.filter, params.limit * 2);
 
@@ -288,7 +358,13 @@ async function scrollQdrant(params: {
     parseFullMemoryFromPayload(result.id, result.payload)
   );
 
-  return filterAndScoreMemories(memories, params.recencyWeight)
+  return filterAndScoreMemories(memories, params.recencyWeight, {
+    includeExpired: params.includeExpired,
+    includeRedacted: params.includeRedacted,
+    pinnedOnly: params.pinnedOnly,
+    maxAgeMs: params.maxAgeMs,
+    explain: params.explain,
+  })
     .sort((a, b) => {
       const aTime = new Date(a.createdAt).getTime();
       const bTime = new Date(b.createdAt).getTime();
@@ -311,6 +387,11 @@ async function queryPostgresSemantic(
     conversationId?: string;
     limit: number;
     recencyWeight: number;
+    includeExpired?: boolean;
+    includeRedacted?: boolean;
+    pinnedOnly?: boolean;
+    explain?: boolean;
+    maxAgeMs?: number;
   }
 ): Promise<ScoredMemoryRecord[]> {
   // Generate embedding for semantic search
@@ -339,7 +420,13 @@ async function queryPostgresSemantic(
     })
   );
 
-  return filterAndScoreMemories(memories, params.recencyWeight)
+  return filterAndScoreMemories(memories, params.recencyWeight, {
+    includeExpired: params.includeExpired,
+    includeRedacted: params.includeRedacted,
+    pinnedOnly: params.pinnedOnly,
+    maxAgeMs: params.maxAgeMs,
+    explain: params.explain,
+  })
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, params.limit);
 }
@@ -357,6 +444,11 @@ async function queryPostgresRecency(
     conversationId?: string;
     limit: number;
     recencyWeight: number;
+    includeExpired?: boolean;
+    includeRedacted?: boolean;
+    pinnedOnly?: boolean;
+    explain?: boolean;
+    maxAgeMs?: number;
   }
 ): Promise<ScoredMemoryRecord[]> {
   let query = supabase
@@ -395,7 +487,13 @@ async function queryPostgresRecency(
     parseMemoryFromRow(row)
   );
 
-  return filterAndScoreMemories(memories, params.recencyWeight).slice(
+  return filterAndScoreMemories(memories, params.recencyWeight, {
+    includeExpired: params.includeExpired,
+    includeRedacted: params.includeRedacted,
+    pinnedOnly: params.pinnedOnly,
+    maxAgeMs: params.maxAgeMs,
+    explain: params.explain,
+  }).slice(
     0,
     params.limit
   );
@@ -516,6 +614,14 @@ serve(async (req) => {
       Math.max(0, request.recencyWeight ?? DEFAULT_RECENCY_WEIGHT),
       1
     );
+    const includeExpired = request.includeExpired === true;
+    const includeRedacted = request.includeRedacted === true;
+    const pinnedOnly = request.pinnedOnly === true;
+    const maxAgeMs =
+      request.maxAgeDays && request.maxAgeDays > 0
+        ? request.maxAgeDays * 24 * 60 * 60 * 1000
+        : undefined;
+    const explain = request.explain === true;
 
     let memories: ScoredMemoryRecord[];
 
@@ -540,6 +646,7 @@ serve(async (req) => {
             scope: scopeQuery.scope,
             ownerId: scopeQuery.ownerId,
             conversationId: scopeQuery.conversationId,
+            pinnedOnly,
           });
 
           if (useSemantic) {
@@ -551,6 +658,11 @@ serve(async (req) => {
               filter,
               limit,
               recencyWeight,
+              includeExpired,
+              includeRedacted,
+              pinnedOnly,
+              maxAgeMs,
+              explain,
             });
             scopedResults.push(...result);
           } else {
@@ -559,6 +671,11 @@ serve(async (req) => {
               filter,
               limit,
               recencyWeight,
+              includeExpired,
+              includeRedacted,
+              pinnedOnly,
+              maxAgeMs,
+              explain,
             });
             scopedResults.push(...result);
           }
@@ -587,6 +704,11 @@ serve(async (req) => {
               conversationId: scopeQuery.conversationId,
               limit,
               recencyWeight,
+              includeExpired,
+              includeRedacted,
+              pinnedOnly,
+              maxAgeMs,
+              explain,
             });
             scopedResults.push(...result);
           }
@@ -603,6 +725,11 @@ serve(async (req) => {
               conversationId: scopeQuery.conversationId,
               limit,
               recencyWeight,
+              includeExpired,
+              includeRedacted,
+              pinnedOnly,
+              maxAgeMs,
+              explain,
             });
             scopedResults.push(...result);
           }
@@ -625,6 +752,11 @@ serve(async (req) => {
             conversationId: scopeQuery.conversationId,
             limit,
             recencyWeight,
+            includeExpired,
+            includeRedacted,
+            pinnedOnly,
+            maxAgeMs,
+            explain,
           });
           scopedResults.push(...result);
         }
@@ -640,6 +772,11 @@ serve(async (req) => {
             conversationId: scopeQuery.conversationId,
             limit,
             recencyWeight,
+            includeExpired,
+            includeRedacted,
+            pinnedOnly,
+            maxAgeMs,
+            explain,
           });
           scopedResults.push(...result);
         }

@@ -38,6 +38,7 @@ import {
   retrieveProfileContext,
   DEFAULT_SAGA_LIMITS,
   type RetrievedMemoryContext,
+  type RetrievalLimits,
   type ProfileContext,
 } from "../_shared/memory/retrieval.ts";
 import {
@@ -173,6 +174,70 @@ interface PreparedContext {
   apiMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
 }
 
+async function fetchProjectMemoryControls(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  projectId: string,
+  logPrefix: string
+): Promise<Record<string, unknown> | undefined> {
+  try {
+    const { data, error } = await supabase
+      .from("projects")
+      .select("style_config")
+      .eq("id", projectId)
+      .single();
+
+    if (error || !data) {
+      if (error) {
+        console.warn(`${logPrefix} Failed to load project memory controls: ${error.message}`);
+      }
+      return undefined;
+    }
+
+    const styleConfig = data.style_config as Record<string, unknown> | null;
+    return styleConfig?.memoryControls as Record<string, unknown> | undefined;
+  } catch (error) {
+    console.warn(`${logPrefix} Failed to load project memory controls:`, error);
+    return undefined;
+  }
+}
+
+function buildRetrievalLimitsFromControls(
+  memoryControls: Record<string, unknown> | undefined,
+  defaults: RetrievalLimits = DEFAULT_SAGA_LIMITS
+): RetrievalLimits {
+  const limits: RetrievalLimits = { ...defaults };
+  const categories = memoryControls?.categories as Record<string, unknown> | undefined;
+
+  if ((categories?.decision as { enabled?: boolean } | undefined)?.enabled === false) {
+    limits.decisions = 0;
+  }
+  if ((categories?.style as { enabled?: boolean } | undefined)?.enabled === false) {
+    limits.style = 0;
+  }
+  if ((categories?.preference as { enabled?: boolean } | undefined)?.enabled === false) {
+    limits.preferences = 0;
+  }
+  if ((categories?.session as { enabled?: boolean } | undefined)?.enabled === false) {
+    limits.session = 0;
+  }
+
+  const budgets = memoryControls?.injectionBudgets as Record<string, unknown> | undefined;
+  if (typeof budgets?.decisions === "number") {
+    limits.decisions = Math.max(0, Math.floor(budgets.decisions));
+  }
+  if (typeof budgets?.style === "number") {
+    limits.style = Math.max(0, Math.floor(budgets.style));
+  }
+  if (typeof budgets?.preferences === "number") {
+    limits.preferences = Math.max(0, Math.floor(budgets.preferences));
+  }
+  if (typeof budgets?.session === "number") {
+    limits.session = Math.max(0, Math.floor(budgets.session));
+  }
+
+  return limits;
+}
+
 /**
  * Prepare context for a Saga conversation.
  * Shared between handleChat and handleToolApproval.
@@ -187,6 +252,8 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
   // Determine owner ID for memory isolation (userId or anonDeviceId)
   const ownerId = billing.userId ?? billing.anonDeviceId ?? null;
   const effectiveConversationId = conversationId ?? contextHints?.conversationId;
+  const memoryControls = await fetchProjectMemoryControls(supabase, projectId, logPrefix);
+  const memoryLimits = buildRetrievalLimitsFromControls(memoryControls);
 
   // Retrieve all contexts in parallel
   const [ragContext, memoryContext, profileContext] = await Promise.all([
@@ -194,7 +261,7 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
       logPrefix,
       excludeMemories: true,
     }),
-    retrieveMemoryContext(query, projectId, ownerId, effectiveConversationId, DEFAULT_SAGA_LIMITS, logPrefix, supabase),
+    retrieveMemoryContext(query, projectId, ownerId, effectiveConversationId, memoryLimits, logPrefix, supabase),
     retrieveProfileContext(supabase, billing.userId, logPrefix),
   ]);
 
@@ -477,6 +544,7 @@ async function handleExecuteTool(
           entityIds?: string[];
           documentId?: string;
           confidence?: number;
+          pinned?: boolean;
         };
         const projectId = req.projectId;
         if (!projectId) {
@@ -564,6 +632,7 @@ async function handleExecuteTool(
           documentId: typedInput.documentId,
           toolName: "commit_decision",
           expiresAt,
+          pinned: typedInput.pinned ?? true,
         });
 
         const { error } = await supabase.from("memories").upsert(
@@ -582,6 +651,7 @@ async function handleExecuteTool(
               document_id: payload.document_id,
               tool_call_id: payload.tool_call_id,
               tool_name: payload.tool_name,
+              pinned: payload.pinned,
             },
             created_at: payload.created_at,
             updated_at: payload.updated_at,

@@ -70,6 +70,7 @@ export const commitDecisionExecutor: ToolDefinition<CommitDecisionArgs, CommitDe
           entityIds: args.entityIds,
           documentId: args.documentId,
           confidence: args.confidence,
+          pinned: args.pinned,
         },
       };
 
@@ -91,4 +92,3 @@ export const commitDecisionExecutor: ToolDefinition<CommitDecisionArgs, CommitDe
     }
   },
 };
-

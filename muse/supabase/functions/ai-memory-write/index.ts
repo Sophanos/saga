@@ -58,7 +58,7 @@ import {
   isValidScope,
   getDefaultScope,
 } from "../_shared/memory/types.ts";
-import { calculateExpiresAt, calculateExpiresAtTs } from "../_shared/memoryPolicy.ts";
+import { calculateExpiresAt } from "../_shared/memoryPolicy.ts";
 
 // =============================================================================
 // Types
@@ -77,6 +77,10 @@ interface MemoryWriteItem {
     toolCallId?: string;
     toolName?: string;
     expiresAt?: string;
+    pinned?: boolean;
+    redacted?: boolean;
+    redactedAt?: string;
+    redactionReason?: string;
   };
   id?: string;
 }
@@ -105,6 +109,7 @@ interface ProcessedMemory {
 
 const MAX_CONTENT_LENGTH = 32000;
 const MAX_BATCH_SIZE = 32;
+const REDACTED_CONTENT = "[REDACTED]";
 
 // =============================================================================
 // Helpers
@@ -185,6 +190,10 @@ async function upsertToPostgres(
         document_id: m.payload.document_id,
         tool_call_id: m.payload.tool_call_id,
         tool_name: m.payload.tool_name,
+        pinned: m.payload.pinned,
+        redacted: m.payload.redacted,
+        redacted_at: m.payload.redacted_at,
+        redaction_reason: m.payload.redaction_reason,
       },
       created_at: m.payload.created_at,
       updated_at: m.payload.updated_at,
@@ -260,6 +269,40 @@ async function updateSyncStatus(
     .from("memories")
     .update(updates)
     .in("id", memoryIds);
+}
+
+async function fetchExistingMemories(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  projectId: string,
+  ids: string[]
+): Promise<Map<string, { createdAt: string; createdAtTs: number; expiresAt?: string }>> {
+  if (ids.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from("memories")
+    .select("id, created_at, created_at_ts, expires_at")
+    .eq("project_id", projectId)
+    .in("id", ids);
+
+  if (error) {
+    console.warn("[ai-memory-write] Failed to load existing memories:", error);
+    return new Map();
+  }
+
+  const byId = new Map<string, { createdAt: string; createdAtTs: number; expiresAt?: string }>();
+  for (const row of data ?? []) {
+    if (row?.id && row.created_at && row.created_at_ts) {
+      byId.set(String(row.id), {
+        createdAt: String(row.created_at),
+        createdAtTs: Number(row.created_at_ts),
+        expiresAt: row.expires_at ? String(row.expires_at) : undefined,
+      });
+    }
+  }
+
+  return byId;
 }
 
 // =============================================================================
@@ -419,27 +462,50 @@ serve(async (req) => {
       items = [singleReq];
     }
 
+    const preparedItems = items.map((item) => {
+      const memoryId = item.id ?? crypto.randomUUID();
+      const scope = item.scope ?? getDefaultScope(item.category);
+      const redacted = item.metadata?.redacted === true;
+      const content = redacted ? REDACTED_CONTENT : item.content;
+      return { item, memoryId, scope, redacted, content };
+    });
+
+    const existingById = await fetchExistingMemories(
+      supabase,
+      projectId,
+      preparedItems.filter((prepared) => Boolean(prepared.item.id)).map((prepared) => prepared.memoryId)
+    );
+
     // Generate embeddings in batch
-    console.log(`[ai-memory-write] Generating embeddings for ${items.length} memories`);
-    const embeddingResult = await generateEmbeddings(items.map((item) => item.content));
+    console.log(
+      `[ai-memory-write] Generating embeddings for ${preparedItems.length} memories`
+    );
+    const embeddingResult = await generateEmbeddings(
+      preparedItems.map((prepared) => prepared.content)
+    );
     const embeddings = embeddingResult.embeddings;
 
     // Process each memory
-    const processedMemories: ProcessedMemory[] = items.map((item, i) => {
-      const memoryId = item.id ?? crypto.randomUUID();
-      const scope = item.scope ?? getDefaultScope(item.category);
+    const processedMemories: ProcessedMemory[] = preparedItems.map((prepared, i) => {
+      const { item, memoryId, scope, redacted, content } = prepared;
+      const existing = existingById.get(memoryId);
 
       // Calculate expiration based on policy or explicit metadata
       const expiresAt =
         item.metadata?.expiresAt ??
+        existing?.expiresAt ??
         calculateExpiresAt(item.category);
+
+      const redactedAt = redacted
+        ? item.metadata?.redactedAt ?? new Date().toISOString()
+        : undefined;
 
       const payload = buildMemoryPayload({
         projectId,
         memoryId,
         category: item.category,
         scope,
-        text: item.content,
+        text: content,
         ownerId: scope === "project" ? undefined : ownerId,
         conversationId: item.conversationId,
         source: item.metadata?.source,
@@ -449,6 +515,12 @@ serve(async (req) => {
         toolCallId: item.metadata?.toolCallId,
         toolName: item.metadata?.toolName,
         expiresAt,
+        pinned: item.metadata?.pinned,
+        redacted,
+        redactedAt,
+        redactionReason: item.metadata?.redactionReason,
+        createdAt: existing?.createdAt,
+        createdAtTs: existing?.createdAtTs,
       });
 
       const record: MemoryRecord = {
@@ -457,10 +529,12 @@ serve(async (req) => {
         category: item.category,
         scope,
         ownerId: scope === "project" ? undefined : ownerId,
-        content: item.content,
+        content,
         metadata: {
           ...item.metadata,
           conversationId: item.conversationId,
+          redacted,
+          redactedAt,
         },
         createdAt: payload.created_at,
         updatedAt: payload.updated_at,

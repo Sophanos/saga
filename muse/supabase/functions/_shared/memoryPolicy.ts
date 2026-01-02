@@ -23,6 +23,13 @@ export interface MemoryPolicyConfig {
   session: MemoryCategoryPolicy;
 }
 
+export interface MemoryPolicyOverrides {
+  decision?: Partial<MemoryCategoryPolicy>;
+  style?: Partial<MemoryCategoryPolicy>;
+  preference?: Partial<MemoryCategoryPolicy>;
+  session?: Partial<MemoryCategoryPolicy>;
+}
+
 // =============================================================================
 // Constants
 // =============================================================================
@@ -100,8 +107,10 @@ function parseDurationEnv(value: string | undefined): number | undefined {
  * - MEMORY_PREFERENCE_HALF_LIFE: Half-life for preference memories (default: "90d")
  * - MEMORY_DECISION_HALF_LIFE: Half-life for decision memories (default: "180d")
  */
-export function getMemoryPolicyConfig(): MemoryPolicyConfig {
-  return {
+export function getMemoryPolicyConfig(
+  overrides?: MemoryPolicyOverrides
+): MemoryPolicyConfig {
+  const base: MemoryPolicyConfig = {
     decision: {
       halfLifeMs:
         parseDurationEnv(Deno.env.get("MEMORY_DECISION_HALF_LIFE")) ??
@@ -128,6 +137,17 @@ export function getMemoryPolicyConfig(): MemoryPolicyConfig {
         parseDurationEnv(Deno.env.get("MEMORY_SESSION_TTL")) ??
         DEFAULT_POLICY.session.ttlMs,
     },
+  };
+
+  if (!overrides) {
+    return base;
+  }
+
+  return {
+    decision: { ...base.decision, ...overrides.decision },
+    style: { ...base.style, ...overrides.style },
+    preference: { ...base.preference, ...overrides.preference },
+    session: { ...base.session, ...overrides.session },
   };
 }
 
@@ -174,8 +194,9 @@ export function isMemoryExpired(params: {
   createdAtTs: number;
   expiresAtTs?: number | null;
   nowMs?: number;
+  overrides?: MemoryPolicyOverrides;
 }): boolean {
-  const config = getMemoryPolicyConfig();
+  const config = getMemoryPolicyConfig(params.overrides);
   const policy =
     config[params.category as keyof MemoryPolicyConfig] ?? DEFAULT_POLICY.preference;
 
@@ -240,8 +261,9 @@ export function decayMemoryScore(params: {
   baseScore: number;
   createdAtTs: number;
   nowMs?: number;
+  overrides?: MemoryPolicyOverrides;
 }): number {
-  const config = getMemoryPolicyConfig();
+  const config = getMemoryPolicyConfig(params.overrides);
   const policy =
     config[params.category as keyof MemoryPolicyConfig] ?? DEFAULT_POLICY.preference;
 
@@ -268,6 +290,7 @@ export function calculateCombinedScore(params: {
   category: string;
   similarityWeight?: number;
   nowMs?: number;
+  overrides?: MemoryPolicyOverrides;
 }): number {
   const {
     similarityScore,
@@ -277,7 +300,7 @@ export function calculateCombinedScore(params: {
     nowMs = Date.now(),
   } = params;
 
-  const config = getMemoryPolicyConfig();
+  const config = getMemoryPolicyConfig(params.overrides);
   const policy =
     config[category as keyof MemoryPolicyConfig] ?? DEFAULT_POLICY.preference;
 
@@ -302,14 +325,15 @@ export function calculateCombinedScore(params: {
  */
 export function calculateExpiresAtTs(
   category: string,
-  ttlMinutesOverride?: number
+  ttlMinutesOverride?: number,
+  overrides?: MemoryPolicyOverrides
 ): number | undefined {
   // Override takes precedence
   if (ttlMinutesOverride !== undefined) {
     return Date.now() + ttlMinutesOverride * 60 * 1000;
   }
 
-  const config = getMemoryPolicyConfig();
+  const config = getMemoryPolicyConfig(overrides);
   const policy =
     config[category as keyof MemoryPolicyConfig] ?? DEFAULT_POLICY.preference;
 
@@ -325,8 +349,9 @@ export function calculateExpiresAtTs(
  */
 export function calculateExpiresAt(
   category: string,
-  ttlMinutesOverride?: number
+  ttlMinutesOverride?: number,
+  overrides?: MemoryPolicyOverrides
 ): string | undefined {
-  const ts = calculateExpiresAtTs(category, ttlMinutesOverride);
+  const ts = calculateExpiresAtTs(category, ttlMinutesOverride, overrides);
   return ts ? new Date(ts).toISOString() : undefined;
 }

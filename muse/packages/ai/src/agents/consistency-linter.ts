@@ -21,6 +21,12 @@ export interface ContradictionEvidence {
   text: string;
 }
 
+export interface CanonCitation {
+  memoryId: string;
+  excerpt?: string;
+  reason?: string;
+}
+
 /**
  * A consistency issue found in the narrative
  */
@@ -31,7 +37,8 @@ export interface ConsistencyIssue {
   message: string;
   suggestion: string;
   relatedLocations?: { line: number; text: string }[];
-  
+  canonCitations?: CanonCitation[];
+
   // Contradiction-specific fields
   isContradiction?: boolean;
   canonQuestion?: string;

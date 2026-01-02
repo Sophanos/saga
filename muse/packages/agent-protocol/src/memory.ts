@@ -49,6 +49,21 @@ export interface MemoryMetadata {
   toolName?: ToolName;
   /** Expiration timestamp (ISO) for session memories */
   expiresAt?: string;
+  /** Canon lock for decisions */
+  pinned?: boolean;
+  /** Whether memory content has been redacted */
+  redacted?: boolean;
+  /** Redaction timestamp (ISO) */
+  redactedAt?: string;
+  /** Optional redaction reason */
+  redactionReason?: string;
+  /** Optional explainability for retrieval ranking */
+  scoreBreakdown?: {
+    similarityScore?: number;
+    decayFactor?: number;
+    combinedScore?: number;
+    ageMs?: number;
+  };
 }
 
 /**
@@ -153,6 +168,16 @@ export interface MemoryReadRequest {
   limit?: number;
   /** Blend factor for recency (0-1, default 0.2) */
   recencyWeight?: number;
+  /** Include expired memories (default false) */
+  includeExpired?: boolean;
+  /** Include redacted memories (default false) */
+  includeRedacted?: boolean;
+  /** Only return pinned memories (default false) */
+  pinnedOnly?: boolean;
+  /** Max age in days for returned memories */
+  maxAgeDays?: number;
+  /** Include score breakdown in metadata (default false) */
+  explain?: boolean;
 }
 
 /**

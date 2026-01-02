@@ -110,6 +110,10 @@ interface EvidenceSectionProps {
   evidence: Array<{ documentHint?: string; line?: number; text: string }>;
 }
 
+interface CanonCitationsSectionProps {
+  citations: Array<{ memoryId: string; excerpt?: string; reason?: string }>;
+}
+
 function EvidenceSection({ evidence }: EvidenceSectionProps) {
   if (evidence.length === 0) return null;
 
@@ -133,6 +137,37 @@ function EvidenceSection({ evidence }: EvidenceSectionProps) {
             </p>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function CanonCitationsSection({ citations }: CanonCitationsSectionProps) {
+  if (citations.length === 0) return null;
+
+  return (
+    <div className="mt-4 p-3 rounded-lg bg-mythos-bg-tertiary/50">
+      <p className="text-xs font-medium text-mythos-text-secondary mb-2 flex items-center gap-1.5">
+        <FileText className="w-3.5 h-3.5" />
+        Canon decisions referenced
+      </p>
+      <div className="space-y-2">
+        {citations.map((citation, i) => {
+          const shortId = citation.memoryId.slice(0, 8);
+          return (
+            <div key={`${citation.memoryId}-${i}`} className="text-xs">
+              <span className="font-mono text-mythos-text-secondary">M:{shortId}</span>
+              {citation.reason && (
+                <p className="text-mythos-text-muted mt-0.5">{citation.reason}</p>
+              )}
+              {citation.excerpt && (
+                <p className="text-mythos-text-muted italic mt-0.5">
+                  "{citation.excerpt}"
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -188,6 +223,7 @@ export function ConsistencyChoiceModal({
 
   const choices = issue.canonChoices ?? [];
   const evidence = issue.evidence ?? [];
+  const citations = issue.canonCitations ?? [];
 
   return (
     <div
@@ -253,6 +289,7 @@ export function ConsistencyChoiceModal({
             </div>
 
             {evidence.length > 0 && <EvidenceSection evidence={evidence} />}
+            {citations.length > 0 && <CanonCitationsSection citations={citations} />}
           </ScrollArea>
         </CardContent>
 

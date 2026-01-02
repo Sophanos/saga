@@ -23,6 +23,8 @@ export const commitDecisionParameters = z.object({
   documentId: z.string().optional().describe("Document ID that establishes the decision"),
   /** Confidence level (0-1) */
   confidence: z.number().min(0).max(1).optional().describe("Confidence in this decision (0-1)"),
+  /** Pin decision as canon (default true) */
+  pinned: z.boolean().optional().describe("Pin this decision as canon"),
 });
 
 export type CommitDecisionArgs = z.infer<typeof commitDecisionParameters>;
@@ -60,4 +62,3 @@ evidence, and link relevant entities if known.`,
     } as ToolExecuteResult;
   },
 });
-

@@ -204,6 +204,8 @@ Tailor your responses to match these preferences when applicable.`;
  */
 export const SAGA_MEMORY_CONTEXT = `## Remembered Context
 
+When you rely on a remembered fact or canon decision, include its [M:...] tag in your response.
+
 ### Canon Decisions (never contradict these)
 {decisions}
 
@@ -292,14 +294,18 @@ function formatMemoriesWithBudget(
     return "None recorded.";
   }
 
-  const contents = memories.map((m) => m.content);
-  const budgetedContents = applyMemoryBudget(category, contents, budgetConfig);
+  const sortedMemories =
+    category === "decisions"
+      ? [...memories].sort((a, b) => Number(b.pinned) - Number(a.pinned))
+      : memories;
+  const lines = sortedMemories.map((m) => `- [M:${m.id}] ${m.content}`);
+  const budgetedLines = applyMemoryBudget(category, lines, budgetConfig);
 
-  if (budgetedContents.length === 0) {
+  if (budgetedLines.length === 0) {
     return "None recorded.";
   }
 
-  return budgetedContents.map((c) => `- ${c}`).join("\n");
+  return budgetedLines.join("\n");
 }
 
 /**
