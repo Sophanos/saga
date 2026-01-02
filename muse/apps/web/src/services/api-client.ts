@@ -11,6 +11,7 @@
  * - Server error retry (5xx responses)
  */
 
+import { getSupabaseClient, isSupabaseInitialized } from "@mythos/db";
 import { RETRY_CONFIG } from "./config";
 
 // =============================================================================
@@ -97,6 +98,8 @@ export interface EdgeFunctionOptions {
   signal?: AbortSignal;
   /** Optional API key passed via x-openrouter-key header */
   apiKey?: string;
+  /** Optional Supabase auth token or Authorization header value */
+  authToken?: string;
   /** Retry configuration (set to false to disable retries) */
   retry?: RetryConfig | false;
 }
@@ -116,6 +119,35 @@ function mapStatusToErrorCode(status: number): ApiErrorCode {
   if (status === 429) return "RATE_LIMITED";
   if (status >= 500) return "SERVER_ERROR";
   return "UNKNOWN_ERROR";
+}
+
+async function resolveAuthHeader(authToken?: string): Promise<string | null> {
+  if (authToken) {
+    return authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`;
+  }
+
+  if (!isSupabaseInitialized()) {
+    return null;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { data: { session }, error } = await supabase.auth.getSession();
+
+    if (error) {
+      if (import.meta.env.DEV) {
+        console.warn("[api-client] Failed to resolve auth session:", error.message);
+      }
+      return null;
+    }
+
+    return session?.access_token ? `Bearer ${session.access_token}` : null;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("[api-client] Failed to resolve auth token:", error);
+    }
+    return null;
+  }
 }
 
 /**
@@ -379,7 +411,7 @@ export async function callEdgeFunction<TReq, TRes>(
   payload: TReq,
   options?: EdgeFunctionOptions
 ): Promise<TRes> {
-  const { signal, apiKey, retry } = options ?? {};
+  const { signal, apiKey, retry, authToken } = options ?? {};
 
   if (!SUPABASE_URL) {
     throw new ApiError(
@@ -395,6 +427,7 @@ export async function callEdgeFunction<TReq, TRes>(
     : `/functions/v1/${endpoint}`;
 
   const url = `${SUPABASE_URL}${functionPath}`;
+  const resolvedAuthHeader = await resolveAuthHeader(authToken);
 
   try {
     const response = await fetchWithRetry(
@@ -404,6 +437,7 @@ export async function callEdgeFunction<TReq, TRes>(
         headers: {
           "Content-Type": "application/json",
           ...(apiKey && { "x-openrouter-key": apiKey }),
+          ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
         },
         body: JSON.stringify(payload),
         signal,
