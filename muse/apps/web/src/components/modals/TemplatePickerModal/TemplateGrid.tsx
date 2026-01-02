@@ -88,7 +88,7 @@ export function TemplateGrid({ onSelectTemplate }: TemplateGridProps) {
               onClick={() => setSelectedCategory(category)}
               className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                 selectedCategory === category
-                  ? "bg-mythos-accent-cyan/20 text-mythos-accent-cyan font-medium"
+                  ? "bg-mythos-accent-primary/20 text-mythos-accent-primary font-medium"
                   : "text-mythos-text-muted hover:text-mythos-text-secondary hover:bg-mythos-text-muted/10"
               }`}
             >

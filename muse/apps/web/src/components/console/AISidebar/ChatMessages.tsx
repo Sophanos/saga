@@ -27,14 +27,14 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         className={cn(
           "w-7 h-7 rounded-full flex items-center justify-center shrink-0",
           isUser
-            ? "bg-mythos-accent-cyan/20"
-            : "bg-mythos-accent-purple/20"
+            ? "bg-mythos-accent-primary/20"
+            : "bg-mythos-bg-tertiary"
         )}
       >
         {isUser ? (
-          <User className="w-3.5 h-3.5 text-mythos-accent-cyan" />
+          <User className="w-3.5 h-3.5 text-mythos-accent-primary" />
         ) : (
-          <Bot className="w-3.5 h-3.5 text-mythos-accent-purple" />
+          <Bot className="w-3.5 h-3.5 text-mythos-text-secondary" />
         )}
       </div>
 
@@ -49,7 +49,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           className={cn(
             "inline-block rounded-lg px-3 py-2 text-sm",
             isUser
-              ? "bg-mythos-accent-cyan/10 text-mythos-text-primary"
+              ? "bg-mythos-accent-primary/10 text-mythos-text-primary"
               : "bg-mythos-bg-tertiary text-mythos-text-primary"
           )}
         >
@@ -60,7 +60,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             <div className="whitespace-pre-wrap break-words prose prose-invert prose-sm max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0">
               {message.content}
               {message.isStreaming && (
-                <span className="inline-block w-1.5 h-4 bg-mythos-accent-purple animate-pulse ml-0.5" />
+                <span className="inline-block w-1.5 h-4 bg-mythos-accent-primary animate-pulse ml-0.5" />
               )}
             </div>
           )}
@@ -110,7 +110,7 @@ export function ChatMessages({
     return (
       <div className={cn("flex-1 flex items-center justify-center p-4", className)}>
         <div className="text-center">
-          <Bot className="w-10 h-10 text-mythos-accent-purple/30 mx-auto mb-3" />
+          <Bot className="w-10 h-10 text-mythos-text-muted/30 mx-auto mb-3" />
           <h4 className="text-sm font-medium text-mythos-text-secondary mb-1">
             Story Assistant
           </h4>
@@ -132,8 +132,8 @@ export function ChatMessages({
         {/* Loading indicator */}
         {isStreaming && messages[messages.length - 1]?.role === "user" && (
           <div className="flex gap-2.5 px-3 py-2">
-            <div className="w-7 h-7 rounded-full bg-mythos-accent-purple/20 flex items-center justify-center">
-              <Loader2 className="w-3.5 h-3.5 text-mythos-accent-purple animate-spin" />
+            <div className="w-7 h-7 rounded-full bg-mythos-bg-tertiary flex items-center justify-center">
+              <Loader2 className="w-3.5 h-3.5 text-mythos-text-secondary animate-spin" />
             </div>
             <div className="flex items-center">
               <span className="text-sm text-mythos-text-muted">Thinking...</span>

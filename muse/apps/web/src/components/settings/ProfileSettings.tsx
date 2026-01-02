@@ -205,11 +205,11 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-md mx-4 shadow-xl border-mythos-text-muted/30">
+      <Card className="relative z-10 w-full max-w-md mx-4 shadow-xl border-mythos-border-default">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <User className="w-5 h-5 text-mythos-accent-cyan" />
+              <User className="w-5 h-5 text-mythos-accent-primary" />
               <CardTitle className="text-lg">Profile Settings</CardTitle>
             </div>
             <Button
@@ -250,18 +250,18 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
                 <img
                   src={avatarUrl}
                   alt={name || "User avatar"}
-                  className="w-16 h-16 rounded-full object-cover border-2 border-mythos-text-muted/20"
+                  className="w-16 h-16 rounded-full object-cover border-2 border-mythos-border-default"
                   onError={(e) => {
                     // Hide broken images
                     (e.target as HTMLImageElement).style.display = "none";
                   }}
                 />
               ) : (
-                <div className="w-16 h-16 rounded-full bg-mythos-bg-tertiary border-2 border-mythos-text-muted/20 flex items-center justify-center">
+                <div className="w-16 h-16 rounded-full bg-mythos-bg-tertiary border-2 border-mythos-border-default flex items-center justify-center">
                   <User className="w-8 h-8 text-mythos-text-muted" />
                 </div>
               )}
-              <div className="absolute -bottom-1 -right-1 p-1 rounded-full bg-mythos-bg-secondary border border-mythos-text-muted/20">
+              <div className="absolute -bottom-1 -right-1 p-1 rounded-full bg-mythos-bg-secondary border border-mythos-border-default">
                 <Camera className="w-3 h-3 text-mythos-text-muted" />
               </div>
             </div>
@@ -323,7 +323,7 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
           </FormField>
 
           {/* Writing Preferences Section */}
-          <div className="pt-4 border-t border-mythos-text-muted/20">
+          <div className="pt-4 border-t border-mythos-border-default">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles className="w-4 h-4 text-mythos-accent-purple" />
               <span className="text-sm font-medium text-mythos-text-primary">Writing Preferences</span>
@@ -406,7 +406,7 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
           </div>
 
           {/* Sign out section */}
-          <div className="w-full pt-3 border-t border-mythos-text-muted/20">
+          <div className="w-full pt-3 border-t border-mythos-border-default">
             <Button
               variant="destructive"
               onClick={handleSignOut}

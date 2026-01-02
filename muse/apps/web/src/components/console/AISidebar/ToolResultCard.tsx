@@ -38,7 +38,7 @@ function getStatusIcon(status: ToolInvocationStatus) {
       return null;
     case "accepted":
     case "executing":
-      return <Loader2 className="w-3.5 h-3.5 text-mythos-accent-cyan animate-spin" />;
+      return <Loader2 className="w-3.5 h-3.5 text-mythos-accent-primary animate-spin" />;
     case "executed":
       return <Check className="w-3.5 h-3.5 text-mythos-accent-green" />;
     case "rejected":
@@ -93,7 +93,7 @@ function getCardStyles(
   if (status === "failed") {
     return "border-mythos-accent-red/30 bg-mythos-accent-red/5";
   }
-  return "border-mythos-text-muted/20 bg-mythos-bg-tertiary/50";
+  return "border-mythos-border-default bg-mythos-bg-tertiary/50";
 }
 
 export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
@@ -288,7 +288,7 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
           {tool.progress.pct !== undefined && (
             <div className="h-1 bg-mythos-bg-tertiary rounded-full overflow-hidden">
               <div
-                className="h-full bg-mythos-accent-cyan transition-all"
+                className="h-full bg-mythos-accent-primary transition-all"
                 style={{ width: `${tool.progress.pct}%` }}
               />
             </div>
@@ -309,7 +309,7 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
             .map((artifact, i) => (
               <div
                 key={i}
-                className="relative rounded-lg overflow-hidden border border-mythos-text-muted/20 bg-mythos-bg-tertiary group cursor-pointer"
+                className="relative rounded-lg overflow-hidden border border-mythos-border-default bg-mythos-bg-tertiary group cursor-pointer"
                 onClick={() => window.open(artifact.url ?? artifact.previewUrl, "_blank")}
               >
                 <img

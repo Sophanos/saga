@@ -35,7 +35,7 @@ function Tooltip({
       {children}
       {isVisible && (
         <div className="absolute top-full right-0 mt-2 z-50">
-          <div className="bg-mythos-bg-primary border border-mythos-text-muted/20 rounded-md shadow-lg px-3 py-2 text-xs whitespace-nowrap">
+          <div className="bg-mythos-bg-primary border border-mythos-border-default rounded-md shadow-lg px-3 py-2 text-xs whitespace-nowrap">
             {content}
           </div>
         </div>

@@ -45,8 +45,8 @@ function EntityNudgeContent({
 
   return (
     <div className="flex items-start gap-3">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-mythos-accent-cyan/20 flex items-center justify-center">
-        <Users className="w-4 h-4 text-mythos-accent-cyan" />
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-mythos-accent-primary/20 flex items-center justify-center">
+        <Users className="w-4 h-4 text-mythos-accent-primary" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-mythos-text-primary mb-1">

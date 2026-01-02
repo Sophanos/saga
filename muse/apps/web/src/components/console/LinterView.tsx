@@ -177,7 +177,7 @@ function IssueItem({
       className={cn(
         "group p-3 rounded-md border transition-all duration-200",
         "bg-mythos-bg-secondary/50 border-mythos-text-muted/10",
-        "hover:bg-mythos-bg-secondary hover:border-mythos-text-muted/20",
+        "hover:bg-mythos-bg-secondary hover:border-mythos-border-default",
         "hover:shadow-lg hover:shadow-black/20"
       )}
     >
@@ -441,7 +441,7 @@ function LinterHeader({
   const totalCount = issues.length;
 
   return (
-    <div className="flex items-center justify-between p-3 border-b border-mythos-text-muted/20">
+    <div className="flex items-center justify-between p-3 border-b border-mythos-border-default">
       <div className="flex items-center gap-3">
         {/* Total count */}
         <div className="flex items-center gap-2">

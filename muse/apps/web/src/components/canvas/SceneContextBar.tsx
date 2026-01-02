@@ -19,7 +19,7 @@ interface SceneContextBarProps {
 function getTensionColor(tension: number): string {
   if (tension >= 80) return "bg-mythos-accent-red";
   if (tension >= 60) return "bg-mythos-accent-amber";
-  if (tension >= 40) return "bg-mythos-accent-cyan";
+  if (tension >= 40) return "bg-mythos-accent-primary";
   if (tension >= 20) return "bg-mythos-accent-green";
   return "bg-mythos-text-muted";
 }
@@ -30,7 +30,7 @@ function getTensionColor(tension: number): string {
 function getTensionTextColor(tension: number): string {
   if (tension >= 80) return "text-mythos-accent-red";
   if (tension >= 60) return "text-mythos-accent-amber";
-  if (tension >= 40) return "text-mythos-accent-cyan";
+  if (tension >= 40) return "text-mythos-accent-primary";
   if (tension >= 20) return "text-mythos-accent-green";
   return "text-mythos-text-muted";
 }
@@ -77,7 +77,7 @@ function getMoodColor(mood: string): string {
     lowerMood.includes("peaceful") ||
     lowerMood.includes("serene")
   ) {
-    return "text-mythos-accent-cyan";
+    return "text-mythos-accent-primary";
   }
   return "text-mythos-text-secondary";
 }
@@ -108,7 +108,7 @@ export function SceneContextBar({
   const remainingCount = entities.length - displayedEntities.length;
 
   return (
-    <div className="h-10 px-4 border-b border-mythos-text-muted/20 bg-mythos-bg-secondary/50 flex items-center gap-6">
+    <div className="h-10 px-4 border-b border-mythos-border-default bg-mythos-bg-secondary/50 flex items-center gap-6">
       {/* Cast Section */}
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1.5 text-mythos-text-muted">

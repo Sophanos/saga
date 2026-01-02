@@ -41,6 +41,10 @@ interface AIImageResponse {
   storagePath: string;
   imageUrl: string;
   entityId?: string;
+  /** Whether this was a cache hit (existing identical generation) */
+  cached?: boolean;
+  /** Number of times this asset has been reused from cache */
+  cacheHitCount?: number;
 }
 
 // =============================================================================
@@ -245,6 +249,12 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
       // Determine resolved entity name for artifact title
       const resolvedEntityName = args.entityName ?? entity?.name ?? args.subject.slice(0, 30);
 
+      // Build artifact title (include [Cached] indicator for cache hits)
+      const baseTitle = `${request.style ?? "fantasy_art"} ${request.assetType ?? "portrait"} for ${resolvedEntityName}`;
+      const artifactTitle = response.cached
+        ? `[Cached] ${baseTitle}`
+        : baseTitle;
+
       // Return result with artifacts
       return {
         success: true,
@@ -254,13 +264,14 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
           entityId: response.entityId,
           assetId: response.assetId,
           storagePath: response.storagePath,
+          cached: response.cached,
         },
         artifacts: [
           {
             kind: "image" as const,
             url: response.imageUrl,
             previewUrl: response.imageUrl,
-            title: `${request.style ?? "fantasy_art"} ${request.assetType ?? "portrait"} for ${resolvedEntityName}`,
+            title: artifactTitle,
             mimeType: "image/png", // TODO: get from response
           },
         ],

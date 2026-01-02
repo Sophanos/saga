@@ -1,0 +1,200 @@
+# =============================================================================
+# Qdrant Daily Backup Workflow
+# =============================================================================
+#
+# Runs daily at 3:00 AM UTC to backup the Qdrant saga_vectors collection
+# to Cloudflare R2. Can also be triggered manually.
+#
+# Required Secrets:
+#   QDRANT_URL              - Qdrant server URL
+#   QDRANT_API_KEY          - Qdrant API key (if auth enabled)
+#   R2_ENDPOINT             - Cloudflare R2 S3-compatible endpoint
+#   R2_ACCESS_KEY_ID        - R2 API token access key
+#   R2_SECRET_ACCESS_KEY    - R2 API token secret key
+#   R2_BUCKET               - R2 bucket name for backups
+#
+# Optional Secrets:
+#   SLACK_WEBHOOK_URL       - Slack webhook for backup notifications
+#
+# =============================================================================
+
+name: Qdrant Backup
+
+on:
+  schedule:
+    # Run daily at 3:00 AM UTC (adjust as needed)
+    - cron: '0 3 * * *'
+  
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no actual backup)'
+        required: false
+        type: boolean
+        default: false
+      cleanup_only:
+        description: 'Only cleanup old backups'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  QDRANT_COLLECTION: saga_vectors
+  BACKUP_RETENTION_DAYS: 7
+
+jobs:
+  backup:
+    name: Backup Qdrant to R2
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+      - name: Configure AWS CLI for R2
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          aws-region: auto
+
+      - name: Run backup script
+        id: backup
+        env:
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          BACKUP_RETENTION_DAYS: ${{ env.BACKUP_RETENTION_DAYS }}
+          LOG_LEVEL: info
+        run: |
+          chmod +x ./muse/scripts/qdrant-backup.sh
+
+          ARGS=""
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            ARGS="--dry-run"
+          elif [[ "${{ inputs.cleanup_only }}" == "true" ]]; then
+            ARGS="--cleanup-only"
+          fi
+
+          ./muse/scripts/qdrant-backup.sh $ARGS 2>&1 | tee backup.log
+
+          # Extract backup location from log
+          BACKUP_LOCATION=$(grep "Backup location:" backup.log | cut -d' ' -f5 || echo "N/A")
+          echo "backup_location=$BACKUP_LOCATION" >> $GITHUB_OUTPUT
+
+      - name: Upload backup log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-log-${{ github.run_number }}
+          path: backup.log
+          retention-days: 7
+
+      - name: Notify Slack on success
+        if: success() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "text": "Qdrant Backup Completed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Qdrant Backup Completed*\n:white_check_mark: Collection `saga_vectors` backed up successfully"
+                  }
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "Location: `${{ steps.backup.outputs.backup_location }}`"
+                    }
+                  ]
+                }
+              ]
+            }'
+
+      - name: Notify Slack on failure
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "text": "Qdrant Backup Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Qdrant Backup Failed*\n:x: Backup of `saga_vectors` collection failed"
+                  }
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow run>"
+                    }
+                  ]
+                }
+              ]
+            }'
+
+  # Optional: Verify backup integrity
+  verify:
+    name: Verify Backup
+    runs-on: ubuntu-latest
+    needs: backup
+    if: success() && !inputs.dry_run && !inputs.cleanup_only
+
+    steps:
+      - name: Configure AWS CLI for R2
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          aws-region: auto
+
+      - name: List recent backups
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          echo "Recent backups in R2:"
+          aws s3 ls "s3://${R2_BUCKET}/qdrant-backups/" \
+            --endpoint-url "$R2_ENDPOINT" \
+            | tail -5
+
+      - name: Verify latest backup exists
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          TODAY=$(date -u +"%Y%m%d")
+          BACKUP_EXISTS=$(aws s3 ls "s3://${R2_BUCKET}/qdrant-backups/" \
+            --endpoint-url "$R2_ENDPOINT" \
+            | grep "${TODAY}" | wc -l)
+
+          if [[ "$BACKUP_EXISTS" -eq 0 ]]; then
+            echo "ERROR: No backup found for today ($TODAY)"
+            exit 1
+          fi
+
+          echo "Backup verification passed: found backup for $TODAY"

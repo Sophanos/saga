@@ -23,6 +23,10 @@
     "./analysis": {
       "types": "./src/analysis/index.ts",
       "default": "./src/analysis/index.ts"
+    },
+    "./trial/payload": {
+      "types": "./src/trial/payload.ts",
+      "default": "./src/trial/payload.ts"
     }
   },
   "scripts": {

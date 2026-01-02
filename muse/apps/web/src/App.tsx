@@ -1,17 +1,21 @@
 import { useState, useCallback, useEffect } from "react";
+import { motion } from "motion/react";
 import { Layout } from "./components/Layout";
 import { ProjectSelectorScreen } from "./components/projects";
 import { TemplatePickerModal } from "./components/modals";
 import { AuthScreen, AuthCallback } from "./components/auth";
 import { InviteAcceptPage } from "./components/collaboration";
-import { AnonymousLayout } from "./components/anonymous";
-import { LAST_PROJECT_KEY, PENDING_INVITE_TOKEN_KEY } from "./constants/storageKeys";
+import { PENDING_INVITE_TOKEN_KEY } from "./constants/storageKeys";
 import { LandingPage } from "@mythos/website/pages";
 import { useProjects } from "./hooks/useProjects";
 import { useProjectLoader } from "./hooks/useProjectLoader";
 import { useSupabaseAuthSync } from "./hooks/useSupabaseAuthSync";
+import { useAnonymousProjectLoader } from "./hooks/useAnonymousProjectLoader";
 import { useAuthStore } from "./stores/auth";
 import { useNavigationStore } from "./stores/navigation";
+import { useMythosStore } from "./stores";
+import { useRequestProjectStartAction } from "./stores/projectStart";
+import { useProjectSelectionStore } from "./stores/projectSelection";
 
 
 
@@ -22,8 +26,70 @@ function LoadingScreen() {
   return (
     <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary font-sans antialiased flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
-        <div className="w-8 h-8 border-2 border-mythos-accent-cyan border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-mythos-accent-primary border-t-transparent rounded-full animate-spin" />
         <span className="text-mythos-text-muted font-mono text-sm">Initializing...</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Anonymous trial app - handles loading then shows Layout in anonymous mode
+ */
+function AnonymousTryApp({ onSignUp }: { onSignUp: () => void }) {
+  const { isLoading, error } = useAnonymousProjectLoader();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-mythos-bg-primary flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
+        >
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+            className="w-8 h-8 mx-auto mb-4"
+          >
+            <div className="w-full h-full rounded-full border-2 border-mythos-text-muted/20 border-t-mythos-text-primary" />
+          </motion.div>
+          <p className="text-sm text-mythos-text-muted">Preparing your workspace...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-mythos-bg-primary flex items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center max-w-sm"
+        >
+          <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-mythos-accent-red/10 border border-mythos-accent-red/20 flex items-center justify-center">
+            <span className="text-mythos-accent-red text-xl">!</span>
+          </div>
+          <h2 className="text-lg font-medium text-mythos-text-primary mb-2">
+            Something went wrong
+          </h2>
+          <p className="text-sm text-mythos-text-muted mb-6">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg bg-mythos-bg-secondary border border-mythos-border-default hover:bg-mythos-bg-tertiary transition-colors text-sm font-medium"
+          >
+            Try again
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary font-sans antialiased flex flex-col">
+      <div className="flex-1 min-h-0">
+        <Layout isAnonymous onSignUp={onSignUp} />
       </div>
     </div>
   );
@@ -33,10 +99,9 @@ function LoadingScreen() {
  * Main authenticated app content
  */
 function AuthenticatedApp() {
-  // State for selected project - initialize from localStorage
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
-    () => localStorage.getItem(LAST_PROJECT_KEY)
-  );
+  const selectedProjectId = useProjectSelectionStore((s) => s.selectedProjectId);
+  const setSelectedProjectId = useProjectSelectionStore((s) => s.setSelectedProjectId);
+  const clearSelectedProjectId = useProjectSelectionStore((s) => s.clearSelectedProjectId);
 
   // State for create project modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -53,14 +118,12 @@ function AuthenticatedApp() {
   // Handle project selection - also persist to localStorage
   const handleSelectProject = useCallback((projectId: string) => {
     setSelectedProjectId(projectId);
-    localStorage.setItem(LAST_PROJECT_KEY, projectId);
-  }, []);
+  }, [setSelectedProjectId]);
 
   // Handle clearing a project (e.g., when project not found)
   const clearSelectedProject = useCallback(() => {
-    setSelectedProjectId(null);
-    localStorage.removeItem(LAST_PROJECT_KEY);
-  }, []);
+    clearSelectedProjectId();
+  }, [clearSelectedProjectId]);
 
   // Handle "not found" errors - clear localStorage and reset to project selector
   useEffect(() => {
@@ -74,16 +137,48 @@ function AuthenticatedApp() {
   const showProjectSelector = useNavigationStore((s) => s.showProjectSelector);
   const openNewProjectModal = useNavigationStore((s) => s.openNewProjectModal);
   const clearNavigationRequest = useNavigationStore((s) => s.clearNavigationRequest);
+  const requestProjectStartAction = useRequestProjectStartAction();
+  const resetForProjectSwitch = useMythosStore((s) => s.resetForProjectSwitch);
+  const setCurrentProject = useMythosStore((s) => s.setCurrentProject);
 
   useEffect(() => {
     if (showProjectSelector) {
       clearSelectedProject();
       if (openNewProjectModal) {
-        setIsCreateModalOpen(true);
+        if (!projectsLoading && !projectsError && projects.length === 0) {
+          requestProjectStartAction("browse-templates");
+        } else {
+          setIsCreateModalOpen(true);
+        }
       }
       clearNavigationRequest();
     }
-  }, [showProjectSelector, openNewProjectModal, clearSelectedProject, clearNavigationRequest]);
+  }, [
+    showProjectSelector,
+    openNewProjectModal,
+    projectsLoading,
+    projectsError,
+    projects.length,
+    clearSelectedProject,
+    clearNavigationRequest,
+    requestProjectStartAction,
+  ]);
+
+  useEffect(() => {
+    if (selectedProjectId !== null) return;
+    if (projectsLoading || projectsError) return;
+    if (projects.length > 0) return;
+
+    resetForProjectSwitch();
+    setCurrentProject(null);
+  }, [
+    selectedProjectId,
+    projectsLoading,
+    projectsError,
+    projects.length,
+    resetForProjectSwitch,
+    setCurrentProject,
+  ]);
 
   // Handle opening the create project modal
   const handleCreateProject = useCallback(() => {
@@ -107,6 +202,13 @@ function AuthenticatedApp() {
 
   // Show project selector when no project is selected
   if (selectedProjectId === null) {
+    if (!projectsLoading && !projectsError && projects.length === 0) {
+      return (
+        <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary font-sans antialiased">
+          <Layout showProjectStart onProjectCreated={handleProjectCreated} />
+        </div>
+      );
+    }
     return (
       <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary font-sans antialiased">
         <ProjectSelectorScreen
@@ -131,7 +233,7 @@ function AuthenticatedApp() {
     return (
       <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary font-sans antialiased flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-mythos-accent-cyan border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-mythos-accent-primary border-t-transparent rounded-full animate-spin" />
           <span className="text-mythos-text-muted font-mono text-sm">Loading project...</span>
         </div>
       </div>
@@ -147,7 +249,7 @@ function AuthenticatedApp() {
           <span className="text-mythos-text-muted text-sm">{projectLoadError}</span>
           <button
             onClick={clearSelectedProject}
-            className="px-4 py-2 bg-mythos-bg-secondary border border-mythos-text-muted/20 rounded text-sm hover:border-mythos-accent-cyan/50 transition-colors font-mono"
+            className="px-4 py-2 bg-mythos-bg-secondary border border-mythos-border-default rounded text-sm hover:border-mythos-accent-primary/50 transition-colors font-mono"
           >
             Back to Projects
           </button>
@@ -223,9 +325,8 @@ function App() {
   // Handle /try route (anonymous trial) - shows real app with trial limits
   if (isTryRoute && !isAuthenticated) {
     return (
-      <AnonymousLayout
+      <AnonymousTryApp
         onSignUp={() => {
-          // Navigate to signup
           window.history.pushState({}, "", "/signup");
           setShowAuth(true);
         }}

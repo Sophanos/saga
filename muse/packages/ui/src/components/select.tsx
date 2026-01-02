@@ -132,9 +132,9 @@ const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
           aria-labelledby={id}
           className={cn(
             "flex items-center justify-between w-full h-9 px-3 py-1 rounded-md text-sm",
-            "border border-mythos-text-muted/30 bg-mythos-bg-secondary",
+            "border border-mythos-border-default bg-mythos-bg-secondary",
             "hover:bg-mythos-bg-tertiary transition-colors",
-            "focus:outline-none focus:ring-1 focus:ring-mythos-accent-cyan",
+            "focus:outline-none focus:ring-1 focus:ring-mythos-accent-primary",
             disabled && "opacity-50 cursor-not-allowed",
             className
           )}
@@ -167,7 +167,7 @@ const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
             }
             className={cn(
               "absolute z-50 mt-1 w-full max-h-60 overflow-auto py-1 rounded-md",
-              "bg-mythos-bg-secondary border border-mythos-text-muted/30",
+              "bg-mythos-bg-secondary border border-mythos-border-default",
               "shadow-lg shadow-black/20"
             )}
           >
@@ -192,7 +192,7 @@ const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
               >
                 <span>{option.label}</span>
                 {option.value === value && (
-                  <Check className="w-4 h-4 text-mythos-accent-cyan" />
+                  <Check className="w-4 h-4 text-mythos-accent-primary" />
                 )}
               </li>
             ))}

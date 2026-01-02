@@ -132,8 +132,8 @@ function IssueItem({ issue, isSelected, onJump, onApplyFix, onSelect }: IssueIte
       className={cn(
         "p-3 rounded-md border transition-colors cursor-pointer",
         "bg-mythos-bg-secondary/50 border-mythos-text-muted/10",
-        "hover:bg-mythos-bg-secondary hover:border-mythos-text-muted/20",
-        isSelected && "ring-2 ring-mythos-accent-cyan ring-offset-1 ring-offset-mythos-bg-primary bg-mythos-bg-secondary border-mythos-accent-cyan/30"
+        "hover:bg-mythos-bg-secondary hover:border-mythos-border-default",
+        isSelected && "ring-2 ring-mythos-accent-primary ring-offset-1 ring-offset-mythos-bg-primary bg-mythos-bg-secondary border-mythos-accent-primary/30"
       )}
     >
       <div className="flex items-center justify-between mb-2">
@@ -146,7 +146,7 @@ function IssueItem({ issue, isSelected, onJump, onApplyFix, onSelect }: IssueIte
               className={cn(
                 "text-xs flex items-center gap-1 transition-colors",
                 canJump
-                  ? "text-mythos-accent-cyan hover:text-mythos-accent-cyan/80 cursor-pointer"
+                  ? "text-mythos-accent-primary hover:text-mythos-accent-primary/80 cursor-pointer"
                   : "text-mythos-text-muted cursor-default"
               )}
               title={canJump ? "Jump to location" : undefined}

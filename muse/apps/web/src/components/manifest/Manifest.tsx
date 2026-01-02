@@ -8,6 +8,8 @@ import {
   MapPin,
   Sword,
   Sparkles,
+  LayoutGrid,
+  Database,
   Users,
   Search,
   Filter,
@@ -22,9 +24,10 @@ import {
 } from "lucide-react";
 import { ScrollArea, Input, Button, Select } from "@mythos/ui";
 import type { Entity, EntityType, Document, DocumentType, Character, Location, Item, MagicSystem, Faction } from "@mythos/core";
-import { useEntities, useDocuments, useMythosStore } from "../../stores";
+import { useEntities, useDocuments, useMythosStore, useCurrentProject } from "../../stores";
 import { EntityFormModal, type EntityFormData } from "../modals";
 import { useEntityPersistence } from "../../hooks";
+import { useRequestProjectStartAction } from "../../stores/projectStart";
 
 interface TreeNode {
   id: string;
@@ -83,6 +86,13 @@ function getEntityIcon(entityType?: string) {
       return <FileText className="w-4 h-4 text-mythos-text-muted" />;
   }
 }
+
+const START_ACTIONS = [
+  { label: "Page", action: "start-blank", icon: FileText },
+  { label: "AI Notes", action: "ai-builder", icon: Sparkles },
+  { label: "Database", action: "browse-templates", icon: Database },
+  { label: "Templates", action: "browse-templates", icon: LayoutGrid },
+] as const;
 
 interface TreeItemProps {
   node: TreeNode;
@@ -516,6 +526,8 @@ export function Manifest() {
 
   // Show empty state if no data
   const isEmpty = tree.length === 0;
+  const currentProject = useCurrentProject();
+  const requestProjectStartAction = useRequestProjectStartAction();
 
   // Open create entity modal
   const handleCreateEntity = useCallback(() => {
@@ -709,7 +721,7 @@ export function Manifest() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-3 border-b border-mythos-text-muted/20">
+      <div className="p-3 border-b border-mythos-border-default">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xs font-semibold text-mythos-text-muted uppercase tracking-wider">
             Manifest
@@ -800,19 +812,45 @@ export function Manifest() {
       {/* Tree Content */}
       <ScrollArea className="flex-1 p-2">
         {isEmpty ? (
-          <div className="p-4 text-center text-mythos-text-muted text-sm">
-            {hasActiveFilters ? (
-              <>
-                <p>No matching results.</p>
-                <p className="mt-2 text-xs">Try adjusting your search or filters.</p>
-              </>
-            ) : (
-              <>
-                <p>No entities or documents yet.</p>
-                <p className="mt-2 text-xs">Paste content to detect entities or create them manually.</p>
-              </>
-            )}
-          </div>
+          !currentProject ? (
+            <div className="p-3">
+              <div className="rounded-xl border border-mythos-border-default bg-mythos-bg-secondary/60 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-mythos-text-muted">
+                  Start here
+                </p>
+                <div className="mt-2 space-y-1">
+                  {START_ACTIONS.map(({ label, action, icon: Icon }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => requestProjectStartAction(action)}
+                      className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-sm text-mythos-text-secondary hover:text-mythos-text-primary hover:bg-mythos-bg-hover transition-colors"
+                    >
+                      <Icon className="w-4 h-4 text-mythos-text-muted" />
+                      <span className="flex-1 text-left">{label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[10px] text-mythos-text-muted">
+                  Create a project to unlock documents and world entities.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 text-center text-mythos-text-muted text-sm">
+              {hasActiveFilters ? (
+                <>
+                  <p>No matching results.</p>
+                  <p className="mt-2 text-xs">Try adjusting your search or filters.</p>
+                </>
+              ) : (
+                <>
+                  <p>No entities or documents yet.</p>
+                  <p className="mt-2 text-xs">Paste content to detect entities or create them manually.</p>
+                </>
+              )}
+            </div>
+          )
         ) : (
           tree.map((node) => (
             <TreeItem

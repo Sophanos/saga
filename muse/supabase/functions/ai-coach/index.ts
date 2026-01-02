@@ -11,10 +11,11 @@
  *   documentContent: string,      // The document text to analyze
  *   entities?: object[],          // Known entities from World Graph
  *   relationships?: object[],     // Entity relationships
- *   projectConfig?: object        // Project settings
+ *   projectConfig?: object,       // Project settings
+ *   stream?: boolean              // Enable streaming mode (default: false)
  * }
  *
- * Response:
+ * Response (Non-streaming):
  * {
  *   metrics: {
  *     tension: number[],
@@ -27,10 +28,18 @@
  *   issues: StyleIssue[],
  *   insights: string[]
  * }
+ *
+ * Response (Streaming - SSE):
+ * - { type: "metrics", data: Partial<SceneMetrics> }  // Progressive metrics updates
+ * - { type: "issue", data: StyleIssue }               // Each issue as detected
+ * - { type: "insight", data: string }                 // Each insight as generated
+ * - { type: "done" }                                  // Stream complete
+ * - { type: "error", message: string }                // Error occurred
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { generateText } from "https://esm.sh/ai@6.0.0";
+import { generateText, streamText, Output } from "https://esm.sh/ai@6.0.0";
+import { z } from "https://esm.sh/zod@3.25.28";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
 import {
@@ -41,6 +50,11 @@ import {
   ErrorCode,
 } from "../_shared/errors.ts";
 import { WRITING_COACH_SYSTEM } from "../_shared/prompts/coach.ts";
+import {
+  createSSEStream,
+  getStreamingHeaders,
+  type SSEStreamController,
+} from "../_shared/streaming.ts";
 import {
   checkBillingAndGetKey,
   createSupabaseClient,
@@ -57,6 +71,7 @@ interface CoachRequest {
   entities?: unknown[];
   relationships?: unknown[];
   projectConfig?: unknown;
+  stream?: boolean;
 }
 
 /**
@@ -105,6 +120,76 @@ interface WritingAnalysis {
   issues: StyleIssue[];
   insights: string[];
 }
+
+// ============================================================================
+// Zod Schemas for Streaming
+// ============================================================================
+
+/**
+ * Zod schema for style issue fix
+ */
+const styleIssueFixSchema = z.object({
+  oldText: z.string().describe("Original text to replace"),
+  newText: z.string().describe("Suggested replacement text"),
+});
+
+/**
+ * Zod schema for text position
+ */
+const positionSchema = z.object({
+  start: z.number().int().min(0).describe("Start character offset"),
+  end: z.number().int().min(0).describe("End character offset"),
+});
+
+/**
+ * Zod schema for a style issue
+ */
+const styleIssueSchema = z.object({
+  type: z.enum(["telling", "passive", "adverb", "repetition"]).describe("Issue category"),
+  text: z.string().describe("The problematic text"),
+  line: z.number().int().optional().describe("Line number if applicable"),
+  position: positionSchema.optional().describe("Character position in document"),
+  suggestion: z.string().describe("How to improve the text"),
+  fix: styleIssueFixSchema.optional().describe("Direct replacement suggestion"),
+});
+
+/**
+ * Zod schema for sensory details
+ */
+const sensorySchema = z.object({
+  sight: z.number().min(0).max(100).describe("Visual imagery score 0-100"),
+  sound: z.number().min(0).max(100).describe("Auditory imagery score 0-100"),
+  touch: z.number().min(0).max(100).describe("Tactile imagery score 0-100"),
+  smell: z.number().min(0).max(100).describe("Olfactory imagery score 0-100"),
+  taste: z.number().min(0).max(100).describe("Gustatory imagery score 0-100"),
+});
+
+/**
+ * Zod schema for scene metrics
+ */
+const sceneMetricsSchema = z.object({
+  tension: z.array(z.number().min(0).max(100)).describe("Tension curve values 0-100"),
+  sensory: sensorySchema.describe("Sensory detail scores"),
+  pacing: z.enum(["accelerating", "steady", "decelerating"]).describe("Narrative pacing"),
+  mood: z.string().describe("Overall mood/tone of the scene"),
+  showDontTellScore: z.number().min(0).max(100).describe("Show vs tell score 0-100"),
+  showDontTellGrade: z.enum(["A", "B", "C", "D", "F"]).describe("Letter grade for showing"),
+});
+
+/**
+ * Complete coach result schema for streaming
+ */
+const coachResultSchema = z.object({
+  metrics: sceneMetricsSchema.describe("Scene analysis metrics"),
+  issues: z.array(styleIssueSchema).describe("Style issues found in the text"),
+  insights: z.array(z.string()).describe("Writing insights and suggestions"),
+});
+
+type StreamingCoachResult = z.infer<typeof coachResultSchema>;
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 /**
  * Build the analysis prompt from context
@@ -407,6 +492,132 @@ serve(async (req) => {
 
     // Build the prompt
     const userPrompt = buildAnalysisPrompt(request);
+
+    // Check if streaming is requested
+    const shouldStream = request.stream === true;
+
+    if (shouldStream) {
+      // ========================================================================
+      // Streaming Mode - Progressive structured output
+      // ========================================================================
+      console.log("[ai-coach] Starting streaming analysis:", {
+        contentLength: request.documentContent.length,
+      });
+
+      // Use streamText with Output.object() for progressive structured output
+      const result = streamText({
+        model,
+        output: Output.object({
+          schema: coachResultSchema,
+        }),
+        system: WRITING_COACH_SYSTEM,
+        prompt: userPrompt,
+        temperature: 0.3,
+        maxOutputTokens: 4096,
+      });
+
+      // Track what we've already emitted to avoid duplicates
+      let lastMetricsJson = "";
+      let lastIssueCount = 0;
+      let lastInsightCount = 0;
+
+      // Create SSE stream for progressive output
+      const stream = createSSEStream(async (sse: SSEStreamController) => {
+        try {
+          // Stream partial results as they're generated
+          for await (const partial of result.partialOutputStream) {
+            const partialResult = partial as Partial<StreamingCoachResult>;
+
+            // Emit metrics updates when they change
+            if (partialResult.metrics) {
+              const metricsJson = JSON.stringify(partialResult.metrics);
+              if (metricsJson !== lastMetricsJson) {
+                lastMetricsJson = metricsJson;
+                sse.sendContext({
+                  type: "metrics",
+                  data: partialResult.metrics,
+                });
+              }
+            }
+
+            // Emit new issues as they appear
+            if (partialResult.issues && partialResult.issues.length > lastIssueCount) {
+              for (let i = lastIssueCount; i < partialResult.issues.length; i++) {
+                const issue = partialResult.issues[i];
+                // Only emit complete issues (have required fields)
+                if (issue && issue.type && issue.text && issue.suggestion) {
+                  sse.sendContext({
+                    type: "issue",
+                    data: issue,
+                  });
+                }
+              }
+              lastIssueCount = partialResult.issues.length;
+            }
+
+            // Emit new insights as they appear
+            if (partialResult.insights && partialResult.insights.length > lastInsightCount) {
+              for (let i = lastInsightCount; i < partialResult.insights.length; i++) {
+                const insight = partialResult.insights[i];
+                if (insight && typeof insight === "string" && insight.length > 0) {
+                  sse.sendContext({
+                    type: "insight",
+                    data: insight,
+                  });
+                }
+              }
+              lastInsightCount = partialResult.insights.length;
+            }
+          }
+
+          // Wait for final usage data
+          const usage = await result.usage;
+
+          // Record usage
+          await recordAIRequest(supabase, billing!, {
+            endpoint: "coach",
+            model: "stream",
+            modelType,
+            usage: extractTokenUsage(usage),
+            latencyMs: Date.now() - startTime,
+            metadata: { streaming: true, issuesFound: lastIssueCount },
+          });
+
+          console.log("[ai-coach] Streaming analysis complete:", {
+            issuesFound: lastIssueCount,
+            insightsGenerated: lastInsightCount,
+            processingTimeMs: Date.now() - startTime,
+          });
+
+          sse.complete();
+        } catch (error) {
+          console.error("[ai-coach] Streaming error:", error);
+
+          // Record failed request
+          await recordAIRequest(supabase, billing!, {
+            endpoint: "coach",
+            model: "stream",
+            modelType,
+            usage: extractTokenUsage(undefined),
+            latencyMs: Date.now() - startTime,
+            success: false,
+            errorCode: "STREAM_ERROR",
+            errorMessage: error instanceof Error ? error.message : "Stream error",
+          });
+
+          sse.fail(error);
+        }
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: getStreamingHeaders(origin),
+      });
+    }
+
+    // ========================================================================
+    // Non-streaming Mode - Original blocking behavior
+    // ========================================================================
 
     // Call the AI
     const result = await generateText({

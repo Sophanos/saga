@@ -1,38 +1,77 @@
 /**
  * Core Color Palette
  *
- * All color constants for the Mythos IDE design system.
- * These values match the Tailwind configuration in tooling/tailwind/base.config.ts
+ * Notion-inspired design system with light/dark mode support.
+ * Uses warm grays (not cool/blue grays) for a comfortable reading experience.
  */
 
 /**
- * Background colors - dark theme foundation
+ * Dark mode colors - Notion-style warm grays
  */
-export const bg = {
-  primary: "#0a0a0f",
-  secondary: "#12121a",
-  tertiary: "#1a1a24",
+export const dark = {
+  bg: {
+    primary: "#191919",
+    secondary: "#202020",
+    tertiary: "#252526",
+    hover: "rgba(255,255,255,0.04)",
+  },
+  text: {
+    primary: "#E3E2E0",
+    secondary: "#9B9A97",
+    muted: "#6B6B64",
+  },
+  border: {
+    default: "rgba(255,255,255,0.08)",
+    subtle: "rgba(255,255,255,0.06)",
+  },
 } as const;
 
 /**
- * Text colors - typography hierarchy
+ * Light mode colors - Notion-style warm whites
  */
-export const text = {
-  primary: "#e4e4e7",
-  secondary: "#a1a1aa",
-  muted: "#71717a",
+export const light = {
+  bg: {
+    primary: "#FFFFFF",
+    secondary: "#F7F6F3",
+    tertiary: "#EFEEE9",
+    hover: "rgba(0,0,0,0.03)",
+  },
+  text: {
+    primary: "#37352F",
+    secondary: "#6B6B64",
+    muted: "#9B9A97",
+  },
+  border: {
+    default: "rgba(0,0,0,0.08)",
+    subtle: "rgba(0,0,0,0.06)",
+  },
 } as const;
+
+/**
+ * Current theme colors - defaults to dark mode
+ * Components should use these values which map to CSS variables
+ */
+export const bg = dark.bg;
+export const text = dark.text;
+export const border = dark.border;
 
 /**
  * Accent colors - UI highlights and interactions
+ * Primary accent is Notion's blue
  */
 export const accent = {
+  // Primary - Notion blue
+  primary: "#2383E2",
+  primaryHover: "#1a6fc2",
+  primaryBg: "rgba(35, 131, 226, 0.15)",
+  primaryGlow: "rgba(35, 131, 226, 0.12)",
+  // Secondary accents
   cyan: "#22d3ee",
   purple: "#a855f7",
   green: "#22c55e",
   amber: "#f59e0b",
   red: "#ef4444",
-  blue: "#3b82f6",
+  blue: "#2383E2",
   pink: "#ec4899",
   orange: "#f97316",
   teal: "#14b8a6",
@@ -43,25 +82,26 @@ export const accent = {
 } as const;
 
 /**
- * Neutral grays for borders, dividers, and subtle UI
+ * Neutral grays - for reference, prefer using bg/text/border
  */
 export const neutral = {
-  50: "#fafafa",
-  100: "#f4f4f5",
-  200: "#e4e4e7",
-  300: "#d4d4d8",
-  400: "#a1a1aa",
-  500: "#71717a",
-  600: "#52525b",
-  700: "#3f3f46",
-  800: "#27272a",
-  900: "#18181b",
-  950: "#09090b",
+  // Light grays
+  50: "#FFFFFF",
+  100: "#F7F6F3",
+  200: "#EFEEE9",
+  300: "#E3E2E0",
+  400: "#9B9A97",
+  // Dark grays
+  500: "#6B6B64",
+  600: "#37352F",
+  700: "#252526",
+  800: "#202020",
+  900: "#191919",
+  950: "#111111",
 } as const;
 
 /**
  * Core entity colors - used for entity highlighting in the editor
- * These are the primary entity types from the Tailwind config
  */
 export const entity = {
   character: "#22d3ee",
@@ -161,8 +201,11 @@ export const relationship = {
  * Complete color palette export
  */
 export const colors = {
+  light,
+  dark,
   bg,
   text,
+  border,
   accent,
   neutral,
   entity,
@@ -173,6 +216,7 @@ export const colors = {
 export type Colors = typeof colors;
 export type BgColor = keyof typeof bg;
 export type TextColor = keyof typeof text;
+export type BorderColor = keyof typeof border;
 export type AccentColor = keyof typeof accent;
 export type EntityColor = keyof typeof entity;
 export type EntityExtendedColor = keyof typeof entityExtended;

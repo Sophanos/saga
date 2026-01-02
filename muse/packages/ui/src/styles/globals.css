@@ -3,14 +3,35 @@
 @tailwind utilities;
 
 @layer base {
+  /* Notion-style warm gray theme */
   :root {
-    --mythos-bg-primary: 0 0% 4%;
-    --mythos-bg-secondary: 240 20% 7%;
-    --mythos-bg-tertiary: 240 14% 11%;
+    /* Dark mode (default) - warm grays */
+    --mythos-bg-primary: #191919;
+    --mythos-bg-secondary: #202020;
+    --mythos-bg-tertiary: #252526;
+    --mythos-text-primary: #E3E2E0;
+    --mythos-text-secondary: #9B9A97;
+    --mythos-text-muted: #6B6B64;
+    --mythos-border-default: rgba(255,255,255,0.08);
+    --mythos-border-subtle: rgba(255,255,255,0.06);
+    --mythos-accent-primary: #2383E2;
+  }
+
+  /* Light mode */
+  .light {
+    --mythos-bg-primary: #FFFFFF;
+    --mythos-bg-secondary: #F7F6F3;
+    --mythos-bg-tertiary: #EFEEE9;
+    --mythos-text-primary: #37352F;
+    --mythos-text-secondary: #6B6B64;
+    --mythos-text-muted: #9B9A97;
+    --mythos-border-default: rgba(0,0,0,0.08);
+    --mythos-border-subtle: rgba(0,0,0,0.06);
+    --mythos-accent-primary: #2383E2;
   }
 
   * {
-    @apply border-mythos-text-muted/20;
+    border-color: rgba(107, 107, 100, 0.2);
   }
 
   body {
@@ -22,38 +43,46 @@
 @layer utilities {
   /* Entity highlight colors */
   .entity-character {
-    @apply text-mythos-entity-character underline decoration-mythos-entity-character/50 decoration-dotted underline-offset-2;
+    @apply text-mythos-entity-character underline decoration-dotted underline-offset-2;
+    text-decoration-color: rgba(34, 211, 238, 0.5);
   }
 
   .entity-location {
-    @apply text-mythos-entity-location underline decoration-mythos-entity-location/50 decoration-dotted underline-offset-2;
+    @apply text-mythos-entity-location underline decoration-dotted underline-offset-2;
+    text-decoration-color: rgba(34, 197, 94, 0.5);
   }
 
   .entity-item {
-    @apply text-mythos-entity-item underline decoration-mythos-entity-item/50 decoration-dotted underline-offset-2;
+    @apply text-mythos-entity-item underline decoration-dotted underline-offset-2;
+    text-decoration-color: rgba(245, 158, 11, 0.5);
   }
 
   .entity-magic {
-    @apply text-mythos-entity-magic underline decoration-mythos-entity-magic/50 decoration-dotted underline-offset-2;
+    @apply text-mythos-entity-magic underline decoration-dotted underline-offset-2;
+    text-decoration-color: rgba(168, 85, 247, 0.5);
   }
 
   /* ASCII HUD styling */
   .ascii-hud {
-    @apply font-mono text-sm bg-mythos-bg-primary border border-mythos-accent-cyan/50 rounded-md shadow-lg;
-    @apply shadow-mythos-accent-cyan/20;
+    @apply font-mono text-sm bg-mythos-bg-primary border rounded-md shadow-lg;
+    border-color: rgba(35, 131, 226, 0.5);
+    box-shadow: 0 10px 15px -3px rgba(35, 131, 226, 0.2), 0 4px 6px -4px rgba(35, 131, 226, 0.2);
   }
 
   /* Linter issue styling */
   .linter-error {
-    @apply bg-mythos-accent-red/10 border-l-2 border-mythos-accent-red;
+    @apply border-l-2 border-mythos-accent-red;
+    background-color: rgba(239, 68, 68, 0.1);
   }
 
   .linter-warning {
-    @apply bg-mythos-accent-amber/10 border-l-2 border-mythos-accent-amber;
+    @apply border-l-2 border-mythos-accent-amber;
+    background-color: rgba(245, 158, 11, 0.1);
   }
 
   .linter-info {
-    @apply bg-mythos-accent-cyan/10 border-l-2 border-mythos-accent-cyan;
+    @apply border-l-2 border-mythos-accent-primary;
+    background-color: rgba(35, 131, 226, 0.1);
   }
 
   /* Tension graph colors */
@@ -81,14 +110,16 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-mythos-text-muted/30 rounded-full;
+  @apply rounded-full;
+  background-color: rgba(107, 107, 100, 0.3);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-mythos-text-muted/50;
+  background-color: rgba(107, 107, 100, 0.5);
 }
 
 /* Selection */
 ::selection {
-  @apply bg-mythos-accent-cyan/30 text-mythos-text-primary;
+  @apply text-mythos-text-primary;
+  background-color: rgba(35, 131, 226, 0.3);
 }

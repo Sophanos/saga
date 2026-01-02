@@ -121,12 +121,12 @@ const TierCard = React.memo(function TierCard({
   return (
     <Card
       className={cn(
-        "relative border-mythos-text-muted/20 transition-all",
-        isCurrent && "border-mythos-accent-cyan ring-1 ring-mythos-accent-cyan"
+        "relative border-mythos-border-default transition-all",
+        isCurrent && "border-mythos-accent-primary ring-1 ring-mythos-accent-primary"
       )}
     >
       {isCurrent && (
-        <div className="absolute -top-2 left-4 px-2 py-0.5 text-xs font-medium bg-mythos-accent-cyan text-mythos-bg-primary rounded-sm">
+        <div className="absolute -top-2 left-4 px-2 py-0.5 text-xs font-medium bg-mythos-accent-primary text-mythos-bg-primary rounded-sm">
           Current Plan
         </div>
       )}
@@ -148,7 +148,7 @@ const TierCard = React.memo(function TierCard({
         </div>
 
         <div className="flex items-center gap-2 text-sm">
-          <Zap className="w-4 h-4 text-mythos-accent-cyan" />
+          <Zap className="w-4 h-4 text-mythos-accent-primary" />
           <span className="text-mythos-text-secondary">
             {config.tokens} tokens included
           </span>
@@ -191,9 +191,9 @@ const TierCard = React.memo(function TierCard({
 const getTierBadgeColor = (tier: BillingTier) => {
   switch (tier) {
     case "free":
-      return "bg-mythos-text-muted/20 text-mythos-text-muted";
+      return "bg-mythos-bg-tertiary text-mythos-text-muted";
     case "pro":
-      return "bg-mythos-accent-cyan/20 text-mythos-accent-cyan";
+      return "bg-mythos-accent-primary/20 text-mythos-accent-primary";
     case "pro_plus":
       return "bg-mythos-accent-yellow/20 text-mythos-accent-yellow";
     case "team":
@@ -204,9 +204,9 @@ const getTierBadgeColor = (tier: BillingTier) => {
 const getModeIcon = (mode: BillingMode) => {
   switch (mode) {
     case "managed":
-      return <CreditCard className="w-4 h-4 text-mythos-accent-cyan" />;
+      return <CreditCard className="w-4 h-4 text-mythos-accent-primary" />;
     case "byok":
-      return <Key className="w-4 h-4 text-mythos-accent-cyan" />;
+      return <Key className="w-4 h-4 text-mythos-accent-primary" />;
   }
 };
 
@@ -306,11 +306,11 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden shadow-xl border-mythos-text-muted/30">
+      <Card className="relative z-10 w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden shadow-xl border-mythos-border-default">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-mythos-accent-cyan" />
+              <CreditCard className="w-5 h-5 text-mythos-accent-primary" />
               <CardTitle id="billing-modal-title" className="text-lg">Billing & Usage</CardTitle>
             </div>
             <Button
@@ -347,7 +347,7 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
           <div className="flex items-center justify-between p-4 rounded-lg bg-mythos-bg-tertiary/50">
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center w-10 h-10 rounded-full bg-mythos-bg-secondary">
-                <Crown className="w-5 h-5 text-mythos-accent-cyan" />
+                <Crown className="w-5 h-5 text-mythos-accent-primary" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -400,8 +400,8 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
                   className={cn(
                     "p-4 rounded-lg border text-left transition-all",
                     billingMode === mode
-                      ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10"
-                      : "border-mythos-text-muted/20 hover:border-mythos-text-muted/40"
+                      ? "border-mythos-accent-primary bg-mythos-accent-primary/10"
+                      : "border-mythos-border-default hover:border-mythos-border-hover"
                   )}
                 >
                   <div className="flex items-center gap-2 mb-2">
@@ -410,7 +410,7 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
                       {getModeLabel(mode)}
                     </span>
                     {billingMode === mode && (
-                      <Check className="w-4 h-4 text-mythos-accent-cyan ml-auto" />
+                      <Check className="w-4 h-4 text-mythos-accent-primary ml-auto" />
                     )}
                   </div>
                   <p className="text-xs text-mythos-text-muted">
@@ -422,7 +422,7 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
 
             {/* BYOK Key Input */}
             {showByokInput && (
-              <div className="p-4 rounded-lg border border-mythos-text-muted/20 space-y-3">
+              <div className="p-4 rounded-lg border border-mythos-border-default space-y-3">
                 <div className="flex items-center gap-2 text-sm text-mythos-accent-yellow">
                   <AlertCircle className="w-4 h-4" />
                   <span>Enter your OpenRouter API key to continue</span>
@@ -473,7 +473,7 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
                   href="https://openrouter.ai/keys"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-mythos-accent-cyan hover:underline"
+                  className="inline-flex items-center gap-1.5 text-sm text-mythos-accent-primary hover:underline"
                 >
                   Get an API key from OpenRouter
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -542,7 +542,7 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
           )}
         </CardContent>
 
-        <CardFooter className="flex justify-end gap-2 pt-4 border-t border-mythos-text-muted/20">
+        <CardFooter className="flex justify-end gap-2 pt-4 border-t border-mythos-border-default">
           <Button variant="outline" onClick={handleClose}>
             Close
           </Button>

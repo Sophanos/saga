@@ -24,6 +24,7 @@ export { generateTemplateTool, generateTemplateParameters, type GenerateTemplate
 export { clarityCheckTool, clarityCheckParameters, type ClarityCheckArgs } from "./clarity-check.ts";
 export { checkLogicTool, checkLogicParameters, type CheckLogicArgs } from "./check-logic.ts";
 export { nameGeneratorTool, nameGeneratorParameters, type NameGeneratorArgs } from "./name-generator.ts";
+export { commitDecisionTool, commitDecisionParameters, type CommitDecisionArgs } from "./commit-decision.ts";
 
 // Export image search tools
 export { searchImagesTool, searchImagesParameters, type SearchImagesArgs } from "./search-images.ts";
@@ -56,6 +57,7 @@ import { generateTemplateTool } from "./generate-template.ts";
 import { clarityCheckTool } from "./clarity-check.ts";
 import { checkLogicTool } from "./check-logic.ts";
 import { nameGeneratorTool } from "./name-generator.ts";
+import { commitDecisionTool } from "./commit-decision.ts";
 
 // Import image search tools for registry
 import { searchImagesTool } from "./search-images.ts";
@@ -109,6 +111,7 @@ export const sagaTools = {
   clarity_check: clarityCheckTool,
   check_logic: checkLogicTool,
   name_generator: nameGeneratorTool,
+  commit_decision: commitDecisionTool,
   // Image search tools
   search_images: searchImagesTool,
   find_similar_images: findSimilarImagesTool,

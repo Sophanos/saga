@@ -118,10 +118,10 @@ export function WorldGraphCanvas({
         size={1}
       />
       <Controls
-        className="!bg-mythos-bg-secondary !border-mythos-text-muted/20 !rounded-lg !shadow-lg [&>button]:!bg-mythos-bg-secondary [&>button]:!border-mythos-text-muted/20 [&>button]:!text-mythos-text-secondary [&>button:hover]:!bg-mythos-bg-tertiary"
+        className="!bg-mythos-bg-secondary !border-mythos-border-default !rounded-lg !shadow-lg [&>button]:!bg-mythos-bg-secondary [&>button]:!border-mythos-border-default [&>button]:!text-mythos-text-secondary [&>button:hover]:!bg-mythos-bg-tertiary"
       />
       <MiniMap
-        className="!bg-mythos-bg-secondary !border-mythos-text-muted/20 !rounded-lg"
+        className="!bg-mythos-bg-secondary !border-mythos-border-default !rounded-lg"
         nodeColor={(node) => {
           const data = node.data as EntityNodeData;
           return getEntityHexColor(data.type);

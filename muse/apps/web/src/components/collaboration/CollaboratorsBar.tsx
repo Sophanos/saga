@@ -42,7 +42,7 @@ const MemberListItem = memo(function MemberListItem({ member, isOnline, presence
 
   const roleBadgeColors: Record<string, string> = {
     owner: "bg-mythos-accent-yellow/20 text-mythos-accent-yellow",
-    editor: "bg-mythos-accent-cyan/20 text-mythos-accent-cyan",
+    editor: "bg-mythos-accent-primary/20 text-mythos-accent-primary",
     viewer: "bg-mythos-text-muted/20 text-mythos-text-muted",
   };
 
@@ -126,9 +126,9 @@ function CollaboratorsDropdown({
   );
 
   return (
-    <div className="w-72 bg-mythos-bg-secondary border border-mythos-text-muted/20 rounded-lg shadow-xl overflow-hidden">
+    <div className="w-72 bg-mythos-bg-secondary border border-mythos-border-default rounded-lg shadow-xl overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-mythos-text-muted/20">
+      <div className="px-4 py-3 border-b border-mythos-border-default">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-mythos-text-primary">
@@ -155,7 +155,7 @@ function CollaboratorsDropdown({
                 variant="ghost"
                 size="sm"
                 onClick={onInviteClick}
-                className="gap-1 text-mythos-accent-cyan hover:text-mythos-accent-cyan/80"
+                className="gap-1 text-mythos-accent-primary hover:text-mythos-accent-primary/80"
               >
                 <UserPlus className="w-4 h-4" />
                 Invite

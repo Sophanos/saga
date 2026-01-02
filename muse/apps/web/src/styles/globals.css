@@ -33,7 +33,8 @@
 
 /* Scene block styling */
 .scene-block {
-  @apply relative my-6 pl-4 border-l-2 border-mythos-accent-purple/30;
+  @apply relative my-6 pl-4 border-l-2;
+  border-color: rgba(168, 85, 247, 0.3);
 }
 
 .scene-block::before {
@@ -51,7 +52,7 @@
 }
 
 .entity-character:hover {
-  @apply bg-mythos-entity-character/10;
+  background-color: rgba(34, 211, 238, 0.1);
 }
 
 .entity-location {
@@ -63,7 +64,7 @@
 }
 
 .entity-location:hover {
-  @apply bg-mythos-entity-location/10;
+  background-color: rgba(34, 197, 94, 0.1);
 }
 
 .entity-item {
@@ -75,7 +76,7 @@
 }
 
 .entity-item:hover {
-  @apply bg-mythos-entity-item/10;
+  background-color: rgba(245, 158, 11, 0.1);
 }
 
 .entity-magic_system {
@@ -87,17 +88,23 @@
 }
 
 .entity-magic_system:hover {
-  @apply bg-mythos-entity-magic/10;
+  background-color: rgba(168, 85, 247, 0.1);
 }
 
 /* Resize handle styling */
 [data-panel-group-direction="horizontal"] > [data-panel-resize-handle-id] {
-  @apply w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-cyan/30 transition-colors;
+  @apply w-1 bg-mythos-bg-tertiary transition-colors;
+}
+
+[data-panel-group-direction="horizontal"] > [data-panel-resize-handle-id]:hover {
+  background-color: rgba(35, 131, 226, 0.3);
 }
 
 /* Custom focus styles */
 :focus-visible {
-  @apply outline-none ring-1 ring-mythos-accent-cyan ring-offset-1 ring-offset-mythos-bg-primary;
+  @apply outline-none ring-1 ring-offset-1;
+  --tw-ring-color: #2383E2;
+  --tw-ring-offset-color: #191919;
 }
 
 /* =============================================================================
@@ -132,9 +139,9 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3' viewBox='0 0 4 3'%3E%3Cpath fill='none' stroke='%23f59e0b' stroke-width='1' d='M0 2 Q1 0 2 2 T4 2'/%3E%3C/svg%3E");
 }
 
-/* Info squiggle - cyan wavy line */
+/* Info squiggle - primary blue wavy line */
 .linter-info::after {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3' viewBox='0 0 4 3'%3E%3Cpath fill='none' stroke='%2322d3ee' stroke-width='1' d='M0 2 Q1 0 2 2 T4 2'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3' viewBox='0 0 4 3'%3E%3Cpath fill='none' stroke='%232383E2' stroke-width='1' d='M0 2 Q1 0 2 2 T4 2'/%3E%3C/svg%3E");
 }
 
 /* Hover state - subtle background highlight */
@@ -147,7 +154,7 @@
 }
 
 .linter-info:hover {
-  background-color: rgba(34, 211, 238, 0.1);
+  background-color: rgba(35, 131, 226, 0.1);
 }
 
 /* =============================================================================
@@ -254,9 +261,9 @@
 
 /* Selected style issue highlight */
 .style-selected {
-  background-color: rgba(34, 211, 238, 0.12);
+  background-color: rgba(35, 131, 226, 0.12);
   border-radius: 3px;
-  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.25);
+  box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.25);
 }
 
 /* =============================================================================
@@ -265,7 +272,9 @@
    ============================================================================= */
 
 .card {
-  @apply bg-bg-secondary border border-border rounded-lg;
+  background: var(--mythos-bg-secondary);
+  border: 1px solid var(--mythos-border-default);
+  border-radius: 0.5rem;
 }
 
 .btn {
@@ -273,9 +282,18 @@
 }
 
 .btn-primary {
-  @apply bg-white text-bg-primary hover:bg-white/90;
+  background: white;
+  color: var(--mythos-bg-primary);
+}
+.btn-primary:hover {
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .btn-secondary {
-  @apply bg-bg-secondary border border-border hover:border-border-hover text-text-primary;
+  background: var(--mythos-bg-secondary);
+  border: 1px solid var(--mythos-border-default);
+  color: var(--mythos-text-primary);
+}
+.btn-secondary:hover {
+  border-color: var(--mythos-text-muted);
 }

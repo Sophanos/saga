@@ -11,7 +11,11 @@
     "https://deno.land/x/djwt@v3.0.1/mod.ts": "eca176976595654b8a536e7b8029a029c435d079ef58feff2d3bde33ea107417",
     "https://deno.land/x/djwt@v3.0.1/signature.ts": "a5649368a4b433b2810e7d47f53661fe3b0f7fe1778cb49234ceae3d6e861185",
     "https://deno.land/x/djwt@v3.0.1/util.ts": "5cb264d2125c553678e11446bcfa0494025d120e3f59d0a3ab38f6800def697d",
-    "https://esm.sh/@supabase/supabase-js@2.39.0": "f51aeb2dbf8f67c8fa396628af45793e3513067d45705f1ea158f5c678bb0cea"
+    "https://esm.sh/@ai-sdk/google@3.0.0": "d91993e45ec58693ba177a9d6dc0b4212f7054ba21ee6373b1abed1fa460e556",
+    "https://esm.sh/@ai-sdk/openai@3.0.0": "149cdd577f41822495f90617ac4cc169edf216ee9414bc5ba03cdf88d795dca0",
+    "https://esm.sh/@supabase/supabase-js@2.39.0": "f51aeb2dbf8f67c8fa396628af45793e3513067d45705f1ea158f5c678bb0cea",
+    "https://esm.sh/json-schema@0.4.0": "21a68e4e83b0441c3a90fa051c6b7c42d29926e4ff429745eebec153ac53cd7a",
+    "https://esm.sh/json-schema@0.4.0/denonext/json-schema.mjs": "95225c6fc709935fca00cfc112f2ab043d204f7bd07a8aaec75b1b5f24ca8bf6"
   },
   "workspace": {
     "packageJson": {
@@ -129,7 +133,7 @@
           "dependencies": [
             "npm:@ai-sdk/google@^1.0.16",
             "npm:@ai-sdk/openai@^1.0.14",
-            "npm:ai@^4.0.34",
+            "npm:ai@6",
             "npm:typescript@^5.7.2",
             "npm:zod@^3.24.1"
           ]
@@ -193,6 +197,17 @@
             "npm:@types/react-dom@^18.3.5",
             "npm:@types/react@^18.3.17",
             "npm:typescript@^5.7.2"
+          ]
+        }
+      },
+      "packages/mcp-server": {
+        "packageJson": {
+          "dependencies": [
+            "npm:@modelcontextprotocol/sdk@1",
+            "npm:@types/node@^22.10.2",
+            "npm:tsx@^4.19.2",
+            "npm:typescript@^5.7.2",
+            "npm:zod@^3.24.1"
           ]
         }
       },

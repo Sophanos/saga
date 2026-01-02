@@ -13,8 +13,8 @@ const ACCENT_STYLES = {
     iconBg: "group-hover:bg-mythos-accent-purple/10",
   },
   cyan: {
-    hover: "hover:border-mythos-accent-cyan/50 hover:bg-mythos-accent-cyan/5",
-    iconBg: "group-hover:bg-mythos-accent-cyan/10",
+    hover: "hover:border-mythos-accent-primary/50 hover:bg-mythos-accent-primary/5",
+    iconBg: "group-hover:bg-mythos-accent-primary/10",
   },
   green: {
     hover: "hover:border-mythos-accent-green/50 hover:bg-mythos-accent-green/5",
@@ -90,7 +90,7 @@ export function StartOptions({
 
         {/* Browse Templates */}
         <OptionCard
-          icon={<LayoutGrid className="w-5 h-5 text-mythos-accent-cyan" />}
+          icon={<LayoutGrid className="w-5 h-5 text-mythos-accent-primary" />}
           title="Browse Templates"
           description="Choose from 14 genre-specific templates like Epic Fantasy, Sci-Fi, TTRPG Campaigns, Manga, Screenplays, and more."
           accent="cyan"

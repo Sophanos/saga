@@ -108,8 +108,8 @@ const Avatar = React.memo(function Avatar({
             "flex items-center justify-center font-medium border-2 border-mythos-bg-primary"
           )}
           style={{
-            backgroundColor: color || "rgba(34, 211, 238, 0.3)", // mythos-accent-cyan/30
-            color: color ? "#fff" : "rgb(34, 211, 238)", // white if custom color, cyan otherwise
+            backgroundColor: color || "rgba(35, 131, 226, 0.3)", // mythos-accent-primary/30 (Notion blue)
+            color: color ? "#fff" : "rgb(35, 131, 226)", // white if custom color, primary otherwise
           }}
         >
           {initials}

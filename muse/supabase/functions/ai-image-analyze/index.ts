@@ -11,7 +11,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { generateObject } from "https://esm.sh/ai@6.0.0";
+import { generateText, Output } from "https://esm.sh/ai@6.0.0";
 import { z } from "https://esm.sh/zod@3.25.28";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import {
@@ -292,9 +292,11 @@ async function analyzeWithFallback(
       console.log(`${logPrefix} Trying OpenRouter with ${OPENROUTER_VISION_MODEL}...`);
       const openRouter = createDynamicOpenRouter(openRouterKey);
 
-      const result = await generateObject({
+      const result = await generateText({
         model: openRouter(OPENROUTER_VISION_MODEL),
-        schema: analysisResultSchema,
+        output: Output.object({
+          schema: analysisResultSchema,
+        }),
         messages: [
           {
             role: "user",
@@ -309,7 +311,7 @@ async function analyzeWithFallback(
 
       console.log(`${logPrefix} OpenRouter analysis success`);
       return {
-        object: result.object,
+        object: result.output,
         model: OPENROUTER_VISION_MODEL,
         usage: result.usage,
       };
@@ -324,9 +326,11 @@ async function analyzeWithFallback(
     console.log(`${logPrefix} Using Gemini direct with ${GEMINI_VISION_MODEL}...`);
     const gemini = createDynamicGemini(geminiKey);
 
-    const result = await generateObject({
+    const result = await generateText({
       model: gemini(GEMINI_VISION_MODEL),
-      schema: analysisResultSchema,
+      output: Output.object({
+        schema: analysisResultSchema,
+      }),
       messages: [
         {
           role: "user",
@@ -341,7 +345,7 @@ async function analyzeWithFallback(
 
     console.log(`${logPrefix} Gemini analysis success`);
     return {
-      object: result.object,
+      object: result.output,
       model: GEMINI_VISION_MODEL,
       usage: result.usage,
     };

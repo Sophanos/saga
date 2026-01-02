@@ -118,6 +118,10 @@ interface AIImageResponse {
   storagePath: string;
   imageUrl: string;
   entityId?: string;
+  /** Whether this was a cache hit (existing identical generation) */
+  cached?: boolean;
+  /** Number of times this asset has been reused from cache */
+  cacheHitCount?: number;
 }
 
 // Phase 4: Scene response
@@ -151,6 +155,9 @@ const MAX_VISUAL_DESC_LENGTH = 1000;
 const MAX_SCENE_TEXT_LENGTH = 3000;
 const MAX_CHARACTER_REFS = 4; // Limit portraits to control payload size
 const MAX_EDIT_INSTRUCTION_LENGTH = 1200;
+const CACHE_LOCK_TTL_SECONDS = 120;
+const CACHE_WAIT_ATTEMPTS = 6;
+const CACHE_WAIT_DELAY_MS = 500;
 
 // Scene focus composition prompts
 const SCENE_FOCUS_PROMPTS: Record<SceneFocus, string> = {
@@ -186,6 +193,51 @@ function generateStoragePath(
   const uuid = crypto.randomUUID();
   const folder = entityId ?? "general";
   return `${projectId}/${folder}/${timestamp}-${uuid}.${ext}`;
+}
+
+/**
+ * Generate deterministic cache hash for generation parameters.
+ * Uses MD5 of canonical JSON for fast lookup.
+ */
+async function generateCacheHash(params: {
+  projectId: string;
+  prompt: string;
+  style: string;
+  aspectRatio: string;
+}): Promise<string> {
+  // Canonical JSON (sorted keys, normalized values)
+  const canonical = JSON.stringify({
+    aspectRatio: params.aspectRatio,
+    projectId: params.projectId,
+    prompt: params.prompt.trim().toLowerCase(),
+    style: params.style,
+  });
+
+  // MD5-like hash using SubtleCrypto (SHA-256 truncated for speed)
+  const encoder = new TextEncoder();
+  const data = encoder.encode(canonical);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  // Use first 16 bytes (32 hex chars) for reasonable uniqueness
+  return hashArray.slice(0, 16).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Refresh signed URL for a cached asset.
+ */
+async function refreshSignedUrl(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  storagePath: string
+): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrl(storagePath, SIGNED_URL_EXPIRY_SECONDS);
+
+  if (error || !data?.signedUrl) {
+    console.warn("[ai-image] Failed to refresh signed URL:", error);
+    return null;
+  }
+  return data.signedUrl;
 }
 
 async function assertProjectAccess(
@@ -255,6 +307,53 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
     chunks.push(String.fromCharCode.apply(null, chunk as unknown as number[]));
   }
   return btoa(chunks.join(""));
+}
+
+interface CachedAssetRow {
+  id: string;
+  storage_path: string;
+  cache_hit_count?: number | null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function lookupCachedAsset(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  projectId: string,
+  generationHash: string,
+  logPrefix: string
+): Promise<CachedAssetRow | null> {
+  const { data, error } = await supabase.rpc("lookup_asset_cache", {
+    p_project_id: projectId,
+    p_generation_hash: generationHash,
+  });
+
+  if (error) {
+    console.warn(`${logPrefix} Cache lookup failed:`, error);
+    return null;
+  }
+
+  return data && data.length > 0 ? (data[0] as CachedAssetRow) : null;
+}
+
+async function waitForCachedAsset(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  projectId: string,
+  generationHash: string,
+  logPrefix: string,
+  attempts = CACHE_WAIT_ATTEMPTS,
+  delayMs = CACHE_WAIT_DELAY_MS
+): Promise<CachedAssetRow | null> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await sleep(delayMs);
+    const cached = await lookupCachedAsset(supabase, projectId, generationHash, logPrefix);
+    if (cached) {
+      return cached;
+    }
+  }
+  return null;
 }
 
 // =============================================================================
@@ -472,6 +571,128 @@ async function handleGenerateImage(
 
     console.log(`${logPrefix} Generating with prompt: ${prompt.slice(0, 100)}...`);
 
+    // 3b. Check cache for existing identical generation
+    const style = req.style ?? "fantasy_art";
+    const aspectRatio = req.aspectRatio ?? "3:4";
+    const cacheHash = await generateCacheHash({
+      projectId: req.projectId,
+      prompt,
+      style,
+      aspectRatio,
+    });
+
+    console.log(`${logPrefix} Cache hash: ${cacheHash.slice(0, 8)}...`);
+
+    // Try to acquire cache lock (prevents duplicate generations)
+    const { data: lockResult } = await supabase.rpc("try_cache_lock", {
+      p_project_id: req.projectId,
+      p_generation_hash: cacheHash,
+      p_ttl_seconds: CACHE_LOCK_TTL_SECONDS,
+    });
+    let lockAcquired = lockResult === true;
+
+    if (lockAcquired) {
+      console.log(`${logPrefix} Lock acquired, checking cache...`);
+    } else {
+      console.log(`${logPrefix} Lock unavailable, waiting for cached result...`);
+    }
+
+    try {
+      let cached = await lookupCachedAsset(supabase, req.projectId, cacheHash, logPrefix);
+      if (!cached && !lockAcquired) {
+        cached = await waitForCachedAsset(supabase, req.projectId, cacheHash, logPrefix);
+      }
+
+      if (cached) {
+        console.log(`${logPrefix} Cache HIT: ${cached.id}`);
+
+        // Refresh signed URL (may have expired)
+        const refreshedUrl = await refreshSignedUrl(supabase, cached.storage_path);
+        if (refreshedUrl) {
+          // Update cache hit counter
+          await supabase.rpc("record_cache_hit", { p_asset_id: cached.id });
+
+          // Update public_url in DB with refreshed URL
+          await supabase
+            .from("project_assets")
+            .update({ public_url: refreshedUrl })
+            .eq("id", cached.id);
+
+          // Update entity portrait if requested
+          const setAsPortrait = req.setAsPortrait !== false;
+          if (setAsPortrait && req.entityId) {
+            await supabase
+              .from("entities")
+              .update({
+                portrait_url: refreshedUrl,
+                portrait_asset_id: cached.id,
+              })
+              .eq("id", req.entityId)
+              .eq("project_id", req.projectId);
+          }
+
+          // Record AI request (cached hit - 0 tokens)
+          try {
+            await recordAIRequest(supabase, billing, {
+              endpoint: "image",
+              model: "cache-hit",
+              modelType: "cache",
+              usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+              success: true,
+              latencyMs: Date.now() - startTime,
+              metadata: { cached: true, cacheHitCount: (cached.cache_hit_count ?? 0) + 1 },
+            });
+          } catch (e) {
+            console.warn(`${logPrefix} Failed to record cached AI request:`, e);
+          }
+
+          // Release lock
+          if (lockAcquired) {
+            await supabase.rpc("release_cache_lock", {
+              p_project_id: req.projectId,
+              p_generation_hash: cacheHash,
+            });
+          }
+
+          const response: AIImageResponse = {
+            assetId: cached.id,
+            storagePath: cached.storage_path,
+            imageUrl: refreshedUrl,
+            entityId: req.entityId,
+            cached: true,
+            cacheHitCount: (cached.cache_hit_count ?? 0) + 1,
+          };
+
+          return createSuccessResponse(response, origin);
+        } else {
+          console.warn(`${logPrefix} Cached asset URL refresh failed, regenerating...`);
+        }
+      }
+
+      if (!lockAcquired) {
+        const { data: retryLock } = await supabase.rpc("try_cache_lock", {
+          p_project_id: req.projectId,
+          p_generation_hash: cacheHash,
+          p_ttl_seconds: CACHE_LOCK_TTL_SECONDS,
+        });
+        lockAcquired = retryLock === true;
+        if (lockAcquired) {
+          console.log(`${logPrefix} Lock acquired after wait, generating new image...`);
+        } else {
+          return createErrorResponse(
+            ErrorCode.RATE_LIMITED,
+            "Image generation already in progress. Please retry shortly.",
+            origin
+          );
+        }
+      }
+
+      console.log(`${logPrefix} Cache MISS, generating new image...`);
+    } catch (cacheError) {
+      // Cache check failure is non-fatal - continue with generation
+      console.warn(`${logPrefix} Cache check failed (continuing):`, cacheError);
+    }
+
     // 4. Get API keys
     const openRouterKey = billing.apiKey; // OpenRouter is primary
     const geminiKey = Deno.env.get("GOOGLE_GENERATIVE_AI_API_KEY") ?? null;
@@ -538,10 +759,11 @@ async function handleGenerateImage(
           generation_prompt: prompt,
           generation_model: generated.model,
           generation_params: {
-            style: req.style ?? "fantasy_art",
-            aspectRatio: req.aspectRatio ?? "3:4",
+            style,
+            aspectRatio,
             subject: req.subject,
           },
+          generation_hash: cacheHash,
           mime_type: generated.mimeType,
         })
         .select("id")
@@ -678,9 +900,33 @@ async function handleGenerateImage(
       };
 
       console.log(`${logPrefix} Image generation complete`);
+
+      // Release cache lock
+      if (lockAcquired) {
+        try {
+          await supabase.rpc("release_cache_lock", {
+            p_project_id: req.projectId,
+            p_generation_hash: cacheHash,
+          });
+        } catch (e) {
+          console.warn(`${logPrefix} Failed to release cache lock:`, e);
+        }
+      }
+
       return createSuccessResponse(response, origin);
 
     } catch (error) {
+      // Release cache lock on error
+      if (lockAcquired) {
+        try {
+          await supabase.rpc("release_cache_lock", {
+            p_project_id: req.projectId,
+            p_generation_hash: cacheHash,
+          });
+        } catch (e) {
+          console.warn(`${logPrefix} Failed to release cache lock:`, e);
+        }
+      }
       if (uploadedPath) {
         await cleanupStorageBlob(supabase, uploadedPath, logPrefix);
       }
@@ -1349,6 +1595,85 @@ async function handleEditImage(
 }
 
 // =============================================================================
+// Delete Handler
+// =============================================================================
+
+interface DeleteAssetRequest {
+  assetId: string;
+  projectId: string;
+}
+
+async function handleDeleteAsset(
+  req: Request,
+  origin: string | null
+): Promise<Response> {
+  const logPrefix = "[ai-image:delete]";
+
+  try {
+    const body = await req.json() as DeleteAssetRequest;
+
+    if (!body.assetId || !body.projectId) {
+      return createErrorResponse(
+        ErrorCode.VALIDATION_ERROR,
+        "assetId and projectId are required",
+        origin
+      );
+    }
+
+    const supabase = createSupabaseClient();
+    const billing = await checkBillingAndGetKey(req, supabase, {
+      endpoint: "image",
+      allowAnonymousTrial: false,
+    });
+
+    if (!billing.canProceed || !billing.userId) {
+      return createErrorResponse(
+        ErrorCode.FORBIDDEN,
+        "Authentication required",
+        origin
+      );
+    }
+
+    // Verify project access
+    await assertProjectAccess(supabase, body.projectId, billing.userId);
+
+    // Verify asset belongs to project and is not already deleted
+    const { data: asset, error: assetError } = await supabase
+      .from("project_assets")
+      .select("id, project_id")
+      .eq("id", body.assetId)
+      .eq("project_id", body.projectId)
+      .is("deleted_at", null)
+      .single();
+
+    if (assetError || !asset) {
+      return createErrorResponse(ErrorCode.NOT_FOUND, "Asset not found", origin);
+    }
+
+    // Soft delete via RPC
+    const { error: deleteError } = await supabase.rpc("soft_delete_asset", {
+      p_asset_id: body.assetId,
+    });
+
+    if (deleteError) {
+      console.error(`${logPrefix} Soft delete failed:`, deleteError);
+      return createErrorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        "Failed to delete asset",
+        origin
+      );
+    }
+
+    console.log(`${logPrefix} Soft deleted asset: ${body.assetId}`);
+
+    return createSuccessResponse({ deleted: true, assetId: body.assetId }, origin);
+  } catch (error) {
+    console.error(`${logPrefix} Error:`, error);
+    return handleAIError(error, origin, { providerName: "ai-image-delete" });
+  }
+}
+
+// =============================================================================
 // Serve
 // =============================================================================
 
@@ -1357,6 +1682,11 @@ serve(async (req: Request): Promise<Response> => {
 
   if (req.method === "OPTIONS") {
     return handleCorsPreFlight(req);
+  }
+
+  // Handle DELETE requests for soft delete
+  if (req.method === "DELETE") {
+    return handleDeleteAsset(req, origin);
   }
 
   if (req.method !== "POST") {

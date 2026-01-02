@@ -188,7 +188,7 @@ function DocumentResultCard({
       className={cn(
         "w-full text-left p-3 rounded-md border transition-all duration-200",
         "bg-mythos-bg-secondary/50 border-mythos-text-muted/10",
-        "hover:bg-mythos-bg-secondary hover:border-mythos-text-muted/20",
+        "hover:bg-mythos-bg-secondary hover:border-mythos-border-default",
         "hover:shadow-lg hover:shadow-black/20"
       )}
     >
@@ -231,7 +231,7 @@ function EntityResultCard({
       className={cn(
         "p-3 rounded-md border transition-all duration-200",
         "bg-mythos-bg-secondary/50 border-mythos-text-muted/10",
-        "hover:bg-mythos-bg-secondary hover:border-mythos-text-muted/20",
+        "hover:bg-mythos-bg-secondary hover:border-mythos-border-default",
         "hover:shadow-lg hover:shadow-black/20"
       )}
     >
@@ -422,7 +422,7 @@ export function SearchPanel({ className }: SearchPanelProps) {
   return (
     <div className={cn("h-full flex flex-col", className)}>
       {/* Header */}
-      <div className="p-3 border-b border-mythos-text-muted/20 space-y-3">
+      <div className="p-3 border-b border-mythos-border-default space-y-3">
         <SearchInput
           value={searchState.query}
           onChange={handleQueryChange}

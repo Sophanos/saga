@@ -446,7 +446,7 @@ export function extractTokenUsage(
 /**
  * AI endpoint types
  */
-export type AIEndpoint = "chat" | "lint" | "coach" | "detect" | "detect-stream" | "dynamics" | "search" | "agent" | "genesis" | "embed" | "image";
+export type AIEndpoint = "chat" | "lint" | "coach" | "detect" | "detect-stream" | "dynamics" | "search" | "agent" | "genesis" | "embed" | "image" | "image-scene" | "image-edit";
 
 /**
  * Record AI request (detailed log + aggregate update)

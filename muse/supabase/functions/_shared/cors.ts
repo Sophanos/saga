@@ -22,10 +22,10 @@ export function getCorsHeaders(origin: string | null): Headers {
     origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
 
   headers.set("Access-Control-Allow-Origin", allowedOrigin);
-  headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  headers.set("Access-Control-Allow-Methods", "POST, OPTIONS, DELETE");
   headers.set(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, apikey, x-openrouter-key, x-client-info"
+    "Content-Type, Authorization, apikey, x-openrouter-key, x-client-info, x-anon-token"
   );
   headers.set("Access-Control-Max-Age", "86400");
 
@@ -73,6 +73,6 @@ export function getStreamingHeaders(origin: string | null): HeadersInit {
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
     "Access-Control-Allow-Origin": origin || "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-openrouter-key",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-openrouter-key, x-anon-token",
   };
 }

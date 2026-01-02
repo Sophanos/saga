@@ -89,9 +89,9 @@ export function CreateProjectForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {/* Template Summary */}
-      <div className="p-4 rounded-lg border border-mythos-text-muted/20 bg-mythos-bg-secondary/50">
+      <div className="p-4 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary/50">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-mythos-accent-cyan/10 text-mythos-accent-cyan">
+          <div className="p-2 rounded-lg bg-mythos-accent-primary/10 text-mythos-accent-primary">
             {getTemplateIcon(template.icon)}
           </div>
           <div className="flex-1">
@@ -156,14 +156,14 @@ export function CreateProjectForm({
             disabled={isSubmitting}
             className={`p-3 rounded-lg border-2 transition-all text-left ${
               creationMode === "gardener"
-                ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10"
-                : "border-mythos-text-muted/30 hover:border-mythos-text-muted/50"
+                ? "border-mythos-accent-primary bg-mythos-accent-primary/10"
+                : "border-mythos-border-default hover:border-mythos-text-muted/50"
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
               <Feather
                 className={`w-4 h-4 ${
-                  creationMode === "gardener" ? "text-mythos-accent-cyan" : "text-mythos-text-muted"
+                  creationMode === "gardener" ? "text-mythos-accent-primary" : "text-mythos-text-muted"
                 }`}
               />
               <span
@@ -185,7 +185,7 @@ export function CreateProjectForm({
             className={`p-3 rounded-lg border-2 transition-all text-left ${
               creationMode === "architect"
                 ? "border-mythos-accent-purple bg-mythos-accent-purple/10"
-                : "border-mythos-text-muted/30 hover:border-mythos-text-muted/50"
+                : "border-mythos-border-default hover:border-mythos-text-muted/50"
             }`}
           >
             <div className="flex items-center gap-2 mb-1">

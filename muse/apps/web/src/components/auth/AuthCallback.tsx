@@ -170,17 +170,17 @@ export function AuthCallback({ onComplete }: AuthCallbackProps) {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: "#07070a" }}>
-      <Card className="w-full max-w-sm border-mythos-text-muted/20 bg-mythos-bg-secondary shadow-2xl">
+      <Card className="w-full max-w-sm border-mythos-border-default bg-mythos-bg-secondary shadow-2xl">
         <CardContent className="pt-8 pb-8">
           <div className="flex flex-col items-center text-center space-y-4">
             {/* Logo */}
-            <div className="p-3 rounded-full bg-mythos-accent-cyan/10 border border-mythos-accent-cyan/20">
-              <BookOpen className="w-6 h-6 text-mythos-accent-cyan" />
+            <div className="p-3 rounded-full bg-mythos-accent-primary/10 border border-mythos-accent-primary/20">
+              <BookOpen className="w-6 h-6 text-mythos-accent-primary" />
             </div>
 
             {status === "processing" && (
               <>
-                <Loader2 className="w-8 h-8 text-mythos-accent-cyan animate-spin" />
+                <Loader2 className="w-8 h-8 text-mythos-accent-primary animate-spin" />
                 <div>
                   <h2 className="text-lg font-semibold text-mythos-text-primary">
                     Completing Sign In
@@ -194,7 +194,7 @@ export function AuthCallback({ onComplete }: AuthCallbackProps) {
 
             {status === "password_recovery" && (
               <>
-                <Lock className="w-8 h-8 text-mythos-accent-cyan" />
+                <Lock className="w-8 h-8 text-mythos-accent-primary" />
                 <div>
                   <h2 className="text-lg font-semibold text-mythos-text-primary">
                     Set New Password

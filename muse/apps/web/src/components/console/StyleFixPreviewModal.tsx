@@ -280,7 +280,7 @@ export function StyleFixPreviewModal({
           )}
         </CardContent>
 
-        <CardFooter className="flex flex-col gap-3 pt-4 border-t border-mythos-text-muted/20">
+        <CardFooter className="flex flex-col gap-3 pt-4 border-t border-mythos-border-default">
           {/* Main actions */}
           <div className="flex justify-between gap-2 w-full">
             <Button

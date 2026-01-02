@@ -1,9 +1,10 @@
+import { useEffect } from "react";
 import {
   Panel,
   PanelGroup,
   PanelResizeHandle,
 } from "react-resizable-panels";
-import { Manifest } from "./manifest/Manifest";
+import { ProjectPickerSidebar } from "./projects/ProjectPickerSidebar";
 import { Canvas } from "./canvas/Canvas";
 import { Console } from "./console/Console";
 import { Header } from "./Header";
@@ -13,6 +14,8 @@ import { ModalHost } from "./modals";
 import { ChatPanel } from "./chat";
 import { SaveWorkPrompt } from "./auth/SaveWorkPrompt";
 import { ProgressiveNudge, ProgressiveStructureController } from "./progressive";
+import { TryBootstrapController } from "./try/TryBootstrapController";
+import { TryPersonalizationModal } from "./try/TryPersonalizationModal";
 import { useMythosStore, useCurrentProject, useChatMode } from "../stores";
 import { useGlobalShortcuts, useProgressiveLinter } from "../hooks";
 import { useCollaboration } from "../hooks/useCollaboration";
@@ -23,9 +26,18 @@ interface LayoutProps {
   isAnonymous?: boolean;
   /** Callback for signup (anonymous mode) */
   onSignUp?: () => void;
+  /** Show inline project start flow when no project exists */
+  showProjectStart?: boolean;
+  /** Callback when a new project is created */
+  onProjectCreated?: (projectId: string) => void;
 }
 
-export function Layout({ isAnonymous = false, onSignUp }: LayoutProps) {
+export function Layout({
+  isAnonymous = false,
+  onSignUp,
+  showProjectStart = false,
+  onProjectCreated,
+}: LayoutProps) {
   // Get current project for collaboration
   const project = useCurrentProject();
 
@@ -35,18 +47,28 @@ export function Layout({ isAnonymous = false, onSignUp }: LayoutProps) {
   const hudEntity = useMythosStore((state) => state.ui.hudEntity);
   const hudPosition = useMythosStore((state) => state.ui.hudPosition);
   const showHud = useMythosStore((state) => state.showHud);
+  const setChatMode = useMythosStore((state) => state.setChatMode);
+  const setActiveTab = useMythosStore((state) => state.setActiveTab);
 
   // Chat mode (floating vs docked)
   const chatMode = useChatMode();
 
   // Progressive panel visibility (gardener mode hides panels until unlocked)
   const { showManifest, showConsole } = useProgressivePanelVisibility();
+  const manifestVisible = isAnonymous || showProjectStart ? true : showManifest;
+  const consoleVisible = isAnonymous || showProjectStart ? true : showConsole;
 
   // Enable global keyboard shortcuts
   useGlobalShortcuts();
 
   // Progressive linter for Phase 2 → 3 transition (detects contradictions)
-  useProgressiveLinter();
+  useProgressiveLinter({ enabled: !isAnonymous && !showProjectStart });
+
+  useEffect(() => {
+    if (!showProjectStart) return;
+    setChatMode("docked");
+    setActiveTab("chat");
+  }, [showProjectStart, setChatMode, setActiveTab]);
 
   const handleClickOutside = () => {
     if (hudEntity) {
@@ -58,8 +80,8 @@ export function Layout({ isAnonymous = false, onSignUp }: LayoutProps) {
     <div className="flex flex-col h-full" onClick={handleClickOutside}>
       <Header />
       <PanelGroup direction="horizontal" className="flex-1">
-        {/* Left Pane: The Manifest (hidden in gardener mode until unlocked) */}
-        {showManifest && (
+        {/* Left Pane: Project Picker (hidden in gardener mode until unlocked) */}
+        {manifestVisible && (
           <>
             <Panel
               defaultSize={20}
@@ -67,19 +89,23 @@ export function Layout({ isAnonymous = false, onSignUp }: LayoutProps) {
               maxSize={35}
               className="bg-mythos-bg-secondary"
             >
-              <Manifest />
+              <ProjectPickerSidebar />
             </Panel>
             <PanelResizeHandle className="w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-primary/30 transition-colors" />
           </>
         )}
 
         {/* Center Pane: The Canvas */}
-        <Panel defaultSize={showManifest && showConsole ? 55 : showManifest ? 80 : showConsole ? 75 : 100} minSize={30} className="bg-mythos-bg-primary">
-          <Canvas />
+        <Panel defaultSize={manifestVisible && consoleVisible ? 55 : manifestVisible ? 80 : consoleVisible ? 75 : 100} minSize={30} className="bg-mythos-bg-primary">
+          <Canvas
+            showProjectStart={showProjectStart}
+            onProjectCreated={onProjectCreated}
+            autoAnalysis={!isAnonymous && !showProjectStart}
+          />
         </Panel>
 
         {/* Right Pane: The Console (hidden in gardener mode until unlocked) */}
-        {showConsole && (
+        {consoleVisible && (
           <>
             <PanelResizeHandle className="w-1 bg-mythos-bg-tertiary hover:bg-mythos-accent-primary/30 transition-colors" />
             <Panel
@@ -108,6 +134,9 @@ export function Layout({ isAnonymous = false, onSignUp }: LayoutProps) {
 
       {/* Global Modal Host */}
       <ModalHost />
+
+      {isAnonymous && <TryBootstrapController />}
+      {isAnonymous && <TryPersonalizationModal />}
 
       {/* Progressive Structure Controller (manages phase transitions) */}
       <ProgressiveStructureController />

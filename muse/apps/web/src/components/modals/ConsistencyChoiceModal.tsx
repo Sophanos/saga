@@ -66,8 +66,8 @@ function ChoiceOption({ choice, isSelected, onSelect, disabled }: ChoiceOptionPr
       className={cn(
         "w-full p-4 rounded-lg border-2 text-left transition-all",
         isSelected
-          ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10"
-          : "border-mythos-border-subtle hover:border-mythos-text-muted/50",
+          ? "border-mythos-accent-primary bg-mythos-accent-primary/10"
+          : "border-mythos-border-default hover:border-mythos-text-muted/50",
         disabled && "opacity-50 cursor-not-allowed"
       )}
     >
@@ -76,7 +76,7 @@ function ChoiceOption({ choice, isSelected, onSelect, disabled }: ChoiceOptionPr
           className={cn(
             "flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5",
             isSelected
-              ? "border-mythos-accent-cyan bg-mythos-accent-cyan"
+              ? "border-mythos-accent-primary bg-mythos-accent-primary"
               : "border-mythos-text-muted"
           )}
         >
@@ -92,7 +92,7 @@ function ChoiceOption({ choice, isSelected, onSelect, disabled }: ChoiceOptionPr
             </p>
           )}
           {choice.value !== undefined && (
-            <p className="text-xs text-mythos-accent-cyan mt-1 font-mono">
+            <p className="text-xs text-mythos-accent-primary mt-1 font-mono">
               "{String(choice.value)}"
             </p>
           )}
@@ -205,7 +205,7 @@ export function ConsistencyChoiceModal({
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-lg mx-4 shadow-xl border-mythos-border-subtle">
+      <Card className="relative z-10 w-full max-w-lg mx-4 shadow-xl border-mythos-border-default">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -256,7 +256,7 @@ export function ConsistencyChoiceModal({
           </ScrollArea>
         </CardContent>
 
-        <CardFooter className="flex justify-between gap-2 pt-4 border-t border-mythos-border-subtle">
+        <CardFooter className="flex justify-between gap-2 pt-4 border-t border-mythos-border-default">
           <Button
             type="button"
             variant="outline"

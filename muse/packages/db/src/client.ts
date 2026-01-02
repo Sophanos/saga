@@ -37,30 +37,17 @@ let clientConfig: SupabaseInitConfig | null = null;
 
 /**
  * Create a storage wrapper that adapts our StorageAdapter to Supabase's expected interface.
- * Supabase expects synchronous getItem but async setItem/removeItem.
+ * Supabase supports async storage adapters.
  */
 function createSupabaseStorageAdapter(storage: StorageAdapter) {
-  // Cache for synchronous reads (Supabase requires sync getItem)
-  const cache: Map<string, string | null> = new Map();
-
   return {
-    getItem: (key: string): string | null => {
-      // Return from cache if available
-      if (cache.has(key)) {
-        return cache.get(key) ?? null;
-      }
-      // Trigger async load for next time
-      storage.getItem(key).then((value: string | null) => {
-        cache.set(key, value);
-      });
-      return null;
+    getItem: (key: string) => {
+      return storage.getItem(key);
     },
     setItem: async (key: string, value: string): Promise<void> => {
-      cache.set(key, value);
       await storage.setItem(key, value);
     },
     removeItem: async (key: string): Promise<void> => {
-      cache.delete(key);
       await storage.removeItem(key);
     },
   };

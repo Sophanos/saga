@@ -100,7 +100,7 @@ function CharacterStatsBlock({ character }: { character: Character }) {
 
       {/* Traits */}
       {character.traits.length > 0 && (
-        <div className="mt-3 pt-2 border-t border-mythos-text-muted/20">
+        <div className="mt-3 pt-2 border-t border-mythos-border-default">
           <span className="text-mythos-text-muted block mb-1">Traits:</span>
           <div className="flex flex-wrap gap-1">
             {character.traits.map((trait, i) => (
@@ -125,7 +125,7 @@ function CharacterStatsBlock({ character }: { character: Character }) {
 
       {/* Visual Description snippet */}
       {character.visualDescription.eyeColor && (
-        <div className="mt-3 pt-2 border-t border-mythos-text-muted/20">
+        <div className="mt-3 pt-2 border-t border-mythos-border-default">
           <span className="text-mythos-text-muted block mb-1">Visual:</span>
           <span className="text-mythos-text-secondary text-[11px]">
             {[
@@ -192,7 +192,7 @@ function ItemStatsBlock({ item }: { item: Item }) {
 
       {/* Abilities */}
       {item.abilities && item.abilities.length > 0 && (
-        <div className="mt-3 pt-2 border-t border-mythos-text-muted/20">
+        <div className="mt-3 pt-2 border-t border-mythos-border-default">
           <span className="text-mythos-text-muted block mb-1">Abilities:</span>
           <ul className="space-y-1">
             {item.abilities.map((ability, i) => (
@@ -237,7 +237,7 @@ function LocationStatsBlock({ location }: { location: Location }) {
 
       {/* Inhabitants */}
       {location.inhabitants && location.inhabitants.length > 0 && (
-        <div className="mt-3 pt-2 border-t border-mythos-text-muted/20">
+        <div className="mt-3 pt-2 border-t border-mythos-border-default">
           <span className="text-mythos-text-muted block mb-1">
             Inhabitants ({location.inhabitants.length}):
           </span>
@@ -261,7 +261,7 @@ function LocationStatsBlock({ location }: { location: Location }) {
 
       {/* Connected Locations */}
       {location.connectedTo && location.connectedTo.length > 0 && (
-        <div className="mt-3 pt-2 border-t border-mythos-text-muted/20">
+        <div className="mt-3 pt-2 border-t border-mythos-border-default">
           <span className="text-mythos-text-muted block mb-1">Connected to:</span>
           <div className="flex flex-wrap gap-1">
             {location.connectedTo.slice(0, 4).map((connected, i) => (
@@ -408,7 +408,7 @@ export function AsciiHud({ entity, onClose, position, narrativeThreads = [] }: A
 
             {/* Also show a brief summary of the entity */}
             {entity.notes && (
-              <div className="mt-3 pt-2 border-t border-mythos-text-muted/20">
+              <div className="mt-3 pt-2 border-t border-mythos-border-default">
                 <span className="text-xs text-mythos-text-muted block mb-1">Notes:</span>
                 <p className="text-[11px] text-mythos-text-secondary">{entity.notes}</p>
               </div>

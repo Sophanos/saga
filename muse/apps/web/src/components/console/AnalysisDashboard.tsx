@@ -478,7 +478,7 @@ export function AnalysisDashboard({ className }: AnalysisDashboardProps) {
   return (
     <div className={cn("h-full flex flex-col", className)}>
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-mythos-text-muted/20">
+      <div className="flex items-center justify-between p-3 border-b border-mythos-border-default">
         <div className="flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-mythos-accent-cyan" />
           <h3 className="text-sm font-medium text-mythos-text-primary">

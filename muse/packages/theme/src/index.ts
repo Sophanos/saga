@@ -24,8 +24,11 @@
 // Colors
 export {
   colors,
+  light,
+  dark,
   bg,
   text,
+  border,
   accent,
   neutral,
   entity,
@@ -34,6 +37,7 @@ export {
   type Colors,
   type BgColor,
   type TextColor,
+  type BorderColor,
   type AccentColor,
   type EntityColor,
   type EntityExtendedColor,
@@ -86,7 +90,7 @@ export {
   characterRole,
   rarity,
   interactive,
-  border,
+  border as semanticBorder,
   selection,
   // Utility functions
   getSeverityColor,

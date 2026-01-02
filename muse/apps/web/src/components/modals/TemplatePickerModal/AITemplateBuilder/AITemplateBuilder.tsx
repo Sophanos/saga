@@ -20,7 +20,7 @@ function MessageBubble({ message }: { message: BuilderMessage }) {
         className={cn(
           "inline-block rounded-lg px-3 py-2 text-sm max-w-[85%]",
           isUser
-            ? "bg-mythos-accent-cyan/10 text-mythos-text-primary"
+            ? "bg-mythos-accent-primary/10 text-mythos-text-primary"
             : "bg-mythos-bg-tertiary text-mythos-text-primary"
         )}
       >

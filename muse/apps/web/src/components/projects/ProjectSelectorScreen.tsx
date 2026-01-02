@@ -20,11 +20,11 @@ interface ProjectSelectorScreenProps {
 function LoadingState() {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-mythos-text-muted">
-      <RefreshCw className="w-8 h-8 animate-spin text-mythos-accent-cyan" />
+      <RefreshCw className="w-8 h-8 animate-spin text-mythos-accent-primary" />
       <div className="mt-4 font-mono text-sm">
-        <span className="text-mythos-accent-cyan">[</span>
+        <span className="text-mythos-accent-primary">[</span>
         <span className="animate-pulse">LOADING</span>
-        <span className="text-mythos-accent-cyan">]</span>
+        <span className="text-mythos-accent-primary">]</span>
       </div>
     </div>
   );
@@ -58,13 +58,13 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 function ProjectCard({ project, onSelect }: { project: ProjectSelectorScreenProps["projects"][0]; onSelect: (id: string) => void }) {
   return (
     <Card
-      className="group cursor-pointer transition-all border-mythos-text-muted/20 hover:border-mythos-accent-cyan/50 bg-mythos-bg-secondary"
+      className="group cursor-pointer transition-all border-mythos-border-default hover:border-mythos-accent-primary/50 bg-mythos-bg-secondary"
       onClick={() => onSelect(project.id)}
     >
       <div className="p-4">
         <div className="flex items-center gap-2 mb-2">
-          <FolderOpen className="w-5 h-5 text-mythos-accent-cyan" />
-          <h3 className="font-semibold text-mythos-text-primary group-hover:text-mythos-accent-cyan">
+          <FolderOpen className="w-5 h-5 text-mythos-accent-primary" />
+          <h3 className="font-semibold text-mythos-text-primary group-hover:text-mythos-accent-primary">
             {project.name}
           </h3>
         </div>
@@ -98,10 +98,10 @@ export function ProjectSelectorScreen({
 }: ProjectSelectorScreenProps) {
   return (
     <div className="h-full flex flex-col bg-mythos-bg-primary">
-      <header className="border-b border-mythos-text-muted/20 bg-mythos-bg-secondary px-6 py-4">
+      <header className="border-b border-mythos-border-default bg-mythos-bg-secondary px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <BookOpen className="w-6 h-6 text-mythos-accent-cyan" />
+            <BookOpen className="w-6 h-6 text-mythos-accent-primary" />
             <div>
               <h1 className="font-semibold text-lg text-mythos-text-primary">Mythos IDE</h1>
               <p className="text-xs text-mythos-text-muted font-mono">Select a project</p>

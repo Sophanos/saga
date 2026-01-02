@@ -36,6 +36,8 @@ export function parseMemoryFromPayload(
     category: String(payload.category ?? "preference"),
     score,
     createdAt: payload.created_at as string | undefined,
+    createdAtTs: payload.created_at_ts as number | undefined,
+    expiresAt: payload.expires_at as string | undefined,
   };
 }
 

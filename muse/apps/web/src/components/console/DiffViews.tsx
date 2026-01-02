@@ -21,7 +21,7 @@ export function DiffView({
           <span className="text-xs font-medium uppercase tracking-wider text-mythos-text-muted">
             Before
           </span>
-          <div className="flex-1 h-px bg-mythos-text-muted/20" />
+          <div className="flex-1 h-px bg-mythos-border-default" />
         </div>
         <div
           className={cn(
@@ -50,7 +50,7 @@ export function DiffView({
           <span className="text-xs font-medium uppercase tracking-wider text-mythos-text-muted">
             After
           </span>
-          <div className="flex-1 h-px bg-mythos-text-muted/20" />
+          <div className="flex-1 h-px bg-mythos-border-default" />
         </div>
         <div
           className={cn(
@@ -117,7 +117,7 @@ export function InlineDiffView({
   const { prefix, beforeChanged, afterChanged, suffix } = diffBounds;
 
   return (
-    <div className="p-3 rounded-md border border-mythos-text-muted/20 bg-mythos-bg-tertiary/30 font-mono text-sm leading-relaxed">
+    <div className="p-3 rounded-md border border-mythos-border-default bg-mythos-bg-tertiary/30 font-mono text-sm leading-relaxed">
       <span className="text-mythos-text-secondary">{prefix}</span>
       {beforeChanged && (
         <span className="bg-mythos-accent-red/20 text-mythos-accent-red line-through decoration-1 px-0.5 rounded">

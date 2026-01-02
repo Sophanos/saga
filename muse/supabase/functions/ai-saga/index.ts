@@ -28,7 +28,11 @@ import {
   getPayloadType,
   getEntityType,
   getMemoryCategory,
+  buildMemoryPayload,
 } from "../_shared/vectorPayload.ts";
+import { generateEmbeddings, isDeepInfraConfigured } from "../_shared/deepinfra.ts";
+import { upsertPoints, isQdrantConfigured, QdrantError, type QdrantPoint } from "../_shared/qdrant.ts";
+import { calculateExpiresAt } from "../_shared/memoryPolicy.ts";
 import {
   retrieveMemoryContext,
   retrieveProfileContext,
@@ -42,6 +46,8 @@ import {
 } from "../_shared/rag.ts";
 import { buildSagaSystemPrompt } from "../_shared/prompts/mod.ts";
 import { agentTools } from "../_shared/tools/index.ts";
+import { assertProjectAccess, ProjectAccessError } from "../_shared/projects.ts";
+import type { UnifiedContextHints } from "../_shared/contextHints.ts";
 import {
   executeGenesisWorld,
   executeDetectEntities,
@@ -92,6 +98,7 @@ interface SagaChatRequest {
   projectId: string;
   mentions?: Mention[];
   editorContext?: EditorContext;
+  contextHints?: UnifiedContextHints;
   mode?: SagaMode;
   stream?: boolean;
   conversationId?: string;
@@ -120,6 +127,8 @@ interface SagaToolApprovalRequest {
   mentions?: Mention[];
   /** Editor context for prompts */
   editorContext?: EditorContext;
+  /** Optional client-side context hints */
+  contextHints?: UnifiedContextHints;
   /** Current saga mode */
   mode?: SagaMode;
   /** Conversation ID for memory continuity */
@@ -135,6 +144,8 @@ type SagaRequest = SagaChatRequest | SagaExecuteToolRequest | SagaToolApprovalRe
 // =============================================================================
 
 const MAX_HISTORY_MESSAGES = 20;
+const MAX_DECISION_LENGTH = 32000;
+const MAX_DECISION_EMBEDDING_CHARS = 8000;
 
 // RAG retrieval extracted to ../shared/rag.ts as retrieveRAGContext
 
@@ -150,6 +161,7 @@ interface SagaContextParams {
   editorContext?: EditorContext;
   mode?: SagaMode;
   conversationId?: string;
+  contextHints?: UnifiedContextHints;
   billing: BillingCheck;
   supabase: ReturnType<typeof createSupabaseClient>;
   logPrefix: string;
@@ -166,7 +178,7 @@ interface PreparedContext {
  * Shared between handleChat and handleToolApproval.
  */
 async function prepareSagaContext(params: SagaContextParams): Promise<PreparedContext> {
-  const { messages, projectId, editorContext, mode, conversationId, billing, supabase, logPrefix } = params;
+  const { messages, projectId, editorContext, mode, conversationId, contextHints, billing, supabase, logPrefix } = params;
 
   // Get last user message for RAG query
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
@@ -174,6 +186,7 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
 
   // Determine owner ID for memory isolation (userId or anonDeviceId)
   const ownerId = billing.userId ?? billing.anonDeviceId ?? null;
+  const effectiveConversationId = conversationId ?? contextHints?.conversationId;
 
   // Retrieve all contexts in parallel
   const [ragContext, memoryContext, profileContext] = await Promise.all([
@@ -181,7 +194,7 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
       logPrefix,
       excludeMemories: true,
     }),
-    retrieveMemoryContext(query, projectId, ownerId, conversationId, DEFAULT_SAGA_LIMITS, logPrefix, supabase),
+    retrieveMemoryContext(query, projectId, ownerId, effectiveConversationId, DEFAULT_SAGA_LIMITS, logPrefix, supabase),
     retrieveProfileContext(supabase, billing.userId, logPrefix),
   ]);
 
@@ -192,6 +205,7 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
     editorContext,
     profileContext,
     memoryContext,
+    contextHints,
   });
 
   // Build messages array with sliding window
@@ -258,13 +272,14 @@ async function handleChat(
   billing: BillingCheck,
   supabase: ReturnType<typeof createSupabaseClient>
 ): Promise<Response> {
-  const { messages, projectId, editorContext, mode, conversationId } = req;
+  const { messages, projectId, editorContext, mode, conversationId, contextHints } = req;
 
   // Prepare context using shared helper
   const { ragContext, apiMessages } = await prepareSagaContext({
     messages,
     projectId,
     editorContext,
+    contextHints,
     mode,
     conversationId,
     billing,
@@ -455,6 +470,183 @@ async function handleExecuteTool(
         break;
       }
 
+      case "commit_decision": {
+        const typedInput = input as {
+          decision: string;
+          rationale?: string;
+          entityIds?: string[];
+          documentId?: string;
+          confidence?: number;
+        };
+        const projectId = req.projectId;
+        if (!projectId) {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            "projectId is required for commit_decision",
+            origin
+          );
+        }
+        if (!typedInput.decision || typeof typedInput.decision !== "string") {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            "decision is required for commit_decision",
+            origin
+          );
+        }
+        const decision = typedInput.decision.trim();
+        if (!decision) {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            "decision cannot be empty",
+            origin
+          );
+        }
+        if (decision.length > MAX_DECISION_LENGTH) {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            `decision exceeds maximum length of ${MAX_DECISION_LENGTH} characters`,
+            origin
+          );
+        }
+        if (!isDeepInfraConfigured()) {
+          return createErrorResponse(
+            ErrorCode.INTERNAL_ERROR,
+            "Embedding service not configured",
+            origin
+          );
+        }
+
+        try {
+          await assertProjectAccess(supabase, projectId, billing.userId);
+        } catch (error) {
+          if (error instanceof ProjectAccessError) {
+            return createErrorResponse(ErrorCode.FORBIDDEN, error.message, origin);
+          }
+          throw error;
+        }
+
+        const rationale = typedInput.rationale?.trim();
+        const content = rationale
+          ? `Decision: ${decision}\nRationale: ${rationale}`
+          : decision;
+
+        if (content.length > MAX_DECISION_LENGTH) {
+          return createErrorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            `decision content exceeds maximum length of ${MAX_DECISION_LENGTH} characters`,
+            origin
+          );
+        }
+
+        const embeddingText = content.length > MAX_DECISION_EMBEDDING_CHARS
+          ? content.slice(0, MAX_DECISION_EMBEDDING_CHARS)
+          : content;
+
+        if (embeddingText.length < content.length) {
+          console.log(
+            `[ai-saga] commit_decision truncated embedding input from ${content.length} to ${embeddingText.length} chars`
+          );
+        }
+
+        const embeddingResult = await generateEmbeddings([embeddingText]);
+        const memoryId = crypto.randomUUID();
+        const expiresAt = calculateExpiresAt("decision");
+
+        const payload = buildMemoryPayload({
+          projectId,
+          memoryId,
+          category: "decision",
+          scope: "project",
+          text: content,
+          source: "user",
+          confidence: typedInput.confidence,
+          entityIds: typedInput.entityIds,
+          documentId: typedInput.documentId,
+          toolName: "commit_decision",
+          expiresAt,
+        });
+
+        const { error } = await supabase.from("memories").upsert(
+          {
+            id: memoryId,
+            project_id: payload.project_id,
+            category: payload.category,
+            scope: payload.scope,
+            owner_id: payload.owner_id ?? null,
+            conversation_id: payload.conversation_id ?? null,
+            content: payload.text,
+            metadata: {
+              source: payload.source,
+              confidence: payload.confidence,
+              entity_ids: payload.entity_ids,
+              document_id: payload.document_id,
+              tool_call_id: payload.tool_call_id,
+              tool_name: payload.tool_name,
+            },
+            created_at: payload.created_at,
+            updated_at: payload.updated_at,
+            created_at_ts: payload.created_at_ts,
+            expires_at: payload.expires_at ?? null,
+            expires_at_ts: payload.expires_at
+              ? new Date(payload.expires_at).getTime()
+              : null,
+            embedding: embeddingResult.embeddings[0],
+            qdrant_sync_status: "pending",
+          },
+          { onConflict: "id" }
+        );
+
+        if (error) {
+          console.error("[ai-saga] commit_decision Postgres upsert failed:", error);
+          throw new Error(`Database error: ${error.message}`);
+        }
+
+        let qdrantResult: { success: boolean; error?: string } = {
+          success: false,
+          error: "Qdrant not configured",
+        };
+
+        if (isQdrantConfigured()) {
+          try {
+            const points: QdrantPoint[] = [
+              {
+                id: memoryId,
+                vector: embeddingResult.embeddings[0],
+                payload: payload as unknown as Record<string, unknown>,
+              },
+            ];
+            await upsertPoints(points);
+            qdrantResult = { success: true };
+          } catch (qdrantError) {
+            const errorMessage =
+              qdrantError instanceof QdrantError
+                ? qdrantError.message
+                : qdrantError instanceof Error
+                ? qdrantError.message
+                : "Unknown Qdrant error";
+            qdrantResult = { success: false, error: errorMessage };
+            console.warn("[ai-saga] commit_decision Qdrant upsert failed:", errorMessage);
+          }
+        }
+
+        const updates: Record<string, unknown> = {
+          qdrant_sync_status: qdrantResult.success ? "synced" : "error",
+        };
+        if (qdrantResult.success) {
+          updates.qdrant_synced_at = new Date().toISOString();
+        } else if (qdrantResult.error) {
+          updates.qdrant_last_error = qdrantResult.error;
+        }
+
+        await supabase.from("memories").update(updates).eq("id", memoryId);
+
+        result = {
+          memoryId,
+          content,
+        };
+        break;
+      }
+
       case "search_images": {
         const typedInput = input as {
           projectId?: string;
@@ -566,7 +758,7 @@ async function handleExecuteTool(
       default:
         return createErrorResponse(
           ErrorCode.VALIDATION_ERROR,
-          `Unknown tool: ${toolName}. Supported tools: genesis_world, detect_entities, check_consistency, generate_template, clarity_check, check_logic, name_generator, search_images, find_similar_images`,
+          `Unknown tool: ${toolName}. Supported tools: genesis_world, detect_entities, check_consistency, generate_template, clarity_check, check_logic, name_generator, commit_decision, search_images, find_similar_images`,
           origin
         );
     }
@@ -589,7 +781,7 @@ async function handleToolApproval(
   billing: BillingCheck,
   supabase: ReturnType<typeof createSupabaseClient>
 ): Promise<Response> {
-  const { projectId, toolCallId, approved, messages, editorContext, mode, conversationId } = req;
+  const { projectId, toolCallId, approved, messages, editorContext, mode, conversationId, contextHints } = req;
 
   console.log(`[ai-saga] Tool approval response: ${toolCallId} = ${approved ? "approved" : "denied"}`);
 
@@ -607,6 +799,7 @@ async function handleToolApproval(
     messages,
     projectId,
     editorContext,
+    contextHints,
     mode,
     conversationId,
     billing,

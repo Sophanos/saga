@@ -30,6 +30,7 @@ import type {
   EditorContext,
   AgentStreamEventType,
 } from "@mythos/agent-protocol";
+import type { UnifiedContextHints } from "@mythos/context";
 
 const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "";
 
@@ -98,6 +99,7 @@ export interface SagaChatPayload {
   projectId: string;
   mentions?: ChatMention[];
   editorContext?: EditorContext;
+  contextHints?: UnifiedContextHints;
   mode?: SagaMode;
   /** Conversation ID for session memory continuity */
   conversationId?: string;
@@ -561,6 +563,7 @@ export interface ToolApprovalPayload {
   messages: SagaMessagePayload[];
   mentions?: ChatMention[];
   editorContext?: EditorContext;
+  contextHints?: UnifiedContextHints;
   mode?: SagaMode;
   conversationId?: string;
 }

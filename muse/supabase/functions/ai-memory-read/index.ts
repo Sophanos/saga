@@ -137,6 +137,81 @@ function buildQdrantFilter(params: {
   });
 }
 
+interface ScopeQuery {
+  scope: MemoryScope;
+  ownerId?: string;
+  conversationId?: string;
+}
+
+function getScopeQueries(params: {
+  scope?: MemoryScope;
+  ownerId?: string;
+  conversationId?: string;
+}): ScopeQuery[] {
+  if (params.scope) {
+    return [
+      {
+        scope: params.scope,
+        ownerId: params.scope === "project" ? undefined : params.ownerId,
+        conversationId: params.scope === "conversation" ? params.conversationId : undefined,
+      },
+    ];
+  }
+
+  const scopes: ScopeQuery[] = [{ scope: "project" }];
+
+  if (params.ownerId) {
+    scopes.push({ scope: "user", ownerId: params.ownerId });
+    if (params.conversationId) {
+      scopes.push({
+        scope: "conversation",
+        ownerId: params.ownerId,
+        conversationId: params.conversationId,
+      });
+    }
+  }
+
+  return scopes;
+}
+
+function mergeAndSortMemories(
+  memories: ScoredMemoryRecord[],
+  sortByScore: boolean
+): ScoredMemoryRecord[] {
+  const byId = new Map<string, ScoredMemoryRecord>();
+  for (const memory of memories) {
+    const existing = byId.get(memory.id);
+    if (!existing) {
+      byId.set(memory.id, memory);
+      continue;
+    }
+
+    if (sortByScore) {
+      if ((memory.score ?? 0) > (existing.score ?? 0)) {
+        byId.set(memory.id, memory);
+      }
+    } else {
+      const existingTime = new Date(existing.createdAt).getTime();
+      const memoryTime = new Date(memory.createdAt).getTime();
+      if (memoryTime > existingTime) {
+        byId.set(memory.id, memory);
+      }
+    }
+  }
+
+  const merged = Array.from(byId.values());
+  if (sortByScore) {
+    merged.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  } else {
+    merged.sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
+  }
+  return merged;
+}
+
 /**
  * Filter expired memories and apply decay scoring.
  */
@@ -447,33 +522,49 @@ serve(async (req) => {
     // Try Qdrant first if configured
     const qdrantAvailable = isQdrantConfigured();
     const embeddingAvailable = isDeepInfraConfigured();
+    const scopeQueries = getScopeQueries({
+      scope: request.scope,
+      ownerId,
+      conversationId: request.conversationId,
+    });
+    const useSemantic = Boolean(request.query && embeddingAvailable);
 
     if (qdrantAvailable) {
       try {
-        const filter = buildQdrantFilter({
-          projectId: request.projectId,
-          categories: request.categories,
-          scope: request.scope,
-          ownerId,
-          conversationId: request.conversationId,
-        });
+        const scopedResults: ScoredMemoryRecord[] = [];
 
-        if (request.query && embeddingAvailable) {
-          console.log(`[ai-memory-read] Qdrant semantic search: "${request.query.slice(0, 50)}..."`);
-          memories = await queryQdrant({
-            query: request.query,
-            filter,
-            limit,
-            recencyWeight,
+        for (const scopeQuery of scopeQueries) {
+          const filter = buildQdrantFilter({
+            projectId: request.projectId,
+            categories: request.categories,
+            scope: scopeQuery.scope,
+            ownerId: scopeQuery.ownerId,
+            conversationId: scopeQuery.conversationId,
           });
-        } else {
-          console.log("[ai-memory-read] Qdrant scroll (no query)");
-          memories = await scrollQdrant({
-            filter,
-            limit,
-            recencyWeight,
-          });
+
+          if (useSemantic) {
+            console.log(
+              `[ai-memory-read] Qdrant semantic search (${scopeQuery.scope}): "${request.query!.slice(0, 50)}..."`
+            );
+            const result = await queryQdrant({
+              query: request.query!,
+              filter,
+              limit,
+              recencyWeight,
+            });
+            scopedResults.push(...result);
+          } else {
+            console.log(`[ai-memory-read] Qdrant scroll (${scopeQuery.scope}, no query)`);
+            const result = await scrollQdrant({
+              filter,
+              limit,
+              recencyWeight,
+            });
+            scopedResults.push(...result);
+          }
         }
+
+        memories = mergeAndSortMemories(scopedResults, useSemantic).slice(0, limit);
       } catch (error) {
         // Qdrant failed - fall back to Postgres
         const errorMessage =
@@ -483,56 +574,76 @@ serve(async (req) => {
         );
 
         // Postgres fallback
-        if (request.query && embeddingAvailable) {
+        if (useSemantic) {
           console.log("[ai-memory-read] Postgres semantic fallback");
-          memories = await queryPostgresSemantic(supabase, {
-            query: request.query,
-            projectId: request.projectId,
-            categories: request.categories,
-            scope: request.scope,
-            ownerId,
-            conversationId: request.conversationId,
-            limit,
-            recencyWeight,
-          });
+          const scopedResults: ScoredMemoryRecord[] = [];
+          for (const scopeQuery of scopeQueries) {
+            const result = await queryPostgresSemantic(supabase, {
+              query: request.query!,
+              projectId: request.projectId,
+              categories: request.categories,
+              scope: scopeQuery.scope,
+              ownerId: scopeQuery.ownerId,
+              conversationId: scopeQuery.conversationId,
+              limit,
+              recencyWeight,
+            });
+            scopedResults.push(...result);
+          }
+          memories = mergeAndSortMemories(scopedResults, true).slice(0, limit);
         } else {
           console.log("[ai-memory-read] Postgres recency fallback");
-          memories = await queryPostgresRecency(supabase, {
-            projectId: request.projectId,
-            categories: request.categories,
-            scope: request.scope,
-            ownerId,
-            conversationId: request.conversationId,
-            limit,
-            recencyWeight,
-          });
+          const scopedResults: ScoredMemoryRecord[] = [];
+          for (const scopeQuery of scopeQueries) {
+            const result = await queryPostgresRecency(supabase, {
+              projectId: request.projectId,
+              categories: request.categories,
+              scope: scopeQuery.scope,
+              ownerId: scopeQuery.ownerId,
+              conversationId: scopeQuery.conversationId,
+              limit,
+              recencyWeight,
+            });
+            scopedResults.push(...result);
+          }
+          memories = mergeAndSortMemories(scopedResults, false).slice(0, limit);
         }
       }
     } else {
       // Qdrant not configured - use Postgres directly
       console.log("[ai-memory-read] Qdrant not configured, using Postgres");
 
-      if (request.query && embeddingAvailable) {
-        memories = await queryPostgresSemantic(supabase, {
-          query: request.query,
-          projectId: request.projectId,
-          categories: request.categories,
-          scope: request.scope,
-          ownerId,
-          conversationId: request.conversationId,
-          limit,
-          recencyWeight,
-        });
+      if (useSemantic) {
+        const scopedResults: ScoredMemoryRecord[] = [];
+        for (const scopeQuery of scopeQueries) {
+          const result = await queryPostgresSemantic(supabase, {
+            query: request.query!,
+            projectId: request.projectId,
+            categories: request.categories,
+            scope: scopeQuery.scope,
+            ownerId: scopeQuery.ownerId,
+            conversationId: scopeQuery.conversationId,
+            limit,
+            recencyWeight,
+          });
+          scopedResults.push(...result);
+        }
+        memories = mergeAndSortMemories(scopedResults, true).slice(0, limit);
       } else {
-        memories = await queryPostgresRecency(supabase, {
-          projectId: request.projectId,
-          categories: request.categories,
-          scope: request.scope,
-          ownerId,
-          conversationId: request.conversationId,
-          limit,
-          recencyWeight,
-        });
+        const scopedResults: ScoredMemoryRecord[] = [];
+        for (const scopeQuery of scopeQueries) {
+          const result = await queryPostgresRecency(supabase, {
+            projectId: request.projectId,
+            categories: request.categories,
+            scope: scopeQuery.scope,
+            ownerId: scopeQuery.ownerId,
+            conversationId: scopeQuery.conversationId,
+            limit,
+            recencyWeight,
+          });
+          scopedResults.push(...result);
+        }
+        memories = mergeAndSortMemories(scopedResults, false).slice(0, limit);
       }
     }
 

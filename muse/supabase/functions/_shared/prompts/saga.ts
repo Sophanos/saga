@@ -16,6 +16,7 @@ import type {
   RetrievedMemoryRecord,
   ProfileContext,
 } from "../memory/types.ts";
+import { formatWorldContextSummary, type UnifiedContextHints } from "../contextHints.ts";
 import {
   getMemoryBudgetConfig,
   applyMemoryBudget,
@@ -48,6 +49,10 @@ These propose complex operations that require user confirmation:
 4. **generate_template** - Create a custom project template
    - Use when: Author describes their story type and wants custom entity types
    - Creates: Template with entity kinds, relationships, linter rules
+
+5. **commit_decision** - Record a canon decision in project memory
+   - Use when: Author confirms a definitive fact or rule about the story world
+   - Creates: Project-scoped decision memory for long-term consistency
 
 ### Entity Management Tools (Core Tools)
 These modify the author's world directly:
@@ -83,6 +88,7 @@ Based on the author's message, determine the right approach:
 | "Create a template for my story about..." | generate_template |
 | "Find/detect/extract entities in..." | detect_entities |
 | "Check for inconsistencies/contradictions" | check_consistency |
+| "Record this as canon" | commit_decision |
 | "Create a character named..." | create_entity |
 | "What are Marcus's relationships?" | Answer from context (no tool) |
 | "Add a rivalry between X and Y" | create_relationship |
@@ -353,8 +359,11 @@ export function buildSagaSystemPrompt(options: {
   editorContext?: EditorContext;
   profileContext?: ProfileContext;
   memoryContext?: RetrievedMemoryContext;
+  contextHints?: UnifiedContextHints;
 }): string {
-  const { mode, ragContext, editorContext, profileContext, memoryContext } = options;
+  const { mode, ragContext, editorContext, profileContext, memoryContext, contextHints } = options;
+  const mergedProfile = profileContext ?? contextHints?.profile;
+  const mergedEditor = editorContext ?? contextHints?.editor;
 
   let prompt = SAGA_SYSTEM;
 
@@ -368,11 +377,11 @@ export function buildSagaSystemPrompt(options: {
 
   // Build memory context with profile integration
   // Profile preferences are converted to style lines and prepended (high priority)
-  if (memoryContext || profileContext) {
+  if (memoryContext || mergedProfile) {
     // Prepare style memories with profile preferences prepended
     let styleMemories = memoryContext?.style ?? [];
-    if (profileContext) {
-      const profileLines = profileToStyleMemoryLines(profileContext);
+    if (mergedProfile) {
+      const profileLines = profileToStyleMemoryLines(mergedProfile);
       if (profileLines.length > 0) {
         // Create pseudo-memory records for profile preferences
         const profileRecords: RetrievedMemoryRecord[] = profileLines.map((line, i) => ({
@@ -413,6 +422,17 @@ export function buildSagaSystemPrompt(options: {
     }
   }
 
+  // Add client-provided world context hints
+  if (contextHints?.world) {
+    const hasWorldContent =
+      contextHints.world.entities.length > 0 ||
+      contextHints.world.relationships.length > 0;
+    if (hasWorldContent) {
+      const worldText = formatWorldContextSummary(contextHints.world);
+      prompt += "\n\n## World Summary (Client)\n" + worldText;
+    }
+  }
+
   // Add RAG context
   if (ragContext && (ragContext.documents.length > 0 || ragContext.entities.length > 0)) {
     const docsText = ragContext.documents.length > 0
@@ -430,13 +450,13 @@ export function buildSagaSystemPrompt(options: {
   }
 
   // Add editor context
-  if (editorContext?.documentTitle) {
-    const selectionContext = editorContext.selectionText
-      ? `**Selected text:** "${editorContext.selectionText.slice(0, 200)}${editorContext.selectionText.length > 200 ? '...' : ''}"`
+  if (mergedEditor?.documentTitle) {
+    const selectionContext = mergedEditor.selectionText
+      ? `**Selected text:** "${mergedEditor.selectionText.slice(0, 200)}${mergedEditor.selectionText.length > 200 ? '...' : ''}"`
       : "No text selected.";
 
     prompt += "\n\n" + SAGA_EDITOR_CONTEXT
-      .replace("{documentTitle}", editorContext.documentTitle)
+      .replace("{documentTitle}", mergedEditor.documentTitle)
       .replace("{selectionContext}", selectionContext);
   }
 

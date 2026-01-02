@@ -178,7 +178,7 @@ export function TemplateDraftPreview({
       </ScrollArea>
 
       {/* Actions */}
-      <div className="flex items-center justify-between pt-4 border-t border-mythos-text-muted/20 mt-4">
+      <div className="flex items-center justify-between pt-4 border-t border-mythos-border-default mt-4">
         <Button variant="ghost" size="sm" onClick={onCancel}>
           <X className="w-3.5 h-3.5 mr-1.5" />
           Cancel

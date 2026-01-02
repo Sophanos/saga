@@ -73,13 +73,8 @@ export const DEFAULT_CHAT_LIMITS: RetrievalLimits = {
 function filterExpired(memories: RetrievedMemoryRecord[]): RetrievedMemoryRecord[] {
   const nowMs = Date.now();
   return memories.filter((m) => {
-    // Check if payload has expires_at
-    // deno-lint-ignore no-explicit-any
-    const payload = (m as any).payload;
-    const expiresAtTs = payload?.expires_at_ts ?? payload?.expires_at
-      ? new Date(payload.expires_at).getTime()
-      : undefined;
-    const createdAtTs = payload?.created_at_ts ?? new Date(m.createdAt ?? Date.now()).getTime();
+    const createdAtTs = m.createdAtTs ?? new Date(m.createdAt ?? Date.now()).getTime();
+    const expiresAtTs = m.expiresAt ? new Date(m.expiresAt).getTime() : undefined;
 
     return !isMemoryExpired({
       category: m.category,

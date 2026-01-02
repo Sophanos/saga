@@ -169,11 +169,11 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-lg mx-4 shadow-xl border-mythos-text-muted/30 max-h-[90vh] overflow-y-auto">
+      <Card className="relative z-10 w-full max-w-lg mx-4 shadow-xl border-mythos-border-default max-h-[90vh] overflow-y-auto">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileDown className="w-5 h-5 text-mythos-accent-cyan" />
+              <FileDown className="w-5 h-5 text-mythos-accent-primary" />
               <CardTitle id="export-modal-title" className="text-lg">
                 Export Story
               </CardTitle>
@@ -211,8 +211,8 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                     flex items-center gap-3 p-3 rounded-lg border text-left transition-colors
                     ${
                       format === option.id
-                        ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10 text-mythos-text-primary"
-                        : "border-mythos-text-muted/20 hover:border-mythos-text-muted/40 text-mythos-text-secondary"
+                        ? "border-mythos-accent-primary bg-mythos-accent-primary/10 text-mythos-text-primary"
+                        : "border-mythos-border-default hover:border-mythos-text-muted/40 text-mythos-text-secondary"
                     }
                     disabled:opacity-50 disabled:cursor-not-allowed
                   `}
@@ -220,7 +220,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                   <div
                     className={
                       format === option.id
-                        ? "text-mythos-accent-cyan"
+                        ? "text-mythos-accent-primary"
                         : "text-mythos-text-muted"
                     }
                   >
@@ -297,8 +297,8 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                           px-2 py-1 text-xs rounded-md border transition-colors
                           ${
                             glossaryTypes.includes(option.value)
-                              ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10 text-mythos-accent-cyan"
-                              : "border-mythos-text-muted/30 text-mythos-text-muted hover:border-mythos-text-muted/50"
+                              ? "border-mythos-accent-primary bg-mythos-accent-primary/10 text-mythos-accent-primary"
+                              : "border-mythos-border-default text-mythos-text-muted hover:border-mythos-text-muted/50"
                           }
                           disabled:opacity-50 disabled:cursor-not-allowed
                         `}
@@ -338,7 +338,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
           )}
         </CardContent>
 
-        <CardFooter className="flex justify-between gap-2 pt-4 border-t border-mythos-text-muted/20">
+        <CardFooter className="flex justify-between gap-2 pt-4 border-t border-mythos-border-default">
           <Button
             type="button"
             variant="outline"
@@ -401,7 +401,7 @@ function Checkbox({
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         disabled={disabled}
-        className="mt-1 w-4 h-4 rounded border-mythos-text-muted/30 text-mythos-accent-cyan focus:ring-mythos-accent-cyan focus:ring-offset-mythos-bg-primary bg-mythos-bg-secondary disabled:opacity-50"
+        className="mt-1 w-4 h-4 rounded border-mythos-border-default text-mythos-accent-primary focus:ring-mythos-accent-primary focus:ring-offset-mythos-bg-primary bg-mythos-bg-secondary disabled:opacity-50"
       />
       <div>
         <label

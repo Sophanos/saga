@@ -59,7 +59,7 @@ const ROLE_LABELS: Record<ProjectRole, string> = {
 
 const ROLE_BADGE_COLORS: Record<ProjectRole, string> = {
   owner: "bg-mythos-accent-yellow/20 text-mythos-accent-yellow",
-  editor: "bg-mythos-accent-cyan/20 text-mythos-accent-cyan",
+  editor: "bg-mythos-accent-primary/20 text-mythos-accent-primary",
   viewer: "bg-mythos-text-muted/20 text-mythos-text-muted",
 };
 
@@ -243,7 +243,7 @@ function OwnershipTransferSection({
   };
 
   return (
-    <div className="border-t border-mythos-text-muted/20 pt-4 mt-4">
+    <div className="border-t border-mythos-border-default pt-4 mt-4">
       <div className="flex items-center gap-2 mb-2">
         <AlertTriangle className="w-4 h-4 text-mythos-accent-yellow" />
         <h4 className="text-sm font-medium text-mythos-accent-yellow">
@@ -456,7 +456,7 @@ export function MemberManagementModal({
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Settings className="w-5 h-5 text-mythos-accent-cyan" />
+              <Settings className="w-5 h-5 text-mythos-accent-primary" />
               <CardTitle id="manage-team-title" className="text-lg">
                 Manage Team
               </CardTitle>
@@ -540,7 +540,7 @@ export function MemberManagementModal({
           )}
         </CardContent>
 
-        <CardFooter className="pt-4 border-t border-mythos-text-muted/20">
+        <CardFooter className="pt-4 border-t border-mythos-border-default">
           <Button
             variant="outline"
             onClick={onClose}

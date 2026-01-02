@@ -20,6 +20,7 @@ export { STORAGE_PREFIX, createKey } from "./types";
 // Re-export platform-specific adapters
 export { webStorage } from "./web";
 export { nativeStorage } from "./native";
+export * from "./trialUploads";
 
 // =============================================================================
 // Types

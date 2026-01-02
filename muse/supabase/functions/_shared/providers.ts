@@ -3,11 +3,22 @@
  *
  * Creates AI provider instances at runtime with provided API keys.
  * This is essential for BYOK support where each request may use a different key.
+ *
+ * DevTools Integration:
+ * Set ENABLE_AI_DEVTOOLS=true to enable debugging middleware that logs:
+ * - Request/response timing
+ * - Token usage
+ * - Model parameters
+ * - Streaming chunks (optional)
+ *
+ * Note: The official @ai-sdk/devtools package is Node.js-only.
+ * This module provides Edge-compatible logging middleware instead.
  */
 
 // Deno imports for ai-sdk v6
 import { createOpenAI } from "https://esm.sh/@ai-sdk/openai@3.0.0";
 import { createGoogleGenerativeAI } from "https://esm.sh/@ai-sdk/google@3.0.0";
+import { maybeWrapWithDevTools, type DevToolsConfig } from "./devtools.ts";
 
 /**
  * Model type definitions matching the main application
@@ -66,16 +77,54 @@ export function createDynamicGemini(apiKey: string) {
 }
 
 /**
+ * DevTools options for model wrapping
+ */
+export interface ModelDevToolsOptions {
+  /** Enable DevTools debugging (checks ENABLE_AI_DEVTOOLS env var) */
+  devTools?: boolean | DevToolsConfig;
+}
+
+/**
  * Get a model instance for the specified type using OpenRouter
  *
  * @param apiKey - The OpenRouter API key
  * @param type - The model type
- * @returns The model instance
+ * @param options - Optional DevTools configuration
+ * @returns The model instance (optionally wrapped with DevTools)
+ *
+ * @example
+ * ```typescript
+ * // Basic usage
+ * const model = getOpenRouterModel(apiKey, "analysis");
+ *
+ * // With DevTools enabled (requires ENABLE_AI_DEVTOOLS=true)
+ * const model = getOpenRouterModel(apiKey, "analysis", { devTools: true });
+ *
+ * // With DevTools config
+ * const model = getOpenRouterModel(apiKey, "analysis", {
+ *   devTools: { verbose: true, logPrompts: true }
+ * });
+ * ```
  */
-export function getOpenRouterModel(apiKey: string, type: ModelType) {
+export function getOpenRouterModel(
+  apiKey: string,
+  type: ModelType,
+  options?: ModelDevToolsOptions
+) {
   const provider = createDynamicOpenRouter(apiKey);
   const modelId = OPENROUTER_MODELS[type];
-  return provider(modelId);
+  const model = provider(modelId);
+
+  // Apply DevTools wrapper if requested
+  if (options?.devTools) {
+    const config = typeof options.devTools === "object" ? options.devTools : {};
+    return maybeWrapWithDevTools(model, {
+      logPrefix: `[ai-devtools:${type}]`,
+      ...config,
+    });
+  }
+
+  return model;
 }
 
 /**
@@ -83,12 +132,28 @@ export function getOpenRouterModel(apiKey: string, type: ModelType) {
  *
  * @param apiKey - The Google AI API key
  * @param type - The model type
- * @returns The model instance
+ * @param options - Optional DevTools configuration
+ * @returns The model instance (optionally wrapped with DevTools)
  */
-export function getGeminiModel(apiKey: string, type: ModelType) {
+export function getGeminiModel(
+  apiKey: string,
+  type: ModelType,
+  options?: ModelDevToolsOptions
+) {
   const provider = createDynamicGemini(apiKey);
   const modelId = GEMINI_MODELS[type];
-  return provider(modelId);
+  const model = provider(modelId);
+
+  // Apply DevTools wrapper if requested
+  if (options?.devTools) {
+    const config = typeof options.devTools === "object" ? options.devTools : {};
+    return maybeWrapWithDevTools(model, {
+      logPrefix: `[ai-devtools:gemini:${type}]`,
+      ...config,
+    });
+  }
+
+  return model;
 }
 
 /**
@@ -97,22 +162,28 @@ export function getGeminiModel(apiKey: string, type: ModelType) {
  * @param openRouterKey - OpenRouter API key (optional)
  * @param geminiKey - Gemini API key (optional)
  * @param type - The model type
- * @returns The model instance
+ * @param options - Optional DevTools configuration
+ * @returns The model instance (optionally wrapped with DevTools)
  */
 export function getBestModel(
   openRouterKey: string | null,
   geminiKey: string | null,
-  type: ModelType
+  type: ModelType,
+  options?: ModelDevToolsOptions
 ) {
   if (openRouterKey) {
-    return getOpenRouterModel(openRouterKey, type);
+    return getOpenRouterModel(openRouterKey, type, options);
   }
 
   if (geminiKey) {
-    return getGeminiModel(geminiKey, type);
+    return getGeminiModel(geminiKey, type, options);
   }
 
   throw new Error(
     "No AI provider configured. Provide an API key via header or configure environment variables."
   );
 }
+
+// Re-export DevTools utilities for direct use
+export { isDevToolsEnabled, wrapWithDevTools, maybeWrapWithDevTools } from "./devtools.ts";
+export type { DevToolsConfig } from "./devtools.ts";

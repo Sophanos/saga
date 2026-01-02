@@ -10,7 +10,12 @@ import { useEffect, useState, useRef } from "react";
 import { useMythosStore } from "../stores";
 import { useAnonymousStore } from "../stores/anonymous";
 import { ensureAnonSession } from "../services/anonymousSession";
-import type { Project, Document, Entity, Relationship } from "@mythos/core";
+import { importStory } from "../services/import";
+import { genreSchema } from "@mythos/core";
+import type { Project, Document, Entity, Relationship, EntityType, Genre, StyleMode } from "@mythos/core";
+import type { MythosTrialPayloadV1, WriterPersonalizationV1 } from "@mythos/core/trial/payload";
+import { TRIAL_PAYLOAD_KEY, TRIAL_DRAFT_KEY } from "@mythos/core/trial/payload";
+import { loadTrialFiles, clearTrialFiles } from "@mythos/storage/trialUploads";
 
 /**
  * Creates the onboarding document content in Tiptap JSON format.
@@ -116,6 +121,24 @@ function createOnboardingContent(): unknown {
   };
 }
 
+function resolveProjectStyleMode(
+  styleMode: WriterPersonalizationV1["styleMode"] | undefined,
+  fallback: StyleMode
+): StyleMode {
+  if (styleMode === "manga") return "manga";
+  if (styleMode === "prose") return "tolkien";
+  return fallback;
+}
+
+function resolveProjectGenre(
+  genre: string | undefined,
+  fallback: Genre | undefined
+): Genre | undefined {
+  if (!genre) return fallback;
+  const parsed = genreSchema.safeParse(genre.trim());
+  return parsed.success ? parsed.data : fallback;
+}
+
 interface UseAnonymousProjectLoaderResult {
   isLoading: boolean;
   error: string | null;
@@ -133,12 +156,18 @@ export function useAnonymousProjectLoader(): UseAnonymousProjectLoaderResult {
   // Anonymous store actions
   const startSession = useAnonymousStore((s) => s.startSession);
   const createProject = useAnonymousStore((s) => s.createProject);
-  const addDocument = useAnonymousStore((s) => s.addDocument);
+  const replaceDocuments = useAnonymousStore((s) => s.replaceDocuments);
+  const setTryPayload = useAnonymousStore((s) => s.setTryPayload);
+  const setPersonalization = useAnonymousStore((s) => s.setPersonalization);
+  const markInitialDraftImported = useAnonymousStore((s) => s.markInitialDraftImported);
   const setServerTrialStatus = useAnonymousStore((s) => s.setServerTrialStatus);
   const anonProject = useAnonymousStore((s) => s.project);
   const anonDocuments = useAnonymousStore((s) => s.documents);
   const anonEntities = useAnonymousStore((s) => s.entities);
   const anonRelationships = useAnonymousStore((s) => s.relationships);
+  const importedDocumentIds = useAnonymousStore((s) => s.importedDocumentIds);
+  const welcomeDocumentId = useAnonymousStore((s) => s.welcomeDocumentId);
+  const personalization = useAnonymousStore((s) => s.personalization);
 
   // Main store actions
   const setCurrentProject = useMythosStore((s) => s.setCurrentProject);
@@ -146,6 +175,7 @@ export function useAnonymousProjectLoader(): UseAnonymousProjectLoaderResult {
   const setEntities = useMythosStore((s) => s.setEntities);
   const setRelationships = useMythosStore((s) => s.setRelationships);
   const setCurrentDocument = useMythosStore((s) => s.setCurrentDocument);
+  const setChatMode = useMythosStore((s) => s.setChatMode);
 
   useEffect(() => {
     // Prevent double initialization in React strict mode
@@ -164,33 +194,136 @@ export function useAnonymousProjectLoader(): UseAnonymousProjectLoaderResult {
         const session = await ensureAnonSession();
         setServerTrialStatus(session.trial);
 
+        // Default to floating chat for trial
+        setChatMode("floating");
+
         // Create project if none exists
         let projectId = anonProject?.id;
-        const hasExistingDocuments = useAnonymousStore.getState().documents.length > 0;
+        const storeState = useAnonymousStore.getState();
+        const hasExistingDocuments = storeState.documents.length > 0;
+        const alreadyImported = storeState.hasImportedInitialDraft;
+
+        let payload: MythosTrialPayloadV1 | null = null;
+        const payloadRaw = sessionStorage.getItem(TRIAL_PAYLOAD_KEY);
+        if (payloadRaw) {
+          try {
+            payload = JSON.parse(payloadRaw) as MythosTrialPayloadV1;
+          } catch (parseError) {
+            console.warn("[useAnonymousProjectLoader] Failed to parse trial payload:", parseError);
+          }
+        }
+
+        if (payload) {
+          setTryPayload(payload);
+          if (payload.personalization) {
+            setPersonalization(payload.personalization);
+          }
+        }
+
+        const legacyDraft = sessionStorage.getItem(TRIAL_DRAFT_KEY);
+        const draftText = payload?.text ?? legacyDraft ?? "";
 
         if (!projectId) {
-          // Check if user came from landing page with draft content
-          const draftContent = sessionStorage.getItem("mythos_trial_draft");
-
           projectId = createProject({
-            name: draftContent ? "Imported Story" : "My Story",
-            description: draftContent ? "Imported from trial" : undefined,
+            name: draftText ? "Imported Story" : "My Story",
+            description: draftText ? "Imported from trial" : undefined,
           });
+        }
 
-          // Create the onboarding "Getting Started" document for new users
-          if (!draftContent && !hasExistingDocuments) {
-            addDocument({
-              projectId,
-              title: "Getting Started",
-              content: createOnboardingContent(),
-              type: "chapter",
-            });
+        const shouldImport = !hasExistingDocuments && !alreadyImported;
+
+        if (projectId && shouldImport) {
+          const now = Date.now();
+          const welcomeDocId = `temp_doc_${now}_${Math.random().toString(36).slice(2, 9)}`;
+          const welcomeDoc = {
+            id: welcomeDocId,
+            projectId,
+            title: "Welcome / Quick Start",
+            content: createOnboardingContent(),
+            type: "chapter" as const,
+            parentId: null,
+            orderIndex: 0,
+            wordCount: 0,
+            createdAt: now,
+            updatedAt: now,
+          };
+
+          const importedDocs: Document[] = [];
+          const importEntityTypes: EntityType[] = [
+            "character",
+            "location",
+            "item",
+            "faction",
+            "magic_system",
+            "concept",
+          ];
+          const importOptions = {
+            format: "auto" as const,
+            mode: "append" as const,
+            detectEntities: false,
+            entityTypes: importEntityTypes,
+          };
+
+          if (draftText.trim().length > 0) {
+            try {
+              const file = new File([draftText], "Imported Draft.txt", { type: "text/plain" });
+              const result = await importStory({
+                projectId,
+                file,
+                options: importOptions,
+              });
+              importedDocs.push(...result.documents);
+            } catch (importError) {
+              console.warn("[useAnonymousProjectLoader] Failed to import draft text:", importError);
+            }
           }
 
-          // Clear the draft from session storage
-          if (draftContent) {
-            sessionStorage.removeItem("mythos_trial_draft");
-            sessionStorage.removeItem("mythos_trial_files");
+          if (payload?.uploadRefs && payload.uploadRefs.length > 0) {
+            try {
+              const files = await loadTrialFiles(payload.uploadRefs);
+              for (const file of files) {
+                try {
+                  const result = await importStory({
+                    projectId,
+                    file,
+                    options: importOptions,
+                  });
+                  importedDocs.push(...result.documents);
+                } catch (fileError) {
+                  console.warn("[useAnonymousProjectLoader] Failed to import file:", file.name, fileError);
+                }
+              }
+            } catch (loadError) {
+              console.warn("[useAnonymousProjectLoader] Failed to load trial uploads:", loadError);
+            }
+          }
+
+          const importedIds = importedDocs.map((doc) => doc.id);
+          const anonymousDocs = [
+            welcomeDoc,
+            ...importedDocs.map((doc, index) => ({
+              id: doc.id,
+              projectId: doc.projectId,
+              title: doc.title ?? "Untitled",
+              content: doc.content,
+              type: doc.type,
+              parentId: doc.parentId ?? null,
+              orderIndex: doc.orderIndex ?? index + 1,
+              wordCount: doc.wordCount ?? 0,
+              createdAt: doc.createdAt ? new Date(doc.createdAt).getTime() : now,
+              updatedAt: doc.updatedAt ? new Date(doc.updatedAt).getTime() : now,
+            })),
+          ];
+
+          replaceDocuments(anonymousDocs);
+          markInitialDraftImported(importedIds, welcomeDocId);
+
+          sessionStorage.removeItem(TRIAL_PAYLOAD_KEY);
+          sessionStorage.removeItem(TRIAL_DRAFT_KEY);
+          sessionStorage.removeItem("mythos_trial_files");
+
+          if (payload?.uploadRefs && payload.uploadRefs.length > 0) {
+            await clearTrialFiles(payload.uploadRefs);
           }
         }
       } catch (err) {
@@ -202,7 +335,17 @@ export function useAnonymousProjectLoader(): UseAnonymousProjectLoaderResult {
     }
 
     init();
-  }, [startSession, createProject, addDocument, setServerTrialStatus, anonProject?.id]);
+  }, [
+    startSession,
+    createProject,
+    replaceDocuments,
+    setTryPayload,
+    setPersonalization,
+    markInitialDraftImported,
+    setServerTrialStatus,
+    setChatMode,
+    anonProject?.id,
+  ]);
 
   // Hydrate main stores when anonymous data changes
   useEffect(() => {
@@ -215,7 +358,8 @@ export function useAnonymousProjectLoader(): UseAnonymousProjectLoaderResult {
       name: anonProject.name,
       description: anonProject.description,
       config: {
-        styleMode: "manga",
+        genre: resolveProjectGenre(personalization?.genre ?? anonProject.genre, undefined),
+        styleMode: resolveProjectStyleMode(personalization?.styleMode, "manga"),
         arcTemplate: "three_act",
         linterConfig: {
           nameConsistency: "error",
@@ -245,16 +389,23 @@ export function useAnonymousProjectLoader(): UseAnonymousProjectLoaderResult {
       type: doc.type,
       title: doc.title,
       content: doc.content,
-      orderIndex: 0,
-      wordCount: 0,
+      parentId: doc.parentId ?? undefined,
+      orderIndex: doc.orderIndex ?? 0,
+      wordCount: doc.wordCount ?? 0,
       createdAt: new Date(doc.createdAt),
       updatedAt: new Date(doc.updatedAt),
     }));
     setDocuments(documents);
 
-    // Set first document as current if exists
+    // Set preferred document (imported > welcome > first)
     if (documents.length > 0) {
-      setCurrentDocument(documents[0]);
+      const preferredId = importedDocumentIds[0] ?? welcomeDocumentId ?? null;
+      const preferredDoc = preferredId
+        ? documents.find((doc) => doc.id === preferredId)
+        : documents[0];
+      if (preferredDoc) {
+        setCurrentDocument(preferredDoc);
+      }
     }
 
     // Convert and set entities (add required fields)
@@ -286,6 +437,9 @@ export function useAnonymousProjectLoader(): UseAnonymousProjectLoaderResult {
     anonDocuments,
     anonEntities,
     anonRelationships,
+    importedDocumentIds,
+    welcomeDocumentId,
+    personalization,
     setCurrentProject,
     setDocuments,
     setEntities,

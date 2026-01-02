@@ -95,6 +95,8 @@ export function ChatPanel({
   const isTrialExhausted = useIsTrialExhausted();
   const serverTrialLimit = useAnonymousStore((s) => s.serverTrialLimit);
   const trialLimit = serverTrialLimit ?? 5;
+  const tryPayload = useAnonymousStore((s) => s.tryPayload);
+  const personalization = useAnonymousStore((s) => s.personalization);
 
   // Store actions
   const setChatMode = useMythosStore((s) => s.setChatMode);
@@ -132,9 +134,9 @@ export function ChatPanel({
       hasProject: !!currentProject,
       selectionText: selectionText ?? undefined,
       documentTitle: currentDocument?.title,
-      genre: undefined,
+      genre: personalization?.genre ?? currentProject?.config?.genre,
     }),
-    [currentProject, selectionText, currentDocument?.title]
+    [currentProject, selectionText, currentDocument?.title, personalization?.genre]
   );
 
   // Handle message send
@@ -213,6 +215,33 @@ export function ChatPanel({
     [sessions]
   );
 
+  const suggestedPrompt = useMemo(() => {
+    if (!currentProject) {
+      return "Generate a project template for my story. Ask clarifying questions before finalizing.";
+    }
+    if (!isTrial) return null;
+    switch (tryPayload?.goal) {
+      case "proofread":
+        return "Fix spelling/grammar without changing meaning. Output suggestions, not a rewrite.";
+      case "world_bible":
+        return "Extract entities and propose a world bible structure. No judgement.";
+      case "consistency_check":
+        return "Flag contradictions with quoted evidence only.";
+      case "name_generator":
+        return "Generate 20 names that fit this world. Group them by vibe or culture.";
+      case "visualize_characters":
+        return "Suggest 3 visual directions for the main character. Keep it grounded in the text.";
+      case "import_organize":
+      default:
+        return "Split this into chapters/scenes and propose an outline. Do not invent plot.";
+    }
+  }, [currentProject, isTrial, tryPayload?.goal]);
+
+  const handleSuggestedSend = useCallback(() => {
+    if (!suggestedPrompt) return;
+    handleSend(suggestedPrompt, []);
+  }, [handleSend, suggestedPrompt]);
+
   // Render the chat content (shared between modes)
   const renderContent = () => (
     <>
@@ -254,9 +283,27 @@ export function ChatPanel({
             />
           )}
 
-          {/* Quick actions when chat is empty */}
+          {/* Suggested prompt + quick actions when chat is empty */}
           {messages.length === 0 && (
-            <div className="flex-1 overflow-y-auto min-h-0 px-3 py-3">
+            <div className="flex-1 overflow-y-auto min-h-0 px-3 py-3 space-y-3">
+              {suggestedPrompt && (
+                <div
+                  className="rounded-xl border p-3"
+                  style={{ borderColor: border.subtle, background: bg.secondary }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] uppercase tracking-wider" style={{ color: text.muted }}>
+                      Suggested prompt
+                    </span>
+                    <Button variant="ghost" size="sm" onClick={handleSuggestedSend}>
+                      Send
+                    </Button>
+                  </div>
+                  <p className="text-sm" style={{ color: text.primary }}>
+                    {suggestedPrompt}
+                  </p>
+                </div>
+              )}
               <QuickActions
                 hasSelection={!!selectionText}
                 hasApiKey={hasApiKey}
@@ -311,7 +358,11 @@ export function ChatPanel({
             onSend={handleSend}
             isStreaming={isStreaming}
             placeholder={
-              selectionText ? "Ask about the selection..." : "Ask about your story..."
+              !currentProject
+                ? "Describe your project to generate a template..."
+                : selectionText
+                  ? "Ask about the selection..."
+                  : "Ask about your story..."
             }
             variant={isFloating ? "notion" : undefined}
             documentTitle={isFloating ? documentTitle : undefined}

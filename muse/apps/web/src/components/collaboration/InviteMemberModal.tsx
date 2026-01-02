@@ -84,8 +84,8 @@ function PendingInvitationItem({
   return (
     <div className="flex items-center justify-between px-3 py-2 bg-mythos-bg-primary/50 rounded-md group">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 rounded-full bg-mythos-accent-cyan/20 flex items-center justify-center">
-          <Mail className="w-4 h-4 text-mythos-accent-cyan" />
+        <div className="w-8 h-8 rounded-full bg-mythos-accent-primary/20 flex items-center justify-center">
+          <Mail className="w-4 h-4 text-mythos-accent-primary" />
         </div>
         <div className="min-w-0">
           <p className="text-sm font-medium text-mythos-text-primary truncate">
@@ -315,7 +315,7 @@ export function InviteMemberModal({
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-mythos-accent-cyan" />
+              <UserPlus className="w-5 h-5 text-mythos-accent-primary" />
               <CardTitle id="invite-member-title" className="text-lg">
                 Invite Team Member
               </CardTitle>
@@ -415,7 +415,7 @@ export function InviteMemberModal({
             )}
           </CardContent>
 
-          <CardFooter className="flex justify-between gap-2 pt-4 border-t border-mythos-text-muted/20">
+          <CardFooter className="flex justify-between gap-2 pt-4 border-t border-mythos-border-default">
             <Button
               type="button"
               variant="outline"

@@ -5,7 +5,7 @@
  *
  * Analyzes document content to extract writing style preferences.
  * Derived preferences are stored as "style" memories.
- * Part of the Writer Memory Layer (MLP 1.5).
+ * Part of the Writer Memory Layer (MLP 2.x).
  *
  * Request Body:
  * {
@@ -30,9 +30,9 @@ import {
   ErrorCode,
 } from "../_shared/errors.ts";
 import { getOpenRouterModel } from "../_shared/providers.ts";
-import { generateEmbedding, isDeepInfraConfigured } from "../_shared/deepinfra.ts";
-import { upsertPoints, isQdrantConfigured, type QdrantPoint } from "../_shared/qdrant.ts";
-import { buildMemoryPayload } from "../_shared/vectorPayload.ts";
+import { generateEmbeddings, isDeepInfraConfigured } from "../_shared/deepinfra.ts";
+import { upsertPoints, isQdrantConfigured, QdrantError, type QdrantPoint } from "../_shared/qdrant.ts";
+import { buildMemoryPayload, type MemoryPayload } from "../_shared/vectorPayload.ts";
 import { assertProjectAccess, ProjectAccessError } from "../_shared/projects.ts";
 import {
   checkBillingAndGetKey,
@@ -40,6 +40,7 @@ import {
   recordAIRequest,
   extractTokenUsage,
 } from "../_shared/billing.ts";
+import { calculateExpiresAt } from "../_shared/memoryPolicy.ts";
 
 // =============================================================================
 // Types
@@ -55,6 +56,12 @@ interface LearnStyleRequest {
 interface StyleFinding {
   id: string;
   content: string;
+}
+
+interface ProcessedMemory {
+  id: string;
+  payload: MemoryPayload;
+  embedding: number[];
 }
 
 // =============================================================================
@@ -147,6 +154,105 @@ function parseStyleRules(response: string): string[] {
   }
 }
 
+/**
+ * Upsert style memories to Postgres (durable source of truth).
+ */
+async function upsertToPostgres(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  memories: ProcessedMemory[]
+): Promise<void> {
+  const { error } = await supabase.from("memories").upsert(
+    memories.map((m) => ({
+      id: m.id,
+      project_id: m.payload.project_id,
+      category: m.payload.category,
+      scope: m.payload.scope,
+      owner_id: m.payload.owner_id ?? null,
+      conversation_id: m.payload.conversation_id ?? null,
+      content: m.payload.text,
+      metadata: {
+        source: m.payload.source,
+        confidence: m.payload.confidence,
+        entity_ids: m.payload.entity_ids,
+        document_id: m.payload.document_id,
+        tool_call_id: m.payload.tool_call_id,
+        tool_name: m.payload.tool_name,
+      },
+      created_at: m.payload.created_at,
+      updated_at: m.payload.updated_at,
+      created_at_ts: m.payload.created_at_ts,
+      expires_at: m.payload.expires_at ?? null,
+      expires_at_ts: m.payload.expires_at
+        ? new Date(m.payload.expires_at).getTime()
+        : null,
+      embedding: m.embedding,
+      qdrant_sync_status: "pending",
+    })),
+    { onConflict: "id" }
+  );
+
+  if (error) {
+    console.error("[ai-learn-style] Postgres upsert failed:", error);
+    throw new Error(`Database error: ${error.message}`);
+  }
+}
+
+/**
+ * Upsert memories to Qdrant (best-effort).
+ */
+async function upsertToQdrant(
+  memories: ProcessedMemory[]
+): Promise<{ success: boolean; error?: string }> {
+  if (!isQdrantConfigured()) {
+    return { success: false, error: "Qdrant not configured" };
+  }
+
+  try {
+    const points: QdrantPoint[] = memories.map((m) => ({
+      id: m.id,
+      vector: m.embedding,
+      payload: m.payload as unknown as Record<string, unknown>,
+    }));
+
+    await upsertPoints(points);
+    return { success: true };
+  } catch (error) {
+    const errorMessage =
+      error instanceof QdrantError
+        ? error.message
+        : error instanceof Error
+        ? error.message
+        : "Unknown Qdrant error";
+    console.warn("[ai-learn-style] Qdrant upsert failed (best-effort):", errorMessage);
+    return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Update Qdrant sync status in Postgres.
+ */
+async function updateSyncStatus(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  memoryIds: string[],
+  status: "synced" | "error",
+  error?: string
+): Promise<void> {
+  const updates: Record<string, unknown> = {
+    qdrant_sync_status: status,
+  };
+
+  if (status === "synced") {
+    updates.qdrant_synced_at = new Date().toISOString();
+  } else if (error) {
+    updates.qdrant_last_error = error;
+  }
+
+  await supabase
+    .from("memories")
+    .update(updates)
+    .in("id", memoryIds);
+}
+
 // =============================================================================
 // Main Handler
 // =============================================================================
@@ -165,11 +271,11 @@ serve(async (req) => {
     return createErrorResponse(ErrorCode.BAD_REQUEST, "Method not allowed", origin);
   }
 
-  // Check infrastructure
-  if (!isDeepInfraConfigured() || !isQdrantConfigured()) {
+  // Check infrastructure - embeddings required for style learning
+  if (!isDeepInfraConfigured()) {
     return createErrorResponse(
       ErrorCode.INTERNAL_ERROR,
-      "Memory system not configured",
+      "Embedding service not configured",
       origin
     );
   }
@@ -283,18 +389,18 @@ serve(async (req) => {
       return createSuccessResponse({ learned: [] }, origin);
     }
 
-    // Create memory points for each rule
+    const selectedRules = rules.slice(0, maxFindings);
     const learned: StyleFinding[] = [];
-    const points: QdrantPoint[] = [];
+    const styleIds = await Promise.all(
+      selectedRules.map((rule) => generateStyleId(request.projectId, ownerId, rule))
+    );
 
-    for (const rule of rules.slice(0, maxFindings)) {
-      // Generate deterministic ID
-      const memoryId = await generateStyleId(request.projectId, ownerId, rule);
+    const embeddingResult = await generateEmbeddings(selectedRules);
+    const expiresAt = calculateExpiresAt("style");
 
-      // Generate embedding
-      const embedding = await generateEmbedding(rule);
+    const processedMemories: ProcessedMemory[] = selectedRules.map((rule, index) => {
+      const memoryId = styleIds[index];
 
-      // Build payload
       const payload = buildMemoryPayload({
         projectId: request.projectId,
         memoryId,
@@ -305,24 +411,38 @@ serve(async (req) => {
         source: "ai",
         confidence: 0.8,
         documentId: request.documentId,
-      });
-
-      points.push({
-        id: memoryId,
-        vector: embedding,
-        payload: payload as unknown as Record<string, unknown>,
+        expiresAt,
       });
 
       learned.push({
         id: memoryId,
         content: rule,
       });
+
+      return {
+        id: memoryId,
+        payload,
+        embedding: embeddingResult.embeddings[index],
+      };
+    });
+
+    console.log(`[ai-learn-style] Upserting ${processedMemories.length} style memories to Postgres`);
+    await upsertToPostgres(supabase, processedMemories);
+
+    console.log(`[ai-learn-style] Upserting ${processedMemories.length} style memories to Qdrant`);
+    const qdrantResult = await upsertToQdrant(processedMemories);
+
+    const persistedIds = processedMemories.map((m) => m.id);
+    if (qdrantResult.success) {
+      await updateSyncStatus(supabase, persistedIds, "synced");
+    } else {
+      await updateSyncStatus(supabase, persistedIds, "error", qdrantResult.error);
     }
 
-    // Batch upsert to Qdrant
-    await upsertPoints(points);
-
-    console.log(`[ai-learn-style] Stored ${learned.length} style memories`);
+    console.log(
+      `[ai-learn-style] Stored ${learned.length} style memories ` +
+      `(Qdrant: ${qdrantResult.success ? "synced" : "error"})`
+    );
 
     return createSuccessResponse({ learned }, origin);
   } catch (error) {

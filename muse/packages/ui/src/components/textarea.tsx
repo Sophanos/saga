@@ -17,10 +17,10 @@ const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
         placeholder={placeholder}
         rows={rows}
         className={cn(
-          "flex w-full rounded-md border border-mythos-text-muted/30 bg-mythos-bg-secondary",
+          "flex w-full rounded-md border border-mythos-border-default bg-mythos-bg-secondary",
           "px-3 py-2 text-sm text-mythos-text-primary shadow-sm transition-colors",
           "placeholder:text-mythos-text-muted resize-none",
-          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-mythos-accent-cyan",
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-mythos-accent-primary",
           "disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}

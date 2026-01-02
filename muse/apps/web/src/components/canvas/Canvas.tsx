@@ -22,7 +22,7 @@ import { useEntityDetection } from "../../hooks/useEntityDetection";
 import { useDynamicsExtraction } from "../../hooks/useDynamicsExtraction";
 import { useAutoSave } from "../../hooks/useAutoSave";
 import { useAutoApplyEntityMarks } from "../../hooks/useEntityMarks";
-import { useMythosStore, useEntities, useCanvasView } from "../../stores";
+import { useMythosStore, useEntities, useCanvasView, useCurrentProject } from "../../stores";
 import {
   useMood,
   useStyleIssues,
@@ -36,14 +36,33 @@ import {
   type EntitySuggestionListRef,
 } from "../editor/EntitySuggestionList";
 import { WorldGraphView } from "../world-graph";
+import { ProjectStartCanvas } from "../projects";
 
 /**
  * Placeholder content shown when no document is selected
  */
 const PLACEHOLDER_CONTENT = `<p>Select or create a document to begin writing...</p>`;
 
-export function Canvas() {
+interface CanvasProps {
+  showProjectStart?: boolean;
+  onProjectCreated?: (projectId: string) => void;
+  autoAnalysis?: boolean;
+}
+
+export function Canvas({
+  showProjectStart = false,
+  onProjectCreated,
+  autoAnalysis = true,
+}: CanvasProps) {
   const canvasView = useCanvasView();
+  const currentProject = useCurrentProject();
+
+  if (showProjectStart && !currentProject) {
+    if (!onProjectCreated) {
+      return null;
+    }
+    return <ProjectStartCanvas onProjectCreated={onProjectCreated} />;
+  }
 
   // Render World Graph if that view is selected
   if (canvasView === "worldGraph") {
@@ -51,13 +70,17 @@ export function Canvas() {
   }
 
   // Otherwise render the editor
-  return <EditorCanvas />;
+  return <EditorCanvas autoAnalysis={autoAnalysis} />;
 }
 
 /**
  * The main editor canvas component
  */
-function EditorCanvas() {
+interface EditorCanvasProps {
+  autoAnalysis: boolean;
+}
+
+function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   const { handleEntityClick } = useEntityClick();
 
   // Store actions and state
@@ -306,7 +329,7 @@ function EditorCanvas() {
   // Wire up Writing Analysis hook (disabled when no document selected)
   const { isAnalyzing, metrics } = useWritingAnalysis({
     content,
-    autoAnalyze: true,
+    autoAnalyze: autoAnalysis,
     debounceMs: 1500,
     enabled: !!currentDocument,
   });
@@ -315,7 +338,7 @@ function EditorCanvas() {
   const { isLinting } = useLinterFixes({
     content,
     editor,
-    autoLint: true,
+    autoLint: autoAnalysis,
     debounceMs: 2000,
     enabled: !!currentDocument,
   });
@@ -323,7 +346,7 @@ function EditorCanvas() {
   // Wire up Dynamics Extraction hook (disabled when no document selected)
   const { isExtracting } = useDynamicsExtraction({
     content,
-    autoExtract: true,
+    autoExtract: autoAnalysis,
     debounceMs: 2000,
     enabled: !!currentDocument,
   });
@@ -389,7 +412,7 @@ function EditorCanvas() {
       />
 
       {/* Document header - shows title and status */}
-      <div className="p-4 border-b border-mythos-text-muted/20">
+      <div className="p-4 border-b border-mythos-border-default">
         {currentDocument ? (
           <>
             <input
@@ -439,7 +462,7 @@ function EditorCanvas() {
               {(isAnalyzing || isLinting || isDetecting || isExtracting) && (
                 <>
                   <span>|</span>
-                  <span className="animate-pulse text-mythos-accent-cyan">
+                  <span className="animate-pulse text-mythos-accent-primary">
                     {isDetecting
                       ? "Detecting entities..."
                       : isExtracting

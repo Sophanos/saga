@@ -23,7 +23,7 @@ export function WorldGraphControls({
   return (
     <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10 pointer-events-none">
       {/* Entity type filters */}
-      <div className="flex items-center gap-1 bg-mythos-bg-secondary/90 backdrop-blur-sm rounded-lg p-1 border border-mythos-text-muted/20 pointer-events-auto">
+      <div className="flex items-center gap-1 bg-mythos-bg-secondary/90 backdrop-blur-sm rounded-lg p-1 border border-mythos-border-default pointer-events-auto">
         {ENTITY_TYPE_BUTTONS.map(({ type, icon: Icon, label, color }) => {
           const isVisible = visibleTypes.has(type);
           return (
@@ -49,7 +49,7 @@ export function WorldGraphControls({
 
       {/* Stats and actions */}
       <div className="flex items-center gap-3 pointer-events-auto">
-        <div className="text-xs text-mythos-text-muted bg-mythos-bg-secondary/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-mythos-text-muted/20">
+        <div className="text-xs text-mythos-text-muted bg-mythos-bg-secondary/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-mythos-border-default">
           <span className="text-mythos-text-secondary font-medium">{entityCount}</span> entities
           <span className="mx-2">·</span>
           <span className="text-mythos-text-secondary font-medium">{relationshipCount}</span> relationships

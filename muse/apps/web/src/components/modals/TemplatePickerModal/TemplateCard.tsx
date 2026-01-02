@@ -9,12 +9,12 @@ interface TemplateCardProps {
 // Category badge colors using mythos design tokens
 const CATEGORY_COLORS: Record<string, string> = {
   fantasy: "bg-mythos-accent-purple/20 text-mythos-accent-purple",
-  scifi: "bg-mythos-accent-cyan/20 text-mythos-accent-cyan",
+  scifi: "bg-mythos-accent-primary/20 text-mythos-accent-primary",
   horror: "bg-mythos-accent-red/20 text-mythos-accent-red",
   literary: "bg-mythos-accent-amber/20 text-mythos-accent-amber",
   ttrpg: "bg-mythos-accent-green/20 text-mythos-accent-green",
   manga: "bg-mythos-accent-purple/20 text-mythos-accent-purple",
-  visual: "bg-mythos-accent-cyan/20 text-mythos-accent-cyan",
+  visual: "bg-mythos-accent-primary/20 text-mythos-accent-primary",
   screenplay: "bg-mythos-accent-amber/20 text-mythos-accent-amber",
   serial: "bg-mythos-accent-purple/20 text-mythos-accent-purple",
   custom: "bg-mythos-text-muted/20 text-mythos-text-muted",
@@ -28,12 +28,12 @@ export function TemplateCard({ template, onClick }: TemplateCardProps) {
     <button
       type="button"
       onClick={onClick}
-      className="p-4 rounded-lg border border-mythos-text-muted/20 hover:border-mythos-accent-cyan/50
-        hover:bg-mythos-accent-cyan/5 transition-all text-left group"
+      className="p-4 rounded-lg border border-mythos-border-default hover:border-mythos-accent-primary/50
+        hover:bg-mythos-accent-primary/5 transition-all text-left group"
     >
       <div className="flex items-start gap-3">
         {/* Icon */}
-        <div className="p-2 rounded-lg bg-mythos-text-muted/10 group-hover:bg-mythos-accent-cyan/10 text-mythos-text-muted group-hover:text-mythos-accent-cyan transition-colors">
+        <div className="p-2 rounded-lg bg-mythos-text-muted/10 group-hover:bg-mythos-accent-primary/10 text-mythos-text-muted group-hover:text-mythos-accent-primary transition-colors">
           {getTemplateIcon(template.icon)}
         </div>
 

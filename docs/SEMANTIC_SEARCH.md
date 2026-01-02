@@ -398,6 +398,102 @@ ufw allow from YOUR_IP to any port 6333
 
 ---
 
+## Backup & Recovery
+
+### Overview
+
+Qdrant backups are automated via GitHub Actions, running daily at 3:00 AM UTC. Backups are stored in Cloudflare R2 with 7-day retention.
+
+### Backup Script
+
+Located at `muse/scripts/qdrant-backup.sh`, the script:
+
+1. Creates a Qdrant snapshot via REST API
+2. Downloads the snapshot locally
+3. Uploads to Cloudflare R2 (S3-compatible)
+4. Cleans up old snapshots (> 7 days)
+5. Removes the snapshot from Qdrant server
+
+### Manual Backup
+
+```bash
+# Full backup to R2
+QDRANT_URL=http://78.47.165.136:6333 \
+QDRANT_API_KEY=your-key \
+R2_ENDPOINT=https://xxx.r2.cloudflarestorage.com \
+R2_ACCESS_KEY_ID=xxx \
+R2_SECRET_ACCESS_KEY=xxx \
+R2_BUCKET=saga-backups \
+./muse/scripts/qdrant-backup.sh
+
+# Snapshot only (no upload)
+./muse/scripts/qdrant-backup.sh --snapshot-only
+
+# List existing backups
+./muse/scripts/qdrant-backup.sh --list
+
+# Dry run
+./muse/scripts/qdrant-backup.sh --dry-run
+```
+
+### GitHub Actions Workflow
+
+The workflow at `.github/workflows/qdrant-backup.yml` requires these repository secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `QDRANT_URL` | Qdrant server URL |
+| `QDRANT_API_KEY` | Qdrant API key (if auth enabled) |
+| `R2_ENDPOINT` | Cloudflare R2 endpoint |
+| `R2_ACCESS_KEY_ID` | R2 API token access key |
+| `R2_SECRET_ACCESS_KEY` | R2 API token secret key |
+| `R2_BUCKET` | R2 bucket name |
+| `SLACK_WEBHOOK_URL` | (Optional) Slack notifications |
+
+### Cloudflare R2 Setup
+
+1. Create an R2 bucket in Cloudflare dashboard
+2. Create an API token with R2 read/write permissions
+3. Note the S3-compatible endpoint URL
+
+```bash
+# R2 endpoint format
+https://<account-id>.r2.cloudflarestorage.com
+```
+
+### Recovery
+
+To restore from a backup:
+
+```bash
+# 1. Download the snapshot from R2
+aws s3 cp s3://saga-backups/qdrant-backups/saga_vectors_20241229_*.snapshot \
+  ./snapshot.snapshot \
+  --endpoint-url https://xxx.r2.cloudflarestorage.com
+
+# 2. Upload to Qdrant
+curl -X POST "http://QDRANT_URL/collections/saga_vectors/snapshots/upload" \
+  -H "api-key: your-key" \
+  -H "Content-Type: multipart/form-data" \
+  -F "snapshot=@snapshot.snapshot"
+
+# 3. Or recover to a new collection
+curl -X PUT "http://QDRANT_URL/collections/saga_vectors_recovered/snapshots/recover" \
+  -H "api-key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"location": "http://QDRANT_URL/collections/saga_vectors/snapshots/snapshot-name"}'
+```
+
+### Backup Retention
+
+| Location | Retention |
+|----------|-----------|
+| Qdrant Server | Deleted immediately after upload |
+| Cloudflare R2 | 7 days (configurable) |
+| GitHub Actions Logs | 7 days |
+
+---
+
 ## Troubleshooting
 
 ### Embeddings Not Working

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useMemo, type KeyboardEvent } from "react";
-import { Send, AtSign, X } from "lucide-react";
+import { Send, AtSign, X, FileText, Paperclip, Globe, ArrowUp } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
+import { bg, text, border, accent } from "@mythos/theme";
 import { useShallow } from "zustand/react/shallow";
 import { useMythosStore, type ChatMention } from "../../../stores";
 
@@ -8,6 +9,10 @@ interface ChatInputProps {
   onSend: (message: string, mentions: ChatMention[]) => void;
   isStreaming: boolean;
   placeholder?: string;
+  /** Notion-style input for floating chat */
+  variant?: "default" | "notion";
+  /** Document title for context chip (notion variant) */
+  documentTitle?: string;
   className?: string;
 }
 
@@ -22,6 +27,8 @@ export function ChatInput({
   onSend,
   isStreaming,
   placeholder = "Ask about your story...",
+  variant = "default",
+  documentTitle,
   className,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
@@ -29,6 +36,7 @@ export function ChatInput({
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Get entity and document IDs for stable dependency tracking
@@ -140,8 +148,162 @@ export function ChatInput({
     setMentions((prev) => prev.filter((m) => m.id !== id));
   }, []);
 
+  // Trigger @ mention
+  const triggerMention = useCallback(() => {
+    setInput((prev) => prev + "@");
+    setShowMentions(true);
+    setMentionQuery("");
+    setSelectedIndex(0);
+    inputRef.current?.focus();
+  }, []);
+
+  // Notion-style input variant
+  if (variant === "notion") {
+    return (
+      <div className={cn("px-4 pb-4 pt-3", className)} style={{ background: bg.secondary }}>
+        {/* Active mentions */}
+        {mentions.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {mentions.map((m) => (
+              <span
+                key={m.id}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]"
+                style={{ background: accent.primaryBg, color: accent.primary }}
+              >
+                @{m.name}
+                <button
+                  onClick={() => removeMention(m.id)}
+                  className="hover:text-white transition-colors"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Input container with blue focus border */}
+        <div
+          className="rounded-xl overflow-hidden transition-all"
+          style={{
+            background: bg.primary,
+            border: isFocused ? `2px solid ${accent.primary}` : `2px solid ${border.default}`,
+            boxShadow: isFocused ? `0 0 0 3px ${accent.primaryGlow}` : undefined,
+          }}
+        >
+          {/* Top row: @ button + document context chip */}
+          <div className="px-3 pt-3 pb-2 flex items-center gap-2">
+            <button
+              onClick={triggerMention}
+              className="p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+              title="Mention entity"
+            >
+              <AtSign className="w-4 h-4" style={{ color: text.secondary }} />
+            </button>
+            {documentTitle && (
+              <div
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md"
+                style={{ background: border.subtle }}
+              >
+                <FileText className="w-3.5 h-3.5" style={{ color: text.secondary }} />
+                <span className="text-[13px] truncate max-w-[180px]" style={{ color: text.primary }}>
+                  {documentTitle}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Text input */}
+          <div className="px-3 pb-2 relative">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder={placeholder}
+              disabled={isStreaming}
+              rows={1}
+              className={cn(
+                "w-full bg-transparent text-[14px]",
+                "focus:outline-none resize-none",
+                "disabled:opacity-50"
+              )}
+              style={{
+                minHeight: "24px",
+                color: text.primary,
+                caretColor: accent.primary,
+              }}
+            />
+
+            {/* Mention dropdown */}
+            {showMentions && filteredCandidates.length > 0 && (
+              <div
+                className="absolute bottom-full left-0 right-0 mb-1 rounded-lg shadow-lg overflow-hidden z-10"
+                style={{ background: bg.tertiary, border: `1px solid ${border.default}` }}
+              >
+                {filteredCandidates.map((candidate, index) => (
+                  <button
+                    key={candidate.id}
+                    onClick={() => handleSelectMention(candidate)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[rgba(255,255,255,0.06)]"
+                    style={{
+                      background: index === selectedIndex ? border.subtle : undefined,
+                      color: index === selectedIndex ? text.primary : text.secondary,
+                    }}
+                  >
+                    <AtSign className="w-3.5 h-3.5" style={{ color: text.secondary }} />
+                    <span className="flex-1 truncate">{candidate.name}</span>
+                    <span className="text-[10px] capitalize" style={{ color: text.muted }}>
+                      {candidate.entityType ?? candidate.type}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer with options */}
+          <div className="px-3 pb-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button className="p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors" title="Attach file">
+                <Paperclip className="w-4 h-4" style={{ color: text.secondary }} />
+              </button>
+              <button
+                className="flex items-center gap-1.5 text-[13px] hover:text-[#E3E2E0] transition-colors"
+                style={{ color: text.secondary }}
+              >
+                <span>Auto</span>
+              </button>
+              <button
+                className="flex items-center gap-1.5 text-[13px] hover:text-[#E3E2E0] transition-colors"
+                style={{ color: text.secondary }}
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>All Sources</span>
+              </button>
+            </div>
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isStreaming}
+              className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
+              style={{
+                background: input.trim() && !isStreaming ? accent.primary : border.default,
+                color: input.trim() && !isStreaming ? "white" : text.muted,
+              }}
+            >
+              <ArrowUp className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Default variant
   return (
-    <div className={cn("px-3 py-2 border-t border-mythos-text-muted/20", className)}>
+    <div className={cn("px-3 py-2 border-t border-mythos-border-default", className)}>
       {/* Active mentions */}
       {mentions.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
@@ -175,7 +337,7 @@ export function ChatInput({
           className={cn(
             "w-full resize-none bg-mythos-bg-tertiary rounded-lg px-3 py-2 pr-10",
             "text-sm text-mythos-text-primary placeholder:text-mythos-text-muted",
-            "border border-mythos-text-muted/20 focus:border-mythos-accent-purple/50",
+            "border border-mythos-border-default focus:border-mythos-accent-purple/50",
             "focus:outline-none focus:ring-1 focus:ring-mythos-accent-purple/30",
             "disabled:opacity-50"
           )}
@@ -192,7 +354,7 @@ export function ChatInput({
 
         {/* Mention dropdown */}
         {showMentions && filteredCandidates.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 mb-1 bg-mythos-bg-secondary border border-mythos-text-muted/20 rounded-lg shadow-lg overflow-hidden z-10">
+          <div className="absolute bottom-full left-0 right-0 mb-1 bg-mythos-bg-secondary border border-mythos-border-default rounded-lg shadow-lg overflow-hidden z-10">
             {filteredCandidates.map((candidate, index) => (
               <button
                 key={candidate.id}

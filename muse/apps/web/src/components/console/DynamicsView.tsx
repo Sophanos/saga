@@ -203,7 +203,7 @@ function DynamicsInsight({ hiddenCount, hostileCount }: DynamicsInsightProps) {
   }
 
   return (
-    <div className="p-3 border-t border-mythos-text-muted/20 bg-mythos-bg-tertiary/50">
+    <div className="p-3 border-t border-mythos-border-default bg-mythos-bg-tertiary/50">
       <div className="flex items-center gap-2 text-xs text-mythos-text-muted mb-2">
         <Sparkles className="w-3 h-3 text-mythos-accent-amber" />
         <span className="font-medium uppercase tracking-wide">
@@ -236,7 +236,7 @@ export function DynamicsView() {
   return (
     <div className="h-full flex flex-col">
       {/* Header with stats */}
-      <div className="p-3 border-b border-mythos-text-muted/20 flex items-center justify-between">
+      <div className="p-3 border-b border-mythos-border-default flex items-center justify-between">
         <div className="flex items-center gap-4 text-xs">
           {isLoading ? (
             <span className="flex items-center gap-1 text-mythos-accent-cyan">

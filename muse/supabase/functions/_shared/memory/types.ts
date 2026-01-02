@@ -108,6 +108,8 @@ export interface RetrievedMemoryRecord {
   category: string;
   score?: number;
   createdAt?: string;
+  createdAtTs?: number;
+  expiresAt?: string;
 }
 
 /**

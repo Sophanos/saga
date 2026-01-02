@@ -372,15 +372,15 @@ function EntityTypeSelector({ value, onChange, disabled }: EntityTypeSelectorPro
             className={cn(
               "flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-all",
               isSelected
-                ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10"
-                : "border-mythos-text-muted/30 hover:border-mythos-text-muted/50 hover:bg-mythos-bg-tertiary",
+                ? "border-mythos-accent-primary bg-mythos-accent-primary/10"
+                : "border-mythos-border-default hover:border-mythos-text-muted/50 hover:bg-mythos-bg-tertiary",
               disabled && "opacity-50 cursor-not-allowed"
             )}
           >
-            <Icon className={cn("w-5 h-5", isSelected ? "text-mythos-accent-cyan" : colorClass)} />
+            <Icon className={cn("w-5 h-5", isSelected ? "text-mythos-accent-primary" : colorClass)} />
             <span className={cn(
               "text-xs font-medium",
-              isSelected ? "text-mythos-accent-cyan" : "text-mythos-text-secondary"
+              isSelected ? "text-mythos-accent-primary" : "text-mythos-text-secondary"
             )}>
               {label}
             </span>
@@ -823,7 +823,7 @@ export function EntityFormModal({
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-2xl mx-4 shadow-xl border-mythos-text-muted/30 max-h-[90vh] flex flex-col">
+      <Card className="relative z-10 w-full max-w-2xl mx-4 shadow-xl border-mythos-border-default max-h-[90vh] flex flex-col">
         <CardHeader className="pb-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -900,8 +900,8 @@ export function EntityFormModal({
                             onClick={() => handleSelectName(name)}
                             className={cn(
                               "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-                              "bg-mythos-accent-cyan/10 text-mythos-accent-cyan",
-                              "hover:bg-mythos-accent-cyan/20 border border-mythos-accent-cyan/30"
+                              "bg-mythos-accent-primary/10 text-mythos-accent-primary",
+                              "hover:bg-mythos-accent-primary/20 border border-mythos-accent-primary/30"
                             )}
                           >
                             {name}
@@ -929,7 +929,7 @@ export function EntityFormModal({
                 </div>
 
                 {/* Divider */}
-                <div className="border-t border-mythos-text-muted/20 pt-4">
+                <div className="border-t border-mythos-border-default pt-4">
                   <h3 className="text-sm font-medium text-mythos-text-secondary mb-4">
                     {getEntityLabel(formData.type)} Details
                   </h3>
@@ -955,7 +955,7 @@ export function EntityFormModal({
             </ScrollArea>
           </CardContent>
 
-          <CardFooter className="flex justify-between gap-2 pt-4 flex-shrink-0 border-t border-mythos-text-muted/20">
+          <CardFooter className="flex justify-between gap-2 pt-4 flex-shrink-0 border-t border-mythos-border-default">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>

@@ -50,7 +50,7 @@ export function SessionList({
   };
 
   return (
-    <div className={cn("border-b border-mythos-text-muted/20", className)}>
+    <div className={cn("border-b border-mythos-border-default", className)}>
       {/* Toggle header */}
       <button
         type="button"

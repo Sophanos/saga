@@ -30,14 +30,14 @@ export function ContextBar({
   return (
     <div
       className={cn(
-        "px-3 py-2 border-b border-mythos-text-muted/20 bg-mythos-bg-tertiary/50",
+        "px-3 py-2 border-b border-mythos-border-default bg-mythos-bg-tertiary/50",
         className
       )}
     >
       <div className="flex items-start gap-2 text-xs">
         {documentTitle && (
           <div className="flex items-center gap-1.5 text-mythos-text-secondary">
-            <FileText className="w-3 h-3 text-mythos-accent-cyan shrink-0" />
+            <FileText className="w-3 h-3 text-mythos-accent-primary shrink-0" />
             <span className="truncate max-w-[150px]">{documentTitle}</span>
           </div>
         )}

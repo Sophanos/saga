@@ -408,7 +408,7 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
   return (
     <div className={cn("relative h-full flex flex-col", className)}>
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-mythos-text-muted/20">
+      <div className="flex items-center justify-between p-3 border-b border-mythos-border-default">
         <div className="flex items-center gap-3">
           <PacingIndicator />
           <MoodDisplay />

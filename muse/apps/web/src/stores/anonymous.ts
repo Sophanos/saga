@@ -15,6 +15,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import type { Entity } from "@mythos/core";
+import type { MythosTrialPayloadV1, WriterPersonalizationV1 } from "@mythos/core/trial/payload";
 
 // ============================================================================
 // Types
@@ -43,7 +44,10 @@ export interface AnonymousDocument {
   projectId: string;
   title: string;
   content: unknown; // Tiptap JSON
-  type: "chapter" | "scene" | "note";
+  type: "chapter" | "scene" | "note" | "outline" | "worldbuilding";
+  parentId?: string | null;
+  orderIndex: number;
+  wordCount: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -92,6 +96,14 @@ interface AnonymousState {
   importSource: "file" | "paste" | null;
   importedContent: string | null;
 
+  // Onboarding payload and personalization
+  tryPayload: MythosTrialPayloadV1 | null;
+  personalization: WriterPersonalizationV1 | null;
+  hasImportedInitialDraft: boolean;
+  hasRunTryBootstrap: boolean;
+  importedDocumentIds: string[];
+  welcomeDocumentId: string | null;
+
   // Auth prompts
   authPromptShown: boolean;
   authPromptDismissedAt: number | null;
@@ -108,15 +120,18 @@ interface AnonymousActions {
   updateProject: (updates: Partial<AnonymousProject>) => void;
 
   // Documents
-  addDocument: (doc: Omit<AnonymousDocument, "id" | "createdAt" | "updatedAt">) => string;
+  addDocument: (doc: Omit<AnonymousDocument, "id" | "createdAt" | "updatedAt" | "orderIndex" | "wordCount"> & { orderIndex?: number; wordCount?: number }) => string;
   updateDocument: (id: string, updates: Partial<AnonymousDocument>) => void;
+  replaceDocuments: (docs: AnonymousDocument[]) => void;
 
   // Entities
   addEntity: (entity: Omit<AnonymousEntity, "id" | "createdAt">) => string;
   updateEntity: (id: string, updates: Partial<AnonymousEntity>) => void;
+  replaceEntities: (entities: AnonymousEntity[]) => void;
 
   // Relationships
   addRelationship: (rel: Omit<AnonymousRelationship, "id" | "createdAt">) => string;
+  replaceRelationships: (rels: AnonymousRelationship[]) => void;
 
   // Chat
   addChatMessage: (message: Omit<AnonymousChatMessage, "id" | "timestamp">) => boolean;
@@ -129,6 +144,10 @@ interface AnonymousActions {
 
   // Import
   setImportedContent: (source: "file" | "paste", content: string) => void;
+  setTryPayload: (payload: MythosTrialPayloadV1 | null) => void;
+  setPersonalization: (personalization: WriterPersonalizationV1 | null) => void;
+  markInitialDraftImported: (docIds: string[], welcomeDocId: string | null) => void;
+  markTryBootstrapRun: () => void;
 
   // Auth prompts
   showAuthPrompt: () => void;
@@ -187,6 +206,12 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
       isTrialExhausted: false,
       importSource: null,
       importedContent: null,
+      tryPayload: null,
+      personalization: null,
+      hasImportedInitialDraft: false,
+      hasRunTryBootstrap: false,
+      importedDocumentIds: [],
+      welcomeDocumentId: null,
       authPromptShown: false,
       authPromptDismissedAt: null,
 
@@ -241,9 +266,13 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
         const id = generateTempId("temp_doc");
         const now = Date.now();
         set((state) => {
+          const orderIndex = doc.orderIndex ?? state.documents.length;
+          const wordCount = doc.wordCount ?? 0;
           state.documents.push({
             id,
             ...doc,
+            orderIndex,
+            wordCount,
             createdAt: now,
             updatedAt: now,
           });
@@ -258,6 +287,12 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
           if (doc) {
             Object.assign(doc, updates, { updatedAt: Date.now() });
           }
+        });
+      },
+
+      replaceDocuments: (docs) => {
+        set((state) => {
+          state.documents = docs;
         });
       },
 
@@ -284,6 +319,12 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
         });
       },
 
+      replaceEntities: (entities) => {
+        set((state) => {
+          state.entities = entities;
+        });
+      },
+
       // Relationship management
       addRelationship: (rel) => {
         const id = generateTempId("temp_rel");
@@ -295,6 +336,12 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
           });
         });
         return id;
+      },
+
+      replaceRelationships: (rels) => {
+        set((state) => {
+          state.relationships = rels;
+        });
       },
 
       // Chat management (with limit)
@@ -366,6 +413,32 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
         });
       },
 
+      setTryPayload: (payload) => {
+        set((state) => {
+          state.tryPayload = payload;
+        });
+      },
+
+      setPersonalization: (personalization) => {
+        set((state) => {
+          state.personalization = personalization;
+        });
+      },
+
+      markInitialDraftImported: (docIds, welcomeDocId) => {
+        set((state) => {
+          state.hasImportedInitialDraft = true;
+          state.importedDocumentIds = docIds;
+          state.welcomeDocumentId = welcomeDocId;
+        });
+      },
+
+      markTryBootstrapRun: () => {
+        set((state) => {
+          state.hasRunTryBootstrap = true;
+        });
+      },
+
       // Auth prompt management
       showAuthPrompt: () => {
         set((state) => {
@@ -411,6 +484,12 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
           state.isTrialExhausted = false;
           state.importSource = null;
           state.importedContent = null;
+          state.tryPayload = null;
+          state.personalization = null;
+          state.hasImportedInitialDraft = false;
+          state.hasRunTryBootstrap = false;
+          state.importedDocumentIds = [];
+          state.welcomeDocumentId = null;
           state.authPromptShown = false;
           state.authPromptDismissedAt = null;
         });
@@ -431,6 +510,12 @@ export const useAnonymousStore = create<AnonymousState & AnonymousActions>()(
         // Note: Server trial state is NOT persisted - it comes from the server
         importSource: state.importSource,
         importedContent: state.importedContent,
+        tryPayload: state.tryPayload,
+        personalization: state.personalization,
+        hasImportedInitialDraft: state.hasImportedInitialDraft,
+        hasRunTryBootstrap: state.hasRunTryBootstrap,
+        importedDocumentIds: state.importedDocumentIds,
+        welcomeDocumentId: state.welcomeDocumentId,
         authPromptDismissedAt: state.authPromptDismissedAt,
       }),
     }

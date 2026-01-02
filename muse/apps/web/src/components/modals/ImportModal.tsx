@@ -258,11 +258,11 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-lg mx-4 shadow-xl border-mythos-text-muted/30 max-h-[90vh] overflow-y-auto">
+      <Card className="relative z-10 w-full max-w-lg mx-4 shadow-xl border-mythos-border-default max-h-[90vh] overflow-y-auto">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileUp className="w-5 h-5 text-mythos-accent-cyan" />
+              <FileUp className="w-5 h-5 text-mythos-accent-primary" />
               <CardTitle id="import-modal-title" className="text-lg">
                 Import Story
               </CardTitle>
@@ -289,8 +289,8 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
               relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer
               transition-colors
               ${file
-                ? "border-mythos-accent-cyan bg-mythos-accent-cyan/5"
-                : "border-mythos-text-muted/30 hover:border-mythos-text-muted/50"
+                ? "border-mythos-accent-primary bg-mythos-accent-primary/5"
+                : "border-mythos-border-default hover:border-mythos-text-muted/50"
               }
               ${isImporting ? "pointer-events-none opacity-50" : ""}
             `}
@@ -309,7 +309,7 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
 
             {file ? (
               <div className="space-y-2">
-                <FileText className="w-10 h-10 mx-auto text-mythos-accent-cyan" />
+                <FileText className="w-10 h-10 mx-auto text-mythos-accent-primary" />
                 <p className="text-sm font-medium text-mythos-text-primary">
                   {file.name}
                 </p>
@@ -347,8 +347,8 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                   className={`
                     flex flex-col items-center gap-1 p-2 rounded-lg border text-center transition-colors
                     ${format === option.id
-                      ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10 text-mythos-text-primary"
-                      : "border-mythos-text-muted/20 hover:border-mythos-text-muted/40 text-mythos-text-secondary"
+                      ? "border-mythos-accent-primary bg-mythos-accent-primary/10 text-mythos-text-primary"
+                      : "border-mythos-border-default hover:border-mythos-text-muted/40 text-mythos-text-secondary"
                     }
                     disabled:opacity-50 disabled:cursor-not-allowed
                   `}
@@ -356,7 +356,7 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                   <div
                     className={
                       format === option.id
-                        ? "text-mythos-accent-cyan"
+                        ? "text-mythos-accent-primary"
                         : "text-mythos-text-muted"
                     }
                   >
@@ -376,8 +376,8 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                   className={`
                     flex flex-col items-center gap-1 p-2 rounded-lg border text-center transition-colors
                     ${format === option.id
-                      ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10 text-mythos-text-primary"
-                      : "border-mythos-text-muted/20 hover:border-mythos-text-muted/40 text-mythos-text-secondary"
+                      ? "border-mythos-accent-primary bg-mythos-accent-primary/10 text-mythos-text-primary"
+                      : "border-mythos-border-default hover:border-mythos-text-muted/40 text-mythos-text-secondary"
                     }
                     disabled:opacity-50 disabled:cursor-not-allowed
                   `}
@@ -385,7 +385,7 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                   <div
                     className={
                       format === option.id
-                        ? "text-mythos-accent-cyan"
+                        ? "text-mythos-accent-primary"
                         : "text-mythos-text-muted"
                     }
                   >
@@ -410,8 +410,8 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                 className={`
                   flex-1 px-3 py-2 rounded-lg border text-sm transition-colors
                   ${mode === "append"
-                    ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10 text-mythos-text-primary"
-                    : "border-mythos-text-muted/20 hover:border-mythos-text-muted/40 text-mythos-text-secondary"
+                    ? "border-mythos-accent-primary bg-mythos-accent-primary/10 text-mythos-text-primary"
+                    : "border-mythos-border-default hover:border-mythos-text-muted/40 text-mythos-text-secondary"
                   }
                   disabled:opacity-50 disabled:cursor-not-allowed
                 `}
@@ -429,7 +429,7 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                   flex-1 px-3 py-2 rounded-lg border text-sm transition-colors
                   ${mode === "replace"
                     ? "border-mythos-accent-red bg-mythos-accent-red/10 text-mythos-text-primary"
-                    : "border-mythos-text-muted/20 hover:border-mythos-text-muted/40 text-mythos-text-secondary"
+                    : "border-mythos-border-default hover:border-mythos-text-muted/40 text-mythos-text-secondary"
                   }
                   disabled:opacity-50 disabled:cursor-not-allowed
                 `}
@@ -477,8 +477,8 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                       className={`
                         px-2 py-1 text-xs rounded-md border transition-colors
                         ${entityTypes.includes(option.value)
-                          ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10 text-mythos-accent-cyan"
-                          : "border-mythos-text-muted/30 text-mythos-text-muted hover:border-mythos-text-muted/50"
+                          ? "border-mythos-accent-primary bg-mythos-accent-primary/10 text-mythos-accent-primary"
+                          : "border-mythos-border-default text-mythos-text-muted hover:border-mythos-text-muted/50"
                         }
                         disabled:opacity-50 disabled:cursor-not-allowed
                       `}
@@ -502,7 +502,7 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
               </div>
               <div className="h-2 bg-mythos-bg-tertiary rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-mythos-accent-cyan transition-all duration-300"
+                  className="h-full bg-mythos-accent-primary transition-all duration-300"
                   style={{ width: `${progress.percent}%` }}
                 />
               </div>
@@ -526,7 +526,7 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
           )}
         </CardContent>
 
-        <CardFooter className="flex justify-between gap-2 pt-4 border-t border-mythos-text-muted/20">
+        <CardFooter className="flex justify-between gap-2 pt-4 border-t border-mythos-border-default">
           <Button
             type="button"
             variant="outline"
@@ -588,7 +588,7 @@ function Checkbox({
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         disabled={disabled}
-        className="mt-1 w-4 h-4 rounded border-mythos-text-muted/30 text-mythos-accent-cyan focus:ring-mythos-accent-cyan focus:ring-offset-mythos-bg-primary bg-mythos-bg-secondary disabled:opacity-50"
+        className="mt-1 w-4 h-4 rounded border-mythos-border-default text-mythos-accent-primary focus:ring-mythos-accent-primary focus:ring-offset-mythos-bg-primary bg-mythos-bg-secondary disabled:opacity-50"
       />
       <div>
         <label

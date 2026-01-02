@@ -146,8 +146,8 @@ function Toggle({
       onClick={() => onChange(!enabled)}
       className={cn(
         "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
-        "focus:outline-none focus:ring-2 focus:ring-mythos-accent-cyan focus:ring-offset-2 focus:ring-offset-mythos-bg-primary",
-        enabled ? "bg-mythos-accent-cyan" : "bg-mythos-text-muted/30",
+        "focus:outline-none focus:ring-2 focus:ring-mythos-accent-primary focus:ring-offset-2 focus:ring-offset-mythos-bg-primary",
+        enabled ? "bg-mythos-accent-primary" : "bg-mythos-text-muted/30",
         disabled && "opacity-50 cursor-not-allowed"
       )}
     >
@@ -209,7 +209,7 @@ function CategoryCard({
       className={cn(
         "rounded-md border transition-colors",
         category.enabled
-          ? "border-mythos-text-muted/20 bg-mythos-bg-secondary/50"
+          ? "border-mythos-border-default bg-mythos-bg-secondary/50"
           : "border-mythos-text-muted/10 bg-mythos-bg-tertiary/30 opacity-60"
       )}
     >
@@ -232,7 +232,7 @@ function CategoryCard({
           className={cn(
             "w-8 h-8 rounded flex items-center justify-center",
             category.enabled
-              ? "bg-mythos-accent-cyan/10 text-mythos-accent-cyan"
+              ? "bg-mythos-accent-primary/10 text-mythos-accent-primary"
               : "bg-mythos-bg-tertiary text-mythos-text-muted"
           )}
         >
@@ -350,7 +350,7 @@ export function LinterRulesConfig({
   return (
     <div className={cn("flex flex-col h-full", className)}>
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-mythos-text-muted/20">
+      <div className="flex items-center justify-between p-3 border-b border-mythos-border-default">
         <div className="flex items-center gap-2">
           <Settings2 className="w-4 h-4 text-mythos-text-muted" />
           <span className="text-sm font-medium text-mythos-text-primary">

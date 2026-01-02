@@ -68,12 +68,12 @@ interface ActivityConfig {
 const ACTIVITY_CONFIGS: Record<ActivityType, ActivityConfig> = {
   project_created: {
     icon: Plus,
-    color: "text-mythos-accent-cyan",
+    color: "text-mythos-accent-primary",
     getDescription: () => "created this project",
   },
   document_created: {
     icon: FileText,
-    color: "text-mythos-accent-cyan",
+    color: "text-mythos-accent-primary",
     getDescription: (entry) =>
       `created document "${entry.targetName || "Untitled"}"`,
   },
@@ -141,7 +141,7 @@ const ACTIVITY_CONFIGS: Record<ActivityType, ActivityConfig> = {
   },
   comment_added: {
     icon: Edit3,
-    color: "text-mythos-accent-cyan",
+    color: "text-mythos-accent-primary",
     getDescription: () => "added a comment",
   },
   analysis_run: {
@@ -372,9 +372,9 @@ export function ActivityFeed({
     <div className={`flex flex-col h-full ${className}`}>
       {/* Header */}
       {showHeader && (
-        <div className="flex items-center justify-between px-4 py-3 border-b border-mythos-text-muted/20">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-mythos-border-default">
           <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-mythos-accent-cyan" />
+            <Activity className="w-4 h-4 text-mythos-accent-primary" />
             <h3 className="text-sm font-semibold text-mythos-text-primary">
               Activity
             </h3>

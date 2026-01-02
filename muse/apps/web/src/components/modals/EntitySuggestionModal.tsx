@@ -137,7 +137,7 @@ function TypeSelector({
           "flex items-center gap-1.5 px-2 py-1 rounded text-xs",
           "border border-mythos-text-muted/30 bg-mythos-bg-tertiary",
           "hover:bg-mythos-bg-secondary transition-colors",
-          "focus:outline-none focus:ring-1 focus:ring-mythos-accent-cyan",
+          "focus:outline-none focus:ring-1 focus:ring-mythos-accent-primary",
           disabled && "opacity-50 cursor-not-allowed"
         )}
         aria-haspopup="listbox"
@@ -180,7 +180,7 @@ function TypeSelector({
                 <EntityTypeIcon type={type} className="w-3 h-3" />
                 <span>{getEntityLabel(type)}</span>
                 {type === value && (
-                  <Check className="w-3 h-3 ml-auto text-mythos-accent-cyan" />
+                  <Check className="w-3 h-3 ml-auto text-mythos-accent-primary" />
                 )}
               </li>
             ))}
@@ -216,8 +216,8 @@ function EntityRow({
       className={cn(
         "rounded-md border transition-colors",
         isSelected
-          ? "border-mythos-accent-cyan/50 bg-mythos-bg-tertiary/50"
-          : "border-mythos-text-muted/20 bg-mythos-bg-secondary"
+          ? "border-mythos-accent-primary/50 bg-mythos-bg-tertiary/50"
+          : "border-mythos-border-default bg-mythos-bg-secondary"
       )}
     >
       {/* Main row */}
@@ -237,9 +237,9 @@ function EntityRow({
               "w-4 h-4 rounded border transition-colors",
               "flex items-center justify-center",
               isSelected
-                ? "bg-mythos-accent-cyan border-mythos-accent-cyan"
+                ? "bg-mythos-accent-primary border-mythos-accent-primary"
                 : "border-mythos-text-muted/50 bg-mythos-bg-tertiary",
-              "peer-focus:ring-2 peer-focus:ring-mythos-accent-cyan/50",
+              "peer-focus:ring-2 peer-focus:ring-mythos-accent-primary/50",
               disabled && "opacity-50 cursor-not-allowed"
             )}
           >
@@ -330,7 +330,7 @@ function EntityRow({
                     0,
                     occurrence.context.indexOf(occurrence.matchedText)
                   )}
-                  <span className="text-mythos-accent-cyan font-semibold">
+                  <span className="text-mythos-accent-primary font-semibold">
                     {occurrence.matchedText}
                   </span>
                   {occurrence.context.substring(
@@ -556,11 +556,11 @@ export function EntitySuggestionModal({
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-2xl mx-4 shadow-xl border-mythos-text-muted/30 max-h-[85vh] flex flex-col">
+      <Card className="relative z-10 w-full max-w-2xl mx-4 shadow-xl border-mythos-border-default max-h-[85vh] flex flex-col">
         <CardHeader className="pb-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-mythos-accent-cyan" />
+              <Sparkles className="w-5 h-5 text-mythos-accent-primary" />
               <CardTitle id="entity-modal-title" className="text-lg">
                 Detected Entities
               </CardTitle>
@@ -584,7 +584,7 @@ export function EntitySuggestionModal({
 
         <CardContent className="flex-1 overflow-hidden py-0">
           {/* Selection controls */}
-          <div className="flex items-center gap-4 pb-3 border-b border-mythos-text-muted/20">
+          <div className="flex items-center gap-4 pb-3 border-b border-mythos-border-default">
             <Button
               variant="ghost"
               size="sm"
@@ -652,7 +652,7 @@ export function EntitySuggestionModal({
           </ScrollArea>
         </CardContent>
 
-        <CardFooter className="flex justify-between gap-2 pt-4 flex-shrink-0 border-t border-mythos-text-muted/20">
+        <CardFooter className="flex justify-between gap-2 pt-4 flex-shrink-0 border-t border-mythos-border-default">
           <Button
             variant="outline"
             onClick={onClose}

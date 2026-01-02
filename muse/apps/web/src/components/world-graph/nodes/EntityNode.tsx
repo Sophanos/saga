@@ -43,7 +43,7 @@ function EntityNodeComponent({ data, selected }: NodeProps<EntityNodeType>) {
           "bg-mythos-bg-secondary shadow-lg",
           "min-w-[120px] max-w-[180px]",
           selected || nodeData.selected
-            ? "ring-2 ring-mythos-accent-cyan ring-offset-2 ring-offset-mythos-bg-primary"
+            ? "ring-2 ring-mythos-accent-primary ring-offset-2 ring-offset-mythos-bg-primary"
             : "hover:shadow-xl"
         )}
         style={{ borderColor }}

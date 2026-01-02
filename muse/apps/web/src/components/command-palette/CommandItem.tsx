@@ -52,7 +52,7 @@ export function CommandItem({ command, onSelect, isLocked, unlockHint }: Command
       {isLocked ? (
         <Lock className="w-4 h-4 text-mythos-text-muted/50" />
       ) : command.shortcut ? (
-        <kbd className="px-2 py-1 text-[10px] font-mono bg-mythos-bg-primary/50 text-mythos-text-muted rounded border border-mythos-text-muted/20">
+        <kbd className="px-2 py-1 text-[10px] font-mono bg-mythos-bg-primary/50 text-mythos-text-muted rounded border border-mythos-border-default">
           {command.shortcut}
         </kbd>
       ) : null}

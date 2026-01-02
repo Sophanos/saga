@@ -341,14 +341,14 @@ export function CommandPalette() {
       <CmdkCommand
         className={cn(
           "relative z-10 w-full max-w-xl mx-4",
-          "bg-mythos-bg-secondary border border-mythos-text-muted/20 rounded-xl shadow-2xl",
+          "bg-mythos-bg-secondary border border-mythos-border-default rounded-xl shadow-2xl",
           "overflow-hidden"
         )}
         onKeyDown={handleKeyDown}
         loop
       >
         {/* Search Input */}
-        <div className="flex items-center gap-3 px-4 border-b border-mythos-text-muted/20">
+        <div className="flex items-center gap-3 px-4 border-b border-mythos-border-default">
           <Search className="w-4 h-4 text-mythos-text-muted shrink-0" />
           <CmdkCommand.Input
             ref={inputRef}
@@ -361,7 +361,7 @@ export function CommandPalette() {
             )}
           />
           {searchState.isSearching && (
-            <Loader2 className="w-4 h-4 text-mythos-accent-cyan animate-spin" />
+            <Loader2 className="w-4 h-4 text-mythos-accent-primary animate-spin" />
           )}
           <kbd className="px-2 py-1 text-[10px] font-mono bg-mythos-bg-primary/50 text-mythos-text-muted rounded">
             ⌘K
@@ -370,7 +370,7 @@ export function CommandPalette() {
 
         {/* Filter tabs (shown when expanded or has query) */}
         {(expanded || hasQuery) && (
-          <div className="flex items-center gap-1 px-3 py-2 border-b border-mythos-text-muted/20">
+          <div className="flex items-center gap-1 px-3 py-2 border-b border-mythos-border-default">
             {(Object.keys(FILTER_LABELS) as CommandPaletteFilter[]).map((f) => (
               <button
                 key={f}
@@ -378,7 +378,7 @@ export function CommandPalette() {
                 className={cn(
                   "px-3 py-1 text-xs rounded-md transition-colors",
                   filter === f
-                    ? "bg-mythos-accent-cyan/20 text-mythos-accent-cyan"
+                    ? "bg-mythos-accent-primary/20 text-mythos-accent-primary"
                     : "text-mythos-text-muted hover:text-mythos-text-secondary hover:bg-mythos-bg-tertiary"
                 )}
               >
@@ -589,7 +589,7 @@ export function CommandPalette() {
         </CmdkCommand.List>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2 border-t border-mythos-text-muted/20 text-[10px] text-mythos-text-muted">
+        <div className="flex items-center justify-between px-4 py-2 border-t border-mythos-border-default text-[10px] text-mythos-text-muted">
           <div className="flex items-center gap-3">
             <span>↑↓ navigate</span>
             <span>Tab sections</span>

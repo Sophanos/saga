@@ -44,6 +44,7 @@ export type ToolName =
   | "clarity_check"
   | "check_logic"
   | "name_generator"
+  | "commit_decision"
   // Image search tools
   | "search_images"
   | "find_similar_images"
@@ -482,6 +483,27 @@ export interface FindSimilarImagesArgs {
 }
 
 // =============================================================================
+// Canon Decision Tool Arguments
+// =============================================================================
+
+/**
+ * Arguments for commit_decision tool.
+ * Stores a canon decision in project memory.
+ */
+export interface CommitDecisionArgs {
+  /** Canonical decision statement */
+  decision: string;
+  /** Optional rationale/evidence */
+  rationale?: string;
+  /** Related entities */
+  entityIds?: string[];
+  /** Source document ID */
+  documentId?: string;
+  /** Confidence score (0-1) */
+  confidence?: number;
+}
+
+// =============================================================================
 // Phase 3: Reference Image → Entity
 // =============================================================================
 
@@ -656,6 +678,7 @@ export interface ToolArgsMap {
   clarity_check: ClarityCheckArgs;
   check_logic: CheckLogicArgs;
   name_generator: NameGeneratorArgs;
+  commit_decision: CommitDecisionArgs;
   // Image search tools
   search_images: SearchImagesArgs;
   find_similar_images: FindSimilarImagesArgs;
@@ -722,6 +745,8 @@ export interface GenerateImageResult {
   entityId?: string;
   assetId?: string;
   storagePath?: string;
+  /** Whether this was a cache hit (existing identical generation) */
+  cached?: boolean;
 }
 
 /**
@@ -1097,6 +1122,14 @@ export interface FindSimilarImagesResult {
 }
 
 /**
+ * Result of commit_decision tool.
+ */
+export interface CommitDecisionResult {
+  memoryId: string;
+  content: string;
+}
+
+/**
  * Map of tool names to their result types.
  */
 export interface ToolResultsMap {
@@ -1117,6 +1150,7 @@ export interface ToolResultsMap {
   clarity_check: ClarityCheckResult;
   check_logic: CheckLogicResult;
   name_generator: NameGeneratorResult;
+  commit_decision: CommitDecisionResult;
   // Image search tools
   search_images: SearchImagesResult;
   find_similar_images: FindSimilarImagesResult;

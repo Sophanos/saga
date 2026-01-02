@@ -69,10 +69,10 @@ function getEntityColorClasses(type: EntityType) {
       };
     default:
       return {
-        bg: "bg-mythos-accent-cyan/20",
-        text: "text-mythos-accent-cyan",
-        border: "border-mythos-accent-cyan/30",
-        hover: "hover:bg-mythos-accent-cyan/30",
+        bg: "bg-mythos-accent-primary/20",
+        text: "text-mythos-accent-primary",
+        border: "border-mythos-accent-primary/30",
+        hover: "hover:bg-mythos-accent-primary/30",
       };
   }
 }
@@ -130,7 +130,7 @@ export function EntityAvatar({ entity, onClick, size = "md" }: EntityAvatarProps
         flex items-center justify-center
         cursor-pointer
         transition-all duration-150
-        focus:outline-none focus:ring-2 focus:ring-mythos-accent-cyan/50
+        focus:outline-none focus:ring-2 focus:ring-mythos-accent-primary/50
         group relative
       `}
       title={entity.name}
@@ -146,7 +146,7 @@ export function EntityAvatar({ entity, onClick, size = "md" }: EntityAvatarProps
           bg-mythos-bg-tertiary
           text-mythos-text-primary text-xs
           rounded
-          border border-mythos-text-muted/20
+          border border-mythos-border-default
           whitespace-nowrap
           opacity-0 group-hover:opacity-100
           pointer-events-none

@@ -56,7 +56,7 @@ const VARIANT_CONFIG: Record<
   },
   imported: {
     icon: FileText,
-    iconColor: "text-mythos-accent-cyan",
+    iconColor: "text-mythos-accent-primary",
     title: () => "Great! Let's analyze your story",
     subtitle:
       "We'll detect characters, locations, and relationships from your imported text.",

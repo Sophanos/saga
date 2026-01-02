@@ -64,7 +64,7 @@ export function SaveWorkPrompt({ onSignUp, className }: SaveWorkPromptProps) {
             <div className="space-y-2">
               {summary.project && (
                 <div className="flex items-center gap-2 text-sm text-mythos-text-secondary">
-                  <FileText className="w-4 h-4 text-mythos-accent-cyan" />
+                  <FileText className="w-4 h-4 text-mythos-accent-primary" />
                   <span>Project: {summary.project}</span>
                 </div>
               )}

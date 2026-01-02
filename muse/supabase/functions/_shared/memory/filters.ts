@@ -83,10 +83,8 @@ export function buildMemoryFilter(params: MemoryFilterParams): QdrantFilter {
 
   // Owner ID filtering with scope-aware logic
   // For non-project scopes, we MUST filter by owner to prevent privacy leaks
-  if (params.ownerId) {
-    if (params.scope !== "project") {
-      must.push({ key: "owner_id", match: { value: params.ownerId } });
-    }
+  if (params.ownerId && params.scope && params.scope !== "project") {
+    must.push({ key: "owner_id", match: { value: params.ownerId } });
   }
 
   // Conversation ID for conversation-scoped queries

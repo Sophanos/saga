@@ -1,6 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { BookOpen, Check, Plus, ArrowUp, FileText, X, Shield, Wand2, BookMarked, Users, Gamepad2, PenTool, Brain } from "lucide-react";
+import type { MythosTrialPayloadV1, TryGoal } from "@mythos/core/trial/payload";
+import { TRIAL_PAYLOAD_KEY, TRIAL_DRAFT_KEY } from "@mythos/core/trial/payload";
+import { storeTrialFiles } from "@mythos/storage/trialUploads";
 
 /**
  * Landing Page - Cursor.ai inspired minimal design
@@ -232,6 +235,59 @@ function EntityChip({ name, type }: { name: string; type: string }) {
 // FLOATING CHAT BAR
 // ============================================
 
+const GOAL_OPTIONS: Array<{ id: TryGoal; label: string; hint: string }> = [
+  { id: "import_organize", label: "Import & organize", hint: "Turn a chapter into clean docs" },
+  { id: "proofread", label: "Proofread", hint: "Fix grammar without rewrites" },
+  { id: "world_bible", label: "World bible", hint: "Sort notes into entities" },
+  { id: "consistency_check", label: "Consistency", hint: "Spot contradictions" },
+  { id: "name_generator", label: "Name generator", hint: "Generate names lists" },
+  { id: "visualize_characters", label: "Visualize", hint: "Character visuals (beta)" },
+];
+
+const TONE_OPTIONS: Array<{ id: "safe" | "creative"; label: string }> = [
+  { id: "safe", label: "Safe" },
+  { id: "creative", label: "Creative" },
+];
+
+function inferGoal(text: string): TryGoal {
+  const trimmed = text.trim();
+  if (!trimmed) return "import_organize";
+
+  const lower = trimmed.toLowerCase();
+
+  if (/\b(grammar|spelling|proofread|typo|copyedit)\b/.test(lower)) {
+    return "proofread";
+  }
+
+  if (/\b(consistency|contradiction|timeline|plot hole|plot-hole)\b/.test(lower)) {
+    return "consistency_check";
+  }
+
+  if (/\b(name ideas|name list|character names|place names)\b/.test(lower)) {
+    return "name_generator";
+  }
+
+  if (/\b(world bible|lore|factions|timeline notes|setting notes)\b/.test(lower)) {
+    return "world_bible";
+  }
+
+  const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const bulletLines = lines.filter((line) => /^[-*•]\s+/.test(line) || /^\d+\.\s+/.test(line));
+  const avgLineLength = lines.length > 0
+    ? lines.reduce((sum, line) => sum + line.length, 0) / lines.length
+    : 0;
+
+  if (bulletLines.length >= 3 || (lines.length >= 6 && avgLineLength < 60)) {
+    return "world_bible";
+  }
+
+  if (trimmed.length > 800) {
+    return "import_organize";
+  }
+
+  return "import_organize";
+}
+
 function FloatingChatBar() {
   const [isExpanded, setIsExpanded] = useState(true);
   const [userOverride, setUserOverride] = useState(false);
@@ -239,6 +295,10 @@ function FloatingChatBar() {
   const [inputValue, setInputValue] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [goal, setGoal] = useState<TryGoal>("import_organize");
+  const [goalTouched, setGoalTouched] = useState(false);
+  const [tone, setTone] = useState<"safe" | "creative">("safe");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasContent = inputValue.trim().length > 0 || files.length > 0;
 
@@ -276,6 +336,17 @@ function FloatingChatBar() {
       setIsExpanded(true);
     }
   }, [heroInView, userOverride]);
+
+  useEffect(() => {
+    if (goalTouched) return;
+
+    if (files.length > 0 && inputValue.trim().length === 0) {
+      setGoal("import_organize");
+      return;
+    }
+
+    setGoal(inferGoal(inputValue));
+  }, [inputValue, files.length, goalTouched]);
 
   const handleExpand = () => {
     setIsExpanded(true);
@@ -318,14 +389,44 @@ function FloatingChatBar() {
     setFiles(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleSubmit = () => {
-    if (hasContent) {
-      // Redirect to try page with content in session storage
-      sessionStorage.setItem("mythos_trial_draft", inputValue);
+  const handleSubmit = async () => {
+    if (!hasContent || isSubmitting) return;
+
+    setIsSubmitting(true);
+
+    try {
+      const trimmed = inputValue.trim();
+      const inferredGoal = goalTouched ? goal : inferGoal(trimmed);
+      let uploadRefs: MythosTrialPayloadV1["uploadRefs"] = undefined;
+
       if (files.length > 0) {
-        sessionStorage.setItem("mythos_trial_files", JSON.stringify(files.map(f => f.name)));
+        try {
+          uploadRefs = await storeTrialFiles(files);
+        } catch (error) {
+          console.warn("[LandingPage] Failed to store trial uploads:", error);
+        }
       }
+
+      const payload: MythosTrialPayloadV1 = {
+        v: 1,
+        source: uploadRefs && uploadRefs.length > 0 ? "file" : "paste",
+        goal: inferredGoal,
+        tone,
+        text: trimmed.length > 0 ? trimmed : undefined,
+        uploadRefs,
+      };
+
+      sessionStorage.setItem(TRIAL_PAYLOAD_KEY, JSON.stringify(payload));
+
+      // Legacy compatibility
+      sessionStorage.setItem(TRIAL_DRAFT_KEY, trimmed);
+      if (files.length > 0) {
+        sessionStorage.setItem("mythos_trial_files", JSON.stringify(files.map((f) => f.name)));
+      }
+
       window.location.href = "/try";
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -397,6 +498,52 @@ function FloatingChatBar() {
                 rows={2}
               />
 
+              {/* Goals + tone */}
+              <div className="px-3 pb-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] uppercase tracking-wider text-text-muted">
+                    Goal
+                  </span>
+                  <div className="flex items-center gap-1 rounded-full border border-border bg-bg-tertiary/60 p-0.5">
+                    {TONE_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        onClick={() => setTone(option.id)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                          tone === option.id
+                            ? "bg-white text-bg-primary"
+                            : "text-text-muted hover:text-text-primary"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {GOAL_OPTIONS.map((option) => {
+                    const isSelected = goal === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        onClick={() => {
+                          setGoal(option.id);
+                          setGoalTouched(true);
+                        }}
+                        title={option.hint}
+                        className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                          isSelected
+                            ? "border-white/60 bg-white text-bg-primary"
+                            : "border-border bg-bg-tertiary/40 text-text-secondary hover:text-text-primary"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Bottom bar */}
               <div className="flex items-center justify-between px-3 pb-3">
                 <div className="flex items-center gap-1">
@@ -419,10 +566,10 @@ function FloatingChatBar() {
 
                 <button
                   onClick={handleSubmit}
-                  disabled={!hasContent}
+                  disabled={!hasContent || isSubmitting}
                   className={`
                     p-2.5 rounded-full transition-all duration-200
-                    ${hasContent
+                    ${hasContent && !isSubmitting
                       ? "bg-white text-bg-primary hover:bg-white/90"
                       : "bg-bg-tertiary text-text-muted cursor-not-allowed"
                     }

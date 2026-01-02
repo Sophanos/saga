@@ -40,29 +40,29 @@ function AppleIcon({ className }: { className?: string }) {
 // Mini app preview component
 function MiniAppPreview() {
   return (
-    <div className="rounded-xl border border-border bg-bg-secondary overflow-hidden shadow-2xl shadow-black/50">
+    <div className="rounded-xl border border-mythos-border-default bg-mythos-bg-secondary overflow-hidden shadow-2xl shadow-black/50">
       {/* Window chrome */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-bg-primary/50">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-mythos-border-default bg-mythos-bg-primary/50">
         <div className="flex gap-1.5">
           <div className="w-2.5 h-2.5 rounded-full bg-text-muted/20" />
           <div className="w-2.5 h-2.5 rounded-full bg-text-muted/20" />
           <div className="w-2.5 h-2.5 rounded-full bg-text-muted/20" />
         </div>
         <div className="flex-1 flex justify-center">
-          <div className="px-2 py-0.5 rounded bg-bg-tertiary text-[10px] text-text-muted">
+          <div className="px-2 py-0.5 rounded bg-mythos-bg-tertiary text-[10px] text-mythos-text-muted">
             Chapter 1 — The Beginning
           </div>
         </div>
       </div>
 
       {/* App content */}
-      <div className="p-4 text-xs text-text-secondary leading-relaxed">
+      <div className="p-4 text-xs text-mythos-text-secondary leading-relaxed">
         <p className="mb-2">
-          <span className="text-text-primary">Elena</span> stood at the edge of the cliff,
+          <span className="text-mythos-text-primary">Elena</span> stood at the edge of the cliff,
           watching the sun sink below the horizon...
         </p>
-        <p className="text-text-muted">
-          The weight of the <span className="text-text-primary">ancient tome</span> felt
+        <p className="text-mythos-text-muted">
+          The weight of the <span className="text-mythos-text-primary">ancient tome</span> felt
           heavier in her hands.
         </p>
       </div>
@@ -75,7 +75,12 @@ interface AuthScreenProps {
 }
 
 export function AuthScreen({ onBack }: AuthScreenProps) {
-  const [mode, setMode] = useState<AuthMode>("signin");
+  const [mode, setMode] = useState<AuthMode>(() => {
+    // Initialize mode based on URL path
+    const path = window.location.pathname;
+    if (path === "/signup") return "signup";
+    return "signin";
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -159,13 +164,13 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-bg-primary flex flex-col">
+    <div className="min-h-screen bg-mythos-bg-primary flex flex-col">
       {/* Top bar with back button */}
       {(onBack || mode === "forgot") && (
         <div className="absolute top-0 left-0 p-4 z-10">
           <button
             onClick={mode === "forgot" ? backToSignIn : onBack}
-            className="flex items-center gap-2 text-text-muted hover:text-text-primary transition-colors text-sm"
+            className="flex items-center gap-2 text-mythos-text-muted hover:text-mythos-text-primary transition-colors text-sm"
           >
             <ArrowLeft className="w-4 h-4" />
             Back
@@ -175,7 +180,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
 
       <div className="flex-1 flex">
       {/* Left side - Branding */}
-      <div className="hidden lg:flex lg:flex-1 flex-col justify-center px-12 xl:px-20 border-r border-border">
+      <div className="hidden lg:flex lg:flex-1 flex-col justify-center px-12 xl:px-20 border-r border-mythos-border-default">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -187,15 +192,15 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
             onClick={onBack}
             className="flex items-center gap-3 mb-8 hover:opacity-80 transition-opacity"
           >
-            <BookOpen className="w-8 h-8 text-text-primary" />
-            <span className="text-2xl font-semibold text-text-primary">Mythos</span>
+            <BookOpen className="w-8 h-8 text-mythos-text-primary" />
+            <span className="text-2xl font-semibold text-mythos-text-primary">Mythos</span>
           </button>
 
           {/* Headline */}
-          <h1 className="text-3xl xl:text-4xl font-medium text-text-primary leading-tight mb-4">
+          <h1 className="text-3xl xl:text-4xl font-medium text-mythos-text-primary leading-tight mb-4">
             {mode === "signin" ? "Welcome back" : mode === "signup" ? "Start writing" : "Reset password"}
           </h1>
-          <p className="text-text-secondary text-lg mb-10">
+          <p className="text-mythos-text-secondary text-lg mb-10">
             {mode === "signin"
               ? "Continue crafting your story with AI-powered insights."
               : mode === "signup"
@@ -224,16 +229,16 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
         >
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2 mb-8">
-            <BookOpen className="w-6 h-6 text-text-primary" />
-            <span className="text-xl font-semibold text-text-primary">Mythos</span>
+            <BookOpen className="w-6 h-6 text-mythos-text-primary" />
+            <span className="text-xl font-semibold text-mythos-text-primary">Mythos</span>
           </div>
 
           {/* Header */}
           <div className="mb-8">
-            <h2 className="text-2xl font-medium text-text-primary mb-2">
+            <h2 className="text-2xl font-medium text-mythos-text-primary mb-2">
               {mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Reset password"}
             </h2>
-            <p className="text-text-muted text-sm">
+            <p className="text-mythos-text-muted text-sm">
               {mode === "signin"
                 ? "Enter your credentials to continue"
                 : mode === "signup"
@@ -266,14 +271,14 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
                   <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-green-500/10 flex items-center justify-center">
                     <Mail className="w-6 h-6 text-green-400" />
                   </div>
-                  <h3 className="text-lg font-medium text-text-primary mb-2">Check your email</h3>
-                  <p className="text-sm text-text-muted mb-6">
-                    We've sent a password reset link to <span className="text-text-secondary">{email}</span>
+                  <h3 className="text-lg font-medium text-mythos-text-primary mb-2">Check your email</h3>
+                  <p className="text-sm text-mythos-text-muted mb-6">
+                    We've sent a password reset link to <span className="text-mythos-text-secondary">{email}</span>
                   </p>
                   <button
                     type="button"
                     onClick={backToSignIn}
-                    className="text-sm text-text-primary hover:underline font-medium"
+                    className="text-sm text-mythos-text-primary hover:underline font-medium"
                   >
                     Back to sign in
                   </button>
@@ -281,15 +286,15 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
               ) : (
                 <form onSubmit={handlePasswordReset} className="space-y-4">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1.5">Email</label>
+                    <label className="block text-sm text-mythos-text-secondary mb-1.5">Email</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mythos-text-muted" />
                       <input
                         type="email"
                         placeholder="you@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full h-11 pl-10 pr-4 rounded-lg border border-border bg-bg-secondary text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-hover transition-colors"
+                        className="w-full h-11 pl-10 pr-4 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary text-mythos-text-primary placeholder:text-mythos-text-muted focus:outline-none focus:border-mythos-border-default-hover transition-colors"
                         required
                         disabled={isLoading}
                       />
@@ -308,12 +313,12 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
                     )}
                   </button>
 
-                  <p className="text-center text-sm text-text-muted">
+                  <p className="text-center text-sm text-mythos-text-muted">
                     Remember your password?{" "}
                     <button
                       type="button"
                       onClick={backToSignIn}
-                      className="text-text-primary hover:underline font-medium"
+                      className="text-mythos-text-primary hover:underline font-medium"
                       disabled={isLoading}
                     >
                       Sign in
@@ -329,7 +334,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
             <button
               onClick={handleGoogleSignIn}
               disabled={isLoading}
-              className="w-full flex items-center justify-center gap-3 h-11 rounded-lg border border-border bg-bg-secondary hover:bg-bg-tertiary transition-colors text-sm font-medium text-text-primary disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-3 h-11 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary hover:bg-mythos-bg-tertiary transition-colors text-sm font-medium text-mythos-text-primary disabled:opacity-50"
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -342,7 +347,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
             <button
               onClick={handleAppleSignIn}
               disabled={isLoading}
-              className="w-full flex items-center justify-center gap-3 h-11 rounded-lg border border-border bg-bg-secondary hover:bg-bg-tertiary transition-colors text-sm font-medium text-text-primary disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-3 h-11 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary hover:bg-mythos-bg-tertiary transition-colors text-sm font-medium text-mythos-text-primary disabled:opacity-50"
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -356,10 +361,10 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
           {/* Divider */}
           <div className="relative mb-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
+              <div className="w-full border-t border-mythos-border-default" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-bg-primary px-3 text-text-muted">
+              <span className="bg-mythos-bg-primary px-3 text-mythos-text-muted">
                 or
               </span>
             </div>
@@ -369,15 +374,15 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
           <form onSubmit={handleEmailSubmit} className="space-y-4">
             {mode === "signup" && (
               <div>
-                <label className="block text-sm text-text-secondary mb-1.5">Name</label>
+                <label className="block text-sm text-mythos-text-secondary mb-1.5">Name</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mythos-text-muted" />
                   <input
                     type="text"
                     placeholder="Your name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full h-11 pl-10 pr-4 rounded-lg border border-border bg-bg-secondary text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-hover transition-colors"
+                    className="w-full h-11 pl-10 pr-4 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary text-mythos-text-primary placeholder:text-mythos-text-muted focus:outline-none focus:border-mythos-border-default-hover transition-colors"
                     disabled={isLoading}
                   />
                 </div>
@@ -385,15 +390,15 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
             )}
 
             <div>
-              <label className="block text-sm text-text-secondary mb-1.5">Email</label>
+              <label className="block text-sm text-mythos-text-secondary mb-1.5">Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mythos-text-muted" />
                 <input
                   type="email"
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full h-11 pl-10 pr-4 rounded-lg border border-border bg-bg-secondary text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-hover transition-colors"
+                  className="w-full h-11 pl-10 pr-4 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary text-mythos-text-primary placeholder:text-mythos-text-muted focus:outline-none focus:border-mythos-border-default-hover transition-colors"
                   required
                   disabled={isLoading}
                 />
@@ -402,25 +407,25 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm text-text-secondary">Password</label>
+                <label className="text-sm text-mythos-text-secondary">Password</label>
                 {mode === "signin" && (
                   <button
                     type="button"
                     onClick={goToForgotPassword}
-                    className="text-xs text-text-muted hover:text-text-primary transition-colors"
+                    className="text-xs text-mythos-text-muted hover:text-mythos-text-primary transition-colors"
                   >
                     Forgot password?
                   </button>
                 )}
               </div>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mythos-text-muted" />
                 <input
                   type="password"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full h-11 pl-10 pr-4 rounded-lg border border-border bg-bg-secondary text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-hover transition-colors"
+                  className="w-full h-11 pl-10 pr-4 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary text-mythos-text-primary placeholder:text-mythos-text-muted focus:outline-none focus:border-mythos-border-default-hover transition-colors"
                   required
                   minLength={6}
                   disabled={isLoading}
@@ -444,14 +449,14 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
           </form>
 
           {/* Mode toggle */}
-          <p className="text-center text-sm text-text-muted mt-6">
+          <p className="text-center text-sm text-mythos-text-muted mt-6">
             {mode === "signin" ? (
               <>
                 Don't have an account?{" "}
                 <button
                   type="button"
                   onClick={toggleMode}
-                  className="text-text-primary hover:underline font-medium"
+                  className="text-mythos-text-primary hover:underline font-medium"
                   disabled={isLoading}
                 >
                   Sign up
@@ -463,7 +468,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
                 <button
                   type="button"
                   onClick={toggleMode}
-                  className="text-text-primary hover:underline font-medium"
+                  className="text-mythos-text-primary hover:underline font-medium"
                   disabled={isLoading}
                 >
                   Sign in
@@ -478,12 +483,12 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
       </div>
 
       {/* Footer */}
-      <footer className="py-4 px-6 border-t border-border">
-        <div className="max-w-6xl mx-auto flex items-center justify-between text-xs text-text-muted">
+      <footer className="py-4 px-6 border-t border-mythos-border-default">
+        <div className="max-w-6xl mx-auto flex items-center justify-between text-xs text-mythos-text-muted">
           <span>© 2025 Mythos</span>
           <div className="flex items-center gap-4">
-            <a href="/privacy" className="hover:text-text-primary transition-colors">Privacy</a>
-            <a href="/terms" className="hover:text-text-primary transition-colors">Terms</a>
+            <a href="/privacy" className="hover:text-mythos-text-primary transition-colors">Privacy</a>
+            <a href="/terms" className="hover:text-mythos-text-primary transition-colors">Terms</a>
           </div>
         </div>
       </footer>

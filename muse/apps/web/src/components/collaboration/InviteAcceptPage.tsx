@@ -163,10 +163,10 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
     return (
       <div className="min-h-screen bg-mythos-bg-primary text-mythos-text-primary">
         <div className="max-w-md mx-auto pt-8 px-4">
-          <Card className="mb-6 border-mythos-accent-cyan/30 bg-mythos-bg-secondary">
+          <Card className="mb-6 border-mythos-accent-primary/30 bg-mythos-bg-secondary">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3 mb-2">
-                <BookOpen className="w-6 h-6 text-mythos-accent-cyan" />
+                <BookOpen className="w-6 h-6 text-mythos-accent-primary" />
                 <h2 className="text-lg font-semibold text-mythos-text-primary">
                   You've been invited!
                 </h2>
@@ -238,7 +238,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
     return (
       <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary flex items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center px-4">
-          <Loader2 className="w-8 h-8 text-mythos-accent-cyan animate-spin" />
+          <Loader2 className="w-8 h-8 text-mythos-accent-primary animate-spin" />
           <span className="text-mythos-text-muted font-mono text-sm">
             {status === "loading" ? "Checking invitation..." : "Accepting invitation..."}
           </span>

@@ -77,6 +77,12 @@ Copy `.env.example` to `.env` and configure:
 - `DEEPINFRA_API_KEY` - Embeddings provider (Qwen3-Embedding-8B)
 - `QDRANT_URL`, `QDRANT_API_KEY` - Vector database for RAG
 
+## Infrastructure (Hetzner)
+
+Qdrant runs on shared Hetzner VPS (`ssh -i ~/.ssh/hetzner_orchestrator root@78.47.165.136`).
+Exposed via Cloudflare Tunnel at `qdrant.cascada.vision`. Collection: `saga_vectors` (4096 dims, API key auth).
+Config at `/opt/qdrant/docker-compose.yml`, setup script: `scripts/qdrant-setup.sh`.
+
 ## Code Consolidation Patterns
 
 **Single Source of Truth**:

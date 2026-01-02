@@ -37,6 +37,7 @@ import {
 import { useEditorChatContext } from "./useEditorChatContext";
 import { useApiKey } from "./useApiKey";
 import type { ToolName } from "@mythos/agent-protocol";
+import { buildContextHints as buildUnifiedContextHints, isContextHintsEmpty } from "@mythos/context";
 import type { SagaSessionWriter } from "./useSessionHistory";
 
 /**
@@ -145,6 +146,22 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
     };
   }, [editorChatContext]);
 
+  const buildContextHintsPayload = useCallback(
+    (conversationId?: string) => {
+      const state = useMythosStore.getState();
+      const editorContext = buildEditorContext();
+      const hints = buildUnifiedContextHints({
+        entities: Array.from(state.world.entities.values()),
+        relationships: state.world.relationships,
+        editorContext,
+        conversationId,
+      });
+
+      return isContextHintsEmpty(hints) ? undefined : hints;
+    },
+    [buildEditorContext]
+  );
+
   /**
    * Send a message and stream the response
    */
@@ -209,12 +226,15 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
         // Get conversationId from store (single source of truth)
         const conversationId = useMythosStore.getState().chat.conversationId;
 
+        const contextHints = buildContextHintsPayload(conversationId);
+
         // Build the payload with editor context
         const payload: SagaChatPayload = {
           messages: apiMessages,
           projectId,
           mentions,
           editorContext: buildEditorContext(),
+          contextHints,
           mode: modeRef.current,
           conversationId,
         };

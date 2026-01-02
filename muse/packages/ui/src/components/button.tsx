@@ -4,21 +4,21 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-mythos-accent-cyan disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-mythos-accent-primary disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-mythos-accent-cyan text-mythos-bg-primary shadow hover:bg-mythos-accent-cyan/90",
+          "bg-mythos-accent-primary text-white shadow hover:bg-mythos-accent-primary-hover",
         destructive:
           "bg-mythos-accent-red text-mythos-text-primary shadow-sm hover:bg-mythos-accent-red/90",
         outline:
-          "border border-mythos-text-muted bg-transparent shadow-sm hover:bg-mythos-bg-tertiary hover:text-mythos-text-primary",
+          "border border-mythos-border-default bg-transparent shadow-sm hover:bg-mythos-bg-tertiary hover:text-mythos-text-primary",
         secondary:
           "bg-mythos-bg-tertiary text-mythos-text-primary shadow-sm hover:bg-mythos-bg-tertiary/80",
         ghost:
           "hover:bg-mythos-bg-tertiary hover:text-mythos-text-primary",
-        link: "text-mythos-accent-cyan underline-offset-4 hover:underline",
+        link: "text-mythos-accent-primary underline-offset-4 hover:underline",
       },
       size: {
         default: "h-9 px-4 py-2",

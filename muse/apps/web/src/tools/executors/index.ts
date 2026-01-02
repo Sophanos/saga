@@ -31,3 +31,4 @@ export { detectEntitiesExecutor, type DetectEntitiesExecutionResult } from "./de
 export { checkConsistencyExecutor, type CheckConsistencyExecutionResult } from "./checkConsistency";
 export { generateTemplateExecutor, type GenerateTemplateExecutionResult } from "./generateTemplate";
 export { clarityCheckExecutor, type ClarityCheckExecutionResult } from "./clarityCheck";
+export { commitDecisionExecutor } from "./commitDecision";

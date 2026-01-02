@@ -32,7 +32,7 @@ function StatCard({ label, value, subtext, icon, className }: StatCardProps) {
       )}
     >
       {icon && (
-        <div className="flex items-center justify-center w-8 h-8 rounded-md bg-mythos-bg-secondary text-mythos-accent-cyan">
+        <div className="flex items-center justify-center w-8 h-8 rounded-md bg-mythos-bg-secondary text-mythos-accent-primary">
           {icon}
         </div>
       )}
@@ -83,7 +83,7 @@ export function UsageDashboard({
       </div>
 
       {/* Token Usage Meter */}
-      <Card className="border-mythos-text-muted/20">
+      <Card className="border-mythos-border-default">
         <CardContent className="pt-4">
           <UsageMeter
             used={usage.tokensUsed}

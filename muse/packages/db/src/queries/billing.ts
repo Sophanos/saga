@@ -88,6 +88,7 @@ export interface TokenUsageRecord {
   ai_coach_calls: number;
   ai_detect_calls: number;
   ai_search_calls: number;
+  ai_image_calls: number;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -110,6 +111,7 @@ export interface BillingContextRow {
   ai_coach_calls: number;
   ai_detect_calls: number;
   ai_search_calls: number;
+  ai_image_calls: number;
   tier_name: string;
   ai_chat_enabled: boolean;
   ai_lint_enabled: boolean;
@@ -137,6 +139,7 @@ export interface BillingContext {
   aiCoachCalls: number;
   aiDetectCalls: number;
   aiSearchCalls: number;
+  aiImageCalls: number;
   tierName: string;
   aiChatEnabled: boolean;
   aiLintEnabled: boolean;
@@ -183,7 +186,9 @@ export type AICallType =
   | "agent"
   | "dynamics"
   | "genesis"
-  | "embed";
+  | "embed"
+  | "image"
+  | "image-scene";
 
 // AI endpoint types (same as AICallType but semantic clarity)
 export type AIEndpoint = AICallType;
@@ -372,6 +377,7 @@ export async function getBillingContext(userId: string): Promise<BillingContext>
       aiCoachCalls: 0,
       aiDetectCalls: 0,
       aiSearchCalls: 0,
+      aiImageCalls: 0,
       tierName: "Free",
       aiChatEnabled: false,
       aiLintEnabled: false,
@@ -399,6 +405,7 @@ export async function getBillingContext(userId: string): Promise<BillingContext>
     aiCoachCalls: row.ai_coach_calls,
     aiDetectCalls: row.ai_detect_calls,
     aiSearchCalls: row.ai_search_calls,
+    aiImageCalls: row.ai_image_calls,
     tierName: row.tier_name,
     aiChatEnabled: row.ai_chat_enabled,
     aiLintEnabled: row.ai_lint_enabled,

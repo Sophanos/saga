@@ -65,6 +65,7 @@
         "@mythos/agent-protocol": "workspace:*",
         "@mythos/ai": "workspace:*",
         "@mythos/capabilities": "workspace:*",
+        "@mythos/context": "workspace:*",
         "@mythos/core": "workspace:*",
         "@mythos/db": "workspace:*",
         "@mythos/editor": "workspace:*",
@@ -112,6 +113,8 @@
       "name": "@mythos/website",
       "version": "0.1.0",
       "dependencies": {
+        "@mythos/core": "workspace:*",
+        "@mythos/storage": "workspace:*",
         "clsx": "^2.1.1",
         "lucide-react": "^0.468.0",
         "motion": "^11.15.0",

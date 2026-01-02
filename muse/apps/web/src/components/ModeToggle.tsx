@@ -7,14 +7,14 @@ export function ModeToggle() {
   const setMode = useMythosStore((state) => state.setMode);
 
   return (
-    <div className="flex items-center rounded-md border border-mythos-text-muted/20 p-0.5">
+    <div className="flex items-center rounded-md border border-mythos-border-default p-0.5">
       <Button
         variant={mode === "writer" ? "secondary" : "ghost"}
         size="sm"
         onClick={() => setMode("writer")}
         className={`gap-1.5 rounded-r-none ${
           mode === "writer"
-            ? "text-mythos-accent-cyan"
+            ? "text-mythos-accent-primary"
             : "text-mythos-text-muted hover:text-mythos-text-secondary"
         }`}
         title="Writer Mode"

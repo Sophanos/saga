@@ -292,11 +292,11 @@ export function ProjectCreateModal({
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-md mx-4 shadow-xl border-mythos-text-muted/30">
+      <Card className="relative z-10 w-full max-w-md mx-4 shadow-xl border-mythos-border-default">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FolderPlus className="w-5 h-5 text-mythos-accent-cyan" />
+              <FolderPlus className="w-5 h-5 text-mythos-accent-primary" />
               <CardTitle id="project-create-title" className="text-lg">
                 Create New Project
               </CardTitle>
@@ -342,14 +342,14 @@ export function ProjectCreateModal({
                   disabled={isSubmitting}
                   className={`p-3 rounded-lg border-2 transition-all text-left ${
                     formData.creationMode === "gardener"
-                      ? "border-mythos-accent-cyan bg-mythos-accent-cyan/10"
-                      : "border-mythos-text-muted/30 hover:border-mythos-text-muted/50"
+                      ? "border-mythos-accent-primary bg-mythos-accent-primary/10"
+                      : "border-mythos-border-default hover:border-mythos-text-muted/50"
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <Feather className={`w-4 h-4 ${
                       formData.creationMode === "gardener"
-                        ? "text-mythos-accent-cyan"
+                        ? "text-mythos-accent-primary"
                         : "text-mythos-text-muted"
                     }`} />
                     <span className={`font-medium text-sm ${
@@ -371,7 +371,7 @@ export function ProjectCreateModal({
                   className={`p-3 rounded-lg border-2 transition-all text-left ${
                     formData.creationMode === "architect"
                       ? "border-mythos-accent-purple bg-mythos-accent-purple/10"
-                      : "border-mythos-text-muted/30 hover:border-mythos-text-muted/50"
+                      : "border-mythos-border-default hover:border-mythos-text-muted/50"
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
@@ -438,7 +438,7 @@ export function ProjectCreateModal({
             )}
           </CardContent>
 
-          <CardFooter className="flex justify-between gap-2 pt-4 border-t border-mythos-text-muted/20">
+          <CardFooter className="flex justify-between gap-2 pt-4 border-t border-mythos-border-default">
             <Button
               type="button"
               variant="outline"

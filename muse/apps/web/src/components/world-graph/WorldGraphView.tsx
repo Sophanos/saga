@@ -56,9 +56,9 @@ export function WorldGraphView() {
   return (
     <div className="h-full flex flex-col bg-mythos-bg-primary relative">
       {/* Header bar */}
-      <div className="h-10 border-b border-mythos-text-muted/20 bg-mythos-bg-secondary flex items-center justify-between px-3">
+      <div className="h-10 border-b border-mythos-border-default bg-mythos-bg-secondary flex items-center justify-between px-3">
         <div className="flex items-center gap-2">
-          <Network className="w-4 h-4 text-mythos-accent-cyan" />
+          <Network className="w-4 h-4 text-mythos-accent-primary" />
           <span className="text-sm font-medium text-mythos-text-primary">
             World Graph
           </span>

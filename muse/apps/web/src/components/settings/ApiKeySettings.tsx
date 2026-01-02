@@ -45,11 +45,11 @@ export function ApiKeySettings({ isOpen, onClose }: ApiKeySettingsProps) {
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-md mx-4 shadow-xl border-mythos-text-muted/30">
+      <Card className="relative z-10 w-full max-w-md mx-4 shadow-xl border-mythos-border-default">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Key className="w-5 h-5 text-mythos-accent-cyan" />
+              <Key className="w-5 h-5 text-mythos-accent-primary" />
               <CardTitle className="text-lg">API Settings</CardTitle>
             </div>
             <Button
@@ -116,7 +116,7 @@ export function ApiKeySettings({ isOpen, onClose }: ApiKeySettingsProps) {
             href="https://openrouter.ai/keys"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-mythos-accent-cyan hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm text-mythos-accent-primary hover:underline"
           >
             Get an API key from OpenRouter
             <ExternalLink className="w-3.5 h-3.5" />

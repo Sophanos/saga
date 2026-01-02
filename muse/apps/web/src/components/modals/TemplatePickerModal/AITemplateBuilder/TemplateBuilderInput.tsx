@@ -34,7 +34,7 @@ export function TemplateBuilderInput({
   );
 
   return (
-    <div className={cn("px-3 py-2 border-t border-mythos-text-muted/20", className)}>
+    <div className={cn("px-3 py-2 border-t border-mythos-border-default", className)}>
       <div className="relative">
         <textarea
           ref={inputRef}
@@ -47,7 +47,7 @@ export function TemplateBuilderInput({
           className={cn(
             "w-full resize-none bg-mythos-bg-tertiary rounded-lg px-3 py-2 pr-10",
             "text-sm text-mythos-text-primary placeholder:text-mythos-text-muted",
-            "border border-mythos-text-muted/20 focus:border-mythos-accent-purple/50",
+            "border border-mythos-border-default focus:border-mythos-accent-purple/50",
             "focus:outline-none focus:ring-1 focus:ring-mythos-accent-purple/30",
             "disabled:opacity-50"
           )}

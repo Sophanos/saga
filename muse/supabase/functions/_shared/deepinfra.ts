@@ -1,8 +1,8 @@
 /**
- * DeepInfra API Integration using Vercel AI SDK
+ * DeepInfra API Integration using Vercel AI SDK 6
  *
- * Provides embeddings and reranking via DeepInfra's OpenAI-compatible API.
- * Uses Vercel AI SDK for built-in retry logic, abort signals, and type safety.
+ * Provides embeddings and reranking via DeepInfra's API.
+ * Uses Vercel AI SDK 6 for built-in retry logic, abort signals, and type safety.
  *
  * ## Models
  * - Embeddings: Qwen/Qwen3-Embedding-8B (4096 dimensions, $0.01/M tokens)
@@ -10,7 +10,12 @@
  *
  * ## Usage
  * ```typescript
- * import { generateEmbedding, generateEmbeddings, rerankDocuments } from "./deepinfra.ts";
+ * import {
+ *   generateEmbedding,
+ *   generateEmbeddings,
+ *   rerankDocuments,
+ *   createDeepInfraReranker,
+ * } from "./deepinfra.ts";
  *
  * // Single embedding
  * const embedding = await generateEmbedding("search query");
@@ -18,15 +23,21 @@
  * // Batch embeddings
  * const result = await generateEmbeddings(["doc1", "doc2", "doc3"]);
  *
- * // Rerank search results
+ * // Rerank search results (uses AI SDK's native rerank() internally)
  * const ranked = await rerankDocuments("query", documents, { topN: 10 });
+ *
+ * // Or use the reranker model directly with AI SDK's rerank()
+ * import { rerank } from 'ai';
+ * const model = createDeepInfraReranker();
+ * const result = await rerank({ model, query, documents, topN: 5 });
  * ```
  *
  * @module deepinfra
  */
 
 import { createOpenAI } from "https://esm.sh/@ai-sdk/openai@3.0.0";
-import { embed, embedMany } from "https://esm.sh/ai@6.0.0";
+import { embed, embedMany, rerank } from "https://esm.sh/ai@6.0.0";
+import type { RerankingModelV3 } from "https://esm.sh/@ai-sdk/provider@3.0.0";
 
 import {
   DEEPINFRA_BASE_URL,
@@ -36,6 +47,7 @@ import {
   DEEPINFRA_DIMENSIONS,
   DeepInfraError,
   type DeepInfraConfig,
+  type DeepInfraReranker,
   type EmbeddingResult,
   type RerankResult,
   type RerankItem,
@@ -45,6 +57,7 @@ import {
 export {
   DeepInfraError,
   type DeepInfraConfig,
+  type DeepInfraReranker,
   type EmbeddingResult,
   type RerankResult,
   type RerankItem,
@@ -137,7 +150,7 @@ export async function generateEmbeddings(
 
   try {
     // Create embedding model (dimensions passed in embed call in v6)
-    const embeddingModel = provider.textEmbeddingModel(finalConfig.embedModel);
+    const embeddingModel = provider.embeddingModel(finalConfig.embedModel);
 
     if (inputs.length === 1) {
       // Use embed() for single input (slightly more efficient)
@@ -203,37 +216,134 @@ export async function generateEmbedding(
 }
 
 // =============================================================================
-// Reranking
+// Reranking - AI SDK Native Implementation
 // =============================================================================
 
 /**
- * DeepInfra reranker request shape
+ * DeepInfra reranker request shape (internal)
  */
-interface RerankRequest {
+interface DeepInfraRerankRequest {
   queries: string[];
   documents: string[];
 }
 
 /**
- * DeepInfra reranker response shape
+ * DeepInfra reranker response shape (internal)
  */
-interface RerankResponse {
+interface DeepInfraRerankResponse {
   scores: number[];
   input_tokens: number;
 }
 
 /**
- * Rerank documents by relevance to a query
+ * Create a DeepInfra reranking model compatible with AI SDK's rerank() function.
  *
- * Uses DeepInfra's Qwen3-Reranker-4B model to score document relevance.
- * Returns documents sorted by relevance score (highest first).
+ * This implements the RerankingModelV3 interface to wrap DeepInfra's proprietary
+ * reranker API, enabling use with the standard AI SDK rerank() function.
  *
- * Note: The AI SDK's rerank() function doesn't support DeepInfra's reranker
- * API format directly, so we use raw fetch with the same error handling patterns.
+ * @param modelId - The model ID (default: Qwen/Qwen3-Reranker-4B)
+ * @param config - Optional configuration override
+ * @returns A RerankingModelV3 compatible model
+ *
+ * @example
+ * ```typescript
+ * import { rerank } from 'ai';
+ *
+ * const model = createDeepInfraReranker();
+ * const result = await rerank({
+ *   model,
+ *   query: "What is the capital of France?",
+ *   documents: ["Paris is the capital", "London is big"],
+ *   topN: 5,
+ * });
+ * ```
+ */
+export function createDeepInfraReranker(
+  modelId?: string,
+  config?: Partial<DeepInfraConfig>
+): RerankingModelV3 {
+  const envConfig = getDeepInfraConfig();
+  const finalConfig: DeepInfraConfig = { ...envConfig, ...config };
+  const finalModelId = modelId ?? finalConfig.rerankModel;
+
+  return {
+    specificationVersion: "v3",
+    provider: "deepinfra",
+    modelId: finalModelId,
+
+    async doRerank(options) {
+      const { documents, query, topN, abortSignal, headers: additionalHeaders } = options;
+
+      // Extract text values from documents
+      const documentTexts =
+        documents.type === "text"
+          ? documents.values
+          : documents.values.map((obj) => JSON.stringify(obj));
+
+      if (documentTexts.length === 0) {
+        return { ranking: [] };
+      }
+
+      const rerankUrl = `${finalConfig.inferenceUrl}/${finalModelId}`;
+
+      const response = await fetch(rerankUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${finalConfig.apiKey}`,
+          ...additionalHeaders,
+        },
+        body: JSON.stringify({
+          queries: [query],
+          documents: documentTexts,
+        } as DeepInfraRerankRequest),
+        signal: abortSignal,
+      });
+
+      if (!response.ok) {
+        let errorMessage = `DeepInfra reranker error: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.error?.message) {
+            errorMessage = errorData.error.message;
+          }
+        } catch {
+          // Ignore JSON parse errors
+        }
+        throw new DeepInfraError(errorMessage, response.status, "rerank_error");
+      }
+
+      const data = (await response.json()) as DeepInfraRerankResponse;
+
+      // Build ranking sorted by score (descending)
+      const ranking = documentTexts
+        .map((_, index) => ({
+          index,
+          relevanceScore: data.scores[index] ?? 0,
+        }))
+        .sort((a, b) => b.relevanceScore - a.relevanceScore)
+        .slice(0, topN ?? documentTexts.length);
+
+      return {
+        ranking,
+        response: {
+          modelId: finalModelId,
+          headers: Object.fromEntries(response.headers.entries()),
+        },
+      };
+    },
+  };
+}
+
+/**
+ * Rerank documents using AI SDK's native rerank() function
+ *
+ * This is the recommended way to rerank documents, using AI SDK's built-in
+ * retry logic, abort signals, and telemetry support.
  *
  * @param query - The search query
  * @param documents - Array of documents to rerank
- * @param options - Reranking options
+ * @param options - Reranking options (topN, config, abortSignal)
  * @returns Rerank result with sorted documents and scores
  *
  * @example
@@ -249,66 +359,52 @@ interface RerankResponse {
 export async function rerankDocuments(
   query: string,
   documents: string[],
-  options?: { topN?: number; config?: Partial<DeepInfraConfig> }
+  options?: {
+    topN?: number;
+    config?: Partial<DeepInfraConfig>;
+    abortSignal?: AbortSignal;
+    maxRetries?: number;
+  }
 ): Promise<RerankResult> {
   if (documents.length === 0) {
     return { ranking: [], rerankedDocuments: [], tokensUsed: 0 };
   }
 
-  const envConfig = getDeepInfraConfig();
-  const finalConfig: DeepInfraConfig = { ...envConfig, ...options?.config };
-  const topN = options?.topN ?? documents.length;
-
-  const rerankUrl = `${finalConfig.inferenceUrl}/${finalConfig.rerankModel}`;
+  const model = createDeepInfraReranker(undefined, options?.config);
 
   try {
-    const response = await fetch(rerankUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${finalConfig.apiKey}`,
-      },
-      body: JSON.stringify({
-        queries: [query],
-        documents,
-      } as RerankRequest),
+    const result = await rerank({
+      model,
+      query,
+      documents,
+      topN: options?.topN,
+      abortSignal: options?.abortSignal,
+      maxRetries: options?.maxRetries ?? 2,
     });
 
-    if (!response.ok) {
-      let errorMessage = `DeepInfra reranker error: ${response.status}`;
-      try {
-        const errorData = await response.json();
-        if (errorData.error?.message) {
-          errorMessage = errorData.error.message;
-        }
-      } catch {
-        // Ignore JSON parse errors
-      }
-      throw new DeepInfraError(errorMessage, response.status, "rerank_error");
-    }
-
-    const data = (await response.json()) as RerankResponse;
-
-    // Build ranking with original indices
-    const ranking: RerankItem[] = documents
-      .map((document, index) => ({
-        originalIndex: index,
-        score: data.scores[index] ?? 0,
-        document,
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topN);
+    // Map AI SDK result to our RerankResult format
+    const ranking: RerankItem[] = result.results.map((item) => ({
+      originalIndex: item.index,
+      score: item.relevanceScore,
+      document: documents[item.index],
+    }));
 
     return {
       ranking,
       rerankedDocuments: ranking.map((item) => item.document),
-      tokensUsed: data.input_tokens ?? 0,
+      // Note: AI SDK doesn't expose token usage for reranking
+      tokensUsed: 0,
     };
   } catch (error) {
     if (error instanceof DeepInfraError) {
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
-    throw new DeepInfraError(`Failed to rerank documents: ${message}`, undefined, undefined, error);
+    throw new DeepInfraError(
+      `Failed to rerank documents: ${message}`,
+      undefined,
+      undefined,
+      error
+    );
   }
 }

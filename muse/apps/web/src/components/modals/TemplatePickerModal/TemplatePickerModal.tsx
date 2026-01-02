@@ -136,7 +136,7 @@ export function TemplatePickerModal({
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-2xl mx-4 shadow-xl border-mythos-text-muted/30 max-h-[85vh] flex flex-col">
+      <Card className="relative z-10 w-full max-w-2xl mx-4 shadow-xl border-mythos-border-default max-h-[85vh] flex flex-col">
         <CardHeader className="pb-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

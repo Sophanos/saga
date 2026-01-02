@@ -107,7 +107,7 @@ export function SensoryHeatmap({ className }: SensoryHeatmapProps) {
       </div>
 
       {/* Summary row */}
-      <div className="flex items-center justify-between pt-2 border-t border-mythos-text-muted/20">
+      <div className="flex items-center justify-between pt-2 border-t border-mythos-border-default">
         <span className="text-xs text-mythos-text-muted">Total sensory details</span>
         <span
           className={cn(
