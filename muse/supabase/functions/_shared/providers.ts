@@ -61,9 +61,6 @@ export function createDynamicOpenRouter(apiKey: string) {
       "HTTP-Referer": "https://mythos.dev",
       "X-Title": "Mythos IDE",
     },
-    // OpenRouter expects Chat Completions-style payloads.
-    // Use compatible mode to avoid Responses API validation errors for assistant history.
-    compatibility: "compatible",
   });
 }
 
@@ -116,7 +113,7 @@ export function getOpenRouterModel(
 ) {
   const provider = createDynamicOpenRouter(apiKey);
   const modelId = OPENROUTER_MODELS[type];
-  const model = provider(modelId);
+  const model = provider.chat(modelId);
 
   // Apply DevTools wrapper if requested
   if (options?.devTools) {
