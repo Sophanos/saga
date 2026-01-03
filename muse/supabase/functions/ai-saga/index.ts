@@ -83,7 +83,37 @@ type MessageRole = "user" | "assistant" | "system";
 
 interface Message {
   role: MessageRole;
-  content: string;
+  content: unknown;
+}
+
+function normalizeMessageContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    const parts = content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (!part || typeof part !== "object") return "";
+        const record = part as Record<string, unknown>;
+        if (typeof record.text === "string") return record.text;
+        if (typeof record.content === "string") return record.content;
+        return "";
+      })
+      .filter(Boolean);
+    return parts.join("");
+  }
+
+  if (content && typeof content === "object") {
+    try {
+      return JSON.stringify(content);
+    } catch {
+      return "";
+    }
+  }
+
+  return content == null ? "" : String(content);
 }
 
 // EditorContext and SagaMode imported from ../shared/tools/types.ts
@@ -308,7 +338,7 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
 
   // Get last user message for RAG query
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
-  const query = lastUserMessage?.content ?? "";
+  const query = normalizeMessageContent(lastUserMessage?.content);
 
   // Determine owner ID for memory isolation (userId or anonDeviceId)
   const ownerId = billing.userId ?? billing.anonDeviceId ?? null;
@@ -365,7 +395,7 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
     { role: "system" as const, content: systemPrompt },
     ...recentMessages.map((m) => ({
       role: m.role as "user" | "assistant" | "system",
-      content: m.content,
+      content: normalizeMessageContent(m.content),
     })),
   ];
 
