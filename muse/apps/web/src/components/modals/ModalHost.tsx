@@ -70,7 +70,7 @@ export function ModalHost() {
 
   switch (modal.type) {
     case "settings":
-      return <SettingsModal isOpen={true} onClose={closeModal} initialSection="api" />;
+      return <SettingsModal isOpen={true} onClose={closeModal} initialSection="profile" />;
 
     case "import":
       return <ImportModal isOpen={true} onClose={closeModal} />;

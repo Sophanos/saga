@@ -161,8 +161,10 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
       const { error: signOutError } = await signOut();
       if (signOutError) {
         setError(signOutError.message);
+        return;
       }
       // If successful, the auth sync hook will handle the state update
+      window.location.assign("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to sign out");
     } finally {

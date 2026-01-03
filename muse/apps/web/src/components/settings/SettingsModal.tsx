@@ -264,7 +264,9 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
       const { error: signOutError } = await signOut();
       if (signOutError) {
         setError(signOutError.message);
+        return;
       }
+      window.location.assign("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to sign out");
     } finally {

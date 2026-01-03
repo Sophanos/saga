@@ -116,7 +116,7 @@ export async function ensureSession(
     (client) =>
       client
         .from("chat_sessions")
-        .upsert(session as never, { onConflict: "id", ignoreDuplicates: true })
+        .upsert(session as never, { onConflict: "id" })
         .select()
         .single(),
     { context: "ensure chat session" }

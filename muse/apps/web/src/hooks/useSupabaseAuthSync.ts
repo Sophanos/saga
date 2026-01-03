@@ -305,19 +305,18 @@ export async function signOut(): Promise<{ error: Error | null }> {
     });
 
     const result = await Promise.race([signOutPromise, timeoutPromise]);
-    if (result.error && result.timedOut) {
+    if (result.timedOut) {
       console.warn("[Auth] Sign out timed out, falling back to local sign out.");
-      const { error: localError } = await supabase.auth.signOut({ scope: "local" });
-      if (localError) {
-        return { error: new Error(localError.message) };
-      }
+    } else if (result.error) {
+      console.warn("[Auth] Sign out failed, falling back to local sign out:", result.error.message);
+    } else {
       return { error: null };
     }
 
-    if (result.error) {
-      return { error: result.error };
+    const { error: localError } = await supabase.auth.signOut({ scope: "local" });
+    if (localError) {
+      return { error: new Error(localError.message) };
     }
-
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err : new Error("Unknown error") };

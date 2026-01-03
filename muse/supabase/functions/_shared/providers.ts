@@ -61,6 +61,9 @@ export function createDynamicOpenRouter(apiKey: string) {
       "HTTP-Referer": "https://mythos.dev",
       "X-Title": "Mythos IDE",
     },
+    // OpenRouter expects Chat Completions-style payloads.
+    // This avoids Responses API validation errors on non-OpenAI models.
+    compatibility: "strict",
   });
 }
 

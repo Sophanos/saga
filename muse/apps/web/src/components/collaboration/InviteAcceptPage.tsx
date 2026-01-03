@@ -3,6 +3,7 @@ import { BookOpen, Loader2, AlertCircle, CheckCircle, LogOut, AlertTriangle } fr
 import { acceptInvitation, getInvitationByToken } from "@mythos/db";
 import { Button, Card, CardContent } from "@mythos/ui";
 import { useAuthStore } from "../../stores/auth";
+import { signOut as supabaseSignOut } from "../../hooks/useSupabaseAuthSync";
 import { AuthScreen } from "../auth";
 import { LAST_PROJECT_KEY, PENDING_INVITE_TOKEN_KEY } from "../../constants/storageKeys";
 
@@ -147,7 +148,11 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
   }, [performAcceptance]);
 
   const handleSignOutAndRetry = useCallback(async () => {
-    await signOut();
+    const { error } = await supabaseSignOut();
+    if (error) {
+      console.warn("[Auth] Failed to sign out:", error.message);
+    }
+    signOut();
     // Clear the stored token so they can use a fresh link
     sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
     window.location.assign(window.location.pathname);

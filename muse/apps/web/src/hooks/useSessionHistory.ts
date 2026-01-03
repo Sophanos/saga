@@ -149,7 +149,7 @@ export function useSessionHistory(): UseSessionHistoryResult {
           id: conversationId,
           project_id: projectId,
           user_id: user?.id, // Explicitly pass user_id
-          name: conversationName,
+          name: conversationName ?? undefined,
         };
         await ensureSession(sessionInsert);
 
