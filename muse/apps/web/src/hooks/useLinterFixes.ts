@@ -353,10 +353,8 @@ export function useLinterFixes(options: UseLinterOptions): UseLinterResult {
         // Remove from issues list
         setIssues((prev) => prev.filter((i) => i.id !== issueId));
 
-        // Update store
-        const remainingIssues = storeIssues.filter(
-          (_, index) => generateIssueId(storeIssues[index], index) !== issueId
-        );
+        // Update store using stable issue ids
+        const remainingIssues = storeIssues.filter((storeIssue) => storeIssue.id !== issueId);
         setLinterIssues(remainingIssues);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to apply fix";

@@ -292,11 +292,32 @@ export async function signUpWithEmail(
 export async function signOut(): Promise<{ error: Error | null }> {
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.signOut();
+    const timeoutMs = 8000;
+    const signOutPromise = supabase.auth.signOut().then(({ error }) => ({
+      error: error ? new Error(error.message) : null,
+      timedOut: false,
+    }));
 
-    if (error) {
-      return { error: new Error(error.message) };
+    const timeoutPromise = new Promise<{ error: Error; timedOut: true }>((resolve) => {
+      setTimeout(() => {
+        resolve({ error: new Error("Sign out timed out"), timedOut: true });
+      }, timeoutMs);
+    });
+
+    const result = await Promise.race([signOutPromise, timeoutPromise]);
+    if (result.error && result.timedOut) {
+      console.warn("[Auth] Sign out timed out, falling back to local sign out.");
+      const { error: localError } = await supabase.auth.signOut({ scope: "local" });
+      if (localError) {
+        return { error: new Error(localError.message) };
+      }
+      return { error: null };
     }
+
+    if (result.error) {
+      return { error: result.error };
+    }
+
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err : new Error("Unknown error") };

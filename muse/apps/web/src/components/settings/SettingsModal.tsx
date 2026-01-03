@@ -108,6 +108,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
   );
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -171,10 +172,14 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     logicStrictness,
   ]);
 
+  const wasOpenRef = useRef(false);
+
   useEffect(() => {
-    if (!isOpen) return;
-    resetFormState();
-    setActiveSection(initialSection);
+    if (isOpen && !wasOpenRef.current) {
+      resetFormState();
+      setActiveSection(initialSection);
+    }
+    wasOpenRef.current = isOpen;
   }, [isOpen, resetFormState, initialSection]);
 
   const handleSaveProfile = useCallback(async () => {
@@ -224,7 +229,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
 
   const handleSavePreferences = useCallback(async () => {
     if (!user) return;
-    setIsSaving(true);
+    setIsAutoSaving(true);
     setError(null);
     setSuccessMessage(null);
 
@@ -248,7 +253,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update profile");
     } finally {
-      setIsSaving(false);
+      setIsAutoSaving(false);
     }
   }, [user, buildNextPreferences, updateUserProfile]);
 
@@ -304,7 +309,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
   );
 
   const handleClose = useCallback(async () => {
-    if (activeSection === "personalization" && hasPersonalizationChanges && !isSaving) {
+    if (activeSection === "personalization" && hasPersonalizationChanges && !isAutoSaving) {
       await handleSavePreferences();
     }
     resetFormState();
@@ -322,7 +327,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
 
   useEffect(() => {
     if (!isOpen || activeSection !== "personalization") return;
-    if (!user || !hasPersonalizationChanges || isSaving) return;
+    if (!user || !hasPersonalizationChanges || isAutoSaving) return;
 
     if (autosaveTimerRef.current) {
       window.clearTimeout(autosaveTimerRef.current);
@@ -343,7 +348,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     activeSection,
     user,
     hasPersonalizationChanges,
-    isSaving,
+    isAutoSaving,
     handleSavePreferences,
   ]);
 
