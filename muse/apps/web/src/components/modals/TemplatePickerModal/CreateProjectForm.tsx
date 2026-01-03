@@ -5,6 +5,7 @@ import { createProject, createDocument } from "@mythos/db";
 import { useProgressiveStore } from "@mythos/state";
 import type { ProjectTemplate } from "@mythos/core";
 import { getTemplateIcon } from "../../../utils/templateIcons";
+import { createSeedWorldbuildingDoc, embedSeedWorldbuildingDoc, WORLD_SEED_TITLE } from "../../../services/projects/seedWorldbuilding";
 import { useAuthStore } from "../../../stores/auth";
 
 interface CreateProjectFormProps {
@@ -65,6 +66,32 @@ export function CreateProjectForm({
           order_index: 0,
           word_count: 0,
         });
+
+        try {
+          const seed = await createSeedWorldbuildingDoc({
+            projectId: project.id,
+            source: {
+              kind: "template",
+              projectName: name.trim(),
+              projectDescription: description.trim() || undefined,
+              templateId: template.id,
+              templateName: template.name,
+              templateDescription: template.description,
+              entityKinds: template.entityKinds.map((kind) => kind.label),
+              relationshipKinds: template.relationshipKinds.map((kind) => kind.label),
+              genre: template.defaultGenre,
+            },
+          });
+
+          void embedSeedWorldbuildingDoc({
+            projectId: project.id,
+            documentId: seed.documentId,
+            title: WORLD_SEED_TITLE,
+            contentText: seed.contentText,
+          });
+        } catch (seedError) {
+          console.warn("[CreateProjectForm] Failed to create world seed:", seedError);
+        }
 
         // Initialize progressive state
         const progressive = useProgressiveStore.getState();

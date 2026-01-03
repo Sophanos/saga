@@ -60,6 +60,7 @@ export {
 // Saga unified agent prompts
 export {
   SAGA_SYSTEM,
+  SAGA_MENTION_CONTEXT,
   SAGA_CONTEXT_TEMPLATE,
   SAGA_EDITOR_CONTEXT,
   SAGA_NO_CONTEXT,

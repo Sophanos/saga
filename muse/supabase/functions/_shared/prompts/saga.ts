@@ -11,6 +11,7 @@
 
 import type { SagaMode, EditorContext } from "../tools/types.ts";
 import type { RAGContext } from "../rag.ts";
+import type { ResolvedMentionContext } from "../mentions.ts";
 import type {
   RetrievedMemoryContext,
   RetrievedMemoryRecord,
@@ -111,6 +112,13 @@ Based on the author's message, determine the right approach:
 | "Draw this moment" | illustrate_scene |
 | "Visualize this passage" | illustrate_scene |
 
+## Copilot Mode Rules (High Priority)
+
+- When context is empty and the author asks for world structure, setting, or premise, propose genesis_world.
+- When the author provides text (selection, excerpt, or pasted) and asks to extract structure, propose detect_entities.
+- When they ask for consistency or logic without text, ask for a passage and offer check_consistency or check_logic.
+- When they ask for visuals, search existing images first (search_images or find_similar_images) before generating new art.
+
 ## Image Generation Guidelines
 
 When generating images:
@@ -124,6 +132,7 @@ When generating images:
 ## Image Search Guidelines
 
 Before generating new images, consider searching for existing ones:
+- Prefer **search_images** before **generate_image** unless the author explicitly requests new art
 - Use **search_images** when the author describes what they want to find visually
 - Use **find_similar_images** when comparing to an existing portrait or asset
 - If the user asks for consistency with existing art, use find_similar_images first
@@ -173,6 +182,18 @@ When using Core tools (create_entity, create_relationship, etc.):
 - Be creative but consistent with established world rules
 - If no context is retrieved, you may still answer general writing questions`;
 
+export const SAGA_MENTION_CONTEXT = `## Mentioned Context
+
+The author explicitly referenced the following items. Prioritize these over retrieved context.
+
+### Documents
+{documents}
+
+### Entities
+{entities}
+
+Use this to focus the response.`;
+
 export const SAGA_CONTEXT_TEMPLATE = `## Retrieved Context
 
 The following was retrieved from the author's story world:
@@ -188,11 +209,17 @@ Use this to provide relevant, consistent answers.`;
 export const SAGA_EDITOR_CONTEXT = `## Current Editor Context
 
 **Document:** {documentTitle}
-{selectionContext}
+{contextLines}
 
 Consider this when responding.`;
 
-export const SAGA_NO_CONTEXT = `No specific context was retrieved for this query. You may still help with general writing questions or suggest using tools to build the world.`;
+export const SAGA_NO_CONTEXT = `No specific context was retrieved for this query.
+
+Default behaviors when context is empty:
+- For world structure, setting, or premise requests, propose genesis_world.
+- For extracting structure from provided text, propose detect_entities.
+- For consistency or logic checks without text, ask for a passage and offer check_consistency or check_logic.
+- For visual requests, search existing images before generating new art.`;
 
 /**
  * Profile context template for writer preferences.
@@ -458,6 +485,7 @@ function formatProfile(profile: ProfileContext): string {
 export function buildSagaSystemPrompt(options: {
   mode?: SagaMode;
   ragContext?: RAGContext;
+  mentionContext?: ResolvedMentionContext;
   editorContext?: EditorContext;
   profileContext?: ProfileContext;
   memoryContext?: RetrievedMemoryContext;
@@ -467,6 +495,7 @@ export function buildSagaSystemPrompt(options: {
   const {
     mode,
     ragContext,
+    mentionContext,
     editorContext,
     profileContext,
     memoryContext,
@@ -476,6 +505,13 @@ export function buildSagaSystemPrompt(options: {
   const mergedProfile = profileContext ?? contextHints?.profile;
   const mergedEditor = editorContext ?? contextHints?.editor;
   const mergedProject = projectContext ?? contextHints?.project;
+  const mentionDocsCount = mentionContext?.documents.length ?? 0;
+  const mentionEntitiesCount = mentionContext?.entities.length ?? 0;
+  const ragDocsCount = ragContext?.documents.length ?? 0;
+  const ragEntitiesCount = ragContext?.entities.length ?? 0;
+  const editorHasText = Boolean(
+    mergedEditor?.selectionText?.trim() || mergedEditor?.documentExcerpt?.trim()
+  );
 
   let prompt = SAGA_SYSTEM;
 
@@ -559,6 +595,35 @@ export function buildSagaSystemPrompt(options: {
     }
   }
 
+  prompt += "\n\n## Context Availability" +
+    `\n- Mentioned docs: ${mentionDocsCount}` +
+    `\n- Mentioned entities: ${mentionEntitiesCount}` +
+    `\n- Retrieved docs: ${ragDocsCount}` +
+    `\n- Retrieved entities: ${ragEntitiesCount}` +
+    `\n- Editor text: ${editorHasText ? "yes" : "no"}`;
+
+  // Add mention context
+  if (mentionContext && (mentionDocsCount > 0 || mentionEntitiesCount > 0)) {
+    const docsText = mentionDocsCount > 0
+      ? mentionContext.documents
+          .map((doc) => {
+            const typeLabel = doc.docType ? ` (${doc.docType})` : "";
+            const preview = doc.contentText || "No text available.";
+            return `- **${doc.title}**${typeLabel}: ${preview}`;
+          })
+          .join("\n")
+      : "None mentioned.";
+    const entitiesText = mentionEntitiesCount > 0
+      ? mentionContext.entities
+          .map((entity) => `- **${entity.name}** (${entity.entityType}): ${entity.summaryText}`)
+          .join("\n")
+      : "None mentioned.";
+
+    prompt += "\n\n" + SAGA_MENTION_CONTEXT
+      .replace("{documents}", docsText)
+      .replace("{entities}", entitiesText);
+  }
+
   // Add RAG context
   if (ragContext && (ragContext.documents.length > 0 || ragContext.entities.length > 0)) {
     const docsText = ragContext.documents.length > 0
@@ -577,13 +642,31 @@ export function buildSagaSystemPrompt(options: {
 
   // Add editor context
   if (mergedEditor?.documentTitle) {
-    const selectionContext = mergedEditor.selectionText
-      ? `**Selected text:** "${mergedEditor.selectionText.slice(0, 200)}${mergedEditor.selectionText.length > 200 ? '...' : ''}"`
-      : "No text selected.";
+    const contextLines: string[] = [];
+    const selectionText = mergedEditor.selectionText?.trim();
+    const selectionContext = mergedEditor.selectionContext?.trim();
+    const documentExcerpt = mergedEditor.documentExcerpt?.trim();
 
-    prompt += "\n\n" + SAGA_EDITOR_CONTEXT
-      .replace("{documentTitle}", mergedEditor.documentTitle)
-      .replace("{selectionContext}", selectionContext);
+    if (selectionText) {
+      contextLines.push(
+        `**Selected text:** "${selectionText.slice(0, 200)}${selectionText.length > 200 ? '...' : ''}"`
+      );
+      if (selectionContext) {
+        contextLines.push(
+          `**Selection context:** "${selectionContext.slice(0, 400)}${selectionContext.length > 400 ? '...' : ''}"`
+        );
+      }
+    } else if (documentExcerpt) {
+      contextLines.push(
+        `**Document excerpt:** "${documentExcerpt.slice(0, 400)}${documentExcerpt.length > 400 ? '...' : ''}"`
+      );
+    }
+
+    if (contextLines.length > 0) {
+      prompt += "\n\n" + SAGA_EDITOR_CONTEXT
+        .replace("{documentTitle}", mergedEditor.documentTitle)
+        .replace("{contextLines}", contextLines.join("\n"));
+    }
   }
 
   return prompt;

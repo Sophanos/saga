@@ -46,7 +46,9 @@ export type SagaMode = z.infer<typeof SagaModeSchema>;
  */
 export const EditorContextSchema = z.object({
   documentTitle: z.string().optional(),
+  documentExcerpt: z.string().optional(),
   selectionText: z.string().optional(),
+  selectionContext: z.string().optional(),
 });
 export type EditorContext = z.infer<typeof EditorContextSchema>;
 
@@ -69,6 +71,27 @@ export const RAGContextSchema = z.object({
   entities: z.array(RAGContextItemSchema),
 });
 export type RAGContext = z.infer<typeof RAGContextSchema>;
+
+/**
+ * Mention context for explicitly referenced documents and entities.
+ */
+export const MentionedDocumentSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  contentText: z.string(),
+  docType: z.string().optional(),
+});
+export const MentionedEntitySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  entityType: z.string(),
+  summaryText: z.string(),
+});
+export const MentionContextSchema = z.object({
+  documents: z.array(MentionedDocumentSchema),
+  entities: z.array(MentionedEntitySchema),
+});
+export type MentionContext = z.infer<typeof MentionContextSchema>;
 
 /**
  * Retrieved memory record for personalization.
@@ -253,6 +276,8 @@ export const SagaCallOptionsSchema = z.object({
   editorContext: EditorContextSchema.optional(),
   /** Retrieved RAG context (documents and entities) */
   ragContext: RAGContextSchema.optional(),
+  /** Explicitly mentioned context (documents and entities) */
+  mentionContext: MentionContextSchema.optional(),
   /** Retrieved memory context for personalization */
   memoryContext: RetrievedMemoryContextSchema.optional(),
   /** User profile preferences */
@@ -329,6 +354,13 @@ Based on the author's message, determine the right approach:
 | "Create a character named..." | create_entity |
 | "What are Marcus's relationships?" | Answer from context (no tool) |
 | "Add a rivalry between X and Y" | create_relationship |
+
+## Copilot Mode Rules (High Priority)
+
+- When context is empty and the author asks for world structure, setting, or premise, propose genesis_world.
+- When the author provides text (selection, excerpt, or pasted) and asks to extract structure, propose detect_entities.
+- When they ask for consistency or logic without text, ask for a passage and offer check_consistency or check_logic.
+- When visuals are requested and image tools are available, prefer existing image search before generating new art.
 
 ## Response Guidelines
 
@@ -410,6 +442,18 @@ const SAGA_MEMORY_TEMPLATE = `## Remembered Context
 ### Session Continuity (current focus)
 {session}`;
 
+const SAGA_MENTION_CONTEXT_TEMPLATE = `## Mentioned Context
+
+The author explicitly referenced the following items. Prioritize these over retrieved context.
+
+### Documents
+{documents}
+
+### Entities
+{entities}
+
+Use this to focus the response.`;
+
 const SAGA_CONTEXT_TEMPLATE = `## Retrieved Context
 
 The following was retrieved from the author's story world:
@@ -425,11 +469,17 @@ Use this to provide relevant, consistent answers.`;
 const SAGA_EDITOR_CONTEXT_TEMPLATE = `## Current Editor Context
 
 **Document:** {documentTitle}
-{selectionContext}
+{contextLines}
 
 Consider this when responding.`;
 
-const SAGA_NO_CONTEXT = `No specific context was retrieved for this query. You may still help with general writing questions or suggest using tools to build the world.`;
+const SAGA_NO_CONTEXT = `No specific context was retrieved for this query.
+
+Default behaviors when context is empty:
+- For world structure, setting, or premise requests, propose genesis_world.
+- For extracting structure from provided text, propose detect_entities.
+- For consistency or logic checks without text, ask for a passage and offer check_consistency or check_logic.
+- For visual requests, prefer existing image search before generating new art.`;
 
 /**
  * Format memory records for prompt injection.
@@ -447,11 +497,19 @@ function formatMemoryRecords(records: RetrievedMemoryRecord[]): string {
 export function buildSagaSystemPrompt(options: {
   mode?: SagaMode;
   ragContext?: RAGContext;
+  mentionContext?: MentionContext;
   editorContext?: EditorContext;
   profileContext?: ProfileContext;
   memoryContext?: RetrievedMemoryContext;
 }): string {
-  const { mode, ragContext, editorContext, profileContext, memoryContext } = options;
+  const { mode, ragContext, mentionContext, editorContext, profileContext, memoryContext } = options;
+  const mentionDocsCount = mentionContext?.documents.length ?? 0;
+  const mentionEntitiesCount = mentionContext?.entities.length ?? 0;
+  const ragDocsCount = ragContext?.documents.length ?? 0;
+  const ragEntitiesCount = ragContext?.entities.length ?? 0;
+  const editorHasText = Boolean(
+    editorContext?.selectionText?.trim() || editorContext?.documentExcerpt?.trim()
+  );
 
   let prompt = SAGA_BASE_SYSTEM;
 
@@ -505,6 +563,35 @@ export function buildSagaSystemPrompt(options: {
     }
   }
 
+  prompt += "\n\n## Context Availability" +
+    `\n- Mentioned docs: ${mentionDocsCount}` +
+    `\n- Mentioned entities: ${mentionEntitiesCount}` +
+    `\n- Retrieved docs: ${ragDocsCount}` +
+    `\n- Retrieved entities: ${ragEntitiesCount}` +
+    `\n- Editor text: ${editorHasText ? "yes" : "no"}`;
+
+  // Add mention context
+  if (mentionContext && (mentionDocsCount > 0 || mentionEntitiesCount > 0)) {
+    const docsText = mentionDocsCount > 0
+      ? mentionContext.documents
+          .map((doc) => {
+            const typeLabel = doc.docType ? ` (${doc.docType})` : "";
+            const preview = doc.contentText || "No text available.";
+            return `- **${doc.title}**${typeLabel}: ${preview}`;
+          })
+          .join("\n")
+      : "None mentioned.";
+    const entitiesText = mentionEntitiesCount > 0
+      ? mentionContext.entities
+          .map((entity) => `- **${entity.name}** (${entity.entityType}): ${entity.summaryText}`)
+          .join("\n")
+      : "None mentioned.";
+
+    prompt += "\n\n" + SAGA_MENTION_CONTEXT_TEMPLATE
+      .replace("{documents}", docsText)
+      .replace("{entities}", entitiesText);
+  }
+
   // Add RAG context
   if (ragContext && (ragContext.documents.length > 0 || ragContext.entities.length > 0)) {
     const docsText =
@@ -523,16 +610,34 @@ export function buildSagaSystemPrompt(options: {
 
   // Add editor context
   if (editorContext?.documentTitle) {
-    const selectionContext = editorContext.selectionText
-      ? `**Selected text:** "${editorContext.selectionText.slice(0, 200)}${editorContext.selectionText.length > 200 ? "..." : ""}"`
-      : "No text selected.";
+    const contextLines: string[] = [];
+    const selectionText = editorContext.selectionText?.trim();
+    const selectionContext = editorContext.selectionContext?.trim();
+    const documentExcerpt = editorContext.documentExcerpt?.trim();
 
-    prompt +=
-      "\n\n" +
-      SAGA_EDITOR_CONTEXT_TEMPLATE.replace("{documentTitle}", editorContext.documentTitle).replace(
-        "{selectionContext}",
-        selectionContext
+    if (selectionText) {
+      contextLines.push(
+        `**Selected text:** "${selectionText.slice(0, 200)}${selectionText.length > 200 ? "..." : ""}"`
       );
+      if (selectionContext) {
+        contextLines.push(
+          `**Selection context:** "${selectionContext.slice(0, 400)}${selectionContext.length > 400 ? "..." : ""}"`
+        );
+      }
+    } else if (documentExcerpt) {
+      contextLines.push(
+        `**Document excerpt:** "${documentExcerpt.slice(0, 400)}${documentExcerpt.length > 400 ? "..." : ""}"`
+      );
+    }
+
+    if (contextLines.length > 0) {
+      prompt +=
+        "\n\n" +
+        SAGA_EDITOR_CONTEXT_TEMPLATE.replace("{documentTitle}", editorContext.documentTitle).replace(
+          "{contextLines}",
+          contextLines.join("\n")
+        );
+    }
   }
 
   return prompt;

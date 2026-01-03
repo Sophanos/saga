@@ -16,6 +16,7 @@ import {
 import { createProject, createDocument, createEntity, createRelationship } from "@mythos/db";
 import { useProgressiveStore } from "@mythos/state";
 import { runGenesisViaEdge } from "../../services/ai";
+import { createSeedWorldbuildingDoc, embedSeedWorldbuildingDoc, WORLD_SEED_TITLE } from "../../services/projects/seedWorldbuilding";
 import { useAuthStore } from "../../stores/auth";
 
 // ============================================================================
@@ -140,6 +141,31 @@ export function ProjectCreateModal({
           order_index: 0,
           word_count: 0,
         });
+
+        try {
+          const seed = await createSeedWorldbuildingDoc({
+            projectId: project.id,
+            source: {
+              kind: "blank",
+              projectName: formData.name.trim(),
+              projectDescription: formData.description.trim() || undefined,
+              genre: formData.genre || undefined,
+              genesisPrompt:
+                formData.creationMode === "architect"
+                  ? formData.genesisPrompt.trim() || undefined
+                  : undefined,
+            },
+          });
+
+          void embedSeedWorldbuildingDoc({
+            projectId: project.id,
+            documentId: seed.documentId,
+            title: WORLD_SEED_TITLE,
+            contentText: seed.contentText,
+          });
+        } catch (seedError) {
+          console.warn("[ProjectCreateModal] Failed to create world seed:", seedError);
+        }
 
         // Initialize progressive state for this project
         const progressive = useProgressiveStore.getState();

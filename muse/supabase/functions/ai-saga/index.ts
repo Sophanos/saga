@@ -46,6 +46,7 @@ import {
   type RAGContext,
 } from "../_shared/rag.ts";
 import { buildSagaSystemPrompt } from "../_shared/prompts/mod.ts";
+import { resolveMentionContext, type MentionRef, type ResolvedMentionContext } from "../_shared/mentions.ts";
 import { agentTools } from "../_shared/tools/index.ts";
 import { assertProjectAccess, ProjectAccessError } from "../_shared/projects.ts";
 import type { UnifiedContextHints, ProjectPersonalizationContext } from "../_shared/contextHints.ts";
@@ -85,19 +86,13 @@ interface Message {
   content: string;
 }
 
-interface Mention {
-  type: "entity" | "document";
-  id: string;
-  name: string;
-}
-
 // EditorContext and SagaMode imported from ../shared/tools/types.ts
 
 interface SagaChatRequest {
   kind?: "chat";
   messages: Message[];
   projectId: string;
-  mentions?: Mention[];
+  mentions?: MentionRef[];
   editorContext?: EditorContext;
   contextHints?: UnifiedContextHints;
   mode?: SagaMode;
@@ -127,7 +122,7 @@ interface SagaToolApprovalRequest {
   /** Original messages to continue the conversation */
   messages: Message[];
   /** Optional mentions for context */
-  mentions?: Mention[];
+  mentions?: MentionRef[];
   /** Editor context for prompts */
   editorContext?: EditorContext;
   /** Optional client-side context hints */
@@ -161,6 +156,7 @@ const MAX_DECISION_EMBEDDING_CHARS = 8000;
 interface SagaContextParams {
   messages: Message[];
   projectId: string;
+  mentions?: MentionRef[];
   editorContext?: EditorContext;
   mode?: SagaMode;
   conversationId?: string;
@@ -172,6 +168,7 @@ interface SagaContextParams {
 
 interface PreparedContext {
   ragContext: RAGContext;
+  mentionContext: ResolvedMentionContext;
   systemPrompt: string;
   apiMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
 }
@@ -307,7 +304,7 @@ function buildRetrievalConfigFromControls(
  * Shared between handleChat and handleToolApproval.
  */
 async function prepareSagaContext(params: SagaContextParams): Promise<PreparedContext> {
-  const { messages, projectId, editorContext, mode, conversationId, contextHints, billing, supabase, logPrefix } = params;
+  const { messages, projectId, mentions, editorContext, mode, conversationId, contextHints, billing, supabase, logPrefix } = params;
 
   // Get last user message for RAG query
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
@@ -323,7 +320,7 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
   const memoryConfig = buildRetrievalConfigFromControls(memoryControls);
 
   // Retrieve all contexts in parallel
-  const [ragContext, memoryContext, profileContext] = await Promise.all([
+  const [ragContext, memoryContext, profileContext, mentionContext] = await Promise.all([
     retrieveRAGContext(query, projectId, {
       logPrefix,
       excludeMemories: true,
@@ -342,12 +339,19 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
       }
     ),
     retrieveProfileContext(supabase, billing.userId, logPrefix),
+    resolveMentionContext({
+      supabase,
+      projectId,
+      mentions,
+      logPrefix,
+    }),
   ]);
 
   // Build system prompt with all contexts
   const systemPrompt = buildSagaSystemPrompt({
     mode,
     ragContext,
+    mentionContext,
     editorContext,
     profileContext,
     memoryContext,
@@ -365,7 +369,7 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
     })),
   ];
 
-  return { ragContext, systemPrompt, apiMessages };
+  return { ragContext, mentionContext, systemPrompt, apiMessages };
 }
 
 /**
@@ -438,12 +442,13 @@ async function handleChat(
   billing: BillingCheck,
   supabase: ReturnType<typeof createSupabaseClient>
 ): Promise<Response> {
-  const { messages, projectId, editorContext, mode, conversationId, contextHints } = req;
+  const { messages, projectId, mentions, editorContext, mode, conversationId, contextHints } = req;
 
   // Prepare context using shared helper
   const { ragContext, apiMessages } = await prepareSagaContext({
     messages,
     projectId,
+    mentions,
     editorContext,
     contextHints,
     mode,
@@ -950,7 +955,7 @@ async function handleToolApproval(
   billing: BillingCheck,
   supabase: ReturnType<typeof createSupabaseClient>
 ): Promise<Response> {
-  const { projectId, approved, messages, editorContext, mode, conversationId, contextHints } = req;
+  const { projectId, approved, messages, mentions, editorContext, mode, conversationId, contextHints } = req;
   const approvalId = req.approvalId ?? req.toolCallId;
 
   console.log(
@@ -979,6 +984,7 @@ async function handleToolApproval(
   const { ragContext, apiMessages } = await prepareSagaContext({
     messages,
     projectId,
+    mentions,
     editorContext,
     contextHints,
     mode,
