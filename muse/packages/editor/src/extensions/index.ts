@@ -15,6 +15,12 @@ export {
   pasteHandlerPluginKey,
 } from "./paste-handler";
 export { SceneBlock, type SceneBlockOptions } from "./scene-block";
+export { SceneList, type SceneListOptions } from "./scene-list";
+export {
+  SlashCommand,
+  type SlashCommandOptions,
+  type SlashCommandItem,
+} from "./slash-command";
 export {
   StyleDecoration,
   type StyleDecorationOptions,

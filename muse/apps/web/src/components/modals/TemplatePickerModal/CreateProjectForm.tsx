@@ -5,6 +5,7 @@ import { createProject, createDocument } from "@mythos/db";
 import { useProgressiveStore } from "@mythos/state";
 import type { ProjectTemplate } from "@mythos/core";
 import { getTemplateIcon } from "../../../utils/templateIcons";
+import { useAuthStore } from "../../../stores/auth";
 
 interface CreateProjectFormProps {
   template: ProjectTemplate;
@@ -27,6 +28,7 @@ export function CreateProjectForm({
   const [showDetails, setShowDetails] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const userId = useAuthStore((state) => state.user?.id);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -37,6 +39,10 @@ export function CreateProjectForm({
       setError(null);
 
       try {
+        if (!userId) {
+          throw new Error("Please sign in to create a project.");
+        }
+
         // Create the project with template config
         // Cast to Record<string, unknown>[] to match DB type
         const project = await createProject({
@@ -46,6 +52,7 @@ export function CreateProjectForm({
           template_id: template.id,
           entity_kinds_config: template.entityKinds as unknown as Record<string, unknown>[],
           relationship_kinds_config: template.relationshipKinds as unknown as Record<string, unknown>[],
+          user_id: userId,
         });
 
         // Create an initial empty document
@@ -81,7 +88,7 @@ export function CreateProjectForm({
         setIsSubmitting(false);
       }
     },
-    [name, description, template, creationMode, isSubmitting, onCreated]
+    [name, description, template, creationMode, isSubmitting, onCreated, userId]
   );
 
   const isBlank = template.id === "blank";

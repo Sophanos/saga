@@ -10,11 +10,16 @@ import {
   PasteHandler,
   EntitySuggestion,
   createSuggestionItems,
+  SlashCommand,
+  SceneList,
+  type SlashCommandItem,
   ReactRenderer,
 } from "@mythos/editor";
+import { ReactNodeViewRenderer } from "@tiptap/react";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import { ScrollArea } from "@mythos/ui";
 import type { Entity } from "@mythos/core";
+import { createDocument, mapDbDocumentToDocument } from "@mythos/db";
 import { useEntityClick } from "../../hooks/useEntityClick";
 import { useWritingAnalysis } from "../../hooks/useWritingAnalysis";
 import { useLinterFixes } from "../../hooks/useLinterFixes";
@@ -35,6 +40,11 @@ import {
   EntitySuggestionList,
   type EntitySuggestionListRef,
 } from "../editor/EntitySuggestionList";
+import {
+  SlashCommandList,
+  type SlashCommandListRef,
+} from "../editor/SlashCommandList";
+import { SceneListBlock } from "../editor/SceneListBlock";
 import { WorldGraphView } from "../world-graph";
 import { ProjectStartCanvas } from "../projects";
 
@@ -42,6 +52,7 @@ import { ProjectStartCanvas } from "../projects";
  * Placeholder content shown when no document is selected
  */
 const PLACEHOLDER_CONTENT = `<p>Select or create a document to begin writing...</p>`;
+const EMPTY_TIPTAP_DOC = { type: "doc", content: [{ type: "paragraph" }] };
 
 interface CanvasProps {
   showProjectStart?: boolean;
@@ -82,6 +93,7 @@ interface EditorCanvasProps {
 
 function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   const { handleEntityClick } = useEntityClick();
+  const currentProject = useCurrentProject();
 
   // Store actions and state
   const setEditorInstance = useMythosStore((state) => state.setEditorInstance);
@@ -91,6 +103,10 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   const showHud = useMythosStore((state) => state.showHud);
   const setSelectedEntity = useMythosStore((state) => state.setSelectedEntity);
   const tensionLevel = useMythosStore((state) => state.editor.tensionLevel);
+  const documents = useMythosStore((state) => state.document.documents);
+  const addDocument = useMythosStore((state) => state.addDocument);
+  const setCurrentDocument = useMythosStore((state) => state.setCurrentDocument);
+  const setCanvasView = useMythosStore((state) => state.setCanvasView);
 
   // Get current document from store
   const currentDocument = useMythosStore(
@@ -139,6 +155,79 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     []
   );
 
+  const resolveSceneParentId = useCallback((): string | undefined => {
+    if (currentDocument?.type === "chapter") {
+      return currentDocument.id;
+    }
+    if (currentDocument?.type === "scene") {
+      return currentDocument.parentId;
+    }
+    const chapters = documents
+      .filter((doc) => doc.type === "chapter")
+      .sort((a, b) => a.orderIndex - b.orderIndex);
+    return chapters.length > 0 ? chapters[chapters.length - 1].id : undefined;
+  }, [currentDocument, documents]);
+
+  const handleCreateScene = useCallback(async () => {
+    if (!currentProject) return;
+    const parentId = resolveSceneParentId();
+    const siblingScenes = documents.filter(
+      (doc) => doc.type === "scene" && doc.parentId === parentId
+    );
+    const nextOrderIndex =
+      siblingScenes.length > 0
+        ? Math.max(...siblingScenes.map((doc) => doc.orderIndex)) + 1
+        : 0;
+    const nextSceneNumber = siblingScenes.length + 1;
+    const title = `Scene ${nextSceneNumber}`;
+
+    try {
+      const created = await createDocument({
+        project_id: currentProject.id,
+        parent_id: parentId ?? null,
+        type: "scene",
+        title,
+        content: EMPTY_TIPTAP_DOC,
+        content_text: "",
+        order_index: nextOrderIndex,
+        word_count: 0,
+      });
+      const mapped = mapDbDocumentToDocument(created);
+      addDocument(mapped);
+      setCurrentDocument(mapped);
+      setCanvasView("editor");
+    } catch (err) {
+      console.warn("Failed to create scene:", err);
+    }
+  }, [
+    currentProject,
+    resolveSceneParentId,
+    documents,
+    addDocument,
+    setCurrentDocument,
+    setCanvasView,
+  ]);
+
+  const createSceneRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    createSceneRef.current = () => {
+      void handleCreateScene();
+    };
+  }, [handleCreateScene]);
+
+  const slashItems = useMemo<SlashCommandItem[]>(
+    () => [
+      {
+        id: "scene",
+        label: "Scene",
+        description: "Create a scene under the current chapter",
+        keywords: ["scene", "chapter"],
+      },
+    ],
+    []
+  );
+
   // Determine initial content based on currentDocument
   const initialContent = useMemo(() => {
     if (currentDocument?.content) {
@@ -156,6 +245,11 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      SceneList.extend({
+        addNodeView() {
+          return ReactNodeViewRenderer(SceneListBlock);
+        },
+      }),
       Placeholder.configure({
         placeholder: currentDocument
           ? "Begin your story..."
@@ -169,6 +263,107 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       PasteHandler.configure({
         minLength: 100,
         onSubstantialPaste: stableHandlePaste,
+      }),
+      SlashCommand.configure({
+        suggestion: {
+          items: ({ query }) => {
+            const hasProject =
+              !!useMythosStore.getState().project.currentProject;
+            if (!hasProject) return [];
+            const lower = query.toLowerCase();
+            return slashItems.filter((item) => {
+              if (!lower) return true;
+              const keywords = item.keywords ?? [];
+              return (
+                item.label.toLowerCase().includes(lower) ||
+                keywords.some((k) => k.toLowerCase().includes(lower))
+              );
+            });
+          },
+          command: ({ editor, range, props }) => {
+            editor.chain().focus().deleteRange(range).run();
+            if (props.id === "scene") {
+              const state = useMythosStore.getState();
+              const currentDoc = state.document.currentDocument;
+              const docList = state.document.documents;
+              let chapterId: string | null = null;
+
+              if (currentDoc?.type === "chapter") {
+                chapterId = currentDoc.id;
+              } else if (currentDoc?.type === "scene") {
+                chapterId = currentDoc.parentId ?? null;
+              } else {
+                const chapters = docList
+                  .filter((doc) => doc.type === "chapter")
+                  .sort((a, b) => a.orderIndex - b.orderIndex);
+                chapterId = chapters.length > 0 ? chapters[chapters.length - 1].id : null;
+              }
+
+              editor
+                .chain()
+                .focus()
+                .insertContent({
+                  type: "sceneList",
+                  attrs: { chapterId },
+                })
+                .run();
+              createSceneRef.current();
+            }
+          },
+          render: () => {
+            let component: ReactRenderer<SlashCommandListRef> | null = null;
+            let popup: TippyInstance[] | null = null;
+
+            return {
+              onStart: (props) => {
+                component = new ReactRenderer(SlashCommandList, {
+                  props,
+                  editor: props.editor,
+                });
+
+                if (!props.clientRect) {
+                  return;
+                }
+
+                popup = tippy("body", {
+                  getReferenceClientRect: props.clientRect as () => DOMRect,
+                  appendTo: () => document.body,
+                  content: component.element,
+                  showOnCreate: true,
+                  interactive: true,
+                  trigger: "manual",
+                  placement: "bottom-start",
+                });
+              },
+
+              onUpdate: (props) => {
+                component?.updateProps(props);
+
+                if (!props.clientRect) {
+                  return;
+                }
+
+                popup?.[0]?.setProps({
+                  getReferenceClientRect: props.clientRect as () => DOMRect,
+                });
+              },
+
+              onKeyDown: (props) => {
+                if (props.event.key === "Escape") {
+                  popup?.[0]?.hide();
+                  return true;
+                }
+
+                return component?.ref?.onKeyDown(props) ?? false;
+              },
+
+              onExit: () => {
+                popup?.[0]?.destroy();
+                component?.destroy();
+              },
+            };
+          },
+        },
       }),
       EntitySuggestion.configure({
         suggestion: {

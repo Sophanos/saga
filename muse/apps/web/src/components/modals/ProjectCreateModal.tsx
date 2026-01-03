@@ -16,6 +16,7 @@ import {
 import { createProject, createDocument, createEntity, createRelationship } from "@mythos/db";
 import { useProgressiveStore } from "@mythos/state";
 import { runGenesisViaEdge } from "../../services/ai";
+import { useAuthStore } from "../../stores/auth";
 
 // ============================================================================
 // Types
@@ -76,6 +77,7 @@ export function ProjectCreateModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const userId = useAuthStore((state) => state.user?.id);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -116,11 +118,16 @@ export function ProjectCreateModal({
       setIsSubmitting(true);
 
       try {
+        if (!userId) {
+          throw new Error("Please sign in to create a project.");
+        }
+
         // Create the project
         const project = await createProject({
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           genre: formData.genre || null,
+          user_id: userId,
         });
 
         // Create an initial empty document
@@ -262,7 +269,7 @@ export function ProjectCreateModal({
         setIsSubmitting(false);
       }
     },
-    [formData, validate, isSubmitting, onCreated]
+    [formData, validate, isSubmitting, onCreated, userId]
   );
 
   const handleKeyDown = useCallback(
