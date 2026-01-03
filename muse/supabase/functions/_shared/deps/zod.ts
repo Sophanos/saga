@@ -1,4 +1,6 @@
-export { z } from "https://esm.sh/zod@4.3.4?target=deno&pin=v135";
+import { z } from "npm:zod@4.3.4";
+
+export { z };
 
 const _probe = z.object({ ok: z.boolean() });
 if (typeof (_probe as { safeParseAsync?: unknown }).safeParseAsync !== "function") {

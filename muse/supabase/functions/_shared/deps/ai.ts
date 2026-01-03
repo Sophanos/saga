@@ -6,4 +6,4 @@ export {
   rerank,
   Output,
   tool,
-} from "https://esm.sh/ai@6.0.6?target=deno&pin=v135";
+} from "npm:ai@6.0.6";
