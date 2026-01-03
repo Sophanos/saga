@@ -19,6 +19,9 @@ import {
   scrollPoints,
   isQdrantConfigured,
   QdrantError,
+  type QdrantFilter,
+  type QdrantScrollOptions,
+  type QdrantScrollResult,
 } from "../qdrant.ts";
 import { parseMemoryFromPayload } from "./parsers.ts";
 import {
@@ -182,6 +185,29 @@ function sortMemories(
 
     return getCreatedAtTs(b) - getCreatedAtTs(a);
   });
+}
+
+async function scrollPointsWithFallback(
+  filter: QdrantFilter,
+  limit: number,
+  options: QdrantScrollOptions | undefined,
+  logPrefix: string
+): Promise<QdrantScrollResult[]> {
+  if (!options?.orderBy) {
+    return await scrollPoints(filter, limit, options);
+  }
+
+  try {
+    return await scrollPoints(filter, limit, options);
+  } catch (error) {
+    if (error instanceof QdrantError) {
+      console.warn(
+        `${logPrefix} Qdrant order_by failed, falling back to unordered scroll: ${error.message}`
+      );
+      return await scrollPoints(filter, limit);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -475,9 +501,9 @@ export async function retrieveMemoryContext(
           sortOptions
         ).slice(0, limits.decisions);
       } else {
-        const decisions = await scrollPoints(decisionFilter, limits.decisions * 2, {
+        const decisions = await scrollPointsWithFallback(decisionFilter, limits.decisions * 2, {
           orderBy: { key: "created_at_ts", direction: "desc" },
-        });
+        }, logPrefix);
         const decisionRecords = decisions.map((p) => parseMemoryFromPayload(p.id, p.payload));
         result.decisions = sortMemories(
           filterVisible(decisionRecords, { maxAgeMs: maxAgeMsForCategory("decisions", controls) })
@@ -501,9 +527,9 @@ export async function retrieveMemoryContext(
             sortOptions
           ).slice(0, limits.style);
         } else {
-          const styleResults = await scrollPoints(styleFilter, limits.style * 2, {
+          const styleResults = await scrollPointsWithFallback(styleFilter, limits.style * 2, {
             orderBy: { key: "created_at_ts", direction: "desc" },
-          });
+          }, logPrefix);
           const styleRecords = styleResults.map((p) => parseMemoryFromPayload(p.id, p.payload));
           result.style = sortMemories(
             filterVisible(styleRecords, { maxAgeMs: maxAgeMsForCategory("style", controls) })
@@ -524,9 +550,9 @@ export async function retrieveMemoryContext(
             sortOptions
           ).slice(0, limits.preferences);
         } else {
-          const prefResults = await scrollPoints(prefFilter, limits.preferences * 2, {
+          const prefResults = await scrollPointsWithFallback(prefFilter, limits.preferences * 2, {
             orderBy: { key: "created_at_ts", direction: "desc" },
-          });
+          }, logPrefix);
           const prefRecords = prefResults.map((p) => parseMemoryFromPayload(p.id, p.payload));
           result.preferences = sortMemories(
             filterVisible(prefRecords, { maxAgeMs: maxAgeMsForCategory("preferences", controls) })
@@ -548,9 +574,9 @@ export async function retrieveMemoryContext(
             sortOptions
           ).slice(0, limits.session);
         } else {
-          const sessionResults = await scrollPoints(sessionFilter, limits.session * 2, {
+          const sessionResults = await scrollPointsWithFallback(sessionFilter, limits.session * 2, {
             orderBy: { key: "created_at_ts", direction: "desc" },
-          });
+          }, logPrefix);
           const sessionRecords = sessionResults.map((p) => parseMemoryFromPayload(p.id, p.payload));
           result.session = sortMemories(
             filterVisible(sessionRecords, { maxAgeMs: maxAgeMsForCategory("session", controls) })

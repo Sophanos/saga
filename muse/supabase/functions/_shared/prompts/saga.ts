@@ -475,12 +475,7 @@ export function buildSagaSystemPrompt(options: {
   } = options;
   const mergedProfile = profileContext ?? contextHints?.profile;
   const mergedEditor = editorContext ?? contextHints?.editor;
-  const mergedProject: ProjectPersonalizationContext | undefined = {
-    ...contextHints?.project,
-    ...projectContext,
-    guardrails: projectContext?.guardrails ?? contextHints?.project?.guardrails,
-    smartMode: projectContext?.smartMode ?? contextHints?.project?.smartMode,
-  };
+  const mergedProject = projectContext ?? contextHints?.project;
 
   let prompt = SAGA_SYSTEM;
 

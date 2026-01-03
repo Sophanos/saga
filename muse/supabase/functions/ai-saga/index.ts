@@ -241,6 +241,13 @@ interface MemoryRetrievalConfig {
   maxAgeDays?: Partial<Record<MemoryCategoryKey, number>>;
 }
 
+function clamp01(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.min(1, Math.max(0, value));
+}
+
 function buildRetrievalConfigFromControls(
   memoryControls: Record<string, unknown> | undefined,
   defaults: RetrievalLimits = DEFAULT_SAGA_LIMITS
@@ -288,9 +295,7 @@ function buildRetrievalConfigFromControls(
 
   return {
     limits,
-    recencyWeight: typeof memoryControls?.recencyWeight === "number"
-      ? memoryControls?.recencyWeight
-      : undefined,
+    recencyWeight: clamp01(memoryControls?.recencyWeight),
     maxAgeDays: Object.keys(maxAgeDays).length > 0 ? maxAgeDays : undefined,
   };
 }
