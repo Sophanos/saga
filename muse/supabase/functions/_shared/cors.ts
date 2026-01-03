@@ -7,6 +7,8 @@
 const ALLOWED_ORIGINS = [
   "http://localhost:5173", // Vite dev server
   "http://localhost:3000", // Alternative dev port
+  "http://localhost:3001", // Alternative dev port
+  "http://localhost:3002", // Alternative dev port
   "https://mythos.dev", // Production
   "https://www.mythos.dev", // Production www
 ];

@@ -1,10 +1,13 @@
 import { Extension } from "@tiptap/core";
 import Suggestion, { type SuggestionOptions } from "@tiptap/suggestion";
+import { PluginKey } from "@tiptap/pm/state";
 import type { Entity } from "@mythos/core";
 
 export interface EntitySuggestionOptions {
   suggestion: Omit<SuggestionOptions<Entity>, "editor">;
 }
+
+const entitySuggestionPluginKey = new PluginKey("entitySuggestion");
 
 export const EntitySuggestion = Extension.create<EntitySuggestionOptions>({
   name: "entitySuggestion",
@@ -12,6 +15,7 @@ export const EntitySuggestion = Extension.create<EntitySuggestionOptions>({
   addOptions() {
     return {
       suggestion: {
+        pluginKey: entitySuggestionPluginKey,
         char: "@",
         startOfLine: false,
         command: ({ editor, range, props }) => {
