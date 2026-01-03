@@ -33,11 +33,11 @@ export function SceneListBlock({
   updateAttributes,
   deleteNode,
 }: NodeViewProps) {
-  const chapterId = node.attrs.chapterId ?? null;
+  const chapterId = node.attrs["chapterId"] ?? null;
   const currentProject = useCurrentProject();
-  const mode = coerceMode(node.attrs.mode);
-  const sortBy = coerceSortBy(node.attrs.sortBy);
-  const sortDir = coerceSortDir(node.attrs.sortDir);
+  const mode = coerceMode(node.attrs["mode"]);
+  const sortBy = coerceSortBy(node.attrs["sortBy"]);
+  const sortDir = coerceSortDir(node.attrs["sortDir"]);
   const documents = useMythosStore((state) => state.document.documents);
   const currentDocument = useMythosStore((state) => state.document.currentDocument);
   const setCurrentDocument = useMythosStore((state) => state.setCurrentDocument);

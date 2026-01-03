@@ -27,6 +27,7 @@
     "motion": "^11.15.0",
     "@supabase/auth-ui-react": "^0.4.7",
     "@supabase/auth-ui-shared": "^0.1.8",
+    "@tiptap/react": "^2.10.4",
     "@tippyjs/react": "^4.2.6",
     "immer": "^10.1.1",
     "lucide-react": "^0.469.0",

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   X,
   User,
@@ -66,6 +66,13 @@ const SMART_MODE_OPTIONS = [
   { value: "adaptive", label: "Adaptive" },
 ];
 
+const LEARNED_STYLE_PRESETS = [
+  { value: "", label: "Auto", hint: "Use app defaults." },
+  { value: "0.3", label: "Subtle", hint: "Light influence from learned style." },
+  { value: "0.6", label: "Balanced", hint: "Match your usual voice." },
+  { value: "0.9", label: "Strong", hint: "Lean into learned style." },
+];
+
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -129,6 +136,41 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     setIsKeySaved(false);
   }, [user, key]);
 
+  const buildNextPreferences = useCallback(() => {
+    const parsedLearnedWeight = learnedStyleWeight.trim() === ""
+      ? undefined
+      : Number(learnedStyleWeight);
+    const nextSmartMode: SmartModeConfig = {
+      level: smartModeLevel,
+      ...(typeof parsedLearnedWeight === "number" &&
+      Number.isFinite(parsedLearnedWeight) &&
+      parsedLearnedWeight >= 0 &&
+      parsedLearnedWeight <= 1
+        ? { learnedStyleWeight: parsedLearnedWeight }
+        : {}),
+    };
+
+    return {
+      ...(user?.preferences ?? {}),
+      writing: {
+        ...(user?.preferences?.writing ?? {}),
+        preferredGenre: preferredGenre || undefined,
+        namingCulture: (namingCulture as NameCulture) || undefined,
+        namingStyle: (namingStyle as NameStyle) || undefined,
+        logicStrictness: (logicStrictness as LogicStrictness) || undefined,
+        smartMode: nextSmartMode,
+      },
+    };
+  }, [
+    learnedStyleWeight,
+    smartModeLevel,
+    user?.preferences,
+    preferredGenre,
+    namingCulture,
+    namingStyle,
+    logicStrictness,
+  ]);
+
   useEffect(() => {
     if (!isOpen) return;
     resetFormState();
@@ -141,27 +183,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     setError(null);
     setSuccessMessage(null);
 
-    const parsedLearnedWeight = learnedStyleWeight.trim() === ""
-      ? undefined
-      : Number(learnedStyleWeight);
-    const nextSmartMode: SmartModeConfig = {
-      level: smartModeLevel,
-      ...(Number.isFinite(parsedLearnedWeight) && parsedLearnedWeight >= 0 && parsedLearnedWeight <= 1
-        ? { learnedStyleWeight: parsedLearnedWeight }
-        : {}),
-    };
-
-    const nextPreferences = {
-      ...(user.preferences ?? {}),
-      writing: {
-        ...(user.preferences?.writing ?? {}),
-        preferredGenre: preferredGenre || undefined,
-        namingCulture: (namingCulture as NameCulture) || undefined,
-        namingStyle: (namingStyle as NameStyle) || undefined,
-        logicStrictness: (logicStrictness as LogicStrictness) || undefined,
-        smartMode: nextSmartMode,
-      },
-    };
+    const nextPreferences = buildNextPreferences();
 
     try {
       updateUserProfile({
@@ -196,14 +218,39 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     user,
     name,
     avatarUrl,
-    preferredGenre,
-    namingCulture,
-    namingStyle,
-    logicStrictness,
-    smartModeLevel,
-    learnedStyleWeight,
+    buildNextPreferences,
     updateUserProfile,
   ]);
+
+  const handleSavePreferences = useCallback(async () => {
+    if (!user) return;
+    setIsSaving(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    const nextPreferences = buildNextPreferences();
+
+    try {
+      updateUserProfile({
+        preferences: nextPreferences,
+      });
+
+      const { error: updateError } = await updateProfile(user.id, {
+        preferences: nextPreferences,
+      });
+
+      if (updateError) {
+        setError(updateError.message);
+        updateUserProfile({
+          preferences: user.preferences,
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update profile");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [user, buildNextPreferences, updateUserProfile]);
 
   const handleSignOut = useCallback(async () => {
     setIsSigningOut(true);
@@ -212,10 +259,10 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
       const { error: signOutError } = await signOut();
       if (signOutError) {
         setError(signOutError.message);
-        setIsSigningOut(false);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to sign out");
+    } finally {
       setIsSigningOut(false);
     }
   }, []);
@@ -234,11 +281,6 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     setShowKey(false);
   }, [clearKey]);
 
-  const handleClose = useCallback(() => {
-    resetFormState();
-    onClose();
-  }, [resetFormState, onClose]);
-
   const hasProfileChanges = user && (
     name.trim() !== (user.name || "") ||
     avatarUrl.trim() !== (user.avatarUrl || "") ||
@@ -250,6 +292,60 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     learnedStyleWeight.trim() !==
       (user.preferences?.writing?.smartMode?.learnedStyleWeight?.toString() ?? "")
   );
+
+  const hasPersonalizationChanges = user && (
+    preferredGenre !== (user.preferences?.writing?.preferredGenre || "") ||
+    namingCulture !== (user.preferences?.writing?.namingCulture || "") ||
+    namingStyle !== (user.preferences?.writing?.namingStyle || "standard") ||
+    logicStrictness !== (user.preferences?.writing?.logicStrictness || "balanced") ||
+    smartModeLevel !== (user.preferences?.writing?.smartMode?.level || "balanced") ||
+    learnedStyleWeight.trim() !==
+      (user.preferences?.writing?.smartMode?.learnedStyleWeight?.toString() ?? "")
+  );
+
+  const handleClose = useCallback(async () => {
+    if (activeSection === "personalization" && hasPersonalizationChanges && !isSaving) {
+      await handleSavePreferences();
+    }
+    resetFormState();
+    onClose();
+  }, [
+    activeSection,
+    hasPersonalizationChanges,
+    isSaving,
+    handleSavePreferences,
+    resetFormState,
+    onClose,
+  ]);
+
+  const autosaveTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || activeSection !== "personalization") return;
+    if (!user || !hasPersonalizationChanges || isSaving) return;
+
+    if (autosaveTimerRef.current) {
+      window.clearTimeout(autosaveTimerRef.current);
+    }
+
+    autosaveTimerRef.current = window.setTimeout(() => {
+      handleSavePreferences();
+    }, 600);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [
+    isOpen,
+    activeSection,
+    user,
+    hasPersonalizationChanges,
+    isSaving,
+    handleSavePreferences,
+  ]);
 
   if (!isOpen) return null;
 
@@ -484,104 +580,147 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
 
               {activeSection === "personalization" && (
                 <div className="space-y-6">
-                  <section className="space-y-4">
-                    <div className="text-sm font-medium text-mythos-text-primary">
-                      Writing preferences
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-mythos-text-primary">
+                        Writing preferences
+                      </div>
+                      <p className="text-xs text-mythos-text-muted">
+                        Shape AI voice, naming, and logic behavior for this account.
+                      </p>
                     </div>
-                    <p className="text-xs text-mythos-text-muted">
-                      These preferences influence AI suggestions and name generation.
-                    </p>
+                  </div>
 
-                    <FormField label="Preferred Genre" className="space-y-2">
-                      <Select
-                        options={GENRE_OPTIONS}
-                        value={preferredGenre}
-                        onChange={setPreferredGenre}
-                        disabled={isSaving}
-                      />
-                    </FormField>
+                  <div className="space-y-6">
+                    <section className="rounded-xl border border-mythos-border-default bg-mythos-bg-tertiary/40 p-5 space-y-5">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-mythos-text-muted">
+                          Writing defaults
+                        </div>
+                        <p className="text-xs text-mythos-text-muted mt-1">
+                          Defaults apply when a project doesn’t specify overrides.
+                        </p>
+                      </div>
 
-                    <FormField label="Naming Culture" className="space-y-2">
-                      <Select
-                        options={CULTURE_OPTIONS}
-                        value={namingCulture}
-                        onChange={setNamingCulture}
-                        disabled={isSaving}
-                      />
-                      <p className="text-xs text-mythos-text-muted">
-                        Default cultural inspiration for generated names.
-                      </p>
-                    </FormField>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <FormField label="Preferred Genre" className="space-y-2">
+                          <Select
+                            options={GENRE_OPTIONS}
+                            value={preferredGenre}
+                            onChange={setPreferredGenre}
+                            disabled={isSaving}
+                          />
+                        </FormField>
 
-                    <FormField label="Name Style" className="space-y-2">
-                      <Select
-                        options={NAME_STYLE_OPTIONS}
-                        value={namingStyle}
-                        onChange={(v) => setNamingStyle(v as NameStyle)}
-                        disabled={isSaving}
-                      />
-                    </FormField>
+                        <FormField label="Logic Check Strictness" className="space-y-2">
+                          <Select
+                            options={LOGIC_STRICTNESS_OPTIONS}
+                            value={logicStrictness}
+                            onChange={(v) => setLogicStrictness(v as LogicStrictness)}
+                            disabled={isSaving}
+                          />
+                          <p className="text-xs text-mythos-text-muted">
+                            How strict the logic checker should be when validating rules.
+                          </p>
+                        </FormField>
+                      </div>
 
-                    <FormField label="Logic Check Strictness" className="space-y-2">
-                      <Select
-                        options={LOGIC_STRICTNESS_OPTIONS}
-                        value={logicStrictness}
-                        onChange={(v) => setLogicStrictness(v as LogicStrictness)}
-                        disabled={isSaving}
-                      />
-                      <p className="text-xs text-mythos-text-muted">
-                        How strict the logic checker should be when validating rules.
-                      </p>
-                    </FormField>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <FormField label="Naming Culture" className="space-y-2">
+                          <Select
+                            options={CULTURE_OPTIONS}
+                            value={namingCulture}
+                            onChange={setNamingCulture}
+                            disabled={isSaving}
+                          />
+                          <p className="text-xs text-mythos-text-muted">
+                            Default cultural inspiration for generated names.
+                          </p>
+                        </FormField>
 
-                    <FormField label="Smart Mode" className="space-y-2">
-                      <Select
-                        options={SMART_MODE_OPTIONS}
-                        value={smartModeLevel}
-                        onChange={(v) => setSmartModeLevel(v as SmartModeLevel)}
-                        disabled={isSaving}
-                      />
-                      <p className="text-xs text-mythos-text-muted">
-                        Controls how strongly learned style influences responses.
-                      </p>
-                    </FormField>
+                        <FormField label="Name Style" className="space-y-2">
+                          <Select
+                            options={NAME_STYLE_OPTIONS}
+                            value={namingStyle}
+                            onChange={(v) => setNamingStyle(v as NameStyle)}
+                            disabled={isSaving}
+                          />
+                        </FormField>
+                      </div>
+                    </section>
 
-                    <FormField label="Learned Style Influence" className="space-y-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={1}
-                        step={0.1}
-                        value={learnedStyleWeight}
-                        onChange={(e) => setLearnedStyleWeight(e.target.value)}
-                        placeholder="0.6"
-                        disabled={isSaving}
-                      />
-                      <p className="text-xs text-mythos-text-muted">
-                        Optional weight from 0-1. Leave blank to use defaults.
-                      </p>
-                    </FormField>
+                    <section className="rounded-xl border border-mythos-border-default bg-mythos-bg-secondary/60 p-5 space-y-4">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-mythos-text-muted">
+                          Smart Mode
+                        </div>
+                        <p className="text-xs text-mythos-text-muted mt-1">
+                          Learn from your writing and preferences, then apply that style to suggestions.
+                        </p>
+                      </div>
 
-                    <div className="flex justify-end">
-                      <Button
-                        onClick={handleSaveProfile}
-                        disabled={!hasProfileChanges || isSaving}
-                        className="gap-1.5"
-                      >
-                        {isSaving ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <Check className="w-4 h-4" />
-                            Save Preferences
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </section>
+                      <FormField label="Mode" className="space-y-2">
+                        <div className="grid gap-3 md:grid-cols-3">
+                          {SMART_MODE_OPTIONS.map((option) => {
+                            const isSelected = smartModeLevel === option.value;
+                            const description =
+                              option.value === "off"
+                                ? "Only uses your manual preferences."
+                                : option.value === "balanced"
+                                ? "Applies learned style gently."
+                                : "Leans heavily into learned style.";
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => setSmartModeLevel(option.value as SmartModeLevel)}
+                                disabled={isSaving}
+                                className={cn(
+                                  "rounded-lg border px-3 py-3 text-left transition-colors",
+                                  isSelected
+                                    ? "border-mythos-accent-primary/60 bg-mythos-accent-primary/10 text-mythos-text-primary"
+                                    : "border-mythos-border-default text-mythos-text-muted hover:text-mythos-text-primary"
+                                )}
+                              >
+                                <div className="text-sm font-medium">{option.label}</div>
+                                <div className="text-xs mt-1">{description}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </FormField>
+
+                      <div className="rounded-lg border border-mythos-border-default/80 bg-mythos-bg-tertiary/40 p-3">
+                        <FormField label="Learned Style Influence" className="space-y-2">
+                          <div className="grid gap-2 sm:grid-cols-4">
+                            {LEARNED_STYLE_PRESETS.map((preset) => {
+                              const isSelected = learnedStyleWeight === preset.value;
+                              return (
+                                <button
+                                  key={preset.label}
+                                  type="button"
+                                  onClick={() => setLearnedStyleWeight(preset.value)}
+                                  disabled={isSaving}
+                                  className={cn(
+                                    "rounded-md border px-3 py-2 text-left text-xs transition-colors",
+                                    isSelected
+                                      ? "border-mythos-accent-primary/60 bg-mythos-accent-primary/10 text-mythos-text-primary"
+                                      : "border-mythos-border-default text-mythos-text-muted hover:text-mythos-text-primary"
+                                  )}
+                                >
+                                  <div className="text-sm font-medium">{preset.label}</div>
+                                  <div className="text-[11px] mt-1">{preset.hint}</div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-xs text-mythos-text-muted">
+                            Choose a feel instead of a number. Auto follows project defaults.
+                          </p>
+                        </FormField>
+                      </div>
+                    </section>
+                  </div>
                 </div>
               )}
 

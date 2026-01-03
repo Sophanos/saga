@@ -4,7 +4,6 @@ import {
   ChevronDown,
   ChevronRight,
   FilePlus,
-  FileText,
   FolderPlus,
   Plus,
   Settings,

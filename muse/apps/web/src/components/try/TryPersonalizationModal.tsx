@@ -139,13 +139,16 @@ export function TryPersonalizationModal() {
         currentProject.config.styleMode
       );
       const nextGenre = resolveProjectGenre(next.genre, currentProject.config.genre);
+      const nextGuardrails = next.guardrails
+        ? { ...next.guardrails, no_judgement_mode: next.guardrails.no_judgement_mode ?? true }
+        : undefined;
       setCurrentProject({
         ...currentProject,
         config: {
           ...currentProject.config,
           genre: nextGenre,
           styleMode: nextStyleMode,
-          guardrails: next.guardrails,
+          guardrails: nextGuardrails,
           smartMode: next.smartMode,
         },
       });

@@ -78,6 +78,7 @@
         "@supabase/auth-ui-react": "^0.4.7",
         "@supabase/auth-ui-shared": "^0.1.8",
         "@tippyjs/react": "^4.2.6",
+        "@tiptap/react": "^2.10.4",
         "@xyflow/react": "^12.3.0",
         "cmdk": "^1.0.0",
         "docx": "^8.5.0",
