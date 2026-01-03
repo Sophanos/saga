@@ -62,8 +62,8 @@ export function createDynamicOpenRouter(apiKey: string) {
       "X-Title": "Mythos IDE",
     },
     // OpenRouter expects Chat Completions-style payloads.
-    // This avoids Responses API validation errors on non-OpenAI models.
-    compatibility: "strict",
+    // Use compatible mode to avoid Responses API validation errors for assistant history.
+    compatibility: "compatible",
   });
 }
 
