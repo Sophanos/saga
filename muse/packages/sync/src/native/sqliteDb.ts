@@ -560,6 +560,16 @@ export function createSqliteAdapter(db: SQLiteDatabase): LocalDbAdapter {
     },
 
     async deleteDocument(id: string): Promise<void> {
+      const row = await db.getFirstAsync<{ type?: string }>(
+        "SELECT type FROM documents WHERE id = ?",
+        [id]
+      );
+      if (!row) return;
+
+      if (row.type === "chapter") {
+        await db.runAsync("DELETE FROM documents WHERE parent_id = ?", [id]);
+      }
+
       await db.runAsync("DELETE FROM documents WHERE id = ?", [id]);
     },
 

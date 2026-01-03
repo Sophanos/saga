@@ -5,8 +5,8 @@
  * optionally using existing character portraits for consistency.
  */
 
-import { tool } from "https://esm.sh/ai@6.0.0";
-import { z } from "https://esm.sh/zod@3.25.28";
+import { tool } from "../deps/ai.ts";
+import { z } from "../deps/zod.ts";
 import { imageStyleSchema, aspectRatioSchema, type ToolExecuteResult } from "./types.ts";
 
 // =============================================================================

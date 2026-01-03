@@ -11,8 +11,8 @@
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { generateText, Output } from "https://esm.sh/ai@6.0.0";
-import { z } from "https://esm.sh/zod@3.25.28";
+import { generateText, Output } from "../_shared/deps/ai.ts";
+import { z } from "../_shared/deps/zod.ts";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import {
   createErrorResponse,

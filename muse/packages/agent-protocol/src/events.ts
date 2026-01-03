@@ -75,7 +75,10 @@ export interface ToolEvent {
  */
 export interface ToolApprovalRequestEvent {
   type: "tool-approval-request";
-  toolCallId: string;
+  /** Unique approval ID required for tool-approval-response */
+  approvalId: string;
+  /** Tool call ID (if provided by the model) */
+  toolCallId?: string;
   toolName: ToolName;
   args: unknown;
 }

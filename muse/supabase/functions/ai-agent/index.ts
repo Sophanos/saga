@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { streamText } from "https://esm.sh/ai@6.0.0";
+import { streamText } from "../_shared/deps/ai.ts";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import {
   createSSEStream,

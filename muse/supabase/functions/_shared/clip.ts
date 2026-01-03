@@ -27,8 +27,8 @@
  * @module clip
  */
 
-import { createOpenAI } from "https://esm.sh/@ai-sdk/openai@3.0.0";
-import { embed } from "https://esm.sh/ai@6.0.0";
+import { createOpenAI } from "./deps/ai-providers.ts";
+import { embed } from "./deps/ai.ts";
 import {
   DEEPINFRA_BASE_URL,
   DeepInfraError,

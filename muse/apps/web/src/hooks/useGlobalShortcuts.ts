@@ -16,6 +16,7 @@ interface UseGlobalShortcutsOptions {
  *
  * Shortcuts:
  * - Cmd/Ctrl+K: Toggle command palette
+ * - Cmd/Ctrl+T: Toggle command palette
  * - Cmd/Ctrl+N: New project
  * - Cmd/Ctrl+Shift+C: Create character
  * - Cmd/Ctrl+Shift+O: Create location
@@ -83,6 +84,12 @@ export function useGlobalShortcuts(options?: UseGlobalShortcutsOptions): void {
 
       // Command palette toggle - Cmd/Ctrl+K
       if (modKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        toggle();
+        return;
+      }
+      // Command palette toggle - Cmd/Ctrl+T
+      if (modKey && e.key.toLowerCase() === "t") {
         e.preventDefault();
         toggle();
         return;

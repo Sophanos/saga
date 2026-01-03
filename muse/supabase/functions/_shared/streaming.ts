@@ -32,7 +32,10 @@ export interface SSEToolEvent {
  */
 export interface SSEToolApprovalRequestEvent {
   type: "tool-approval-request";
-  toolCallId: string;
+  /** Unique approval ID required for tool-approval-response */
+  approvalId: string;
+  /** Tool call ID (if provided by the model) */
+  toolCallId?: string;
   toolName: string;
   args: unknown;
 }
@@ -97,11 +100,12 @@ export function createToolEvent(
  * Create an SSE tool approval request event (AI SDK 6 needsApproval)
  */
 export function createToolApprovalRequestEvent(
-  toolCallId: string,
+  approvalId: string,
   toolName: string,
-  args: unknown
+  args: unknown,
+  toolCallId?: string
 ): Uint8Array {
-  return encodeSSEEvent({ type: "tool-approval-request", toolCallId, toolName, args });
+  return encodeSSEEvent({ type: "tool-approval-request", approvalId, toolCallId, toolName, args });
 }
 
 /**
@@ -156,8 +160,13 @@ export class SSEStreamController {
   /**
    * Send tool approval request (AI SDK 6 needsApproval)
    */
-  sendToolApprovalRequest(toolCallId: string, toolName: string, args: unknown): void {
-    this.controller.enqueue(createToolApprovalRequestEvent(toolCallId, toolName, args));
+  sendToolApprovalRequest(
+    approvalId: string,
+    toolName: string,
+    args: unknown,
+    toolCallId?: string
+  ): void {
+    this.controller.enqueue(createToolApprovalRequestEvent(approvalId, toolName, args, toolCallId));
   }
 
   /**

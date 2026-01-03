@@ -185,6 +185,8 @@ export interface ChatMention {
 export interface ChatToolInvocation {
   /** Stable identifier from the LLM tool call */
   toolCallId: string;
+  /** Approval ID for AI SDK tool approval flow */
+  approvalId?: string;
   /** Which tool is being invoked */
   toolName: ToolName;
   /** Tool-specific arguments */

@@ -137,7 +137,7 @@ export function useSessionHistory(): UseSessionHistoryResult {
    */
   const ensureCurrentSession = useCallback(async (): Promise<boolean> => {
     const projectId = currentProject?.id;
-    if (!projectId || !conversationId) return false;
+    if (!projectId || !conversationId || !user?.id) return false;
 
     // Check if there's already a pending/completed promise for this session
     const existing = sessionEnsurePromises.current.get(conversationId);
@@ -178,7 +178,7 @@ export function useSessionHistory(): UseSessionHistoryResult {
    */
   const refreshSessions = useCallback(async () => {
     const projectId = currentProject?.id;
-    if (!projectId) return;
+    if (!projectId || !user?.id) return;
 
     setSessionsLoading(true);
     try {
@@ -195,6 +195,7 @@ export function useSessionHistory(): UseSessionHistoryResult {
    */
   const openSession = useCallback(
     async (sessionId: string) => {
+      if (!user?.id) return;
       // Stop any current streaming
       stopStreaming(false);
 

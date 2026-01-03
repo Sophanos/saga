@@ -133,6 +133,16 @@ export async function updateDocument(
  * Delete a document
  */
 export async function deleteDocument(id: string): Promise<void> {
+  const document = await getDocument(id);
+  if (!document) return;
+
+  if (document.type === "chapter") {
+    await executeVoidMutation(
+      (client) => client.from("documents").delete().eq("parent_id", id),
+      { context: "delete child documents" }
+    );
+  }
+
   return executeVoidMutation(
     (client) => client.from("documents").delete().eq("id", id),
     { context: "delete document" }

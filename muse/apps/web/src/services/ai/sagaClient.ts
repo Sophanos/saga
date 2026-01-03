@@ -8,6 +8,8 @@
  */
 
 import { ApiError, type ApiErrorCode } from "../api-client";
+import { getSupabaseClient, isSupabaseInitialized } from "@mythos/db";
+import { getAnonHeaders } from "../anonymousSession";
 import { API_TIMEOUTS, RETRY_CONFIG } from "../config";
 import type { ChatContext, ChatMention } from "../../stores";
 import type {
@@ -33,6 +35,36 @@ import type {
 import type { UnifiedContextHints } from "@mythos/context";
 
 const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "";
+const SUPABASE_ANON_KEY = import.meta.env["VITE_SUPABASE_ANON_KEY"] || "";
+
+async function resolveAuthHeader(authToken?: string): Promise<string | null> {
+  if (authToken) {
+    return authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`;
+  }
+
+  if (!isSupabaseInitialized()) {
+    return null;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { data: { session }, error } = await supabase.auth.getSession();
+
+    if (error) {
+      if (import.meta.env.DEV) {
+        console.warn("[sagaClient] Failed to resolve auth session:", error.message);
+      }
+      return null;
+    }
+
+    return session?.access_token ? `Bearer ${session.access_token}` : null;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("[sagaClient] Failed to resolve auth token:", error);
+    }
+    return null;
+  }
+}
 
 // =============================================================================
 // Retry Helper (for non-streaming requests)
@@ -119,6 +151,7 @@ export interface SagaStreamEvent {
   content?: string;
   data?: ChatContext;
   toolCallId?: string;
+  approvalId?: string;
   toolName?: string;
   args?: unknown;
   message?: string;
@@ -129,7 +162,8 @@ export interface SagaStreamEvent {
  * Result of a tool that requires approval (AI SDK 6 needsApproval)
  */
 export interface ToolApprovalRequest {
-  toolCallId: string;
+  approvalId: string;
+  toolCallId?: string;
   toolName: ToolName;
   args: unknown;
 }
@@ -243,8 +277,10 @@ function handleSSEEvent(
       return false;
 
     case "tool-approval-request":
-      if (event.toolName && event.toolCallId) {
+      if (event.toolName && (event.approvalId || event.toolCallId)) {
+        const approvalId = event.approvalId ?? event.toolCallId;
         onToolApprovalRequest?.({
+          approvalId: approvalId as string,
           toolCallId: event.toolCallId,
           toolName: event.toolName as ToolName,
           args: event.args,
@@ -341,8 +377,12 @@ export async function sendSagaChatStreaming(
 
   const url = `${SUPABASE_URL}/functions/v1/ai-saga`;
 
+  const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
     "Content-Type": "application/json",
+    ...(SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
+    ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
+    ...getAnonHeaders(),
   };
 
   if (apiKey) {
@@ -420,8 +460,12 @@ async function executeSagaTool<T>(
 
   const url = `${SUPABASE_URL}/functions/v1/ai-saga`;
 
+  const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
     "Content-Type": "application/json",
+    ...(SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
+    ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
+    ...getAnonHeaders(),
   };
 
   if (apiKey) {
@@ -558,7 +602,8 @@ export async function executeNameGenerator(
  */
 export interface ToolApprovalPayload {
   projectId: string;
-  toolCallId: string;
+  approvalId: string;
+  toolCallId?: string;
   approved: boolean;
   messages: SagaMessagePayload[];
   mentions?: ChatMention[];
@@ -572,7 +617,8 @@ export interface ToolApprovalPayload {
  * Response when user denies a tool
  */
 export interface ToolApprovalDeniedResponse {
-  toolCallId: string;
+  approvalId?: string;
+  toolCallId?: string;
   approved: false;
   message: string;
 }
@@ -594,8 +640,12 @@ export async function sendToolApprovalResponse(
 
   const url = `${SUPABASE_URL}/functions/v1/ai-saga`;
 
+  const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
     "Content-Type": "application/json",
+    ...(SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
+    ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
+    ...getAnonHeaders(),
   };
 
   if (apiKey) {

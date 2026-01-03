@@ -5,7 +5,7 @@
  * Called from ai-saga endpoint when kind: "execute_tool".
  */
 
-import { generateText } from "https://esm.sh/ai@6.0.0";
+import { generateText } from "../deps/ai.ts";
 import { getOpenRouterModel } from "../providers.ts";
 import {
   GENESIS_SYSTEM_PROMPT,

@@ -32,7 +32,7 @@ enabled = true
 [auth]
 enabled = true
 # The base URL of the site
-site_url = "http://localhost:5173"
+site_url = "http://localhost:3001"
 # Allowed redirect URLs after authentication
 # Web development URLs
 additional_redirect_urls = [
@@ -41,6 +41,9 @@ additional_redirect_urls = [
   "http://localhost:5173/auth/confirm",
   "http://localhost:3000",
   "http://localhost:3000/auth/callback",
+  "http://localhost:3001",
+  "http://localhost:3001/auth/callback",
+  "http://localhost:3001/auth/confirm",
   # Production web URLs (update with actual domain)
   "https://mythos.app",
   "https://mythos.app/auth/callback",
@@ -105,6 +108,14 @@ verify_jwt = false  # Allow public access with BYOK
 [functions.ai-search]
 # Semantic search endpoint (DeepInfra + Qdrant)
 verify_jwt = false  # Server-side secrets
+
+[functions.ai-saga]
+# Saga unified agent endpoint (allows anonymous trial + BYOK)
+verify_jwt = false
+
+[functions.ai-chat]
+# Chat endpoint (allows anonymous trial + BYOK)
+verify_jwt = false
 
 # Analytics (optional)
 [analytics]

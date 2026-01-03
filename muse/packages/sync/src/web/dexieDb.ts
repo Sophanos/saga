@@ -417,6 +417,13 @@ export function createDexieAdapter(): LocalDbAdapter {
     },
 
     async deleteDocument(id: string): Promise<void> {
+      const doc = await db.documents.get(id);
+      if (!doc) return;
+
+      if (doc.type === "chapter") {
+        await db.documents.where("parentId").equals(id).delete();
+      }
+
       await db.documents.delete(id);
     },
 

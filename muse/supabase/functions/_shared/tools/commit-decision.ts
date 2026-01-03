@@ -4,8 +4,8 @@
  * Records a canon decision into project memory (MLP 2.x decision category).
  */
 
-import { tool } from "https://esm.sh/ai@6.0.0";
-import { z } from "https://esm.sh/zod@3.25.28";
+import { tool } from "../deps/ai.ts";
+import { z } from "../deps/zod.ts";
 import type { ToolExecuteResult } from "./types.ts";
 
 // =============================================================================

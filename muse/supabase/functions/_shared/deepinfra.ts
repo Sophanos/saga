@@ -35,9 +35,9 @@
  * @module deepinfra
  */
 
-import { createOpenAI } from "https://esm.sh/@ai-sdk/openai@3.0.0";
-import { embed, embedMany, rerank } from "https://esm.sh/ai@6.0.0";
-import type { RerankingModelV3 } from "https://esm.sh/@ai-sdk/provider@3.0.0";
+import { createOpenAI } from "./deps/ai-providers.ts";
+import { embed, embedMany, rerank } from "./deps/ai.ts";
+import type { RerankingModelV3 } from "./deps/ai-providers.ts";
 
 import {
   DEEPINFRA_BASE_URL,

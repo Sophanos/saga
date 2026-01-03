@@ -299,14 +299,20 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
             // AI SDK 6: Tool needs user approval before execution
             // Create a tool message in "proposed" state (same as regular tools)
             // The ToolResultCard will show approval UI
+            const toolCallId = request.toolCallId ?? request.approvalId;
+            if (!toolCallId) {
+              console.warn("[useSagaAgent] tool-approval-request missing IDs");
+              return;
+            }
             const toolMessage: ChatMessage = {
-              id: request.toolCallId,
+              id: toolCallId,
               role: "assistant",
               content: "",
               timestamp: new Date(),
               kind: "tool",
               tool: {
-                toolCallId: request.toolCallId,
+                toolCallId,
+                approvalId: request.approvalId,
                 toolName: request.toolName as ToolName,
                 args: request.args,
                 status: "proposed",

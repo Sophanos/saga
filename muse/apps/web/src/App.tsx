@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion } from "motion/react";
 import { Layout } from "./components/Layout";
-import { ProjectSelectorScreen } from "./components/projects";
 import { TemplatePickerModal } from "./components/modals";
 import { AuthScreen, AuthCallback } from "./components/auth";
 import { InviteAcceptPage } from "./components/collaboration";
@@ -180,11 +179,6 @@ function AuthenticatedApp() {
     setCurrentProject,
   ]);
 
-  // Handle opening the create project modal
-  const handleCreateProject = useCallback(() => {
-    setIsCreateModalOpen(true);
-  }, []);
-
   // Handle successful project creation
   const handleProjectCreated = useCallback(async (projectId: string) => {
     // Close the modal
@@ -195,37 +189,29 @@ function AuthenticatedApp() {
     handleSelectProject(projectId);
   }, [reloadProjects, handleSelectProject]);
 
-  // Handle retry on error
-  const handleRetry = useCallback(() => {
-    reloadProjects();
-  }, [reloadProjects]);
+  useEffect(() => {
+    if (selectedProjectId !== null) return;
+    if (projectsLoading || projectsError) return;
+    if (projects.length === 0) return;
 
-  // Show project selector when no project is selected
+    const sorted = [...projects].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    setSelectedProjectId(sorted[0].id);
+  }, [selectedProjectId, projectsLoading, projectsError, projects, setSelectedProjectId]);
+
+  // Show project start flow when no project is selected and none exist
   if (selectedProjectId === null) {
     if (!projectsLoading && !projectsError && projects.length === 0) {
       return (
         <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary font-sans antialiased">
           <Layout showProjectStart onProjectCreated={handleProjectCreated} />
+          <TemplatePickerModal
+            isOpen={isCreateModalOpen}
+            onClose={() => setIsCreateModalOpen(false)}
+            onCreated={handleProjectCreated}
+          />
         </div>
       );
     }
-    return (
-      <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary font-sans antialiased">
-        <ProjectSelectorScreen
-          projects={projects}
-          isLoading={projectsLoading}
-          error={projectsError}
-          onSelect={handleSelectProject}
-          onCreate={handleCreateProject}
-          onRetry={handleRetry}
-        />
-        <TemplatePickerModal
-          isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
-          onCreated={handleProjectCreated}
-        />
-      </div>
-    );
   }
 
   // Show loading state while project is loading
@@ -262,6 +248,11 @@ function AuthenticatedApp() {
   return (
     <div className="h-screen bg-mythos-bg-primary text-mythos-text-primary font-sans antialiased">
       <Layout />
+      <TemplatePickerModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreated={handleProjectCreated}
+      />
     </div>
   );
 }

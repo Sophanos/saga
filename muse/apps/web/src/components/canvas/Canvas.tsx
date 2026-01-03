@@ -304,7 +304,12 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
                 .focus()
                 .insertContent({
                   type: "sceneList",
-                  attrs: { chapterId },
+                  attrs: {
+                    chapterId,
+                    mode: "list",
+                    sortBy: "orderIndex",
+                    sortDir: "asc",
+                  },
                 })
                 .run();
               createSceneRef.current();

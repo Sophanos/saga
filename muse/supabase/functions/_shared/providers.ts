@@ -16,8 +16,8 @@
  */
 
 // Deno imports for ai-sdk v6
-import { createOpenAI } from "https://esm.sh/@ai-sdk/openai@3.0.0";
-import { createGoogleGenerativeAI } from "https://esm.sh/@ai-sdk/google@3.0.0";
+import { createOpenAI } from "./deps/ai-providers.ts";
+import { createGoogleGenerativeAI } from "./deps/ai-providers.ts";
 import { maybeWrapWithDevTools, type DevToolsConfig } from "./devtools.ts";
 
 /**

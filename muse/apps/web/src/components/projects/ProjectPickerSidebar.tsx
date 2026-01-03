@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   FilePlus,
+  FileText,
   FolderPlus,
   Plus,
   Settings,
@@ -22,7 +23,7 @@ import {
 import { useNavigationStore } from "../../stores/navigation";
 import { useProjectSelectionStore } from "../../stores/projectSelection";
 import { getEntityTypeButtons } from "../../utils/entityConfig";
-import type { EntityType } from "@mythos/core";
+import { type EntityType } from "@mythos/core";
 
 const EMPTY_TIPTAP_DOC = { type: "doc", content: [{ type: "paragraph" }] };
 

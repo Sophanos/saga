@@ -7,7 +7,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { streamText } from "https://esm.sh/ai@6.0.0";
+import { streamText } from "../_shared/deps/ai.ts";
 import { handleCorsPreFlight } from "../_shared/cors.ts";
 import {
   createSSEStream,
@@ -118,8 +118,10 @@ interface SagaExecuteToolRequest {
 interface SagaToolApprovalRequest {
   kind: "tool-approval";
   projectId: string;
-  /** The tool call ID from the original tool-approval-request */
-  toolCallId: string;
+  /** The approval ID from the original tool-approval-request */
+  approvalId?: string;
+  /** Backwards-compatible alias for approvalId */
+  toolCallId?: string;
   /** Whether the user approved or denied the tool */
   approved: boolean;
   /** Original messages to continue the conversation */
@@ -358,7 +360,7 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
   const apiMessages = [
     { role: "system" as const, content: systemPrompt },
     ...recentMessages.map((m) => ({
-      role: m.role as "user" | "assistant",
+      role: m.role as "user" | "assistant" | "system",
       content: m.content,
     })),
   ];
@@ -387,11 +389,30 @@ async function streamToSSE(
         break;
 
       case "tool-approval-request":
-        sse.sendToolApprovalRequest(
-          part.toolCallId,
-          part.toolName,
-          part.input
-        );
+        {
+          const approvalId =
+            "approvalId" in part && typeof part.approvalId === "string"
+              ? part.approvalId
+              : part.toolCallId;
+          const toolCall =
+            "toolCall" in part && part.toolCall
+              ? part.toolCall
+              : {
+                  toolCallId: part.toolCallId,
+                  toolName: part.toolName,
+                  input: part.input,
+                };
+          if (approvalId) {
+            sse.sendToolApprovalRequest(
+              approvalId,
+              toolCall.toolName,
+              toolCall.input,
+              toolCall.toolCallId
+            );
+          } else {
+            console.warn("[ai-saga] tool-approval-request missing approvalId");
+          }
+        }
         break;
 
       case "finish":
@@ -929,14 +950,26 @@ async function handleToolApproval(
   billing: BillingCheck,
   supabase: ReturnType<typeof createSupabaseClient>
 ): Promise<Response> {
-  const { projectId, toolCallId, approved, messages, editorContext, mode, conversationId, contextHints } = req;
+  const { projectId, approved, messages, editorContext, mode, conversationId, contextHints } = req;
+  const approvalId = req.approvalId ?? req.toolCallId;
 
-  console.log(`[ai-saga] Tool approval response: ${toolCallId} = ${approved ? "approved" : "denied"}`);
+  console.log(
+    `[ai-saga] Tool approval response: ${approvalId ?? "unknown"} = ${approved ? "approved" : "denied"}`
+  );
+
+  if (!approvalId) {
+    return createErrorResponse(
+      ErrorCode.VALIDATION_ERROR,
+      "approvalId is required for tool-approval",
+      origin
+    );
+  }
 
   // If denied, just return a success response - client handles UI state
   if (!approved) {
     return createSuccessResponse({
-      toolCallId,
+      approvalId,
+      toolCallId: req.toolCallId,
       approved: false,
       message: "Tool execution was denied by user"
     }, origin);
@@ -966,11 +999,11 @@ async function handleToolApproval(
       ...apiMessages,
       // Add tool approval response to indicate the user approved
       {
-        role: "assistant" as const,
+        role: "tool" as const,
         content: [
           {
             type: "tool-approval-response" as const,
-            toolCallId,
+            approvalId,
             approved: true,
           },
         ],
@@ -1039,11 +1072,11 @@ serve(async (req: Request): Promise<Response> => {
       }
       return handleExecuteTool(body, billing.apiKey, origin, billing, supabase);
     } else if (body.kind === "tool-approval") {
-      // AI SDK 6: Handle tool approval response
-      if (!body.projectId || !body.toolCallId || body.approved === undefined) {
+    // AI SDK 6: Handle tool approval response
+      if (!body.projectId || (!body.approvalId && !body.toolCallId) || body.approved === undefined) {
         return createErrorResponse(
           ErrorCode.VALIDATION_ERROR,
-          "projectId, toolCallId, and approved are required for tool-approval",
+          "projectId, approvalId, and approved are required for tool-approval",
           origin
         );
       }
