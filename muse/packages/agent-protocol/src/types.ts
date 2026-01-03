@@ -113,6 +113,14 @@ export type NameStyle = "short" | "standard" | "long";
 // Preferences
 // =============================================================================
 
+export type SmartModeLevel = "off" | "balanced" | "adaptive";
+
+export interface SmartModeConfig {
+  level: SmartModeLevel;
+  learnedStyleMaxItems?: number;
+  learnedStyleWeight?: number;
+}
+
 /**
  * User preferences for writing/AI behavior.
  * Stored in profile.preferences.writing
@@ -126,6 +134,10 @@ export interface WritingPreferences {
   namingStyle?: NameStyle;
   /** Default strictness for logic checking */
   logicStrictness?: LogicStrictness;
+  /** Smart mode configuration for learned style usage */
+  smartMode?: SmartModeConfig;
+  /** Default style mode for new projects */
+  defaultStyleMode?: string;
 }
 
 /**
@@ -148,6 +160,8 @@ export interface ProfileContext {
   namingStyle?: NameStyle;
   /** Logic checking strictness */
   logicStrictness?: LogicStrictness;
+  /** Smart mode configuration for learned style usage */
+  smartMode?: SmartModeConfig;
 }
 
 // =============================================================================

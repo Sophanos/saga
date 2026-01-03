@@ -25,6 +25,11 @@ export interface WriterPersonalizationV1 {
     no_judgement_mode?: boolean;
   };
   styleMode?: "manga" | "prose";
+  smartMode?: {
+    level: "off" | "balanced" | "adaptive";
+    learnedStyleMaxItems?: number;
+    learnedStyleWeight?: number;
+  };
 }
 
 export interface TrialUploadRef {

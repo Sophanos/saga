@@ -16,7 +16,11 @@ import type {
   RetrievedMemoryRecord,
   ProfileContext,
 } from "../memory/types.ts";
-import { formatWorldContextSummary, type UnifiedContextHints } from "../contextHints.ts";
+import {
+  formatWorldContextSummary,
+  type UnifiedContextHints,
+  type ProjectPersonalizationContext,
+} from "../contextHints.ts";
 import {
   getMemoryBudgetConfig,
   applyMemoryBudget,
@@ -200,11 +204,27 @@ export const SAGA_PROFILE_CONTEXT = `## Writer Preferences
 Tailor your responses to match these preferences when applicable.`;
 
 /**
+ * Project context template for project-level personalization.
+ */
+export const SAGA_PROJECT_CONTEXT = `## Project Personalization
+
+- **Project Genre:** {genre}
+- **Project Style Mode:** {styleMode}
+- **Guardrails:** {guardrails}
+- **Smart Mode:** {smartMode}
+
+### Style Mode Guidance
+{styleGuidelines}
+
+Project settings override user defaults when they conflict.`;
+
+/**
  * Memory context template for remembered information.
  */
 export const SAGA_MEMORY_CONTEXT = `## Remembered Context
 
 When you rely on a remembered fact or canon decision, include its [M:...] tag in your response.
+Manual project/profile constraints are authoritative. Learned style and preference memories are suggestive and must not override manual constraints.
 
 ### Canon Decisions (never contradict these)
 {decisions}
@@ -327,8 +347,81 @@ function profileToStyleMemoryLines(profile: ProfileContext): string[] {
   if (profile.logicStrictness) {
     lines.push(`World logic strictness: ${profile.logicStrictness}`);
   }
+  if (profile.smartMode?.level) {
+    lines.push(`Smart mode level: ${profile.smartMode.level}`);
+  }
 
   return lines;
+}
+
+function styleModeToGuidelines(styleMode?: string): string[] {
+  switch (styleMode) {
+    case "hemingway":
+      return [
+        "Favor short sentences and clear structure.",
+        "Prefer active voice; avoid adverbs and excess modifiers.",
+      ];
+    case "tolkien":
+      return [
+        "Allow richer description and longer sentences.",
+        "Use evocative imagery and gentle cadence.",
+      ];
+    case "manga":
+      return [
+        "Keep dialogue tight; break up long speech blocks.",
+        "Add action beats and visual cues.",
+      ];
+    case "noir":
+      return [
+        "Lean into moody atmosphere and metaphor.",
+        "Use concise, punchy narration with edge.",
+      ];
+    case "minimalist":
+      return [
+        "Favor restraint and clarity.",
+        "Avoid ornate description; keep it spare.",
+      ];
+    case "purple_prose":
+      return [
+        "Allow lyrical, ornate language and sensory detail.",
+        "Embrace cadence and metaphor when fitting.",
+      ];
+    default:
+      return [];
+  }
+}
+
+function formatGuardrails(
+  guardrails?: ProjectPersonalizationContext["guardrails"]
+): string {
+  if (!guardrails) {
+    return "Not set.";
+  }
+
+  const parts: string[] = [];
+  if (guardrails.plot) parts.push(`Plot: ${guardrails.plot}`);
+  if (guardrails.edits) parts.push(`Edits: ${guardrails.edits}`);
+  if (guardrails.strictness) parts.push(`Strictness: ${guardrails.strictness}`);
+  if (typeof guardrails.no_judgement_mode === "boolean") {
+    parts.push(`No-judgement: ${guardrails.no_judgement_mode ? "on" : "off"}`);
+  }
+
+  return parts.length > 0 ? parts.join("; ") : "Not set.";
+}
+
+function formatSmartMode(config?: ProjectPersonalizationContext["smartMode"]): string {
+  if (!config?.level) {
+    return "Not set.";
+  }
+
+  const parts = [`${config.level}`];
+  if (typeof config.learnedStyleWeight === "number") {
+    parts.push(`weight=${config.learnedStyleWeight}`);
+  }
+  if (typeof config.learnedStyleMaxItems === "number") {
+    parts.push(`max=${config.learnedStyleMaxItems}`);
+  }
+  return parts.join(" ");
 }
 
 /**
@@ -349,6 +442,9 @@ function formatProfile(profile: ProfileContext): string {
   if (profile.logicStrictness) {
     parts.push(`- **Logic Strictness:** ${profile.logicStrictness}`);
   }
+  if (profile.smartMode?.level) {
+    parts.push(`- **Smart Mode:** ${profile.smartMode.level}`);
+  }
 
   return parts.length > 0 ? parts.join("\n") : "No preferences configured.";
 }
@@ -366,10 +462,25 @@ export function buildSagaSystemPrompt(options: {
   profileContext?: ProfileContext;
   memoryContext?: RetrievedMemoryContext;
   contextHints?: UnifiedContextHints;
+  projectContext?: ProjectPersonalizationContext;
 }): string {
-  const { mode, ragContext, editorContext, profileContext, memoryContext, contextHints } = options;
+  const {
+    mode,
+    ragContext,
+    editorContext,
+    profileContext,
+    memoryContext,
+    contextHints,
+    projectContext,
+  } = options;
   const mergedProfile = profileContext ?? contextHints?.profile;
   const mergedEditor = editorContext ?? contextHints?.editor;
+  const mergedProject: ProjectPersonalizationContext | undefined = {
+    ...contextHints?.project,
+    ...projectContext,
+    guardrails: projectContext?.guardrails ?? contextHints?.project?.guardrails,
+    smartMode: projectContext?.smartMode ?? contextHints?.project?.smartMode,
+  };
 
   let prompt = SAGA_SYSTEM;
 
@@ -380,6 +491,20 @@ export function buildSagaSystemPrompt(options: {
 
   // Get token budget configuration
   const budgetConfig = getMemoryBudgets();
+
+  if (mergedProject && (mergedProject.genre || mergedProject.styleMode || mergedProject.guardrails || mergedProject.smartMode)) {
+    const styleGuidelines = styleModeToGuidelines(mergedProject.styleMode);
+    const styleGuidelineText = styleGuidelines.length > 0
+      ? styleGuidelines.map((line) => `- ${line}`).join("\n")
+      : "None.";
+
+    prompt += "\n\n" + SAGA_PROJECT_CONTEXT
+      .replace("{genre}", mergedProject.genre ?? "Not set.")
+      .replace("{styleMode}", mergedProject.styleMode ?? "Not set.")
+      .replace("{guardrails}", formatGuardrails(mergedProject.guardrails))
+      .replace("{smartMode}", formatSmartMode(mergedProject.smartMode))
+      .replace("{styleGuidelines}", styleGuidelineText);
+  }
 
   // Build memory context with profile integration
   // Profile preferences are converted to style lines and prepended (high priority)

@@ -40,6 +40,8 @@ export function parseMemoryFromPayload(
     expiresAt: payload.expires_at as string | undefined,
     pinned: payload.pinned as boolean | undefined,
     redacted: payload.redacted as boolean | undefined,
+    source: payload.source as string | undefined,
+    confidence: payload.confidence as number | undefined,
   };
 }
 

@@ -3,7 +3,7 @@
  */
 
 import type { EditorContext } from "./tools/types.ts";
-import type { ProfileContext } from "./memory/types.ts";
+import type { ProfileContext, SmartModeConfig } from "./memory/types.ts";
 
 export interface EntitySummary {
   id: string;
@@ -23,11 +23,24 @@ export interface WorldContextSummary {
   relationships: RelationshipSummary[];
 }
 
+export interface ProjectPersonalizationContext {
+  genre?: string;
+  styleMode?: string;
+  guardrails?: {
+    plot?: "no_plot_generation" | "suggestions_only" | "allow_generation";
+    edits?: "proofread_only" | "line_edits" | "rewrite";
+    strictness?: "low" | "medium" | "high";
+    no_judgement_mode?: boolean;
+  };
+  smartMode?: SmartModeConfig;
+}
+
 export interface UnifiedContextHints {
   profile?: ProfileContext;
   world?: WorldContextSummary;
   editor?: EditorContext;
   conversationId?: string;
+  project?: ProjectPersonalizationContext;
 }
 
 export function formatWorldContextSummary(

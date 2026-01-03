@@ -16,6 +16,8 @@ function getProp<T>(obj: Record<string, unknown> | null | undefined, key: string
 export function mapDbProjectToProject(dbProject: DbProject): Project {
   const styleConfig = dbProject.style_config as Record<string, unknown> | null;
   const memoryControls = getProp<Project["config"]["memoryControls"]>(styleConfig, "memoryControls");
+  const guardrails = getProp<Project["config"]["guardrails"]>(styleConfig, "guardrails");
+  const smartMode = getProp<Project["config"]["smartMode"]>(styleConfig, "smartMode");
 
   // Build templateOverrides if any config exists (Migration 005)
   let templateOverrides: TemplateOverrides | undefined;
@@ -52,6 +54,8 @@ export function mapDbProjectToProject(dbProject: DbProject): Project {
       arcTemplate: getProp<Project["config"]["arcTemplate"]>(styleConfig, "arcTemplate") ?? "three_act",
       linterConfig: (dbProject.linter_config as Project["config"]["linterConfig"]) ?? {},
       memoryControls,
+      guardrails,
+      smartMode,
     },
     createdAt: new Date(dbProject.created_at),
     updatedAt: new Date(dbProject.updated_at),

@@ -411,6 +411,7 @@ serve(async (req) => {
         source: "ai",
         confidence: 0.8,
         documentId: request.documentId,
+        styleRuleKind: "learned",
         expiresAt,
       });
 

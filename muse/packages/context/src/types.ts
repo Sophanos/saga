@@ -9,6 +9,7 @@ import type {
   NameCulture,
   NameStyle,
   LogicStrictness,
+  SmartModeConfig,
 } from "@mythos/agent-protocol";
 
 /**
@@ -24,6 +25,8 @@ export interface ProfileContext {
   namingStyle?: NameStyle;
   /** Logic checking strictness */
   logicStrictness?: LogicStrictness;
+  /** Smart mode configuration for learned style usage */
+  smartMode?: SmartModeConfig;
 }
 
 /**
@@ -57,6 +60,18 @@ export interface WorldContextSummary {
  * Unified context hints that can be sent with requests.
  * Provides client-side context even when server RAG isn't updated yet.
  */
+export interface ProjectPersonalizationContext {
+  genre?: string;
+  styleMode?: string;
+  guardrails?: {
+    plot?: "no_plot_generation" | "suggestions_only" | "allow_generation";
+    edits?: "proofread_only" | "line_edits" | "rewrite";
+    strictness?: "low" | "medium" | "high";
+    no_judgement_mode?: boolean;
+  };
+  smartMode?: SmartModeConfig;
+}
+
 export interface UnifiedContextHints {
   /** User profile preferences */
   profile?: ProfileContext;
@@ -66,6 +81,8 @@ export interface UnifiedContextHints {
   editor?: EditorContext;
   /** Conversation ID for session memory */
   conversationId?: string;
+  /** Project-level personalization hints */
+  project?: ProjectPersonalizationContext;
 }
 
 // Re-export relevant types

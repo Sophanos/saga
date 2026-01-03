@@ -28,6 +28,9 @@ export function formatProfileContext(profile: ProfileContext): string {
   if (profile.logicStrictness) {
     parts.push(`Logic Strictness: ${profile.logicStrictness}`);
   }
+  if (profile.smartMode?.level) {
+    parts.push(`Smart Mode: ${profile.smartMode.level}`);
+  }
 
   return parts.join(" | ");
 }
@@ -84,6 +87,22 @@ export function formatContextHints(hints: UnifiedContextHints): string {
     sections.push(`[Editor] ${editorStr}`);
   }
 
+  if (hints.project) {
+    const parts: string[] = [];
+    if (hints.project.genre) {
+      parts.push(`genre=${hints.project.genre}`);
+    }
+    if (hints.project.styleMode) {
+      parts.push(`style=${hints.project.styleMode}`);
+    }
+    if (hints.project.smartMode?.level) {
+      parts.push(`smart=${hints.project.smartMode.level}`);
+    }
+    if (parts.length > 0) {
+      sections.push(`[Project] ${parts.join(" ")}`);
+    }
+  }
+
   return sections.join("\n");
 }
 
@@ -95,6 +114,7 @@ export function isContextHintsEmpty(hints: UnifiedContextHints): boolean {
     !hints.profile &&
     !hints.world &&
     !hints.editor &&
-    !hints.conversationId
+    !hints.conversationId &&
+    !hints.project
   );
 }

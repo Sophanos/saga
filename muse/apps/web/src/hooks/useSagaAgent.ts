@@ -37,7 +37,13 @@ import {
 import { useEditorChatContext } from "./useEditorChatContext";
 import { useApiKey } from "./useApiKey";
 import type { ToolName } from "@mythos/agent-protocol";
-import { buildContextHints as buildUnifiedContextHints, isContextHintsEmpty } from "@mythos/context";
+import {
+  buildContextHints as buildUnifiedContextHints,
+  buildProjectPersonalizationContext,
+  isContextHintsEmpty,
+} from "@mythos/context";
+import { useAuthStore } from "../stores/auth";
+import { useAnonymousStore } from "../stores/anonymous";
 import type { SagaSessionWriter } from "./useSessionHistory";
 
 /**
@@ -103,6 +109,8 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
   const currentProject = useMythosStore((s) => s.project.currentProject);
   const isStreaming = useMythosStore((s) => s.chat.isStreaming);
   const error = useMythosStore((s) => s.chat.error);
+  const authUser = useAuthStore((s) => s.user);
+  const anonPersonalization = useAnonymousStore((s) => s.personalization);
 
   const addChatMessage = useMythosStore((s) => s.addChatMessage);
   const updateChatMessage = useMythosStore((s) => s.updateChatMessage);
@@ -150,16 +158,35 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
     (conversationId?: string) => {
       const state = useMythosStore.getState();
       const editorContext = buildEditorContext();
+
+      const anonProfilePreferences = anonPersonalization
+        ? {
+            writing: {
+              preferredGenre: anonPersonalization.genre?.trim() || undefined,
+              smartMode: anonPersonalization.smartMode,
+            },
+          }
+        : undefined;
+
+      const projectContext = buildProjectPersonalizationContext({
+        genre: currentProject?.config.genre ?? anonPersonalization?.genre,
+        styleMode: currentProject?.config.styleMode,
+        guardrails: currentProject?.config.guardrails ?? anonPersonalization?.guardrails,
+        smartMode: currentProject?.config.smartMode ?? anonPersonalization?.smartMode,
+      });
+
       const hints = buildUnifiedContextHints({
+        profilePreferences: authUser?.preferences ?? anonProfilePreferences,
         entities: Array.from(state.world.entities.values()),
         relationships: state.world.relationships,
         editorContext,
         conversationId,
+        projectContext,
       });
 
       return isContextHintsEmpty(hints) ? undefined : hints;
     },
-    [buildEditorContext]
+    [buildEditorContext, anonPersonalization, authUser?.preferences, currentProject?.config]
   );
 
   /**

@@ -12,6 +12,7 @@ export * from "./types";
 export {
   buildProfileContext,
   buildWorldContext,
+  buildProjectPersonalizationContext,
   buildContextHints,
 } from "./builders";
 

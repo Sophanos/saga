@@ -63,6 +63,7 @@ export {
   SAGA_CONTEXT_TEMPLATE,
   SAGA_EDITOR_CONTEXT,
   SAGA_NO_CONTEXT,
+  SAGA_PROJECT_CONTEXT,
   SAGA_MODE_ADDENDUMS,
   buildSagaSystemPrompt,
 } from "./saga.ts";

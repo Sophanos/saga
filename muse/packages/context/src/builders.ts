@@ -12,6 +12,7 @@ import type {
   UnifiedContextHints,
   EntitySummary,
   RelationshipSummary,
+  ProjectPersonalizationContext,
 } from "./types";
 
 /**
@@ -31,7 +32,8 @@ export function buildProfileContext(
     !writing.preferredGenre &&
     !writing.namingCulture &&
     !writing.namingStyle &&
-    !writing.logicStrictness
+    !writing.logicStrictness &&
+    !writing.smartMode
   ) {
     return undefined;
   }
@@ -41,6 +43,7 @@ export function buildProfileContext(
     namingCulture: writing.namingCulture,
     namingStyle: writing.namingStyle,
     logicStrictness: writing.logicStrictness,
+    smartMode: writing.smartMode,
   };
 }
 
@@ -89,12 +92,31 @@ export function buildWorldContext(
 /**
  * Build unified context hints from application state.
  */
+export function buildProjectPersonalizationContext(input: {
+  genre?: string;
+  styleMode?: string;
+  guardrails?: ProjectPersonalizationContext["guardrails"];
+  smartMode?: ProjectPersonalizationContext["smartMode"];
+}): ProjectPersonalizationContext | undefined {
+  if (!input.genre && !input.styleMode && !input.guardrails && !input.smartMode) {
+    return undefined;
+  }
+
+  return {
+    genre: input.genre,
+    styleMode: input.styleMode,
+    guardrails: input.guardrails,
+    smartMode: input.smartMode,
+  };
+}
+
 export function buildContextHints(input: {
   profilePreferences?: ProfilePreferences;
   entities?: Entity[];
   relationships?: Relationship[];
   editorContext?: EditorContext;
   conversationId?: string;
+  projectContext?: ProjectPersonalizationContext;
 }): UnifiedContextHints {
   const result: UnifiedContextHints = {};
 
@@ -118,6 +140,10 @@ export function buildContextHints(input: {
   // Add conversation ID
   if (input.conversationId) {
     result.conversationId = input.conversationId;
+  }
+
+  if (input.projectContext) {
+    result.project = input.projectContext;
   }
 
   return result;

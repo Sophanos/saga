@@ -166,6 +166,21 @@ export const projectConfigSchema = z.object({
   genre: genreSchema.optional(),
   subGenres: z.array(genreSchema).optional(),
   styleMode: styleModeSchema.default("manga"),
+  guardrails: z
+    .object({
+      plot: z.enum(["no_plot_generation", "suggestions_only", "allow_generation"]).default("no_plot_generation"),
+      edits: z.enum(["proofread_only", "line_edits", "rewrite"]).default("proofread_only"),
+      strictness: z.enum(["low", "medium", "high"]).default("medium"),
+      no_judgement_mode: z.boolean().default(true),
+    })
+    .optional(),
+  smartMode: z
+    .object({
+      level: z.enum(["off", "balanced", "adaptive"]).default("balanced"),
+      learnedStyleMaxItems: z.number().optional(),
+      learnedStyleWeight: z.number().min(0).max(1).optional(),
+    })
+    .optional(),
   arcTemplate: arcTemplateSchema.default("three_act"),
   linterConfig: linterConfigSchema.default({}),
   memoryControls: memoryControlsSchema.optional(),

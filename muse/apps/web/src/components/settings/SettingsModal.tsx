@@ -18,7 +18,7 @@ import { Button, Input, FormField, Select, ScrollArea, cn } from "@mythos/ui";
 import { useAuthStore } from "../../stores/auth";
 import { updateProfile, signOut } from "../../hooks/useSupabaseAuthSync";
 import { useApiKey } from "../../hooks/useApiKey";
-import type { NameCulture, NameStyle, LogicStrictness } from "@mythos/agent-protocol";
+import type { NameCulture, NameStyle, LogicStrictness, SmartModeLevel, SmartModeConfig } from "@mythos/agent-protocol";
 
 type SettingsSection = "profile" | "personalization" | "api";
 
@@ -60,6 +60,12 @@ const LOGIC_STRICTNESS_OPTIONS = [
   { value: "strict", label: "Strict" },
 ];
 
+const SMART_MODE_OPTIONS = [
+  { value: "off", label: "Off" },
+  { value: "balanced", label: "Balanced" },
+  { value: "adaptive", label: "Adaptive" },
+];
+
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -87,6 +93,12 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
   const [logicStrictness, setLogicStrictness] = useState(
     user?.preferences?.writing?.logicStrictness || "balanced"
   );
+  const [smartModeLevel, setSmartModeLevel] = useState<SmartModeLevel>(
+    user?.preferences?.writing?.smartMode?.level || "balanced"
+  );
+  const [learnedStyleWeight, setLearnedStyleWeight] = useState<string>(
+    user?.preferences?.writing?.smartMode?.learnedStyleWeight?.toString() ?? ""
+  );
 
   const [isSaving, setIsSaving] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -105,6 +117,10 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
       setNamingCulture(user.preferences?.writing?.namingCulture || "");
       setNamingStyle(user.preferences?.writing?.namingStyle || "standard");
       setLogicStrictness(user.preferences?.writing?.logicStrictness || "balanced");
+      setSmartModeLevel(user.preferences?.writing?.smartMode?.level || "balanced");
+      setLearnedStyleWeight(
+        user.preferences?.writing?.smartMode?.learnedStyleWeight?.toString() ?? ""
+      );
     }
     setApiKeyInput(key);
     setShowKey(false);
@@ -125,6 +141,16 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     setError(null);
     setSuccessMessage(null);
 
+    const parsedLearnedWeight = learnedStyleWeight.trim() === ""
+      ? undefined
+      : Number(learnedStyleWeight);
+    const nextSmartMode: SmartModeConfig = {
+      level: smartModeLevel,
+      ...(Number.isFinite(parsedLearnedWeight) && parsedLearnedWeight >= 0 && parsedLearnedWeight <= 1
+        ? { learnedStyleWeight: parsedLearnedWeight }
+        : {}),
+    };
+
     const nextPreferences = {
       ...(user.preferences ?? {}),
       writing: {
@@ -133,6 +159,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
         namingCulture: (namingCulture as NameCulture) || undefined,
         namingStyle: (namingStyle as NameStyle) || undefined,
         logicStrictness: (logicStrictness as LogicStrictness) || undefined,
+        smartMode: nextSmartMode,
       },
     };
 
@@ -173,6 +200,8 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     namingCulture,
     namingStyle,
     logicStrictness,
+    smartModeLevel,
+    learnedStyleWeight,
     updateUserProfile,
   ]);
 
@@ -216,7 +245,10 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     preferredGenre !== (user.preferences?.writing?.preferredGenre || "") ||
     namingCulture !== (user.preferences?.writing?.namingCulture || "") ||
     namingStyle !== (user.preferences?.writing?.namingStyle || "standard") ||
-    logicStrictness !== (user.preferences?.writing?.logicStrictness || "balanced")
+    logicStrictness !== (user.preferences?.writing?.logicStrictness || "balanced") ||
+    smartModeLevel !== (user.preferences?.writing?.smartMode?.level || "balanced") ||
+    learnedStyleWeight.trim() !==
+      (user.preferences?.writing?.smartMode?.learnedStyleWeight?.toString() ?? "")
   );
 
   if (!isOpen) return null;
@@ -499,6 +531,34 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
                       />
                       <p className="text-xs text-mythos-text-muted">
                         How strict the logic checker should be when validating rules.
+                      </p>
+                    </FormField>
+
+                    <FormField label="Smart Mode" className="space-y-2">
+                      <Select
+                        options={SMART_MODE_OPTIONS}
+                        value={smartModeLevel}
+                        onChange={(v) => setSmartModeLevel(v as SmartModeLevel)}
+                        disabled={isSaving}
+                      />
+                      <p className="text-xs text-mythos-text-muted">
+                        Controls how strongly learned style influences responses.
+                      </p>
+                    </FormField>
+
+                    <FormField label="Learned Style Influence" className="space-y-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        value={learnedStyleWeight}
+                        onChange={(e) => setLearnedStyleWeight(e.target.value)}
+                        placeholder="0.6"
+                        disabled={isSaving}
+                      />
+                      <p className="text-xs text-mythos-text-muted">
+                        Optional weight from 0-1. Leave blank to use defaults.
                       </p>
                     </FormField>
 

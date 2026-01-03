@@ -443,6 +443,15 @@ export interface QdrantScrollResult {
   vector?: number[];
 }
 
+export interface QdrantOrderBy {
+  key: string;
+  direction?: "asc" | "desc";
+}
+
+export interface QdrantScrollOptions {
+  orderBy?: QdrantOrderBy;
+}
+
 /**
  * Scroll points in Qdrant collection (list without query vector)
  *
@@ -456,6 +465,7 @@ export interface QdrantScrollResult {
 export async function scrollPoints(
   filter: QdrantFilter,
   limit: number = 20,
+  options?: QdrantScrollOptions,
   config?: Partial<QdrantConfig>
 ): Promise<QdrantScrollResult[]> {
   const envConfig = getQdrantConfig();
@@ -467,6 +477,13 @@ export async function scrollPoints(
     with_payload: true,
     with_vector: false,
   };
+
+  if (options?.orderBy?.key) {
+    body.order_by = {
+      key: options.orderBy.key,
+      direction: options.orderBy.direction ?? "desc",
+    };
+  }
 
   const response = await qdrantRequest<{
     result: { points: Array<{ id: string; payload: Record<string, unknown> }> };

@@ -34,6 +34,14 @@ export function getDefaultScope(category: MemoryCategory): MemoryScope {
   }
 }
 
+export type SmartModeLevel = "off" | "balanced" | "adaptive";
+
+export interface SmartModeConfig {
+  level: SmartModeLevel;
+  learnedStyleMaxItems?: number;
+  learnedStyleWeight?: number;
+}
+
 // Memory metadata interface
 export interface MemoryMetadata {
   source?: string;
@@ -120,6 +128,7 @@ export interface ProfileContext {
   namingCulture?: string;
   namingStyle?: string;
   logicStrictness?: string;
+  smartMode?: SmartModeConfig;
 }
 
 // =============================================================================
@@ -139,6 +148,8 @@ export interface RetrievedMemoryRecord {
   expiresAt?: string;
   pinned?: boolean;
   redacted?: boolean;
+  source?: string;
+  confidence?: number;
 }
 
 /**

@@ -67,6 +67,13 @@ export const DEFAULT_CHAT_LIMITS: RetrievalLimits = {
 // Helpers
 // =============================================================================
 
+type MemoryCategoryKey = "decisions" | "style" | "preferences" | "session";
+
+export interface MemoryRetrievalControls {
+  recencyWeight?: number;
+  maxAgeDays?: Partial<Record<MemoryCategoryKey, number>>;
+}
+
 /**
  * Filter memories for visibility rules.
  */
@@ -88,7 +95,7 @@ function filterVisible(
       return false;
     }
 
-    const createdAtTs = m.createdAtTs ?? new Date(m.createdAt ?? Date.now()).getTime();
+    const createdAtTs = getCreatedAtTs(m);
     if (maxAgeMs !== undefined && nowMs - createdAtTs > maxAgeMs) {
       return false;
     }
@@ -108,6 +115,75 @@ function filterVisible(
   });
 }
 
+function getCreatedAtTs(memory: RetrievedMemoryRecord): number {
+  if (typeof memory.createdAtTs === "number") {
+    return memory.createdAtTs;
+  }
+  if (memory.createdAt) {
+    return new Date(memory.createdAt).getTime();
+  }
+  return 0;
+}
+
+function maxAgeMsForCategory(
+  category: MemoryCategoryKey,
+  controls?: MemoryRetrievalControls
+): number | undefined {
+  const maxAgeDays = controls?.maxAgeDays?.[category];
+  if (typeof maxAgeDays !== "number") {
+    return undefined;
+  }
+  return maxAgeDays * 24 * 60 * 60 * 1000;
+}
+
+function sourceRank(source?: string): number {
+  if (source === "user") return 0;
+  if (source === "ai") return 1;
+  return 2;
+}
+
+function scoreWithRecency(
+  memory: RetrievedMemoryRecord,
+  nowMs: number,
+  recencyWeight?: number
+): number {
+  const similarityScore = memory.score ?? 0;
+  if (recencyWeight === undefined) {
+    return similarityScore;
+  }
+
+  const createdAtTs = getCreatedAtTs(memory);
+  const ageMs = createdAtTs > 0 ? nowMs - createdAtTs : Number.POSITIVE_INFINITY;
+  const ageDays = ageMs / (24 * 60 * 60 * 1000);
+  const recencyScore = Number.isFinite(ageDays) ? 1 / (1 + Math.max(0, ageDays)) : 0;
+
+  return similarityScore * (1 - recencyWeight) + recencyScore * recencyWeight;
+}
+
+function sortMemories(
+  memories: RetrievedMemoryRecord[],
+  options?: { useScore?: boolean; recencyWeight?: number }
+): RetrievedMemoryRecord[] {
+  const nowMs = Date.now();
+  const useScore = options?.useScore === true;
+  const recencyWeight = options?.recencyWeight;
+
+  return [...memories].sort((a, b) => {
+    const pinnedDiff = Number(b.pinned) - Number(a.pinned);
+    if (pinnedDiff !== 0) return pinnedDiff;
+
+    const sourceDiff = sourceRank(a.source) - sourceRank(b.source);
+    if (sourceDiff !== 0) return sourceDiff;
+
+    if (useScore) {
+      const scoreDiff = scoreWithRecency(b, nowMs, recencyWeight) - scoreWithRecency(a, nowMs, recencyWeight);
+      if (scoreDiff !== 0) return scoreDiff;
+    }
+
+    return getCreatedAtTs(b) - getCreatedAtTs(a);
+  });
+}
+
 /**
  * Parse memory from Postgres search_memories result.
  */
@@ -124,6 +200,7 @@ function parseMemoryFromPostgres(row: {
     category: row.category,
     score: row.similarity,
     createdAt: row.created_at,
+    createdAtTs: new Date(row.created_at).getTime(),
   };
 }
 
@@ -145,7 +222,8 @@ async function retrieveMemoriesFromPostgres(
   ownerId: string | null,
   conversationId: string | null,
   limit: number,
-  logPrefix: string
+  logPrefix: string,
+  maxAgeMs?: number
 ): Promise<RetrievedMemoryRecord[]> {
   // If no embedding available, we can't do semantic search in Postgres
   if (!embedding) {
@@ -177,7 +255,7 @@ async function retrieveMemoriesFromPostgres(
     const memories = data.map(parseMemoryFromPostgres);
 
     // Filter expired and limit results
-    return filterVisible(memories).slice(0, limit);
+    return filterVisible(memories, { maxAgeMs });
   } catch (error) {
     console.warn(`${logPrefix} Postgres fallback error:`, error);
     return [];
@@ -195,7 +273,8 @@ async function retrieveMemoryContextFromPostgres(
   ownerId: string | null,
   conversationId: string | undefined,
   limits: RetrievalLimits,
-  logPrefix: string
+  logPrefix: string,
+  controls?: MemoryRetrievalControls
 ): Promise<RetrievedMemoryContext> {
   const result: RetrievedMemoryContext = {
     decisions: [],
@@ -224,7 +303,7 @@ async function retrieveMemoryContextFromPostgres(
 
   // Retrieve project-scoped decisions
   if (limits.decisions > 0) {
-    result.decisions = await retrieveMemoriesFromPostgres(
+    const decisionRecords = await retrieveMemoriesFromPostgres(
       supabaseClient,
       embedding,
       projectId,
@@ -233,15 +312,20 @@ async function retrieveMemoryContextFromPostgres(
       null, // decisions don't require owner filter
       null,
       limits.decisions,
-      logPrefix
+      logPrefix,
+      maxAgeMsForCategory("decisions", controls)
     );
+    result.decisions = sortMemories(decisionRecords, {
+      useScore: true,
+      recencyWeight: controls?.recencyWeight,
+    }).slice(0, limits.decisions);
   }
 
   // Only retrieve user-scoped memories if we have a valid owner ID
   if (ownerId && ownerId.length > 0) {
     // Retrieve style preferences
     if (limits.style > 0) {
-      result.style = await retrieveMemoriesFromPostgres(
+      const styleRecords = await retrieveMemoriesFromPostgres(
         supabaseClient,
         embedding,
         projectId,
@@ -250,13 +334,18 @@ async function retrieveMemoryContextFromPostgres(
         ownerId,
         null,
         limits.style,
-        logPrefix
+        logPrefix,
+        maxAgeMsForCategory("style", controls)
       );
+      result.style = sortMemories(styleRecords, {
+        useScore: true,
+        recencyWeight: controls?.recencyWeight,
+      }).slice(0, limits.style);
     }
 
     // Retrieve preference memories
     if (limits.preferences > 0) {
-      result.preferences = await retrieveMemoriesFromPostgres(
+      const preferenceRecords = await retrieveMemoriesFromPostgres(
         supabaseClient,
         embedding,
         projectId,
@@ -265,23 +354,33 @@ async function retrieveMemoryContextFromPostgres(
         ownerId,
         null,
         limits.preferences,
-        logPrefix
+        logPrefix,
+        maxAgeMsForCategory("preferences", controls)
       );
+      result.preferences = sortMemories(preferenceRecords, {
+        useScore: true,
+        recencyWeight: controls?.recencyWeight,
+      }).slice(0, limits.preferences);
     }
 
     // Retrieve session memories
     if (conversationId && limits.session > 0) {
-      result.session = await retrieveMemoriesFromPostgres(
+      const sessionRecords = await retrieveMemoriesFromPostgres(
         supabaseClient,
         embedding,
         projectId,
         ['session'],
         'conversation',
         ownerId,
-        conversationId,
+        conversationId ?? null,
         limits.session,
-        logPrefix
+        logPrefix,
+        maxAgeMsForCategory("session", controls)
       );
+      result.session = sortMemories(sessionRecords, {
+        useScore: true,
+        recencyWeight: controls?.recencyWeight,
+      }).slice(0, limits.session);
     }
   } else {
     console.log(`${logPrefix} No owner ID, skipping user/conversation-scoped memories (Postgres fallback)`);
@@ -320,7 +419,8 @@ export async function retrieveMemoryContext(
   limits: RetrievalLimits = DEFAULT_SAGA_LIMITS,
   logPrefix: string = "[memory]",
   // deno-lint-ignore no-explicit-any
-  supabaseClient?: SupabaseClient<any, any, any>
+  supabaseClient?: SupabaseClient<any, any, any>,
+  controls?: MemoryRetrievalControls
 ): Promise<RetrievedMemoryContext> {
   const result: RetrievedMemoryContext = {
     decisions: [],
@@ -340,7 +440,8 @@ export async function retrieveMemoryContext(
         ownerId,
         conversationId,
         limits,
-        logPrefix
+        logPrefix,
+        controls
       );
     }
     console.log(`${logPrefix} No Supabase client provided, memory context unavailable`);
@@ -348,21 +449,38 @@ export async function retrieveMemoryContext(
   }
 
   try {
+    let embedding: number[] | null = null;
+    if (query && isDeepInfraConfigured()) {
+      try {
+        embedding = await generateEmbedding(query);
+      } catch (error) {
+        console.warn(`${logPrefix} Failed to generate embedding: ${error}`);
+      }
+    }
+
+    const useSemantic = Boolean(embedding);
+    const sortOptions = { useScore: useSemantic, recencyWeight: controls?.recencyWeight };
+
     // Retrieve project-scoped decisions (shared canon) - visible to all with project access
     if (limits.decisions > 0) {
       const decisionFilter = buildDecisionFilter(projectId);
 
-      // If we have a query, do semantic search; otherwise scroll recent
-      if (query && isDeepInfraConfigured()) {
-        const embedding = await generateEmbedding(query);
+      if (useSemantic && embedding) {
         const decisions = await searchPoints(embedding, limits.decisions * 2, decisionFilter);
-        result.decisions = filterVisible(
-          decisions.map((p) => parseMemoryFromPayload(String(p.id), p.payload, p.score))
+        const decisionRecords = decisions.map((p) =>
+          parseMemoryFromPayload(String(p.id), p.payload, p.score)
+        );
+        result.decisions = sortMemories(
+          filterVisible(decisionRecords, { maxAgeMs: maxAgeMsForCategory("decisions", controls) }),
+          sortOptions
         ).slice(0, limits.decisions);
       } else {
-        const decisions = await scrollPoints(decisionFilter, limits.decisions * 2);
-        result.decisions = filterVisible(
-          decisions.map((p) => parseMemoryFromPayload(p.id, p.payload))
+        const decisions = await scrollPoints(decisionFilter, limits.decisions * 2, {
+          orderBy: { key: "created_at_ts", direction: "desc" },
+        });
+        const decisionRecords = decisions.map((p) => parseMemoryFromPayload(p.id, p.payload));
+        result.decisions = sortMemories(
+          filterVisible(decisionRecords, { maxAgeMs: maxAgeMsForCategory("decisions", controls) })
         ).slice(0, limits.decisions);
       }
     }
@@ -373,29 +491,71 @@ export async function retrieveMemoryContext(
       // Retrieve style preferences (user scope)
       if (limits.style > 0) {
         const styleFilter = buildStyleFilter(projectId, ownerId);
-        const styleResults = await scrollPoints(styleFilter, limits.style * 2);
-        result.style = filterVisible(
-          styleResults.map((p) => parseMemoryFromPayload(p.id, p.payload))
-        ).slice(0, limits.style);
+        if (useSemantic && embedding) {
+          const styleResults = await searchPoints(embedding, limits.style * 2, styleFilter);
+          const styleRecords = styleResults.map((p) =>
+            parseMemoryFromPayload(String(p.id), p.payload, p.score)
+          );
+          result.style = sortMemories(
+            filterVisible(styleRecords, { maxAgeMs: maxAgeMsForCategory("style", controls) }),
+            sortOptions
+          ).slice(0, limits.style);
+        } else {
+          const styleResults = await scrollPoints(styleFilter, limits.style * 2, {
+            orderBy: { key: "created_at_ts", direction: "desc" },
+          });
+          const styleRecords = styleResults.map((p) => parseMemoryFromPayload(p.id, p.payload));
+          result.style = sortMemories(
+            filterVisible(styleRecords, { maxAgeMs: maxAgeMsForCategory("style", controls) })
+          ).slice(0, limits.style);
+        }
       }
 
       // Retrieve preference memories (user scope)
       if (limits.preferences > 0) {
         const prefFilter = buildPreferenceFilter(projectId, ownerId);
-        const prefResults = await scrollPoints(prefFilter, limits.preferences * 2);
-        result.preferences = filterVisible(
-          prefResults.map((p) => parseMemoryFromPayload(p.id, p.payload))
-        ).slice(0, limits.preferences);
+        if (useSemantic && embedding) {
+          const prefResults = await searchPoints(embedding, limits.preferences * 2, prefFilter);
+          const prefRecords = prefResults.map((p) =>
+            parseMemoryFromPayload(String(p.id), p.payload, p.score)
+          );
+          result.preferences = sortMemories(
+            filterVisible(prefRecords, { maxAgeMs: maxAgeMsForCategory("preferences", controls) }),
+            sortOptions
+          ).slice(0, limits.preferences);
+        } else {
+          const prefResults = await scrollPoints(prefFilter, limits.preferences * 2, {
+            orderBy: { key: "created_at_ts", direction: "desc" },
+          });
+          const prefRecords = prefResults.map((p) => parseMemoryFromPayload(p.id, p.payload));
+          result.preferences = sortMemories(
+            filterVisible(prefRecords, { maxAgeMs: maxAgeMsForCategory("preferences", controls) })
+          ).slice(0, limits.preferences);
+        }
       }
 
       // Retrieve session memories - MUST include all isolation fields
       // Filter: (projectId, ownerId, conversationId, category=session, scope=conversation)
       if (conversationId && limits.session > 0) {
         const sessionFilter = buildSessionFilter(projectId, ownerId, conversationId);
-        const sessionResults = await scrollPoints(sessionFilter, limits.session * 2);
-        result.session = filterVisible(
-          sessionResults.map((p) => parseMemoryFromPayload(p.id, p.payload))
-        ).slice(0, limits.session);
+        if (useSemantic && embedding) {
+          const sessionResults = await searchPoints(embedding, limits.session * 2, sessionFilter);
+          const sessionRecords = sessionResults.map((p) =>
+            parseMemoryFromPayload(String(p.id), p.payload, p.score)
+          );
+          result.session = sortMemories(
+            filterVisible(sessionRecords, { maxAgeMs: maxAgeMsForCategory("session", controls) }),
+            sortOptions
+          ).slice(0, limits.session);
+        } else {
+          const sessionResults = await scrollPoints(sessionFilter, limits.session * 2, {
+            orderBy: { key: "created_at_ts", direction: "desc" },
+          });
+          const sessionRecords = sessionResults.map((p) => parseMemoryFromPayload(p.id, p.payload));
+          result.session = sortMemories(
+            filterVisible(sessionRecords, { maxAgeMs: maxAgeMsForCategory("session", controls) })
+          ).slice(0, limits.session);
+        }
       }
     } else {
       console.log(`${logPrefix} No owner ID, skipping user/conversation-scoped memories`);
@@ -417,7 +577,8 @@ export async function retrieveMemoryContext(
         ownerId,
         conversationId,
         limits,
-        logPrefix
+        logPrefix,
+        controls
       );
     }
     console.warn(`${logPrefix} No Supabase client provided, memory context unavailable`);
@@ -470,6 +631,7 @@ export async function retrieveProfileContext(
       namingCulture: writing.namingCulture as string | undefined,
       namingStyle: writing.namingStyle as string | undefined,
       logicStrictness: writing.logicStrictness as string | undefined,
+      smartMode: writing.smartMode as ProfileContext["smartMode"] | undefined,
     };
   } catch (error) {
     console.error(`${logPrefix} Profile retrieval error:`, error);

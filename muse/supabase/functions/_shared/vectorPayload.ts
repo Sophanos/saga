@@ -58,6 +58,8 @@ export interface MemoryPayload extends BasePayload {
   document_id?: string;
   tool_call_id?: string;
   tool_name?: string;
+  style_rule_kind?: string;
+  style_rule_tags?: string[];
   created_at: string;
   created_at_ts: number; // Unix ms for range queries
   expires_at?: string;
@@ -265,6 +267,8 @@ export function buildMemoryPayload(params: {
   documentId?: string;
   toolCallId?: string;
   toolName?: string;
+  styleRuleKind?: string;
+  styleRuleTags?: string[];
   expiresAt?: string;
   pinned?: boolean;
   redacted?: boolean;
@@ -293,6 +297,8 @@ export function buildMemoryPayload(params: {
     document_id: params.documentId,
     tool_call_id: params.toolCallId,
     tool_name: params.toolName,
+    style_rule_kind: params.styleRuleKind,
+    style_rule_tags: params.styleRuleTags,
     created_at: createdAt,
     created_at_ts: createdAtTs,
     updated_at: params.updatedAt ?? now.toISOString(),

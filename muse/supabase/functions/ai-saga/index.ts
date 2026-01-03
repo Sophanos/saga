@@ -48,7 +48,7 @@ import {
 import { buildSagaSystemPrompt } from "../_shared/prompts/mod.ts";
 import { agentTools } from "../_shared/tools/index.ts";
 import { assertProjectAccess, ProjectAccessError } from "../_shared/projects.ts";
-import type { UnifiedContextHints } from "../_shared/contextHints.ts";
+import type { UnifiedContextHints, ProjectPersonalizationContext } from "../_shared/contextHints.ts";
 import {
   executeGenesisWorld,
   executeDetectEntities,
@@ -201,10 +201,50 @@ async function fetchProjectMemoryControls(
   }
 }
 
-function buildRetrievalLimitsFromControls(
+async function fetchProjectPersonalization(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  projectId: string,
+  logPrefix: string
+): Promise<ProjectPersonalizationContext | undefined> {
+  try {
+    const { data, error } = await supabase
+      .from("projects")
+      .select("genre, style_config")
+      .eq("id", projectId)
+      .single();
+
+    if (error || !data) {
+      if (error) {
+        console.warn(`${logPrefix} Failed to load project personalization: ${error.message}`);
+      }
+      return undefined;
+    }
+
+    const styleConfig = data.style_config as Record<string, unknown> | null;
+    return {
+      genre: (data.genre as string | null) ?? undefined,
+      styleMode: (styleConfig?.styleMode as string | undefined) ?? undefined,
+      guardrails: styleConfig?.guardrails as ProjectPersonalizationContext["guardrails"] | undefined,
+      smartMode: styleConfig?.smartMode as ProjectPersonalizationContext["smartMode"] | undefined,
+    };
+  } catch (error) {
+    console.warn(`${logPrefix} Failed to load project personalization:`, error);
+    return undefined;
+  }
+}
+
+type MemoryCategoryKey = "decisions" | "style" | "preferences" | "session";
+
+interface MemoryRetrievalConfig {
+  limits: RetrievalLimits;
+  recencyWeight?: number;
+  maxAgeDays?: Partial<Record<MemoryCategoryKey, number>>;
+}
+
+function buildRetrievalConfigFromControls(
   memoryControls: Record<string, unknown> | undefined,
   defaults: RetrievalLimits = DEFAULT_SAGA_LIMITS
-): RetrievalLimits {
+): MemoryRetrievalConfig {
   const limits: RetrievalLimits = { ...defaults };
   const categories = memoryControls?.categories as Record<string, unknown> | undefined;
 
@@ -235,7 +275,24 @@ function buildRetrievalLimitsFromControls(
     limits.session = Math.max(0, Math.floor(budgets.session));
   }
 
-  return limits;
+  const maxAgeDays: Partial<Record<MemoryCategoryKey, number>> = {};
+  const decisionAge = (categories?.decision as { maxAgeDays?: number } | undefined)?.maxAgeDays;
+  const styleAge = (categories?.style as { maxAgeDays?: number } | undefined)?.maxAgeDays;
+  const preferenceAge = (categories?.preference as { maxAgeDays?: number } | undefined)?.maxAgeDays;
+  const sessionAge = (categories?.session as { maxAgeDays?: number } | undefined)?.maxAgeDays;
+
+  if (typeof decisionAge === "number") maxAgeDays.decisions = decisionAge;
+  if (typeof styleAge === "number") maxAgeDays.style = styleAge;
+  if (typeof preferenceAge === "number") maxAgeDays.preferences = preferenceAge;
+  if (typeof sessionAge === "number") maxAgeDays.session = sessionAge;
+
+  return {
+    limits,
+    recencyWeight: typeof memoryControls?.recencyWeight === "number"
+      ? memoryControls?.recencyWeight
+      : undefined,
+    maxAgeDays: Object.keys(maxAgeDays).length > 0 ? maxAgeDays : undefined,
+  };
 }
 
 /**
@@ -252,8 +309,11 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
   // Determine owner ID for memory isolation (userId or anonDeviceId)
   const ownerId = billing.userId ?? billing.anonDeviceId ?? null;
   const effectiveConversationId = conversationId ?? contextHints?.conversationId;
-  const memoryControls = await fetchProjectMemoryControls(supabase, projectId, logPrefix);
-  const memoryLimits = buildRetrievalLimitsFromControls(memoryControls);
+  const [memoryControls, projectPersonalization] = await Promise.all([
+    fetchProjectMemoryControls(supabase, projectId, logPrefix),
+    fetchProjectPersonalization(supabase, projectId, logPrefix),
+  ]);
+  const memoryConfig = buildRetrievalConfigFromControls(memoryControls);
 
   // Retrieve all contexts in parallel
   const [ragContext, memoryContext, profileContext] = await Promise.all([
@@ -261,7 +321,19 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
       logPrefix,
       excludeMemories: true,
     }),
-    retrieveMemoryContext(query, projectId, ownerId, effectiveConversationId, memoryLimits, logPrefix, supabase),
+    retrieveMemoryContext(
+      query,
+      projectId,
+      ownerId,
+      effectiveConversationId,
+      memoryConfig.limits,
+      logPrefix,
+      supabase,
+      {
+        recencyWeight: memoryConfig.recencyWeight,
+        maxAgeDays: memoryConfig.maxAgeDays,
+      }
+    ),
     retrieveProfileContext(supabase, billing.userId, logPrefix),
   ]);
 
@@ -273,6 +345,7 @@ async function prepareSagaContext(params: SagaContextParams): Promise<PreparedCo
     profileContext,
     memoryContext,
     contextHints,
+    projectContext: projectPersonalization,
   });
 
   // Build messages array with sliding window

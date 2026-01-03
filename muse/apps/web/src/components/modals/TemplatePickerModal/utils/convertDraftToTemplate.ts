@@ -1,4 +1,12 @@
-import type { ProjectTemplate, TemplateCategory, Genre, RelationshipKindDefinition, DocumentKindDefinition, LinterRuleDefinition } from "@mythos/core";
+import type {
+  ProjectTemplate,
+  TemplateCategory,
+  Genre,
+  StyleMode,
+  RelationshipKindDefinition,
+  DocumentKindDefinition,
+  LinterRuleDefinition,
+} from "@mythos/core";
 import type { TemplateDraft } from "@mythos/agent-protocol";
 
 /**
@@ -44,6 +52,39 @@ export function convertDraftToTemplate(draft: TemplateDraft): ProjectTemplate {
     style: "style",
   };
 
+  const defaultGenreByCategory: Partial<Record<TemplateCategory, Genre>> = {
+    fantasy: "high_fantasy",
+    scifi: "science_fiction",
+    horror: "horror",
+    literary: "literary",
+    ttrpg: "high_fantasy",
+    manga: "manga_shounen",
+    visual: "literary",
+    screenplay: "literary",
+    serial: "progression_fantasy",
+  };
+
+  const defaultStyleModeByCategory: Partial<Record<TemplateCategory, StyleMode>> = {
+    manga: "manga",
+    horror: "noir",
+    literary: "minimalist",
+    screenplay: "minimalist",
+  };
+
+  const suggestedGenresByCategory: Partial<Record<TemplateCategory, Genre[]>> = {
+    fantasy: ["high_fantasy", "urban_fantasy", "grimdark"],
+    scifi: ["science_fiction", "thriller"],
+    horror: ["horror", "thriller"],
+    literary: ["literary", "slice_of_life"],
+    manga: ["manga_shounen", "manga_seinen", "manga_shoujo", "manga_josei"],
+    ttrpg: ["high_fantasy", "litrpg", "progression_fantasy"],
+    serial: ["progression_fantasy", "litrpg"],
+  };
+
+  const defaultGenre = defaultGenreByCategory[category] ?? "literary";
+  const defaultStyleMode = defaultStyleModeByCategory[category] ?? "minimalist";
+  const suggestedGenres = suggestedGenresByCategory[category] ?? [defaultGenre];
+
   return {
     id: templateId,
     name: draft.name,
@@ -53,9 +94,9 @@ export function convertDraftToTemplate(draft: TemplateDraft): ProjectTemplate {
     tags: draft.tags,
 
     // Genre & Style defaults
-    defaultGenre: "high_fantasy" as Genre,
-    suggestedGenres: ["high_fantasy", "urban_fantasy", "science_fiction"] as Genre[],
-    defaultStyleMode: "hemingway",
+    defaultGenre,
+    suggestedGenres,
+    defaultStyleMode,
     defaultArcTemplate: "three_act",
 
     // Entity configuration from draft

@@ -26,6 +26,12 @@ const ENTITY_TYPE_OPTIONS: Array<NonNullable<WriterPersonalizationV1["trackEntit
   "timeline",
 ];
 
+const SMART_MODE_OPTIONS: Array<NonNullable<WriterPersonalizationV1["smartMode"]>["level"]> = [
+  "off",
+  "balanced",
+  "adaptive",
+];
+
 function resolveProjectStyleMode(
   styleMode: WriterPersonalizationV1["styleMode"] | undefined,
   fallback: StyleMode
@@ -69,6 +75,9 @@ export function TryPersonalizationModal() {
   );
   const [strictness, setStrictness] = useState<NonNullable<WriterPersonalizationV1["guardrails"]>["strictness"]>("medium");
   const [noJudgementMode, setNoJudgementMode] = useState(true);
+  const [smartModeLevel, setSmartModeLevel] = useState<NonNullable<WriterPersonalizationV1["smartMode"]>["level"]>(
+    "balanced"
+  );
 
   useEffect(() => {
     if (!personalization) return;
@@ -85,6 +94,7 @@ export function TryPersonalizationModal() {
     setEditGuardrail(personalization.guardrails?.edits ?? "proofread_only");
     setStrictness(personalization.guardrails?.strictness ?? "medium");
     setNoJudgementMode(personalization.guardrails?.no_judgement_mode ?? true);
+    setSmartModeLevel(personalization.smartMode?.level ?? "balanced");
   }, [personalization]);
 
   const entityTypeSet = useMemo(() => new Set(trackEntityTypes), [trackEntityTypes]);
@@ -115,6 +125,9 @@ export function TryPersonalizationModal() {
         strictness,
         no_judgement_mode: noJudgementMode,
       },
+      smartMode: {
+        level: smartModeLevel,
+      },
     };
 
     setPersonalization(next);
@@ -132,6 +145,8 @@ export function TryPersonalizationModal() {
           ...currentProject.config,
           genre: nextGenre,
           styleMode: nextStyleMode,
+          guardrails: next.guardrails,
+          smartMode: next.smartMode,
         },
       });
     }
@@ -239,6 +254,25 @@ export function TryPersonalizationModal() {
                 ]}
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-wide text-mythos-text-muted">
+              Smart mode
+            </label>
+            <Select
+              value={smartModeLevel}
+              onChange={(value) =>
+                setSmartModeLevel(value as NonNullable<WriterPersonalizationV1["smartMode"]>["level"])
+              }
+              options={SMART_MODE_OPTIONS.map((option) => ({
+                value: option,
+                label: option === "balanced" ? "Balanced" : option === "adaptive" ? "Adaptive" : "Off",
+              }))}
+            />
+            <p className="text-xs text-mythos-text-muted">
+              Controls how strongly learned style influences suggestions.
+            </p>
           </div>
 
           <div className="flex items-center justify-between">
