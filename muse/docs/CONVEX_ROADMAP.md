@@ -1,5 +1,7 @@
 # Convex Migration Roadmap
 
+> See also: [UI Architecture](./UI_ARCHITECTURE.md) for Expo app structure and design system.
+
 ## Goal
 Replace SyncEngine (~4000 LOC) with Convex. Consolidate AI into Convex HTTP Actions.
 
@@ -269,3 +271,32 @@ bunx convex dev --url https://api.cascada.vision
 | Sync code | 4,000+ LOC | 0 |
 | AI deployments | Supabase Edge | Convex only |
 | Offline | Custom | Built-in |
+
+---
+
+## UI Foundation Status
+
+> Full details: [UI Architecture](./UI_ARCHITECTURE.md)
+
+**Phase 1: Foundation** ✅ Complete
+- Expo SDK 54 + Router 6
+- Design tokens, theme hook (light/dark)
+- AppShell with resizable panels
+- AI Panel with Muse avatar, model selector, context scope
+
+**Phase 2: MLP UI** 🔜 Open Tasks
+- [ ] Editor component (placeholder or basic)
+- [ ] Entity forms and cards
+- [ ] Project switcher modal
+- [ ] Chapter/scene tree interactions
+- [ ] AI chat message list
+- [ ] Tool execution cards
+- [ ] Keyboard shortcuts
+- [ ] Animations and polish
+
+**Related BD Tasks:**
+| ID | Priority | Title |
+|----|----------|-------|
+| muse-j3z | P1 | Expo UI - Convex Data Integration |
+| muse-nnl | P1 | Expo UI - AI Tools Panel |
+| muse-z93 | P2 | Expo UI - Native Builds (iOS/macOS) |
