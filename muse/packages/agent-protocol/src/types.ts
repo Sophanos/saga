@@ -51,8 +51,12 @@ export type SagaMode = "onboarding" | "creation" | "editing" | "analysis";
 export interface EditorContext {
   /** Title of the currently open document */
   documentTitle?: string;
+  /** Clipped excerpt of the current document (when available) */
+  documentExcerpt?: string;
   /** Currently selected text in the editor */
   selectionText?: string;
+  /** Surrounding context around the selection (when available) */
+  selectionContext?: string;
 }
 
 // =============================================================================

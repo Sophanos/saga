@@ -154,19 +154,6 @@ export const CAPABILITIES: Capability[] = [
       "Generate a compelling backstory for the character or element in the selected text.",
   },
   {
-    id: "prompt.build-world",
-    kind: "chat_prompt",
-    label: "Build World",
-    description: "Generate entities, relationships, and story structure",
-    icon: "LayoutTemplate",
-    category: "worldbuilding",
-    surfaces: ["quick_actions"],
-    requiresProject: true,
-    order: 60,
-    buildPrompt: () =>
-      "Help me expand my story world. Generate entities, relationships, and story structure based on what I've written so far.",
-  },
-  {
     id: "prompt.next-steps",
     kind: "chat_prompt",
     label: "Next Steps",
@@ -312,11 +299,11 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "tool.genesis-world",
     kind: "tool",
-    label: "Genesis World",
-    description: "Generate a complete world scaffold from a description",
+    label: "Build World",
+    description: "Generate a world scaffold from your story concept",
     icon: "Globe",
     category: "worldbuilding",
-    surfaces: ["command_palette"],
+    surfaces: ["quick_actions", "command_palette"],
     requiresProject: true,
     requiresApiKey: true,
     keywords: ["genesis", "world", "generate", "scaffold", "create"],
@@ -326,7 +313,8 @@ export const CAPABILITIES: Capability[] = [
     requiresConfirmation: true,
     buildDefaultArgs: (ctx: CapabilityContext) => ({
       genre: ctx.genre ?? ctx.preferences?.preferredGenre,
-      detailLevel: "standard",
+      detailLevel: "detailed",
+      includeOutline: true,
     }),
   },
 

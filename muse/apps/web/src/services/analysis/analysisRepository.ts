@@ -57,8 +57,8 @@ function mapSensoryData(sensoryData: SceneAnalysisRow["sensory_data"]): SensoryB
  */
 function mapPacing(pacing: number | null): SceneMetrics["pacing"] {
   if (pacing === null) return "steady";
-  if (pacing > 60) return "accelerating";
-  if (pacing < 40) return "decelerating";
+  if (pacing > 0.6) return "accelerating";
+  if (pacing < 0.4) return "decelerating";
   return "steady";
 }
 
@@ -142,8 +142,8 @@ export async function persistAnalysisRecord(input: PersistAnalysisInput): Promis
 
   // Map pacing string to numeric value
   const pacingValue =
-    metrics.pacing === "accelerating" ? 70 :
-    metrics.pacing === "decelerating" ? 30 : 50;
+    metrics.pacing === "accelerating" ? 0.7 :
+    metrics.pacing === "decelerating" ? 0.3 : 0.5;
 
   const analysisInsert: SceneAnalysisInsert = {
     project_id: projectId,

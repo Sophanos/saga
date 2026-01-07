@@ -10,7 +10,13 @@
 import { ApiError, type ApiErrorCode } from "../api-client";
 import { getSupabaseClient, isSupabaseInitialized } from "@mythos/db";
 import { getAnonHeaders } from "../anonymousSession";
-import { API_TIMEOUTS, RETRY_CONFIG } from "../config";
+import {
+  API_TIMEOUTS,
+  RETRY_CONFIG,
+  getAIEndpoint,
+  USE_CONVEX_AI,
+  SUPABASE_ANON_KEY,
+} from "../config";
 import type { ChatContext, ChatMention } from "../../stores";
 import type {
   ToolName,
@@ -33,9 +39,6 @@ import type {
   AgentStreamEventType,
 } from "@mythos/agent-protocol";
 import type { UnifiedContextHints } from "@mythos/context";
-
-const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "";
-const SUPABASE_ANON_KEY = import.meta.env["VITE_SUPABASE_ANON_KEY"] || "";
 
 async function resolveAuthHeader(authToken?: string): Promise<string | null> {
   if (authToken) {
@@ -375,12 +378,13 @@ export async function sendSagaChatStreaming(
   const { signal, apiKey, authToken, onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError } =
     opts ?? {};
 
-  const url = `${SUPABASE_URL}/functions/v1/ai-saga`;
+  const url = getAIEndpoint('/ai/saga');
 
   const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    ...(SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
+    // Only include Supabase apikey when using Supabase Edge Functions
+    ...(!USE_CONVEX_AI && SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
     ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
     ...getAnonHeaders(),
   };
@@ -458,12 +462,13 @@ async function executeSagaTool<T>(
 ): Promise<T> {
   const { signal, apiKey, authToken } = opts ?? {};
 
-  const url = `${SUPABASE_URL}/functions/v1/ai-saga`;
+  const url = getAIEndpoint('/ai/saga');
 
   const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    ...(SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
+    // Only include Supabase apikey when using Supabase Edge Functions
+    ...(!USE_CONVEX_AI && SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
     ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
     ...getAnonHeaders(),
   };
@@ -638,12 +643,13 @@ export async function sendToolApprovalResponse(
   const { signal, apiKey, authToken, onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError } =
     opts ?? {};
 
-  const url = `${SUPABASE_URL}/functions/v1/ai-saga`;
+  const url = getAIEndpoint('/ai/saga');
 
   const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    ...(SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
+    // Only include Supabase apikey when using Supabase Edge Functions
+    ...(!USE_CONVEX_AI && SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
     ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
     ...getAnonHeaders(),
   };

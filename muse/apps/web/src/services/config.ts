@@ -85,3 +85,37 @@ export type ApiTimeoutKey = keyof typeof API_TIMEOUTS;
 
 /** Type for retry config keys */
 export type RetryConfigKey = keyof typeof RETRY_CONFIG;
+
+// =============================================================================
+// Endpoint Configuration
+// =============================================================================
+
+/**
+ * Feature flag to use Convex HTTP Actions for AI endpoints.
+ * Set VITE_USE_CONVEX_AI=true to route AI calls to Convex.
+ * Default: false (use Supabase Edge Functions)
+ */
+export const USE_CONVEX_AI = import.meta.env['VITE_USE_CONVEX_AI'] === 'true';
+
+/** Convex deployment URL for HTTP Actions */
+export const CONVEX_URL = import.meta.env['VITE_CONVEX_URL'] || 'https://api.cascada.vision';
+
+/** Supabase URL for Edge Functions */
+export const SUPABASE_URL = import.meta.env['VITE_SUPABASE_URL'] || '';
+
+/** Supabase anonymous key */
+export const SUPABASE_ANON_KEY = import.meta.env['VITE_SUPABASE_ANON_KEY'] || '';
+
+/**
+ * Get the appropriate AI endpoint URL based on feature flag.
+ * @param path - The endpoint path (e.g., '/ai/saga')
+ */
+export function getAIEndpoint(path: string): string {
+  if (USE_CONVEX_AI) {
+    // Convex HTTP Actions are at the root path
+    return `${CONVEX_URL}${path}`;
+  }
+  // Supabase Edge Functions use /functions/v1/ prefix
+  const functionName = path.replace(/^\/ai\//, 'ai-');
+  return `${SUPABASE_URL}/functions/v1/${functionName}`;
+}

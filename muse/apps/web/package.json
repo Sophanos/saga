@@ -16,6 +16,7 @@
     "@mythos/capabilities": "workspace:*",
     "@mythos/core": "workspace:*",
     "@mythos/context": "workspace:*",
+    "@mythos/convex-client": "workspace:*",
     "@mythos/db": "workspace:*",
     "@mythos/editor": "workspace:*",
     "@mythos/memory": "workspace:*",

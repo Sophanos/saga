@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "dev": "turbo dev",
+    "dev:expo": "bun run --filter @mythos/expo dev",
+    "dev:expo:web": "bun run --filter @mythos/expo dev:web",
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
@@ -22,5 +24,10 @@
   "packageManager": "bun@1.1.38",
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.16",
+    "convex": "^1.31.2",
+    "idb-keyval": "^6.2.2"
   }
 }

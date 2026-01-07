@@ -148,9 +148,15 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
     const ctx = editorChatContext;
     if (!ctx.document && !ctx.selection) return undefined;
 
+    const selectionText = ctx.selection?.text?.trim();
+    const selectionContext = selectionText ? ctx.selection?.surroundingContext?.trim() : undefined;
+    const documentExcerpt = !selectionText ? ctx.document?.excerpt?.trim() : undefined;
+
     return {
       documentTitle: ctx.document?.title,
-      selectionText: ctx.selection?.text,
+      documentExcerpt: documentExcerpt || undefined,
+      selectionText: selectionText || undefined,
+      selectionContext: selectionContext || undefined,
     };
   }, [editorChatContext]);
 

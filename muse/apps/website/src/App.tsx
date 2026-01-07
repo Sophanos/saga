@@ -20,9 +20,12 @@ function App() {
 function RedirectToWebApp({ path }: { path: string }) {
   // In production, both apps would be on same domain
   // In development, redirect to the web app port
-  const webAppUrl = import.meta.env.DEV
-    ? `http://localhost:3000${path}`
-    : path;
+  const configuredBaseUrl = (import.meta.env["VITE_WEB_APP_URL"] as string | undefined)?.trim();
+  const webAppUrl = configuredBaseUrl
+    ? new URL(path, configuredBaseUrl).toString()
+    : import.meta.env.DEV
+      ? `http://localhost:3005${path}`
+      : path;
 
   window.location.href = webAppUrl;
   return null;

@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { enableMapSet } from "immer";
 import { initSupabaseClient } from "@mythos/db";
 import { webStorage } from "@mythos/storage";
+import { ConvexProvider } from "./providers";
 import App from "./App";
 import "./styles/globals.css";
 
@@ -19,6 +20,8 @@ initSupabaseClient({
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <ConvexProvider>
+      <App />
+    </ConvexProvider>
   </React.StrictMode>
 );

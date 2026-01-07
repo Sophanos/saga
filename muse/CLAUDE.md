@@ -1,125 +1,150 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Project Overview
-
-Mythos IDE is an AI-powered creative writing environment for fiction authors. It treats "story as code" - tracking entities (characters, locations, items, magic systems, factions) like variables, with a World Graph maintaining relationships and detecting logical inconsistencies. AI agents provide real-time writing feedback.
+Mythos IDE - AI-powered creative writing environment. "Story as code" with entity tracking, World Graph for relationships, AI agents for feedback.
 
 ## Commands
 
 ```bash
-# Task Tracking (beads)
-bd ready             # List tasks with no blockers
-bd create "Title" -p 1  # Create P1 task
-bd show <id>         # View task details
-bd update <id> -s in-progress  # Start task
-bd close <id>        # Complete task
+# Dev
+bun install && bun run dev
+bun run dev:expo:web    # Expo web app
+bun run typecheck       # All packages
 
-# Development
-bun install          # Install dependencies
-bun run dev          # Start all packages in dev mode (Turborepo)
+# Single package
+bun run --filter @mythos/expo typecheck
 
-# Quality checks (run from root)
-bun run typecheck    # TypeScript check across all packages
-bun run lint         # ESLint across all packages
-bun run build        # Build all packages
-
-# Single package operations
-bun run --filter @mythos/web dev        # Run only web app
-bun run --filter @mythos/core typecheck # Typecheck only core
-
-# Database (from packages/db)
-bun run db:generate  # Regenerate Supabase types (requires SUPABASE_PROJECT_ID)
+# Task tracking (beads)
+bd ready | bd create "Title" -p 1 | bd close <id>
 ```
 
 ## Architecture
 
-**Monorepo structure** (Turborepo + Bun workspaces):
+See `docs/UI_ARCHITECTURE.md` for full details.
 
-- `apps/web` - React SPA (Vite + Tiptap editor + Zustand state)
-- `packages/core` - Domain types, World Graph, story structures, Zod schemas
-- `packages/editor` - Tiptap extensions (EntityMark, EntitySuggestion, SceneBlock)
-- `packages/ai` - AI agents (ConsistencyLinter, WritingCoach) via Vercel AI SDK
-- `packages/db` - Supabase client, queries, migrations
-- `packages/ui` - Shared components (Button, Card, Input, ScrollArea, FormField, Select, TextArea)
-- `packages/theme` - Cross-platform design tokens (colors, typography, spacing, semantic colors)
-- `packages/prompts` - Consolidated AI prompts (coach, dynamics, linter, entity-detector)
-- `tooling/` - Shared configs (Tailwind imports from @mythos/theme, ESLint, TypeScript)
+### Stack
+- **Frontend**: Expo SDK 54 + Router 6, React Native 0.81, Zustand
+- **Backend**: Convex (primary), Qdrant (vectors), PostHog (analytics)
+- **AI**: OpenRouter, DeepInfra (embeddings)
 
-## Key Concepts
+### Monorepo
+```
+apps/
+  expo/           # Universal app (web, iOS, macOS)
+  web/            # Legacy React SPA (deprecated)
+packages/
+  core/           # Domain types, World Graph, Zod schemas
+  theme/          # Design tokens (colors, typography, spacing)
+  ui/             # Shared components
+  db/             # Supabase client (legacy)
+  prompts/        # AI prompts
+```
 
-**Writer/DM Mode**: Two UI modes - Writer (narrative focus) and DM (mechanical/stats focus). Mode state lives in `apps/web/src/stores/index.ts` and affects HUD display.
+### Expo App Structure (`apps/expo/`)
+```
+app/              # Expo Router (file-based)
+src/
+  design-system/  # Tokens, theme hook, layout store
+    colors.ts     # Light/dark palette
+    tokens.ts     # Spacing, sizing, radii, typography
+    theme.ts      # useTheme() hook
+    layout.ts     # Sidebar/AI panel state (Zustand)
+  components/
+    layout/       # AppShell, Sidebar (resizable)
+    ai/           # AIPanel, MuseAvatar, dropdowns
+  stores/
+    ai.ts         # Chat threads, model selection, context scope
+```
 
-**Entity System**: Characters, Locations, Items, MagicSystems, Factions defined in `packages/core/src/entities/types.ts`. HUD projections (mode-specific views) in `hud-types.ts`.
+## Design System
 
-**World Graph**: Entity relationship graph with conflict detection (genealogy, timeline, relationship inconsistencies) in `packages/core/src/world-graph/`.
+All design tokens in `apps/expo/src/design-system/`:
 
-**AI Agents**: Extend `NarrativeAgent` base class. Use `generateObject` from Vercel AI SDK with Zod schemas for structured responses. Providers: OpenRouter (primary), Gemini (fallback).
+```typescript
+// Colors
+import { useTheme } from '@/design-system';
+const { colors, isDark } = useTheme();
+// colors.bgApp, colors.text, colors.accent, colors.border
 
-**Zustand Stores** (`apps/web/src/stores/`):
-- Main store: project, document, world, editor, linter, search, chat, ui state
-- `analysis.ts`: Writing metrics, style issues, insights
-- `dynamics.ts`: Entity interactions and event streams
+// Entity colors (same in both themes)
+entityColors.character  // purple
+entityColors.location   // green
+entityColors.item       // amber
 
-**RAG Chat System** (`apps/web/src/hooks/useChatAgent.ts`):
-- DeepInfra embeddings (Qwen3-Embedding-8B, 4096 dims) for query vectorization
-- Qdrant vector search for context retrieval
-- OpenRouter LLM for response generation with SSE streaming
-- Chat store slice for messages, streaming state, and context
+// Tokens
+spacing[4]  // 16px
+radii.lg    // 12px
+typography.sm  // 13
+```
 
-## Environment Variables
+## AI Panel System
 
-Copy `.env.example` to `.env` and configure:
-- `SUPABASE_URL`, `SUPABASE_ANON_KEY` - Database
-- `OPENROUTER_API_KEY` - Primary AI provider
-- `GOOGLE_GENERATIVE_AI_API_KEY` - Fallback AI provider (optional)
-- `DEEPINFRA_API_KEY` - Embeddings provider (Qwen3-Embedding-8B)
-- `QDRANT_URL`, `QDRANT_API_KEY` - Vector database for RAG
+Notion-inspired AI chat in `src/components/ai/`:
 
-## Infrastructure (Hetzner)
+| Component | Purpose |
+|-----------|---------|
+| `AIPanel` | Main chat (sticky/floating/detached) |
+| `AIFloatingButton` | FAB when panel hidden |
+| `MuseAvatar` | AI persona with breathing animation |
+| `ModelSelector` | Model picker dropdown |
+| `ContextScope` | Context source toggles |
+| `QuickActions` | Writer-focused action cards |
+| `AIPanelInput` | Rich input with @ mentions |
 
-Qdrant runs on shared Hetzner VPS (`ssh -i ~/.ssh/hetzner_orchestrator root@78.47.165.136`).
-Exposed via Cloudflare Tunnel at `qdrant.cascada.vision`. Collection: `saga_vectors` (4096 dims, API key auth).
-Config at `/opt/qdrant/docker-compose.yml`, setup script: `scripts/qdrant-setup.sh`.
+### AI Store (`stores/ai.ts`)
+```typescript
+const { selectedModel, enabledScopes, sendMessage } = useAIStore();
+// Models: auto, claude-sonnet, claude-opus, gemini-flash, gpt-4o
+// Scopes: scene, chapter, project, entities, world, notes
+```
 
-## Code Consolidation Patterns
+## Layout
 
-**Single Source of Truth**:
-- Entity config: `@mythos/core/entities/config.ts` exports `ENTITY_TYPE_CONFIG`, `getEntityColor()`, `getEntityLabel()`
-- Severity config: `@mythos/core/analysis/severity-config.ts` exports `SEVERITY_CONFIG`, `getSeverityColor()`
-- Theme tokens: `@mythos/theme` exports `bg`, `text`, `accent`, `entity`, `severity` colors
-- AI prompts: `@mythos/prompts` is the source; `@mythos/ai` and edge functions re-export
+Resizable panels in `AppShell`:
+- Sidebar: 200-400px, drag to resize
+- AI Panel: 320-600px, drag to resize
+- Breakpoints: mobile (<768), tablet (768-1024), desktop (>1024)
 
-**Persistence Hooks Factory** (`apps/web/src/hooks/usePersistence.ts`):
-- `usePersistenceState(name)` - Shared loading/error state management
-- `createPersistenceHook<T>()` - Factory for CRUD persistence hooks
-- `PersistenceResult<T>` - Unified return type `{ data, error }`
-- All persistence hooks (`useEntityPersistence`, `useRelationshipPersistence`, `useMentionPersistence`) use this
+```typescript
+const { sidebarWidth, setSidebarWidth, aiPanelWidth, setAIPanelWidth } = useLayoutStore();
+```
 
-**API Client Base** (`apps/web/src/services/api-client.ts`):
-- `callEdgeFunction<TReq, TRes>()` - Unified HTTP client with error handling
-- `ApiError` base class extended by domain errors (`LinterApiError`, `DynamicsApiError`, `DetectApiError`)
-- All AI service clients import from this base
+## Key Patterns
 
-**DB Mappers** (`@mythos/db/mappers/`):
-- All DB↔Core type mappers live in `@mythos/db`
-- `mapDb*To*()` and `mapCore*ToDb*()` functions
+**Single source of truth**:
+- Colors/tokens → `@/design-system`
+- Entity config → `@mythos/core/entities/config.ts`
+- AI prompts → `@mythos/prompts`
 
-## Current State
+**File size limit**: Keep files under 800 LOC.
 
-Phases 1-3 (Core Interactivity, Dynamics, Coach) are complete. Phase 4 (Auto-fix Linter integration) is partial - the ConsistencyLinter agent exists but is not wired to the UI (using mock data). See `ARCHITECTURE_REVIEW.md` for detailed gap analysis.
+**No AI slop**: Clean, concise code. No unnecessary comments.
 
-**RAG & Search (Complete)**:
-- Semantic search via DeepInfra embeddings + Qdrant vector store
-- Auto-embedding on document/entity save (fire-and-forget)
-- RAG Chat with streaming responses in Console Chat tab
-- Search panel with scope filters (all/documents/entities)
+## Environment
 
-**Consolidation Status (Phase 1-2 Complete)**:
-- UI components consolidated to `@mythos/ui`
-- Theme tokens in `@mythos/theme`, integrated with Tailwind
-- Prompts consolidated to `@mythos/prompts`
-- Persistence hooks using factory pattern
-- API clients using shared base
-- DB mappers moved to `@mythos/db`
+```env
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+OPENROUTER_API_KEY=
+DEEPINFRA_API_KEY=
+QDRANT_URL=
+QDRANT_API_KEY=
+```
+
+## Infrastructure
+
+- Qdrant: `qdrant.cascada.vision` (Hetzner VPS)
+- Collection: `saga_vectors` (4096 dims)
+
+## Current Phase
+
+**Phase 1: Foundation** ✅
+- Expo SDK 54 + Router 6
+- Design tokens, theme hook
+- AppShell with resizable panels
+- AI Panel with Muse avatar
+
+**Phase 2: MLP UI** 🔜
+- Editor component
+- Entity forms/cards
+- Chat message list
+- Tool execution cards

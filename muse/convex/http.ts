@@ -1,0 +1,437 @@
+/**
+ * Convex HTTP Router
+ *
+ * Exposes HTTP endpoints for AI streaming and webhooks.
+ * Endpoints are accessible at https://api.cascada.vision/*
+ *
+ * Routes:
+ * - POST /ai/saga - Main Saga agent (SSE streaming)
+ * - POST /ai/chat - Simple chat (SSE streaming)
+ * - POST /ai/detect - Entity detection (JSON response)
+ * - POST /ai/lint - Consistency linting (JSON response)
+ * - GET /health - Health check
+ */
+
+import { httpRouter } from "convex/server";
+import { httpAction } from "./_generated/server";
+import { internal } from "./_generated/api";
+import {
+  createSSEStream,
+  getStreamingHeaders,
+  getCorsHeaders,
+  type SSEStreamController,
+} from "./lib/streaming";
+import { validateAuth, type AuthResult } from "./lib/httpAuth";
+
+const http = httpRouter();
+
+// ============================================================
+// CORS Preflight Handler
+// ============================================================
+
+http.route({
+  path: "/ai/saga",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/ai/chat",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/ai/detect",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+// ============================================================
+// Health Check
+// ============================================================
+
+http.route({
+  path: "/health",
+  method: "GET",
+  handler: httpAction(async () => {
+    return new Response(JSON.stringify({ status: "ok", timestamp: Date.now() }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// ============================================================
+// Main Saga Agent (SSE Streaming)
+// ============================================================
+
+http.route({
+  path: "/ai/saga",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    // Validate auth
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const { kind = "chat", projectId, messages, mentions, mode, editorContext, contextHints, conversationId } = body as {
+        kind?: "chat" | "execute_tool" | "tool-approval";
+        projectId: string;
+        messages?: Array<{ role: string; content: string }>;
+        mentions?: Array<{ type: string; id: string; name: string }>;
+        mode?: string;
+        editorContext?: Record<string, unknown>;
+        contextHints?: Record<string, unknown>;
+        conversationId?: string;
+      };
+
+      if (!projectId) {
+        return new Response(JSON.stringify({ error: "projectId is required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      // Route by kind
+      if (kind === "execute_tool") {
+        const { toolName, input } = body as { toolName: string; input: unknown };
+        return handleToolExecution(ctx, { toolName, input, projectId, auth, origin });
+      }
+
+      if (kind === "tool-approval") {
+        const { approvalId, approved } = body as { approvalId: string; approved: boolean };
+        return handleToolApproval(ctx, { approvalId, approved, projectId, messages, auth, origin });
+      }
+
+      // Default: Chat with SSE streaming
+      if (!messages || messages.length === 0) {
+        return new Response(JSON.stringify({ error: "messages are required for chat" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      return handleSagaChat(ctx, {
+        projectId,
+        messages,
+        mentions,
+        mode,
+        editorContext,
+        contextHints,
+        conversationId,
+        auth,
+        origin,
+      });
+    } catch (error) {
+      console.error("[http/ai/saga] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Entity Detection (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/ai/detect",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const { text, projectId, entityTypes, minConfidence } = body as {
+        text: string;
+        projectId: string;
+        entityTypes?: string[];
+        minConfidence?: number;
+      };
+
+      if (!text || !projectId) {
+        return new Response(JSON.stringify({ error: "text and projectId are required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      // Call internal action for entity detection
+      const result = await ctx.runAction(internal.ai.detect.detectEntities, {
+        text,
+        projectId,
+        entityTypes,
+        minConfidence,
+        userId: auth.userId!,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[http/ai/detect] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Handlers
+// ============================================================
+
+interface SagaChatParams {
+  projectId: string;
+  messages: Array<{ role: string; content: string }>;
+  mentions?: Array<{ type: string; id: string; name: string }>;
+  mode?: string;
+  editorContext?: Record<string, unknown>;
+  contextHints?: Record<string, unknown>;
+  conversationId?: string;
+  auth: AuthResult;
+  origin: string | null;
+}
+
+async function handleSagaChat(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  params: SagaChatParams
+): Promise<Response> {
+  const { projectId, messages, mentions, mode, editorContext, contextHints, conversationId, auth, origin } = params;
+
+  // Create generation stream for persistence
+  const streamId = await ctx.runMutation(internal.ai.streams.create, {
+    projectId,
+    userId: auth.userId!,
+    type: "saga",
+  });
+
+  // Create SSE stream
+  const stream = createSSEStream(async (sse: SSEStreamController) => {
+    try {
+      // Run the streaming action
+      await ctx.runAction(internal.ai.saga.streamChat, {
+        streamId,
+        projectId,
+        userId: auth.userId!,
+        messages,
+        mentions,
+        mode,
+        editorContext,
+        contextHints,
+        conversationId,
+        // Pass callback info for delta persistence
+        persistDeltas: true,
+      });
+
+      // Stream is managed by the action via delta table
+      // Here we just poll and forward deltas
+      await streamDeltasToSSE(ctx, streamId, sse);
+    } catch (error) {
+      console.error("[handleSagaChat] Stream error:", error);
+      sse.sendError(error instanceof Error ? error.message : "Stream error");
+    } finally {
+      sse.complete();
+    }
+  });
+
+  return new Response(stream, {
+    headers: getStreamingHeaders(origin),
+  });
+}
+
+async function streamDeltasToSSE(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  streamId: string,
+  sse: SSEStreamController
+): Promise<void> {
+  let lastIndex = 0;
+  let isDone = false;
+
+  while (!isDone) {
+    // Poll for new chunks
+    const streamState = await ctx.runQuery(internal.ai.streams.getChunks, {
+      streamId,
+      afterIndex: lastIndex,
+    });
+
+    if (!streamState) {
+      sse.sendError("Stream not found");
+      return;
+    }
+
+    // Send new chunks
+    for (const chunk of streamState.chunks) {
+      switch (chunk.type) {
+        case "delta":
+          sse.sendDelta(chunk.content);
+          break;
+        case "tool":
+          sse.sendTool(chunk.toolCallId ?? "", chunk.toolName ?? "", chunk.args);
+          break;
+        case "tool-approval-request":
+          sse.sendToolApprovalRequest(
+            chunk.approvalId ?? "",
+            chunk.toolName ?? "",
+            chunk.args,
+            chunk.toolCallId
+          );
+          break;
+        case "context":
+          sse.sendContext(chunk.data);
+          break;
+        case "error":
+          sse.sendError(chunk.content);
+          break;
+      }
+      lastIndex = chunk.index + 1;
+    }
+
+    // Check if stream is complete
+    if (streamState.status === "done" || streamState.status === "error") {
+      isDone = true;
+    } else {
+      // Small delay before next poll
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+}
+
+interface ToolExecutionParams {
+  toolName: string;
+  input: unknown;
+  projectId: string;
+  auth: AuthResult;
+  origin: string | null;
+}
+
+async function handleToolExecution(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  params: ToolExecutionParams
+): Promise<Response> {
+  const { toolName, input, projectId, auth, origin } = params;
+
+  try {
+    const result = await ctx.runAction(internal.ai.tools.execute, {
+      toolName,
+      input,
+      projectId,
+      userId: auth.userId!,
+    });
+
+    return new Response(JSON.stringify({ toolName, result }), {
+      status: 200,
+      headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error(`[handleToolExecution] ${toolName} error:`, error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Tool execution failed" }),
+      {
+        status: 500,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      }
+    );
+  }
+}
+
+interface ToolApprovalParams {
+  approvalId: string;
+  approved: boolean;
+  projectId: string;
+  messages?: Array<{ role: string; content: string }>;
+  auth: AuthResult;
+  origin: string | null;
+}
+
+async function handleToolApproval(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  params: ToolApprovalParams
+): Promise<Response> {
+  const { approvalId, approved, projectId, auth, origin } = params;
+
+  if (!approved) {
+    // User denied - just acknowledge
+    return new Response(
+      JSON.stringify({ approvalId, approved: false, message: "Tool execution denied" }),
+      {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  // User approved - continue streaming
+  const streamId = await ctx.runMutation(internal.ai.streams.create, {
+    projectId,
+    userId: auth.userId!,
+    type: "saga-approval",
+  });
+
+  const stream = createSSEStream(async (sse: SSEStreamController) => {
+    try {
+      await ctx.runAction(internal.ai.saga.continueWithApproval, {
+        streamId,
+        approvalId,
+        projectId,
+        userId: auth.userId!,
+        messages: params.messages ?? [],
+      });
+
+      await streamDeltasToSSE(ctx, streamId, sse);
+    } catch (error) {
+      console.error("[handleToolApproval] Error:", error);
+      sse.sendError(error instanceof Error ? error.message : "Approval error");
+    } finally {
+      sse.complete();
+    }
+  });
+
+  return new Response(stream, {
+    headers: getStreamingHeaders(origin),
+  });
+}
+
+export default http;
