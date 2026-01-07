@@ -1,11 +1,6 @@
-/**
- * AIPanel - Main AI chat panel
- * Notion-inspired design with chat history, model selection, context scope
- * Supports: sticky (right column), floating (draggable), detached (window)
- */
-
 import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useState } from 'react';
+import { useRouter } from 'expo-router';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -30,24 +25,20 @@ import { AIPanelInput } from './AIPanelInput';
 
 interface AIPanelProps {
   floating?: boolean;
+  standalone?: boolean;
 }
 
-export function AIPanel({ floating }: AIPanelProps) {
+export function AIPanel({ floating, standalone }: AIPanelProps) {
   const { colors } = useTheme();
+  const router = useRouter();
   const { setAIPanelMode, aiPanelMode } = useLayoutStore();
-  const {
-    showChatSelector,
-    setShowChatSelector,
-    sendMessage,
-    isStreaming,
-  } = useAIStore();
+  const { showChatSelector, setShowChatSelector, sendMessage, createThread, isStreaming } = useAIStore();
 
   const thread = useCurrentThread();
   const hasMessages = useHasMessages();
   const scrollRef = useRef<ScrollView>(null);
 
   const handleQuickAction = useCallback((action: QuickAction) => {
-    // Convert quick action to a message
     const actionMessages: Record<QuickAction, string> = {
       search: 'Search my story for...',
       lint: 'Find inconsistencies in my story',
@@ -61,30 +52,33 @@ export function AIPanel({ floating }: AIPanelProps) {
 
   const handleSend = useCallback((message: string) => {
     sendMessage(message);
-    // Scroll to bottom after sending
-    setTimeout(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [sendMessage]);
+
+  const handleNewChat = useCallback(() => {
+    createThread();
+  }, [createThread]);
+
+  const handleOpenInWindow = useCallback(() => {
+    const threadId = thread?.id ?? 'new';
+    router.push(`/chat/${threadId}`);
+  }, [router, thread?.id]);
 
   const content = (
     <View style={[styles.container, { backgroundColor: colors.sidebarBg, borderColor: colors.border }]}>
-      {/* Header */}
       <AIPanelHeader
         threadName={thread?.name ?? 'New Chat'}
         onChatSelectorToggle={() => setShowChatSelector(!showChatSelector)}
+        onNewChat={handleNewChat}
+        onOpenInWindow={handleOpenInWindow}
         onModeToggle={() => setAIPanelMode(aiPanelMode === 'sticky' ? 'floating' : 'sticky')}
-        onClose={() => setAIPanelMode('hidden')}
+        onCollapse={() => setAIPanelMode('hidden')}
         isSticky={aiPanelMode === 'sticky'}
+        standalone={standalone}
       />
 
-      {/* Chat selector dropdown */}
-      <ChatSelector
-        visible={showChatSelector}
-        onClose={() => setShowChatSelector(false)}
-      />
+      <ChatSelector visible={showChatSelector} onClose={() => setShowChatSelector(false)} />
 
-      {/* Content area */}
       <View style={styles.content}>
         {hasMessages ? (
           <ScrollView
@@ -94,18 +88,12 @@ export function AIPanel({ floating }: AIPanelProps) {
             showsVerticalScrollIndicator={false}
           >
             {thread?.messages.map((msg, index) => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                isLast={index === (thread.messages.length - 1)}
-              />
+              <MessageBubble key={msg.id} message={msg} isLast={index === (thread.messages.length - 1)} />
             ))}
             {isStreaming && (
               <View style={styles.streamingIndicator}>
                 <MuseAvatar size="message" thinking />
-                <Text style={[styles.streamingText, { color: colors.textMuted }]}>
-                  Thinking...
-                </Text>
+                <Text style={[styles.streamingText, { color: colors.textMuted }]}>Thinking...</Text>
               </View>
             )}
           </ScrollView>
@@ -114,40 +102,42 @@ export function AIPanel({ floating }: AIPanelProps) {
         )}
       </View>
 
-      {/* Input bar */}
       <View style={[styles.inputContainer, { borderTopColor: colors.border }]}>
         <AIPanelInput onSend={handleSend} />
       </View>
     </View>
   );
 
-  if (floating) {
-    return <FloatingWrapper>{content}</FloatingWrapper>;
-  }
-
+  if (floating) return <FloatingWrapper>{content}</FloatingWrapper>;
   return content;
 }
 
 interface AIPanelHeaderProps {
   threadName: string;
   onChatSelectorToggle: () => void;
+  onNewChat: () => void;
+  onOpenInWindow: () => void;
   onModeToggle: () => void;
-  onClose: () => void;
+  onCollapse: () => void;
   isSticky: boolean;
+  standalone?: boolean;
 }
 
 function AIPanelHeader({
   threadName,
   onChatSelectorToggle,
+  onNewChat,
+  onOpenInWindow,
   onModeToggle,
-  onClose,
+  onCollapse,
   isSticky,
+  standalone,
 }: AIPanelHeaderProps) {
   const { colors } = useTheme();
+  const [showNewChatTooltip, setShowNewChatTooltip] = useState(false);
 
   return (
     <View style={[styles.header, { borderBottomColor: colors.border }]}>
-      {/* Left: Chat selector */}
       <Pressable
         style={({ pressed }) => [
           styles.chatSelectorBtn,
@@ -161,63 +151,68 @@ function AIPanelHeader({
         <Text style={[styles.chatSelectorChevron, { color: colors.textMuted }]}>▾</Text>
       </Pressable>
 
-      {/* Right: Window controls */}
       <View style={styles.headerActions}>
-        {/* Pop out */}
-        <HeaderButton icon="⊡" onPress={() => {}} tooltip="Pop out" />
-        {/* Toggle dock/float */}
-        <HeaderButton
-          icon={isSticky ? '◱' : '▣'}
-          onPress={onModeToggle}
-          tooltip={isSticky ? 'Float' : 'Dock'}
-        />
-        {/* Close */}
-        <HeaderButton icon="×" onPress={onClose} tooltip="Close" />
+        {/* New Chat in Window */}
+        <View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.headerBtn,
+              { backgroundColor: pressed ? colors.bgHover : 'transparent' },
+            ]}
+            onPress={onOpenInWindow}
+            onHoverIn={() => setShowNewChatTooltip(true)}
+            onHoverOut={() => setShowNewChatTooltip(false)}
+          >
+            <Text style={[styles.headerBtnIcon, { color: colors.textMuted }]}>↗</Text>
+          </Pressable>
+          {showNewChatTooltip && (
+            <View style={[styles.tooltip, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
+              <Text style={[styles.tooltipText, { color: colors.text }]}>New Chat</Text>
+              <Text style={[styles.tooltipShortcut, { color: colors.textMuted }]}>⌘⇧;</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Dock/Float toggle */}
+        {!standalone && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.headerBtn,
+              { backgroundColor: pressed ? colors.bgHover : 'transparent' },
+            ]}
+            onPress={onModeToggle}
+          >
+            <Text style={[styles.headerBtnIcon, { color: colors.textMuted }]}>
+              {isSticky ? '◳' : '▣'}
+            </Text>
+          </Pressable>
+        )}
+
+        {/* Collapse */}
+        {!standalone && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.headerBtn,
+              { backgroundColor: pressed ? colors.bgHover : 'transparent' },
+            ]}
+            onPress={onCollapse}
+          >
+            <Text style={[styles.headerBtnIcon, { color: colors.textMuted }]}>»</Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
 }
 
-function HeaderButton({
-  icon,
-  onPress,
-  tooltip,
-}: {
-  icon: string;
-  onPress: () => void;
-  tooltip: string;
-}) {
-  const { colors } = useTheme();
-
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.headerBtn,
-        { backgroundColor: pressed ? colors.bgHover : 'transparent' },
-      ]}
-      onPress={onPress}
-    >
-      <Text style={[styles.headerBtnIcon, { color: colors.textMuted }]}>{icon}</Text>
-    </Pressable>
-  );
-}
-
-interface MessageBubbleProps {
-  message: ChatMessage;
-  isLast: boolean;
-}
-
-function MessageBubble({ message, isLast }: MessageBubbleProps) {
+function MessageBubble({ message, isLast }: { message: ChatMessage; isLast: boolean }) {
   const { colors } = useTheme();
   const isUser = message.role === 'user';
 
   return (
     <Animated.View
       entering={isLast ? FadeInDown.duration(300) : undefined}
-      style={[
-        styles.messageBubble,
-        isUser && styles.messageBubbleUser,
-      ]}
+      style={[styles.messageBubble, isUser && styles.messageBubbleUser]}
     >
       {!isUser && (
         <View style={styles.messageAvatar}>
@@ -227,16 +222,11 @@ function MessageBubble({ message, isLast }: MessageBubbleProps) {
       <View
         style={[
           styles.messageContent,
-          {
-            backgroundColor: isUser ? colors.bgElevated : 'transparent',
-            borderColor: isUser ? colors.border : 'transparent',
-          },
+          { backgroundColor: isUser ? colors.bgElevated : 'transparent', borderColor: isUser ? colors.border : 'transparent' },
           isUser && styles.messageContentUser,
         ]}
       >
-        <Text style={[styles.messageText, { color: colors.text }]}>
-          {message.content}
-        </Text>
+        <Text style={[styles.messageText, { color: colors.text }]}>{message.content}</Text>
       </View>
     </Animated.View>
   );
@@ -256,31 +246,22 @@ function FloatingWrapper({ children }: { children: React.ReactNode }) {
       contextY.value = translateY.value;
       scale.value = withSpring(1.02);
     })
-    .onUpdate((event) => {
-      translateX.value = contextX.value + event.translationX;
-      translateY.value = contextY.value + event.translationY;
+    .onUpdate((e) => {
+      translateX.value = contextX.value + e.translationX;
+      translateY.value = contextY.value + e.translationY;
     })
     .onEnd(() => {
       scale.value = withSpring(1);
     });
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
+    transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
   }));
 
   return (
     <GestureDetector gesture={drag}>
       <Animated.View
-        style={[
-          styles.floatingContainer,
-          animatedStyle,
-          shadows.lg,
-          { backgroundColor: colors.sidebarBg, borderColor: colors.border },
-        ]}
+        style={[styles.floatingContainer, animatedStyle, shadows.lg, { backgroundColor: colors.sidebarBg, borderColor: colors.border }]}
       >
         {children}
       </Animated.View>
@@ -289,10 +270,7 @@ function FloatingWrapper({ children }: { children: React.ReactNode }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-  },
+  container: { flex: 1, borderLeftWidth: StyleSheet.hairlineWidth },
   floatingContainer: {
     position: 'absolute',
     right: spacing[4],
@@ -321,75 +299,36 @@ const styles = StyleSheet.create({
     gap: spacing[1],
     maxWidth: '60%',
   },
-  chatSelectorText: {
-    fontSize: typography.sm,
-    fontWeight: typography.semibold,
-  },
-  chatSelectorChevron: {
-    fontSize: typography.xs,
-  },
-  headerActions: {
+  chatSelectorText: { fontSize: typography.sm, fontWeight: typography.semibold },
+  chatSelectorChevron: { fontSize: typography.xs },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing[0.5] },
+  headerBtn: { width: 32, height: 32, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center' },
+  headerBtnIcon: { fontSize: typography.base },
+  tooltip: {
+    position: 'absolute',
+    top: 36,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[0.5],
-  },
-  headerBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerBtnIcon: {
-    fontSize: typography.base,
-  },
-  content: {
-    flex: 1,
-  },
-  messages: {
-    flex: 1,
-  },
-  messagesContent: {
-    padding: spacing[4],
-    gap: spacing[4],
-  },
-  messageBubble: {
-    flexDirection: 'row',
-    gap: spacing[2],
-  },
-  messageBubbleUser: {
-    justifyContent: 'flex-end',
-  },
-  messageAvatar: {
-    marginTop: spacing[0.5],
-  },
-  messageContent: {
-    flex: 1,
-    maxWidth: '85%',
-    padding: spacing[3],
-    borderRadius: radii.lg,
-    borderWidth: 1,
-  },
-  messageContentUser: {
-    flex: 0,
-    marginLeft: 'auto',
-  },
-  messageText: {
-    fontSize: typography.sm,
-    lineHeight: typography.sm * typography.normal,
-  },
-  streamingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[2],
+    paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing[3],
+    zIndex: 200,
   },
-  streamingText: {
-    fontSize: typography.sm,
-    fontStyle: 'italic',
-  },
-  inputContainer: {
-    padding: spacing[3],
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
+  tooltipText: { fontSize: typography.sm, fontWeight: typography.medium },
+  tooltipShortcut: { fontSize: typography.xs },
+  content: { flex: 1 },
+  messages: { flex: 1 },
+  messagesContent: { padding: spacing[4], gap: spacing[4] },
+  messageBubble: { flexDirection: 'row', gap: spacing[2] },
+  messageBubbleUser: { justifyContent: 'flex-end' },
+  messageAvatar: { marginTop: spacing[0.5] },
+  messageContent: { flex: 1, maxWidth: '85%', padding: spacing[3], borderRadius: radii.lg, borderWidth: 1 },
+  messageContentUser: { flex: 0, marginLeft: 'auto' },
+  messageText: { fontSize: typography.sm, lineHeight: typography.sm * typography.normal },
+  streamingIndicator: { flexDirection: 'row', alignItems: 'center', gap: spacing[2], paddingVertical: spacing[2] },
+  streamingText: { fontSize: typography.sm, fontStyle: 'italic' },
+  inputContainer: { padding: spacing[3], borderTopWidth: StyleSheet.hairlineWidth },
 });
