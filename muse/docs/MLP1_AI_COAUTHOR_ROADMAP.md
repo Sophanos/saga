@@ -364,50 +364,153 @@ export default http;
 ### MLP 1 Progress Summary
 
 ```
-Phase 1: Editor WebView Bundle     [██████████] 100% ✅ (Mark, Plugin, AIToolkit, Bridge, Vite)
-Phase 2: Convex Agent Integration  [████████░░]  85% (Agent + embedding + thread memory)
-Phase 3: Tauri + Expo Integration  [████░░░░░░]  40% (AI Panel done, Tauri shell pending)
-Phase 4: RAG Pipeline              [█████████░]  90% (hybrid + rerank + cron, UI pending)
-Phase 5: Skills + Polish           [█░░░░░░░░░]  10% (writing-coach exists)
+Phase 1: Editor WebView Bundle     [██████████] 100% ✅
+Phase 2: Convex Agent Integration  [██████████] 100% ✅
+Phase 3: Tauri + Expo Integration  [████░░░░░░]  40%
+Phase 4: RAG Pipeline              [██████████] 100% ✅
+Phase 5: Skills + Polish           [█░░░░░░░░░]  10%
 ─────────────────────────────────────────────────────
-Overall MLP 1:                     [███████░░░]  ~65%
+Overall MLP 1:                     [████████░░]  ~70%
 ```
 
 **Last Updated:** 2026-01-08
 
-**Phase 1 Complete - Build Output:**
-```
-packages/editor-webview/build/
-├── editor.bundle.js  (785KB gzip:233KB)
-├── style.css
-└── editor.html  ← Load in Tauri/WKWebView
-```
+---
 
-### Critical Path to MLP 1
+## Phase 1: Editor WebView Bundle ✅ COMPLETE
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ Phase 1         │────▶│ Phase 2         │────▶│ Phase 3         │
-│ Editor Bundle   │     │ Convex Agent    │     │ Expo Integration│
-│ (blocking)      │     │ (can parallel)  │     │ (depends on 1,2)│
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                                                       │
-                        ┌─────────────────┐            │
-                        │ Phase 4         │◀───────────┘
-                        │ RAG Pipeline    │
-                        │ (can parallel)  │
-                        └─────────────────┘
-                               │
-                        ┌──────▼──────────┐
-                        │ Phase 5         │
-                        │ Skills + Polish │
-                        │ (depends on 4)  │
-                        └─────────────────┘
+packages/editor-webview/
+├── src/extensions/ai-generated-mark.ts   # Mark with status tracking
+├── src/extensions/suggestion-plugin.ts   # Decorations + widgets
+├── src/extensions/ai-toolkit.ts          # Diff-first editing
+├── src/bridge.ts                         # Tauri/iOS/Android messaging
+├── src/components/BatchApprovalBar.tsx   # Bulk accept/reject
+├── vite.config.ts                        # IIFE bundle config
+└── build/
+    ├── editor.bundle.js  (785KB gzip:233KB)
+    ├── style.css
+    └── editor.html  ← Load in Tauri/WKWebView
 ```
 
-**Parallel Work Possible:**
-- Phase 1 (Editor) + Phase 2 (Agent) can run in parallel
-- Phase 4 (RAG) can start once Phase 2 is done, parallel to Phase 3
+---
+
+## Phase 2: Convex Agent ✅ COMPLETE
+
+**Agent Runtime:**
+```
+convex/ai/
+├── agentRuntime.ts        # Agent loop with auto-execute
+├── threads.ts             # Thread persistence
+├── streams.ts             # SSE streaming
+└── tools/
+    ├── editorTools.ts     # ask_question, write_content
+    ├── ragTools.ts        # Tool definitions (NEW)
+    ├── ragHandlers.ts     # Server handlers (NEW)
+    └── index.ts           # Exports
+```
+
+**RAG Tools:**
+| Tool | Purpose |
+|------|---------|
+| `search_context` | Search docs, entities, memories with scope |
+| `read_document` | Get full document content |
+| `search_chapters` | Search by chapter/scene type |
+| `search_world` | Search worldbuilding |
+| `get_entity` | Get entity with relationships |
+
+**Auto-Execute Flow:**
+```
+Agent calls tool → Runtime intercepts → Executes server-side
+→ Saves to thread → Resumes agent with result
+```
+
+---
+
+## Phase 4: RAG Pipeline ✅ COMPLETE
+
+```
+convex/
+├── ai/rag.ts              # Hybrid search + chunkContext
+├── ai/lexical.ts          # Full-text search
+├── ai/embeddings.ts       # Embedding outbox
+├── lib/qdrant.ts          # Qdrant client
+├── lib/rerank.ts          # Qwen3-Reranker
+├── lib/deepinfraEmbedding.ts  # Custom embedding model
+├── schema.ts              # memories table (NEW)
+└── crons.ts               # Embedding sync (30s)
+```
+
+**chunkContext Support:**
+```typescript
+retrieveRAGContext(query, projectId, {
+  chunkContext: { before: 2, after: 1 }  // Surrounding chunks
+});
+```
+
+**Memories Table:**
+```typescript
+memories: {
+  text, type, confidence, source, pinned,
+  expiresAt,  // 90 days (free), never (pro pinned)
+  vectorId, entityIds, documentId
+}
+```
+
+## Phase 3: Tauri + Expo Integration (40%)
+
+```
+apps/tauri/
+├── src/App.tsx                    # Main app shell
+├── src/components/editor/         # 🔲 EditorWebView.tsx
+├── src/hooks/                     # 🔲 useEditorBridge.ts
+├── src-tauri/src/lib.rs           # 🔲 Bridge commands
+
+apps/expo/
+├── src/components/ai/AIPanel.tsx  # ✅ Complete
+├── src/design-system/             # ✅ Complete
+```
+
+**Remaining:**
+| Task | Effort |
+|------|--------|
+| Tauri app shell (load editor.html) | 2 hr |
+| useEditorBridge hook | 1 hr |
+| Rust bridge commands | 1 hr |
+
+---
+
+## Phase 5: Skills + Polish (10%)
+
+| Skill | Status |
+|-------|--------|
+| plan_story | 🔲 |
+| build_world | 🔲 |
+| develop_character | 🔲 |
+| analyze_writing | 🔲 |
+| research_facts (Exa) | 🔲 |
+
+---
+
+## Next: E2E Testing + Auth
+
+Before Phase 3 (Tauri), validate the agent flow:
+
+```
+1. E2E Test: Agent → Tools → Response
+2. Auth: Better Auth + Convex
+3. Then: Tauri integration
+```
+
+---
+
+### Critical Path
+
+```
+✅ Phase 1 ──▶ ✅ Phase 2 ──▶ 🔲 Phase 3 (Tauri)
+                    │
+              ✅ Phase 4 ──▶ 🔲 Phase 5 (Skills)
+```
 
 ---
 
@@ -2922,9 +3025,35 @@ memories: defineTable({
 })
 ```
 
-**Expiration Policy:**
-- Free tier: 90 days, then auto-expire
-- Pro tier: Pinned memories never expire
+**Expiration Policy (Subscription-Based):**
+- Free tier: 90 days auto-expire, cannot pin
+- Pro tier: Can pin memories (never expire)
+
+### Memory + Subscription Integration
+
+**Dependency:** `userEntitlements` table from RevenueCat webhook
+
+```typescript
+// convex/ai/memories.ts
+export const createMemory = mutation({
+  handler: async (ctx, args) => {
+    const entitlement = await ctx.db.query("userEntitlements")
+      .withIndex("by_user", q => q.eq("userId", args.userId))
+      .first();
+
+    const isPro = entitlement?.tier === "pro" && entitlement?.isActive;
+    const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
+
+    return ctx.db.insert("memories", {
+      ...args,
+      pinned: isPro ? args.pinned : false,
+      expiresAt: isPro && args.pinned ? null : Date.now() + NINETY_DAYS,
+    });
+  },
+});
+```
+
+**Cron:** `crons.daily("clean-expired-memories", { hourUTC: 3 }, ...)`
 
 ### Files Added/Modified
 
