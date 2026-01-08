@@ -13,6 +13,7 @@ import {
 import { generateEmbedding, isDeepInfraConfigured } from "../lib/embeddings";
 import { rerank, isRerankConfigured } from "../lib/rerank";
 import type { LexicalHit } from "./lexical";
+import { fetchDocumentChunkContext } from "./ragChunkContext";
 
 const RAG_LIMIT = 10;
 const CANDIDATE_LIMIT = 30;
@@ -47,6 +48,8 @@ interface RAGCandidate {
   category?: string;
   preview: string;
   source: RAGSource;
+  pointId?: string;
+  chunkIndex?: number;
   vectorScore?: number;
   lexicalScore?: number;
   rrfScore?: number;
@@ -63,6 +66,30 @@ function getPreview(payload: Record<string, unknown>): string {
   return preview;
 }
 
+function formatChunkContextPreview(context: {
+  chunkIndex: number;
+  startIndex: number;
+  chunks: string[];
+}): string {
+  const offset = context.chunkIndex - context.startIndex;
+  const matchedChunk = context.chunks[offset] ?? "";
+  const beforeChunks = context.chunks.slice(0, Math.max(0, offset));
+  const afterChunks = context.chunks.slice(offset + 1);
+
+  const sections: string[] = [];
+  if (matchedChunk) {
+    sections.push(matchedChunk);
+  }
+  if (beforeChunks.length > 0) {
+    sections.push(`Context before:\n${beforeChunks.join("\n\n")}`);
+  }
+  if (afterChunks.length > 0) {
+    sections.push(`Context after:\n${afterChunks.join("\n\n")}`);
+  }
+
+  return sections.join("\n\n") || context.chunks.join("\n\n");
+}
+
 function buildCandidatesFromQdrant(results: QdrantSearchResult[]): RAGCandidate[] {
   return results.flatMap((result) => {
     const payload = result.payload;
@@ -74,6 +101,14 @@ function buildCandidatesFromQdrant(results: QdrantSearchResult[]): RAGCandidate[
         (payload.document_id as string | undefined) ??
         (payload.id as string | undefined) ??
         result.id;
+      const rawChunkIndex = payload.chunk_index;
+      const parsedChunkIndex =
+        typeof rawChunkIndex === "number"
+          ? rawChunkIndex
+          : typeof rawChunkIndex === "string"
+            ? Number(rawChunkIndex)
+            : undefined;
+      const chunkIndex = Number.isFinite(parsedChunkIndex) ? parsedChunkIndex : undefined;
       return [{
         key: `document:${id}`,
         id,
@@ -82,6 +117,8 @@ function buildCandidatesFromQdrant(results: QdrantSearchResult[]): RAGCandidate[
         title: (payload.title as string | undefined) ?? undefined,
         preview,
         source: "qdrant",
+        pointId: result.id,
+        chunkIndex,
         vectorScore: result.score,
       }];
     }
@@ -237,7 +274,9 @@ export async function retrieveRAGContext(
       const denseCandidates = buildCandidatesFromQdrant(results);
 
       for (const candidate of denseCandidates) {
-        candidates.set(candidate.key, candidate);
+        if (!candidates.has(candidate.key)) {
+          candidates.set(candidate.key, candidate);
+        }
         denseKeys.push(candidate.key);
       }
     }
@@ -282,6 +321,32 @@ export async function retrieveRAGContext(
       } catch (error) {
         console.warn("[saga] Rerank failed, using fused ranking", error);
       }
+    }
+
+    if (options?.chunkContext && isQdrantConfigured()) {
+      const docCandidates = topCandidates
+        .filter((candidate) => candidate.kind === "document")
+        .slice(0, RAG_LIMIT);
+
+      await Promise.all(
+        docCandidates.map(async (candidate) => {
+          if (candidate.chunkIndex === undefined) return;
+          try {
+            const context = await fetchDocumentChunkContext(
+              projectId,
+              candidate.id,
+              candidate.chunkIndex,
+              options.chunkContext
+            );
+            const preview = formatChunkContextPreview(context);
+            if (preview) {
+              candidate.preview = preview;
+            }
+          } catch (error) {
+            console.warn("[saga] Chunk context expansion failed", error);
+          }
+        })
+      );
     }
 
     const finalContext = buildContextFromCandidates(topCandidates);

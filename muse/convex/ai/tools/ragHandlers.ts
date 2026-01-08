@@ -7,7 +7,8 @@ import { internalAction, internalQuery } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { retrieveRAGContext } from "../rag";
-import { searchPoints, scrollPoints, type QdrantFilter } from "../../lib/qdrant";
+import { fetchDocumentChunkContext } from "../ragChunkContext";
+import { searchPoints, type QdrantFilter } from "../../lib/qdrant";
 import { generateEmbedding, isDeepInfraConfigured } from "../../lib/embeddings";
 
 const DEFAULT_LIMIT = 5;
@@ -39,6 +40,7 @@ export const executeSearchContext = internalAction({
 
     const ragContext = await retrieveRAGContext(query, projectId, {
       excludeMemories: scope === "documents" || scope === "entities",
+      chunkContext: { before: CHUNK_CONTEXT_BEFORE, after: CHUNK_CONTEXT_AFTER },
     });
 
     const results: SearchResult[] = [];
@@ -273,17 +275,18 @@ export const executeGetEntity = internalAction({
 
 export async function expandChunkContext(
   results: Array<{ id: string; payload: Record<string, unknown>; score: number }>,
-  options: { before?: number; after?: number } = {}
+  options: { before?: number; after?: number; projectId?: string } = {}
 ): Promise<Array<{ id: string; chunks: string[]; score: number }>> {
   const before = options.before ?? CHUNK_CONTEXT_BEFORE;
   const after = options.after ?? CHUNK_CONTEXT_AFTER;
 
   const expanded = await Promise.all(
     results.map(async (result) => {
-      const docId = result.payload.document_id as string;
-      const chunkIndex = result.payload.chunk_index as number;
+      const docId = result.payload.document_id as string | undefined;
+      const chunkIndex = result.payload.chunk_index as number | undefined;
+      const projectId = options.projectId ?? (result.payload.project_id as string | undefined);
 
-      if (docId === undefined || chunkIndex === undefined) {
+      if (!docId || chunkIndex === undefined || !projectId) {
         return {
           id: result.id,
           chunks: [result.payload.text as string],
@@ -291,27 +294,14 @@ export async function expandChunkContext(
         };
       }
 
-      const startIndex = Math.max(0, chunkIndex - before);
-      const endIndex = chunkIndex + after;
-
-      const adjacentChunks = await scrollPoints(
-        {
-          must: [
-            { key: "document_id", match: { value: docId } },
-            { key: "chunk_index", range: { gte: startIndex, lte: endIndex } },
-          ],
-        },
-        before + after + 1,
-        { orderBy: { key: "chunk_index", direction: "asc" } }
-      );
-
-      const texts = adjacentChunks
-        .sort((a, b) => (a.payload.chunk_index as number) - (b.payload.chunk_index as number))
-        .map((c) => c.payload.text as string);
+      const context = await fetchDocumentChunkContext(projectId, docId, chunkIndex, {
+        before,
+        after,
+      });
 
       return {
         id: result.id,
-        chunks: texts,
+        chunks: context.chunks,
         score: result.score,
       };
     })

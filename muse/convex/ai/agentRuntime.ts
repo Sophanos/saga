@@ -10,6 +10,8 @@ import { internal, components } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { Agent } from "@convex-dev/agent";
 import { createOpenAI } from "@ai-sdk/openai";
+import { simulateReadableStream } from "ai";
+import { MockLanguageModelV3 } from "ai/test";
 import { buildSystemPrompt, retrieveRAGContext, type RAGContext } from "./rag";
 import { askQuestionTool, writeContentTool } from "./tools/editorTools";
 import {
@@ -34,34 +36,106 @@ const openrouter = createOpenAI({
   },
 });
 
-const sagaAgent = new Agent(components.agent, {
-  name: "Saga",
-  languageModel: openrouter.chat(DEFAULT_MODEL),
+export type SagaTestStreamChunk = Record<string, unknown> & { type: string };
 
-  // Thread memory: vector search for similar past messages
-  textEmbeddingModel: createQwenEmbeddingModel(),
-  contextOptions: {
-    recentMessages: 20,
-    searchOptions: {
-      limit: 10,
-      vectorSearch: true,
-      textSearch: true,
-      messageRange: { before: 2, after: 1 },
+export interface SagaTestStreamStep {
+  chunks: SagaTestStreamChunk[];
+}
+
+let sagaTestScript: SagaTestStreamStep[] = [];
+let _agent: Agent | null = null;
+
+function normalizeTestChunks(chunks: SagaTestStreamChunk[]): SagaTestStreamChunk[] {
+  const normalized = [...chunks];
+  if (!normalized.some((chunk) => chunk.type === "stream-start")) {
+    normalized.unshift({ type: "stream-start", warnings: [] });
+  }
+  if (!normalized.some((chunk) => chunk.type === "finish")) {
+    normalized.push({
+      type: "finish",
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    });
+  }
+  return normalized;
+}
+
+function createTestLanguageModel() {
+  return new MockLanguageModelV3({
+    doGenerate: async () =>
+      ({
+        text: "",
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      }) as unknown as Record<string, unknown>,
+    doStream: async () => {
+      const step = sagaTestScript.shift();
+      if (!step) {
+        throw new Error("No saga test script step available");
+      }
+      return {
+        stream: simulateReadableStream({ chunks: normalizeTestChunks(step.chunks) }),
+      };
     },
-    searchOtherThreads: false,
-  },
+  });
+}
 
-  tools: {
-    ask_question: askQuestionTool,
-    write_content: writeContentTool,
-    search_context: searchContextTool,
-    read_document: readDocumentTool,
-    search_chapters: searchChaptersTool,
-    search_world: searchWorldTool,
-    get_entity: getEntityTool,
-  },
-  maxSteps: 8,
-});
+function createSagaAgent() {
+  const testMode = process.env.SAGA_TEST_MODE === "true";
+  const languageModel = testMode ? createTestLanguageModel() : openrouter.chat(DEFAULT_MODEL);
+
+  return new Agent(components.agent, {
+    name: "Saga",
+    languageModel,
+
+    // Thread memory: vector search for similar past messages
+    textEmbeddingModel: testMode ? undefined : createQwenEmbeddingModel(),
+    contextOptions: testMode
+      ? {
+          recentMessages: 0,
+          searchOptions: {
+            limit: 0,
+            vectorSearch: false,
+            textSearch: false,
+            messageRange: { before: 0, after: 0 },
+          },
+          searchOtherThreads: false,
+        }
+      : {
+          recentMessages: 20,
+          searchOptions: {
+            limit: 10,
+            vectorSearch: true,
+            textSearch: true,
+            messageRange: { before: 2, after: 1 },
+          },
+          searchOtherThreads: false,
+        },
+
+    tools: {
+      ask_question: askQuestionTool,
+      write_content: writeContentTool,
+      search_context: searchContextTool,
+      read_document: readDocumentTool,
+      search_chapters: searchChaptersTool,
+      search_world: searchWorldTool,
+      get_entity: getEntityTool,
+    },
+    maxSteps: 8,
+  });
+}
+
+function getSagaAgent(): Agent {
+  if (!_agent) {
+    _agent = createSagaAgent();
+  }
+  return _agent;
+}
+
+export function setSagaTestScript(steps: SagaTestStreamStep[]) {
+  sagaTestScript = [...steps];
+  _agent = null;
+}
 
 const approvalTools = new Set(["ask_question", "write_content"]);
 const autoExecuteTools = new Set([
@@ -165,6 +239,7 @@ export const runSagaAgentChatToStream = internalAction({
     }
 
     try {
+      const sagaAgent = getSagaAgent();
       let threadId = args.threadId;
       if (threadId && !isTemplateBuilder) {
         await ctx.runQuery(internal.ai.threads.assertThreadOwnership, {
@@ -219,6 +294,7 @@ export const runSagaAgentChatToStream = internalAction({
       const ragContext = await retrieveRAGContext(prompt, projectId, {
         excludeMemories: false,
         lexical: { documents: lexicalDocuments, entities: lexicalEntities },
+        chunkContext: { before: 2, after: 1 },
       });
 
       await appendStreamChunk(ctx, streamId, {
@@ -373,6 +449,7 @@ export const applyToolResultAndResumeToStream = internalAction({
     }
 
     try {
+      const sagaAgent = getSagaAgent();
       if (!isTemplateBuilder) {
         await ctx.runQuery(internal.ai.threads.assertThreadOwnership, {
           threadId,
