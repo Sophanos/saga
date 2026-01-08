@@ -22,6 +22,8 @@ interface EditorShellProps {
   onShare?: () => void;
   hideQuickActions?: boolean;
   colorScheme?: 'light' | 'dark';
+  /** When true, adds left padding to TabBar for sidebar toggle button */
+  sidebarCollapsed?: boolean;
 }
 
 const CSS_TOKENS = `
@@ -205,6 +207,7 @@ export function EditorShell({
   onQuickAction,
   onShare,
   hideQuickActions = false,
+  sidebarCollapsed = false,
 }: EditorShellProps) {
   useEffect(() => {
     const styleId = 'editor-webview-tokens';
@@ -324,6 +327,7 @@ export function EditorShell({
         onNavigateForward={handleNavigateForward}
         canGoBack={historyIndex > 0}
         canGoForward={historyIndex < navHistory.length - 1}
+        sidebarCollapsed={sidebarCollapsed}
       />
 
       <PageHeader

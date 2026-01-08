@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, useWindowDimensions, Pressable } from 'react-native';
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -17,8 +17,6 @@ import { useTheme, spacing, radii, typography } from '@/design-system';
 import { useLayoutStore } from '@/design-system/layout';
 import { Sidebar } from './Sidebar';
 import { AIPanel, AIFloatingButton } from '@/components/ai';
-
-const MemoizedSidebar = memo(Sidebar);
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -109,7 +107,7 @@ export function AppShell({ children }: AppShellProps) {
       {showSidebarDocked && (
         <View style={[styles.sidebarContainer, { width: sidebarWidth }]}>
           <View style={[styles.sidebar, { backgroundColor: colors.sidebarBg, borderRightColor: colors.border }]}>
-            <MemoizedSidebar />
+            <Sidebar />
           </View>
           <ResizeHandle
             side="right"
@@ -138,7 +136,7 @@ export function AppShell({ children }: AppShellProps) {
               },
             ]}
           >
-            <Feather name="menu" size={18} color={colors.textMuted} />
+            <Feather name="sidebar" size={14} color={colors.textMuted} />
           </Pressable>
 
           {showTooltip && (
@@ -160,12 +158,21 @@ export function AppShell({ children }: AppShellProps) {
         </View>
       )}
 
-      {showFull ? (
-        <View style={styles.main}>
-          <AIPanel mode="full" />
+      <View style={styles.main}>{children}</View>
+
+      {showFull && (
+        <View style={[styles.aiPanelContainer, styles.aiPanelFull]}>
+          <ResizeHandle
+            side="left"
+            onResize={setAIPanelWidth}
+            currentWidth={aiPanelWidth}
+            onMinimize={() => setAIPanelMode('hidden')}
+            panelType="ai"
+          />
+          <View style={[styles.aiPanel, { backgroundColor: colors.sidebarBg, borderLeftColor: colors.border }]}>
+            <AIPanel mode="full" />
+          </View>
         </View>
-      ) : (
-        <View style={styles.main}>{children}</View>
       )}
 
       {showSidebarOverlay && isTablet && sidebarCollapsed && (
@@ -191,7 +198,7 @@ export function AppShell({ children }: AppShellProps) {
               { width: sidebarWidth, backgroundColor: colors.sidebarBg },
             ]}
           >
-            <MemoizedSidebar />
+            <Sidebar />
           </Animated.View>
         </>
       )}
@@ -336,15 +343,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     top: 0,
-    bottom: 0,
+    height: 40,
     width: 44,
     zIndex: 50,
-    paddingTop: spacing[3],
-    paddingLeft: spacing[3],
+    justifyContent: 'center',
+    paddingLeft: spacing[2],
   },
   expandButton: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
     borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -352,7 +359,7 @@ const styles = StyleSheet.create({
   hoverTooltip: {
     position: 'absolute',
     left: 44,
-    top: spacing[3],
+    top: 8,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing[3],
@@ -396,6 +403,10 @@ const styles = StyleSheet.create({
 
   aiPanelContainer: {
     flexDirection: 'row',
+  },
+  aiPanelFull: {
+    width: '50%',
+    minWidth: 400,
   },
   aiPanel: {
     flex: 1,
@@ -444,8 +455,5 @@ const styles = StyleSheet.create({
   tooltipLabel: {
     fontSize: typography.xs,
     fontWeight: typography.medium,
-  },
-  tooltipShortcut: {
-    fontSize: typography.xs,
   },
 });

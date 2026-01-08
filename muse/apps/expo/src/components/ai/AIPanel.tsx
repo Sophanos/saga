@@ -152,7 +152,7 @@ function AIPanelHeader({ threadName, mode, onChatSelectorToggle, onNewChat, onMo
             style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed || showModeMenu ? colors.bgHover : 'transparent' }]}
             onPress={() => setShowModeMenu(!showModeMenu)}
           >
-            <Feather name={mode === 'floating' ? 'square' : 'sidebar'} size={18} color={colors.textMuted} />
+            <Feather name={mode === 'full' ? 'maximize-2' : mode === 'floating' ? 'square' : 'sidebar'} size={18} color={colors.textMuted} />
           </Pressable>
           {showModeMenu && (
             <ModeMenu

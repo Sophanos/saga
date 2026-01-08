@@ -17,7 +17,7 @@ const LazyEditorShell = Platform.OS === 'web'
 
 export default function EditorScreen() {
   const { colors } = useTheme();
-  const { aiPanelMode } = useLayoutStore();
+  const { aiPanelMode, sidebarCollapsed } = useLayoutStore();
 
   // Hide quick actions when AI panel is visible (side or floating mode)
   const hideQuickActions = aiPanelMode === 'side' || aiPanelMode === 'floating';
@@ -37,6 +37,7 @@ export default function EditorScreen() {
         }}>
           <LazyEditorShell
             hideQuickActions={hideQuickActions}
+            sidebarCollapsed={sidebarCollapsed}
             onQuickAction={(action: string) => {
               console.log('Quick action:', action);
             }}

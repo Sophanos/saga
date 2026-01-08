@@ -19,6 +19,8 @@ interface TabBarProps {
   onNavigateForward?: () => void;
   canGoBack?: boolean;
   canGoForward?: boolean;
+  /** When true, adds left padding for the sidebar toggle button */
+  sidebarCollapsed?: boolean;
 }
 
 export function TabBar({
@@ -31,11 +33,12 @@ export function TabBar({
   onNavigateForward,
   canGoBack = false,
   canGoForward = false,
+  sidebarCollapsed = false,
 }: TabBarProps) {
   const preview = useTabPreview(400);
 
   return (
-    <div className="tab-bar">
+    <div className="tab-bar" style={sidebarCollapsed ? { paddingLeft: 44 } : undefined}>
       <div className="tab-bar-nav">
         <button
           className="nav-button"
