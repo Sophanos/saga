@@ -10,6 +10,16 @@ build
 out
 .turbo
 
+# Tauri
+apps/tauri/src-tauri/target/
+*.rlib
+*.rmeta
+*.d
+*.o
+*.a
+*.so
+*.dylib
+
 # Bun
 bun.lockb
 
