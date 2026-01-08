@@ -1,8 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
+import { TabPreview, useTabPreview } from './TabPreview';
 
 export interface Tab {
   id: string;
   title: string;
+  content?: string; // Preview content (first ~200 chars)
   isActive?: boolean;
   isDirty?: boolean;
 }
@@ -30,6 +32,8 @@ export function TabBar({
   canGoBack = false,
   canGoForward = false,
 }: TabBarProps) {
+  const preview = useTabPreview(400);
+
   return (
     <div className="tab-bar">
       <div className="tab-bar-nav">
@@ -59,6 +63,10 @@ export function TabBar({
             isActive={tab.id === activeTabId}
             onSelect={() => onTabSelect(tab.id)}
             onClose={() => onTabClose(tab.id)}
+            onHoverStart={(element) => {
+              preview.showPreview(tab.id, tab.title, tab.content, element);
+            }}
+            onHoverEnd={preview.hidePreview}
           />
         ))}
         <button className="tab-new" onClick={onNewTab} aria-label="New tab">
@@ -66,15 +74,21 @@ export function TabBar({
         </button>
       </div>
 
+      <TabPreview
+        title={preview.previewData?.title || ''}
+        content={preview.previewData?.content}
+        isVisible={preview.isVisible}
+        anchorRect={preview.anchorRect}
+      />
+
       <style>{`
         .tab-bar {
           display: flex;
           align-items: center;
-          height: var(--tab-bar-height);
-          background: var(--color-bg-surface);
-          border-bottom: 1px solid var(--color-border);
-          padding: 0 var(--space-3);
-          gap: var(--space-1);
+          height: 40px;
+          background: var(--color-bg-app);
+          padding: 0 8px;
+          gap: 2px;
           user-select: none;
           -webkit-app-region: drag;
         }
@@ -82,10 +96,8 @@ export function TabBar({
         .tab-bar-nav {
           display: flex;
           align-items: center;
-          gap: var(--space-0-5);
-          padding-right: var(--space-2);
-          border-right: 1px solid var(--color-border-subtle);
-          margin-right: var(--space-1);
+          gap: 0;
+          padding-right: 8px;
           -webkit-app-region: no-drag;
         }
 
@@ -93,23 +105,18 @@ export function TabBar({
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 28px;
-          height: 28px;
+          width: 24px;
+          height: 24px;
           border: none;
           background: transparent;
           color: var(--color-text-muted);
-          border-radius: var(--radius-sm);
+          border-radius: 4px;
           cursor: pointer;
-          transition: all var(--duration-fast) var(--ease-out);
+          transition: background 80ms ease-out;
         }
 
         .nav-button:hover:not(:disabled) {
           background: var(--color-bg-hover);
-          color: var(--color-text-secondary);
-        }
-
-        .nav-button:active:not(:disabled) {
-          background: var(--color-bg-active);
         }
 
         .nav-button:disabled {
@@ -125,7 +132,7 @@ export function TabBar({
         .tab-bar-tabs {
           display: flex;
           align-items: center;
-          gap: var(--space-0-5);
+          gap: 2px;
           flex: 1;
           overflow-x: auto;
           overflow-y: hidden;
@@ -141,20 +148,19 @@ export function TabBar({
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 28px;
-          height: 28px;
+          width: 24px;
+          height: 24px;
           border: none;
           background: transparent;
           color: var(--color-text-muted);
-          border-radius: var(--radius-sm);
+          border-radius: 4px;
           cursor: pointer;
           flex-shrink: 0;
-          transition: all var(--duration-fast) var(--ease-out);
+          transition: background 80ms ease-out;
         }
 
         .tab-new:hover {
           background: var(--color-bg-hover);
-          color: var(--color-text-secondary);
         }
 
         .tab-new svg {
@@ -171,10 +177,25 @@ interface TabItemProps {
   isActive: boolean;
   onSelect: () => void;
   onClose: () => void;
+  onHoverStart: (element: HTMLElement) => void;
+  onHoverEnd: () => void;
 }
 
-function TabItem({ tab, isActive, onSelect, onClose }: TabItemProps) {
+function TabItem({ tab, isActive, onSelect, onClose, onHoverStart, onHoverEnd }: TabItemProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const elementRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseEnter = useCallback(() => {
+    setIsHovered(true);
+    if (elementRef.current) {
+      onHoverStart(elementRef.current);
+    }
+  }, [onHoverStart]);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false);
+    onHoverEnd();
+  }, [onHoverEnd]);
 
   const handleClose = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -183,36 +204,35 @@ function TabItem({ tab, isActive, onSelect, onClose }: TabItemProps) {
 
   return (
     <div
+      ref={elementRef}
       className={`tab-item ${isActive ? 'tab-item--active' : ''}`}
       onClick={onSelect}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
+      {tab.isDirty && <span className="tab-item-dirty" />}
       <span className="tab-item-title">
-        {tab.isDirty && <span className="tab-item-dirty" />}
         {tab.title || 'Untitled'}
       </span>
-      {(isHovered || isActive) && (
-        <button
-          className="tab-item-close"
-          onClick={handleClose}
-          aria-label={`Close ${tab.title}`}
-        >
-          <CloseIcon />
-        </button>
-      )}
+      <button
+        className={`tab-item-close ${isHovered || isActive ? 'tab-item-close--visible' : ''}`}
+        onClick={handleClose}
+        aria-label={`Close ${tab.title}`}
+      >
+        <CloseIcon />
+      </button>
 
       <style>{`
         .tab-item {
           display: flex;
           align-items: center;
-          gap: var(--space-1-5);
-          height: 32px;
-          padding: 0 var(--space-2) 0 var(--space-3);
+          gap: 6px;
+          height: 28px;
+          padding: 0 6px 0 10px;
           background: transparent;
-          border-radius: var(--radius-md);
+          border-radius: 6px;
           cursor: pointer;
-          transition: all var(--duration-fast) var(--ease-out);
+          transition: background 80ms ease-out;
           max-width: 180px;
           min-width: 0;
         }
@@ -222,20 +242,25 @@ function TabItem({ tab, isActive, onSelect, onClose }: TabItemProps) {
         }
 
         .tab-item--active {
-          background: var(--color-bg-elevated);
+          background: var(--color-bg-surface);
         }
 
         .tab-item--active:hover {
-          background: var(--color-bg-elevated);
+          background: var(--color-bg-surface);
+        }
+
+        .tab-item-dirty {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #5e9fd0;
+          flex-shrink: 0;
         }
 
         .tab-item-title {
-          display: flex;
-          align-items: center;
-          gap: var(--space-1-5);
-          font-size: var(--text-sm);
-          font-weight: var(--font-medium);
-          color: var(--color-text-secondary);
+          font-size: 13px;
+          font-weight: 400;
+          color: var(--color-text-muted);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -244,15 +269,7 @@ function TabItem({ tab, isActive, onSelect, onClose }: TabItemProps) {
         }
 
         .tab-item--active .tab-item-title {
-          color: var(--color-text);
-        }
-
-        .tab-item-dirty {
-          width: 6px;
-          height: 6px;
-          border-radius: var(--radius-full);
-          background: var(--color-accent);
-          flex-shrink: 0;
+          color: var(--color-text-secondary);
         }
 
         .tab-item-close {
@@ -264,26 +281,24 @@ function TabItem({ tab, isActive, onSelect, onClose }: TabItemProps) {
           border: none;
           background: transparent;
           color: var(--color-text-muted);
-          border-radius: var(--radius-sm);
+          border-radius: 4px;
           cursor: pointer;
           flex-shrink: 0;
           opacity: 0;
-          transition: all var(--duration-fast) var(--ease-out);
+          transition: all 80ms ease-out;
         }
 
-        .tab-item:hover .tab-item-close,
-        .tab-item--active .tab-item-close {
+        .tab-item-close--visible {
           opacity: 1;
         }
 
         .tab-item-close:hover {
           background: var(--color-bg-active);
-          color: var(--color-text);
         }
 
         .tab-item-close svg {
-          width: 10px;
-          height: 10px;
+          width: 8px;
+          height: 8px;
         }
       `}</style>
     </div>

@@ -142,32 +142,32 @@ export function PageHeader({
           display: flex;
           align-items: center;
           justify-content: space-between;
-          height: var(--header-height);
-          padding: 0 var(--space-4);
-          background: var(--color-bg-surface);
-          border-bottom: 1px solid var(--color-border);
+          height: 44px;
+          padding: 0 10px 0 14px;
+          background: transparent;
+          user-select: none;
         }
 
         .page-header-left {
           display: flex;
           align-items: center;
-          gap: var(--space-2);
+          gap: 0;
           min-width: 0;
         }
 
         .page-header-title {
-          font-family: var(--font-display);
-          font-size: var(--text-base);
-          font-weight: var(--font-semibold);
-          color: var(--color-text);
+          font-family: var(--font-sans);
+          font-size: 14px;
+          font-weight: 400;
+          color: var(--color-text-secondary);
           background: transparent;
           border: none;
-          border-radius: var(--radius-sm);
-          padding: var(--space-1) var(--space-2);
-          margin: 0 calc(var(--space-2) * -1);
+          border-radius: 3px;
+          padding: 4px 8px;
+          margin: 0;
           cursor: pointer;
-          transition: background var(--duration-fast) var(--ease-out);
-          max-width: 300px;
+          transition: background 80ms ease-out;
+          max-width: 200px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -179,22 +179,21 @@ export function PageHeader({
         }
 
         .page-header-title-input {
-          font-family: var(--font-display);
-          font-size: var(--text-base);
-          font-weight: var(--font-semibold);
+          font-family: var(--font-sans);
+          font-size: 14px;
+          font-weight: 400;
           color: var(--color-text);
           background: var(--color-bg-elevated);
           border: 1px solid var(--color-border);
-          border-radius: var(--radius-sm);
-          padding: var(--space-1) var(--space-2);
-          margin: 0 calc(var(--space-2) * -1);
+          border-radius: 3px;
+          padding: 3px 7px;
+          margin: 0;
           outline: none;
-          width: 200px;
+          width: 180px;
         }
 
         .page-header-title-input:focus {
           border-color: var(--color-accent);
-          box-shadow: 0 0 0 2px var(--color-accent-subtle);
         }
 
         .privacy-dropdown {
@@ -204,30 +203,29 @@ export function PageHeader({
         .privacy-button {
           display: flex;
           align-items: center;
-          gap: var(--space-1);
-          font-size: var(--text-sm);
+          gap: 3px;
+          font-size: 12px;
           color: var(--color-text-muted);
           background: transparent;
           border: none;
-          border-radius: var(--radius-sm);
-          padding: var(--space-1) var(--space-1-5);
+          border-radius: 3px;
+          padding: 4px 6px;
           cursor: pointer;
-          transition: all var(--duration-fast) var(--ease-out);
+          transition: background 80ms ease-out;
         }
 
         .privacy-button:hover {
           background: var(--color-bg-hover);
-          color: var(--color-text-secondary);
         }
 
         .privacy-button svg {
-          width: 14px;
-          height: 14px;
+          width: 12px;
+          height: 12px;
         }
 
         .privacy-button svg:last-child {
-          width: 12px;
-          height: 12px;
+          width: 8px;
+          height: 8px;
           opacity: 0.6;
         }
 
@@ -239,16 +237,19 @@ export function PageHeader({
 
         .privacy-menu {
           position: absolute;
-          top: calc(100% + var(--space-1));
+          top: calc(100% + 4px);
           left: 0;
-          min-width: 160px;
+          min-width: 150px;
           background: var(--color-bg-elevated);
           border: 1px solid var(--color-border);
-          border-radius: var(--radius-lg);
-          padding: var(--space-1);
+          border-radius: 6px;
+          padding: 4px;
           z-index: 101;
-          box-shadow: var(--shadow-lg);
-          animation: menuFadeIn var(--duration-fast) var(--ease-out);
+          box-shadow:
+            0 0 0 1px rgba(15, 15, 15, 0.05),
+            0 3px 6px rgba(15, 15, 15, 0.1),
+            0 9px 24px rgba(15, 15, 15, 0.2);
+          animation: menuFadeIn 100ms ease-out;
         }
 
         @keyframes menuFadeIn {
@@ -265,16 +266,16 @@ export function PageHeader({
         .privacy-menu-item {
           display: flex;
           align-items: center;
-          gap: var(--space-2);
+          gap: 8px;
           width: 100%;
-          font-size: var(--text-sm);
+          font-size: 14px;
           color: var(--color-text-secondary);
           background: transparent;
           border: none;
-          border-radius: var(--radius-md);
-          padding: var(--space-2) var(--space-2-5);
+          border-radius: 4px;
+          padding: 6px 8px;
           cursor: pointer;
-          transition: all var(--duration-fast) var(--ease-out);
+          transition: background 80ms ease-out;
           text-align: left;
         }
 
@@ -288,63 +289,67 @@ export function PageHeader({
         }
 
         .privacy-menu-item svg {
-          width: 16px;
-          height: 16px;
+          width: 14px;
+          height: 14px;
+          flex-shrink: 0;
         }
 
         .privacy-menu-item svg:last-child {
           margin-left: auto;
           color: var(--color-accent);
+          width: 12px;
+          height: 12px;
         }
 
         .page-header-right {
           display: flex;
           align-items: center;
-          gap: var(--space-1);
+          gap: 0;
         }
 
         .header-action {
           border: none;
           background: transparent;
-          border-radius: var(--radius-md);
+          border-radius: 3px;
           cursor: pointer;
-          transition: all var(--duration-fast) var(--ease-out);
+          transition: background 80ms ease-out;
         }
 
         .share-button {
-          font-size: var(--text-sm);
-          font-weight: var(--font-medium);
-          color: var(--color-text-secondary);
-          padding: var(--space-1-5) var(--space-3);
+          font-size: 14px;
+          font-weight: 400;
+          color: var(--color-text-muted);
+          padding: 4px 8px;
         }
 
         .share-button:hover {
           background: var(--color-bg-hover);
-          color: var(--color-text);
         }
 
         .icon-button {
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 32px;
-          height: 32px;
+          width: 26px;
+          height: 26px;
           color: var(--color-text-muted);
         }
 
         .icon-button:hover {
           background: var(--color-bg-hover);
-          color: var(--color-text-secondary);
         }
 
         .icon-button--active {
-          background: var(--color-bg-hover);
+          color: var(--color-amber);
+        }
+
+        .icon-button--active:hover {
           color: var(--color-amber);
         }
 
         .icon-button svg {
-          width: 18px;
-          height: 18px;
+          width: 15px;
+          height: 15px;
         }
       `}</style>
     </header>
@@ -379,7 +384,7 @@ function GlobeIcon() {
 
 function ChevronDownIcon() {
   return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 6L8 10L12 6" />
     </svg>
   );
@@ -399,7 +404,7 @@ function StarIcon({ filled }: { filled?: boolean }) {
       <path d="M8 1.5l1.85 4.25 4.65.5-3.5 3.1 1.05 4.55L8 11.35 3.95 13.9 5 9.35 1.5 6.25l4.65-.5L8 1.5z" />
     </svg>
   ) : (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
       <path d="M8 1.5l1.85 4.25 4.65.5-3.5 3.1 1.05 4.55L8 11.35 3.95 13.9 5 9.35 1.5 6.25l4.65-.5L8 1.5z" />
     </svg>
   );
@@ -408,9 +413,9 @@ function StarIcon({ filled }: { filled?: boolean }) {
 function MoreIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor">
-      <circle cx="3" cy="8" r="1.5" />
-      <circle cx="8" cy="8" r="1.5" />
-      <circle cx="13" cy="8" r="1.5" />
+      <circle cx="3" cy="8" r="1.25" />
+      <circle cx="8" cy="8" r="1.25" />
+      <circle cx="13" cy="8" r="1.25" />
     </svg>
   );
 }

@@ -19,13 +19,15 @@ interface AIState {
   status: AIBlockStatus;
   response: string;
   prompt: string;
-  selectionEndPos: number; // Store selection end for "jump to" feature
-  showJumpIndicator: boolean; // Show floating jump indicator when selection end is off-screen
+  selectionEndPos: number;
+  showJumpIndicator: boolean;
 }
 
 interface EditorProps {
   content?: string;
+  title?: string;
   onChange?: (content: string) => void;
+  onTitleChange?: (title: string) => void;
   onSelectionChange?: (selection: { from: number; to: number; text: string } | null) => void;
   onAskAI?: (selectedText: string, prompt?: string, action?: AIQuickAction) => void;
   placeholder?: string;
@@ -34,11 +36,14 @@ interface EditorProps {
   isFullWidth?: boolean;
   autoFocus?: boolean;
   editable?: boolean;
+  showTitle?: boolean;
 }
 
 export function Editor({
   content = '',
+  title = '',
   onChange,
+  onTitleChange,
   onSelectionChange,
   onAskAI,
   placeholder = "Press '/' for commands, or start writing...",
@@ -47,10 +52,12 @@ export function Editor({
   isFullWidth = false,
   autoFocus = false,
   editable = true,
+  showTitle = true,
 }: EditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const [localTitle, setLocalTitle] = useState(title);
 
-  // AI inline state
   const [aiState, setAIState] = useState<AIState>({
     isOpen: false,
     position: null,
@@ -76,7 +83,7 @@ export function Editor({
     ],
     content,
     editable,
-    autofocus: autoFocus ? 'end' : false,
+    autofocus: autoFocus && !showTitle ? 'end' : false,
     immediatelyRender: false,
     onUpdate: ({ editor }) => {
       onChange?.(editor.getHTML());
@@ -92,93 +99,142 @@ export function Editor({
     },
   });
 
-  // Open AI Command Palette - positioned at END of selection (like pressing Enter)
+  // Sync title from props
+  useEffect(() => {
+    setLocalTitle(title);
+  }, [title]);
+
+  // Auto-resize title textarea
+  useEffect(() => {
+    if (titleRef.current) {
+      titleRef.current.style.height = 'auto';
+      titleRef.current.style.height = `${titleRef.current.scrollHeight}px`;
+    }
+  }, [localTitle]);
+
+  // Focus title on mount if showTitle and autoFocus
+  useEffect(() => {
+    if (showTitle && autoFocus && titleRef.current) {
+      titleRef.current.focus();
+    }
+  }, [showTitle, autoFocus]);
+
+  const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newTitle = e.target.value;
+    setLocalTitle(newTitle);
+    onTitleChange?.(newTitle);
+  }, [onTitleChange]);
+
+  const handleTitleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      editor?.commands.focus('start');
+    }
+    if (e.key === 'ArrowDown') {
+      const textarea = e.currentTarget;
+      const isAtEnd = textarea.selectionStart === textarea.value.length;
+      if (isAtEnd) {
+        e.preventDefault();
+        editor?.commands.focus('start');
+      }
+    }
+  }, [editor]);
+
   const openAIPalette = useCallback((selectedText = '') => {
     if (!editor) return;
 
-    // Get position at the END of selection
-    const { to } = editor.state.selection;
-    const coords = editor.view.coordsAtPos(to);
-    const containerRect = containerRef.current?.getBoundingClientRect();
+    const { from, to } = editor.state.selection;
+    const maxPos = editor.state.doc.nodeSize - 2;
+    const targetPos = Math.max(0, Math.min(to, maxPos));
 
-    if (!containerRect) {
+    try {
+      const coords = editor.view.coordsAtPos(targetPos);
+      const editorElement = editor.view.dom;
+      const editorRect = editorElement.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const isEndVisible = coords.bottom > 0 && coords.top < viewportHeight;
+
+      if (!isEndVisible) {
+        setAIState((s) => ({
+          ...s,
+          isOpen: false,
+          showJumpIndicator: true,
+          selectedText,
+          selectionEndPos: targetPos,
+          showResponse: false,
+          position: null,
+        }));
+        return;
+      }
+
+      const paletteWidth = 420;
+      let xPos = coords.left - editorRect.left;
+      xPos = Math.max(0, Math.min(xPos, editorRect.width - paletteWidth));
+      const yPos = coords.bottom - editorRect.top + 8;
+
       setAIState((s) => ({
         ...s,
         isOpen: true,
-        position: { x: coords.left, y: coords.bottom + 8 },
+        position: { x: xPos, y: yPos },
         selectedText,
         showResponse: false,
-        selectionEndPos: to,
+        selectionEndPos: targetPos,
         showJumpIndicator: false,
       }));
-      return;
+    } catch (error) {
+      console.warn('AI palette positioning error:', error);
+      try {
+        const fallbackPos = Math.max(0, Math.min(from, maxPos));
+        const coords = editor.view.coordsAtPos(fallbackPos);
+        const editorRect = editor.view.dom.getBoundingClientRect();
+
+        setAIState((s) => ({
+          ...s,
+          isOpen: true,
+          position: {
+            x: Math.max(0, coords.left - editorRect.left),
+            y: coords.bottom - editorRect.top + 8
+          },
+          selectedText,
+          showResponse: false,
+          selectionEndPos: fallbackPos,
+          showJumpIndicator: false,
+        }));
+      } catch {
+        setAIState((s) => ({
+          ...s,
+          isOpen: true,
+          position: { x: 0, y: 60 },
+          selectedText,
+          showResponse: false,
+          selectionEndPos: 0,
+          showJumpIndicator: false,
+        }));
+      }
     }
-
-    // Check if selection end is visible in viewport
-    const isEndVisible =
-      coords.bottom >= containerRect.top &&
-      coords.bottom <= containerRect.bottom &&
-      coords.left >= containerRect.left &&
-      coords.left <= containerRect.right;
-
-    // Calculate position - keep palette within container bounds
-    const paletteWidth = 440; // Approximate width of palette
-    const xPos = Math.max(16, Math.min(coords.left - containerRect.left, containerRect.width - paletteWidth - 16));
-    const yPos = coords.bottom - containerRect.top + 8;
-
-    // If selection end is off-screen, show jump indicator instead
-    if (!isEndVisible) {
-      setAIState((s) => ({
-        ...s,
-        isOpen: false,
-        showJumpIndicator: true,
-        selectedText,
-        selectionEndPos: to,
-        showResponse: false,
-      }));
-      return;
-    }
-
-    setAIState((s) => ({
-      ...s,
-      isOpen: true,
-      position: { x: xPos, y: yPos },
-      selectedText,
-      showResponse: false,
-      selectionEndPos: to,
-      showJumpIndicator: false,
-    }));
   }, [editor]);
 
-  // Jump to selection end and open palette
   const jumpToSelectionEnd = useCallback(() => {
     if (!editor) return;
 
-    // Scroll to selection end
-    const coords = editor.view.coordsAtPos(aiState.selectionEndPos);
-    const containerRect = containerRef.current?.getBoundingClientRect();
+    const maxPos = editor.state.doc.nodeSize - 2;
+    const targetPos = Math.max(0, Math.min(aiState.selectionEndPos, maxPos));
 
-    if (containerRect) {
-      // Scroll the element into view
-      const scrollContainer = containerRef.current;
-      if (scrollContainer) {
-        const scrollTarget = coords.top - containerRect.top - 100; // 100px offset from top
-        scrollContainer.scrollTo({
-          top: scrollContainer.scrollTop + scrollTarget,
-          behavior: 'smooth'
-        });
-      }
-    }
+    try {
+      const coords = editor.view.coordsAtPos(targetPos);
+      window.scrollTo({
+        top: window.scrollY + coords.top - 150,
+        behavior: 'smooth'
+      });
 
-    // After scroll, open the palette
-    setTimeout(() => {
-      const newCoords = editor.view.coordsAtPos(aiState.selectionEndPos);
-      const newContainerRect = containerRef.current?.getBoundingClientRect();
+      setTimeout(() => {
+        const newCoords = editor.view.coordsAtPos(targetPos);
+        const editorRect = editor.view.dom.getBoundingClientRect();
+        const paletteWidth = 420;
 
-      if (newContainerRect) {
-        const paletteWidth = 440;
-        const xPos = Math.max(16, Math.min(newCoords.left - newContainerRect.left, newContainerRect.width - paletteWidth - 16));
-        const yPos = newCoords.bottom - newContainerRect.top + 8;
+        let xPos = newCoords.left - editorRect.left;
+        xPos = Math.max(0, Math.min(xPos, editorRect.width - paletteWidth));
+        const yPos = newCoords.bottom - editorRect.top + 8;
 
         setAIState((s) => ({
           ...s,
@@ -186,16 +242,17 @@ export function Editor({
           showJumpIndicator: false,
           position: { x: xPos, y: yPos },
         }));
-      }
-    }, 300); // Wait for scroll animation
+      }, 350);
+    } catch (error) {
+      console.warn('Jump to selection error:', error);
+      setAIState((s) => ({ ...s, showJumpIndicator: false }));
+    }
   }, [editor, aiState.selectionEndPos]);
 
-  // Handle AI submit
   const handleAISubmit = useCallback(
     (prompt: string, action?: AIQuickAction) => {
       const selectedText = aiState.selectedText;
 
-      // Close palette and show response block
       setAIState((s) => ({
         ...s,
         isOpen: false,
@@ -205,16 +262,12 @@ export function Editor({
         response: '',
       }));
 
-      // Notify parent
       onAskAI?.(selectedText, prompt, action);
-
-      // Simulate streaming response (replace with actual AI call)
       simulateStreamingResponse(prompt || action?.label || '');
     },
     [aiState.selectedText, onAskAI]
   );
 
-  // Simulate streaming (for demo - replace with real API)
   const simulateStreamingResponse = useCallback(
     (prompt: string) => {
       const demoResponses: Record<string, string> = {
@@ -234,7 +287,6 @@ export function Editor({
         demoResponses[prompt.toLowerCase()] ||
         `I understand you want me to ${prompt}. Here's my response based on the context provided:\n\nThis is a demonstration of the AI response feature. In production, this would connect to your AI backend to generate contextual responses based on your story content and the selected text.`;
 
-      // Simulate typing effect
       let index = 0;
       const interval = setInterval(() => {
         index += Math.floor(Math.random() * 3) + 1;
@@ -256,7 +308,6 @@ export function Editor({
     []
   );
 
-  // Handle response actions
   const handleInsertBelow = useCallback(
     (text: string) => {
       if (!editor) return;
@@ -298,10 +349,8 @@ export function Editor({
     [simulateStreamingResponse]
   );
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd+J to open AI palette
       if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
         e.preventDefault();
         if (!editor) return;
@@ -311,7 +360,6 @@ export function Editor({
         openAIPalette(selectedText);
       }
 
-      // Escape to close AI palette or response
       if (e.key === 'Escape') {
         if (aiState.isOpen) {
           setAIState((s) => ({ ...s, isOpen: false }));
@@ -327,7 +375,6 @@ export function Editor({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [editor, openAIPalette, aiState.isOpen, aiState.showResponse, aiState.status, handleDiscard]);
 
-  // Listen for slash command /ai trigger
   useEffect(() => {
     const handleOpenAIPalette = () => {
       if (!editor) return;
@@ -340,7 +387,6 @@ export function Editor({
     return () => window.removeEventListener('editor:open-ai-palette', handleOpenAIPalette);
   }, [editor, openAIPalette]);
 
-  // Handle BubbleMenu AI click
   const handleBubbleMenuAI = useCallback(
     (selectedText: string) => {
       openAIPalette(selectedText);
@@ -360,44 +406,58 @@ export function Editor({
 
   return (
     <div ref={containerRef} className={`editor-container ${fontFamilyClass} ${sizeClass} ${widthClass}`}>
-      <EditorContent editor={editor} className="editor-content" />
+      <div className="editor-content-wrapper">
+        {showTitle && (
+          <textarea
+            ref={titleRef}
+            className="editor-title"
+            value={localTitle}
+            onChange={handleTitleChange}
+            onKeyDown={handleTitleKeyDown}
+            placeholder="Untitled"
+            rows={1}
+            disabled={!editable}
+          />
+        )}
+        <EditorContent editor={editor} className="editor-content" />
+      </div>
       {editor && <BubbleMenu editor={editor} onAskAI={handleBubbleMenuAI} />}
 
-      {/* Jump to Selection Indicator (when selection end is off-screen) */}
       {aiState.showJumpIndicator && (
         <button
           className="ai-jump-indicator"
           onClick={jumpToSelectionEnd}
           title="Jump to selection end"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M7 8.5C8.5 7 11 6.5 12 6.5C13 6.5 15.5 7 17 8.5"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-            <circle cx="9" cy="12" r="1.5" fill="currentColor" />
-            <path
-              d="M14 11C14 11 15 10.5 16 11.5"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-            <path
-              d="M10 17C11 18 13 18 14 17"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <div className="ai-jump-avatar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M7 8.5C8.5 7 11 6.5 12 6.5C13 6.5 15.5 7 17 8.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <circle cx="9" cy="12" r="1.5" fill="currentColor" />
+              <path
+                d="M14 11C14 11 15 10.5 16 11.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <path
+                d="M10 17C11 18 13 18 14 17"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12l7 7 7-7" />
           </svg>
         </button>
       )}
 
-      {/* AI Command Palette */}
       {aiState.isOpen && aiState.position && (
         <AICommandPalette
           selectedText={aiState.selectedText}
@@ -407,7 +467,6 @@ export function Editor({
         />
       )}
 
-      {/* AI Response Block */}
       {aiState.showResponse && (
         <div className="ai-response-container" style={aiState.position ? { top: aiState.position.y } : undefined}>
           <AIResponseBlock
@@ -428,19 +487,61 @@ export function Editor({
           display: flex;
           flex-direction: column;
           overflow-y: auto;
-          padding: var(--space-8) var(--space-4);
+          padding: 80px 96px 120px;
         }
 
-        .editor-content {
+        @media (max-width: 900px) {
+          .editor-container {
+            padding: 60px 48px 100px;
+          }
+        }
+
+        @media (max-width: 600px) {
+          .editor-container {
+            padding: 40px 24px 80px;
+          }
+        }
+
+        .editor-content-wrapper {
           flex: 1;
-          max-width: var(--content-max-width);
+          max-width: 708px;
           width: 100%;
           margin: 0 auto;
         }
 
-        .editor-width--full .editor-content {
+        .editor-width--full .editor-content-wrapper {
           max-width: 100%;
-          padding: 0 var(--space-8);
+        }
+
+        /* Title Input - Notion style large editable title */
+        .editor-title {
+          display: block;
+          width: 100%;
+          font-family: var(--font-display);
+          font-size: 40px;
+          font-weight: 700;
+          line-height: 1.2;
+          color: var(--color-text);
+          background: transparent;
+          border: none;
+          outline: none;
+          resize: none;
+          overflow: hidden;
+          padding: 0;
+          margin: 0 0 12px 0;
+          caret-color: var(--color-text);
+        }
+
+        .editor-title::placeholder {
+          color: var(--color-text-ghost);
+        }
+
+        .editor-title:disabled {
+          cursor: default;
+        }
+
+        .editor-content {
+          flex: 1;
         }
 
         /* ProseMirror base styles */
@@ -450,10 +551,10 @@ export function Editor({
         }
 
         .editor-content .ProseMirror > * + * {
-          margin-top: 0.75em;
+          margin-top: 1px;
         }
 
-        /* Typography */
+        /* Typography - Notion uses system fonts */
         .editor-font--default .ProseMirror {
           font-family: var(--font-sans);
         }
@@ -467,24 +568,25 @@ export function Editor({
         }
 
         .editor-content .ProseMirror {
-          font-size: var(--text-base);
-          line-height: var(--leading-relaxed);
+          font-size: 16px;
+          line-height: 1.5;
           color: var(--color-text);
+          word-break: break-word;
         }
 
         .editor-size--small .ProseMirror {
-          font-size: var(--text-sm);
+          font-size: 14px;
         }
 
-        /* Headings */
+        /* Headings - Notion style */
         .editor-content .ProseMirror h1 {
           font-family: var(--font-display);
-          font-size: var(--text-4xl);
-          font-weight: var(--font-bold);
-          line-height: var(--leading-tight);
+          font-size: 30px;
+          font-weight: 600;
+          line-height: 1.3;
           color: var(--color-text);
-          margin-top: 1.5em;
-          margin-bottom: 0.5em;
+          margin-top: 32px;
+          margin-bottom: 4px;
         }
 
         .editor-content .ProseMirror h1:first-child {
@@ -493,29 +595,35 @@ export function Editor({
 
         .editor-content .ProseMirror h2 {
           font-family: var(--font-display);
-          font-size: var(--text-2xl);
-          font-weight: var(--font-semibold);
-          line-height: var(--leading-tight);
+          font-size: 24px;
+          font-weight: 600;
+          line-height: 1.3;
           color: var(--color-text);
-          margin-top: 1.25em;
-          margin-bottom: 0.4em;
+          margin-top: 28px;
+          margin-bottom: 4px;
         }
 
         .editor-content .ProseMirror h3 {
           font-family: var(--font-display);
-          font-size: var(--text-xl);
-          font-weight: var(--font-semibold);
-          line-height: var(--leading-tight);
+          font-size: 20px;
+          font-weight: 600;
+          line-height: 1.3;
           color: var(--color-text);
-          margin-top: 1em;
-          margin-bottom: 0.3em;
+          margin-top: 24px;
+          margin-bottom: 4px;
         }
 
-        /* Paragraph */
+        /* Paragraph - Notion style tight spacing */
         .editor-content .ProseMirror p {
           margin: 0;
+          min-height: 1.5em;
         }
 
+        .editor-content .ProseMirror p + p {
+          margin-top: 0;
+        }
+
+        /* Placeholder */
         .editor-content .ProseMirror p.editor-empty:first-child::before {
           content: attr(data-placeholder);
           color: var(--color-text-ghost);
@@ -524,14 +632,19 @@ export function Editor({
           pointer-events: none;
         }
 
-        /* Lists */
+        /* Lists - Notion style */
         .editor-content .ProseMirror ul,
         .editor-content .ProseMirror ol {
-          padding-left: 1.5em;
+          padding-left: 24px;
+          margin: 0;
         }
 
         .editor-content .ProseMirror li {
-          margin: 0.25em 0;
+          margin: 0;
+        }
+
+        .editor-content .ProseMirror li + li {
+          margin-top: 0;
         }
 
         .editor-content .ProseMirror li p {
@@ -542,34 +655,46 @@ export function Editor({
           list-style-type: disc;
         }
 
+        .editor-content .ProseMirror ul ul {
+          list-style-type: circle;
+        }
+
+        .editor-content .ProseMirror ul ul ul {
+          list-style-type: square;
+        }
+
         .editor-content .ProseMirror ol {
           list-style-type: decimal;
         }
 
-        /* Blockquote */
+        /* Blockquote - Notion style */
         .editor-content .ProseMirror blockquote {
-          border-left: 3px solid var(--color-border);
-          padding-left: var(--space-4);
-          color: var(--color-text-secondary);
-          font-style: italic;
+          border-left: 3px solid currentColor;
+          padding-left: 14px;
+          padding-right: 14px;
+          margin: 0;
         }
 
-        /* Code */
+        /* Inline Code - Notion's signature warm style */
         .editor-content .ProseMirror code {
-          font-family: var(--font-mono);
-          font-size: 0.9em;
-          background: var(--color-bg-elevated);
-          padding: 0.15em 0.4em;
-          border-radius: var(--radius-sm);
-          color: var(--color-accent);
+          font-family: 'SFMono-Regular', Menlo, Consolas, 'PT Mono', 'Liberation Mono', Courier, monospace;
+          font-size: 85%;
+          background: rgba(135, 131, 120, 0.15);
+          padding: 0.2em 0.4em;
+          border-radius: 3px;
+          color: #eb5757;
         }
 
+        /* Code blocks */
         .editor-content .ProseMirror pre {
           background: var(--color-bg-surface);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-md);
-          padding: var(--space-3);
+          border-radius: 3px;
+          padding: 32px 16px 32px 32px;
           overflow-x: auto;
+          margin: 0;
+          font-family: 'SFMono-Regular', Menlo, Consolas, 'PT Mono', 'Liberation Mono', Courier, monospace;
+          font-size: 85%;
+          tab-size: 2;
         }
 
         .editor-content .ProseMirror pre code {
@@ -579,43 +704,49 @@ export function Editor({
           color: var(--color-text);
         }
 
-        /* Horizontal rule */
+        /* Horizontal rule - Notion style */
         .editor-content .ProseMirror hr {
           border: none;
           border-top: 1px solid var(--color-border);
-          margin: 1.5em 0;
+          margin: 6px 0;
         }
 
         /* Strong & Emphasis */
         .editor-content .ProseMirror strong {
-          font-weight: var(--font-semibold);
-          color: var(--color-text);
+          font-weight: 600;
         }
 
         .editor-content .ProseMirror em {
           font-style: italic;
         }
 
-        /* Links */
-        .editor-content .ProseMirror a {
-          color: var(--color-accent);
+        /* Underline */
+        .editor-content .ProseMirror u {
           text-decoration: underline;
-          text-underline-offset: 2px;
+        }
+
+        /* Strikethrough */
+        .editor-content .ProseMirror s {
+          text-decoration: line-through;
+        }
+
+        /* Links - Notion style underline */
+        .editor-content .ProseMirror a {
+          color: inherit;
+          text-decoration: underline;
+          text-decoration-color: var(--color-text-muted);
+          text-underline-offset: 3px;
           cursor: pointer;
+          transition: text-decoration-color 100ms ease;
         }
 
         .editor-content .ProseMirror a:hover {
-          color: var(--color-accent-hover);
+          text-decoration-color: var(--color-text);
         }
 
         /* Selection */
         .editor-content .ProseMirror ::selection {
-          background: var(--color-accent-subtle);
-        }
-
-        /* Cursor */
-        .editor-content .ProseMirror .ProseMirror-cursor {
-          border-color: var(--color-accent);
+          background: rgba(45, 170, 219, 0.3);
         }
 
         /* Entity marks (from @mythos/editor) */
@@ -640,7 +771,7 @@ export function Editor({
           border-radius: 2px;
         }
 
-        /* Task lists */
+        /* Task lists - Notion style */
         .editor-content .ProseMirror ul[data-type="taskList"] {
           list-style: none;
           padding-left: 0;
@@ -649,54 +780,54 @@ export function Editor({
         .editor-content .ProseMirror li[data-type="taskItem"] {
           display: flex;
           align-items: flex-start;
-          gap: var(--space-2, 8px);
+          gap: 8px;
         }
 
         .editor-content .ProseMirror li[data-type="taskItem"] > label {
           flex-shrink: 0;
-          margin-top: 0.25em;
+          margin-top: 2px;
           user-select: none;
         }
 
         .editor-content .ProseMirror li[data-type="taskItem"] > label input[type="checkbox"] {
           width: 16px;
           height: 16px;
-          accent-color: var(--color-accent);
+          accent-color: #2eaadc;
           cursor: pointer;
         }
 
         .editor-content .ProseMirror li[data-type="taskItem"][data-checked="true"] > div {
           text-decoration: line-through;
-          color: var(--color-text-secondary);
+          color: var(--color-text-muted);
         }
 
         /* Images */
         .editor-content .ProseMirror .editor-image {
           max-width: 100%;
           height: auto;
-          border-radius: var(--radius-md, 8px);
+          border-radius: 4px;
           display: block;
-          margin: 1em 0;
+          margin: 4px 0;
         }
 
         .editor-content .ProseMirror .editor-image.ProseMirror-selectednode {
-          outline: 2px solid var(--color-accent);
+          outline: 2px solid #2eaadc;
           outline-offset: 2px;
         }
 
-        /* Tables */
+        /* Tables - Notion style */
         .editor-content .ProseMirror table {
           border-collapse: collapse;
           width: 100%;
-          margin: 1em 0;
+          margin: 4px 0;
           table-layout: fixed;
           overflow: hidden;
         }
 
         .editor-content .ProseMirror th,
         .editor-content .ProseMirror td {
-          border: 1px solid var(--color-border, #e5e7eb);
-          padding: var(--space-2, 8px) var(--space-3, 12px);
+          border: 1px solid var(--color-border);
+          padding: 8px 10px;
           text-align: left;
           vertical-align: top;
           min-width: 100px;
@@ -704,16 +835,12 @@ export function Editor({
         }
 
         .editor-content .ProseMirror th {
-          background: var(--color-bg-elevated, #f9fafb);
-          font-weight: var(--font-semibold, 600);
-        }
-
-        .editor-content .ProseMirror td {
-          background: var(--color-bg-app, #ffffff);
+          background: var(--color-bg-surface);
+          font-weight: 500;
         }
 
         .editor-content .ProseMirror .selectedCell {
-          background: var(--color-accent-subtle, rgba(99, 102, 241, 0.1));
+          background: rgba(45, 170, 219, 0.1);
         }
 
         .editor-content .ProseMirror .column-resize-handle {
@@ -722,26 +849,16 @@ export function Editor({
           top: 0;
           bottom: 0;
           width: 4px;
-          background: var(--color-accent, #6366f1);
+          background: #2eaadc;
           cursor: col-resize;
-        }
-
-        /* Placeholder for title */
-        .editor-content .ProseMirror h1.editor-empty::before {
-          content: 'Untitled';
-          color: var(--color-text-ghost);
-          float: left;
-          height: 0;
-          pointer-events: none;
         }
 
         /* AI Response Container */
         .ai-response-container {
           position: relative;
-          max-width: var(--content-max-width);
+          max-width: 708px;
           width: 100%;
           margin: 0 auto;
-          padding: 0 var(--space-4);
         }
 
         /* Jump to Selection Indicator */
@@ -752,23 +869,25 @@ export function Editor({
           transform: translateX(-50%);
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 10px 16px;
-          background: var(--color-bg-elevated, #fff);
-          border: 1px solid var(--color-border, #e8e8e6);
+          gap: 6px;
+          padding: 8px 14px 8px 8px;
+          background: var(--color-bg-elevated);
+          border: 1px solid var(--color-border);
           border-radius: 999px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+          box-shadow:
+            0 0 0 1px rgba(15, 15, 15, 0.05),
+            0 3px 6px rgba(15, 15, 15, 0.1),
+            0 9px 24px rgba(15, 15, 15, 0.2);
           cursor: pointer;
-          color: var(--color-text, #37352f);
+          color: var(--color-text);
           font-size: 14px;
           font-weight: 500;
           z-index: 1000;
-          transition: all 0.15s ease;
+          transition: all 100ms ease;
         }
 
         .ai-jump-indicator:hover {
-          background: var(--color-bg-hover, #f1f1ef);
-          box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.06);
+          background: var(--color-bg-hover);
           transform: translateX(-50%) translateY(-2px);
         }
 
@@ -776,13 +895,20 @@ export function Editor({
           transform: translateX(-50%) translateY(0);
         }
 
-        .ai-jump-indicator svg:first-child {
-          width: 28px;
-          height: 28px;
-          padding: 4px;
-          background: var(--color-bg-surface, #f7f7f5);
-          border: 1px solid var(--color-border, #e8e8e6);
+        .ai-jump-avatar {
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--color-bg-surface);
+          border: 1px solid var(--color-border);
           border-radius: 50%;
+          color: var(--color-text);
+        }
+
+        .ai-jump-indicator svg:last-child {
+          color: var(--color-text-secondary);
         }
       `}</style>
     </div>

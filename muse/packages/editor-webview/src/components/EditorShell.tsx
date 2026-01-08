@@ -20,17 +20,12 @@ interface EditorShellProps {
   onDocumentChange?: (doc: DocumentState) => void;
   onQuickAction?: (action: QuickActionType) => void;
   onShare?: () => void;
-  /** Hide quick actions when AI panel is open */
   hideQuickActions?: boolean;
-  /** Color scheme for theming */
   colorScheme?: 'light' | 'dark';
 }
 
-// CSS tokens - synced with apps/expo/src/design-system/colors.ts
-// Uses prefers-color-scheme to automatically switch themes
 const CSS_TOKENS = `
 :root {
-  /* Spacing */
   --space-0: 0;
   --space-0-5: 2px;
   --space-1: 4px;
@@ -46,7 +41,6 @@ const CSS_TOKENS = `
   --space-12: 48px;
   --space-16: 64px;
 
-  /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, 'Apple Color Emoji', Arial, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
   --font-serif: Lyon-Text, Georgia, ui-serif, serif;
@@ -70,27 +64,23 @@ const CSS_TOKENS = `
   --leading-normal: 1.5;
   --leading-relaxed: 1.75;
 
-  /* Radii */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
   --radius-full: 9999px;
 
-  /* Transitions */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --duration-fast: 100ms;
   --duration-normal: 200ms;
   --duration-slow: 300ms;
 
-  /* Layout */
   --header-height: 45px;
   --tab-bar-height: 45px;
   --content-max-width: 708px;
   --menu-width: 265px;
 
-  /* Entity colors (same for both themes) */
   --color-purple: #a78bfa;
   --color-green: #34d399;
   --color-amber: #fbbf24;
@@ -98,7 +88,6 @@ const CSS_TOKENS = `
   --color-cyan: #22d3ee;
 }
 
-/* Light theme (default) */
 :root {
   --color-bg-app: #ffffff;
   --color-bg-surface: #f7f7f5;
@@ -123,7 +112,6 @@ const CSS_TOKENS = `
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
-/* Dark theme */
 @media (prefers-color-scheme: dark) {
   :root {
     --color-bg-app: #191919;
@@ -153,14 +141,71 @@ const CSS_TOKENS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 `;
 
+// Extract plain text from HTML for preview using DOM parser
+function extractPreviewText(html: string, maxLength = 280): string {
+  if (!html || html === '<p></p>') return '';
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // Process lists to add markers
+    doc.querySelectorAll('li').forEach((li, index) => {
+      const parent = li.parentElement;
+      const isOrdered = parent?.tagName === 'OL';
+      const isTaskList = li.hasAttribute('data-type') && li.getAttribute('data-type') === 'taskItem';
+
+      let prefix = '• ';
+      if (isOrdered) {
+        const items = Array.from(parent?.children || []);
+        prefix = `${items.indexOf(li) + 1}. `;
+      } else if (isTaskList) {
+        const isChecked = li.getAttribute('data-checked') === 'true';
+        prefix = isChecked ? '☑ ' : '☐ ';
+      }
+
+      li.textContent = prefix + (li.textContent || '');
+    });
+
+    // Process code blocks
+    doc.querySelectorAll('pre, code').forEach((el) => {
+      if (el.tagName === 'PRE') {
+        el.textContent = `[code] ${el.textContent}`;
+      }
+    });
+
+    // Get text and clean up whitespace
+    let text = doc.body.textContent || '';
+    text = text
+      .replace(/\n+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (text.length > maxLength) {
+      // Cut at word boundary
+      const truncated = text.slice(0, maxLength);
+      const lastSpace = truncated.lastIndexOf(' ');
+      return (lastSpace > maxLength * 0.7 ? truncated.slice(0, lastSpace) : truncated) + '...';
+    }
+
+    return text;
+  } catch {
+    // Fallback: simple regex strip
+    return html
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, maxLength);
+  }
+}
+
 export function EditorShell({
-  initialDocuments = [{ id: '1', title: 'New Page', content: '', isDirty: false }],
+  initialDocuments = [{ id: '1', title: '', content: '', isDirty: false }],
   onDocumentChange,
   onQuickAction,
   onShare,
   hideQuickActions = false,
 }: EditorShellProps) {
-  // Inject CSS tokens on mount
   useEffect(() => {
     const styleId = 'editor-webview-tokens';
     if (!document.getElementById(styleId)) {
@@ -170,6 +215,7 @@ export function EditorShell({
       document.head.appendChild(style);
     }
   }, []);
+
   const [documents, setDocuments] = useState<DocumentState[]>(initialDocuments);
   const [activeDocId, setActiveDocId] = useState(initialDocuments[0]?.id ?? '1');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -184,9 +230,12 @@ export function EditorShell({
   const [historyIndex, setHistoryIndex] = useState(0);
 
   const activeDoc = documents.find((d) => d.id === activeDocId);
+
+  // Build tabs with content preview for hover tooltip
   const tabs: Tab[] = documents.map((d) => ({
     id: d.id,
     title: d.title || 'Untitled',
+    content: extractPreviewText(d.content),
     isDirty: d.isDirty,
   }));
 
@@ -213,7 +262,7 @@ export function EditorShell({
     const newId = `doc-${Date.now()}`;
     const newDoc: DocumentState = {
       id: newId,
-      title: 'New Page',
+      title: '',
       content: '',
       isDirty: false,
     };
@@ -278,7 +327,7 @@ export function EditorShell({
       />
 
       <PageHeader
-        title={activeDoc?.title ?? 'Untitled'}
+        title={activeDoc?.title || 'Untitled'}
         onTitleChange={handleTitleChange}
         privacyLevel={privacyLevel}
         onPrivacyChange={setPrivacyLevel}
@@ -316,19 +365,22 @@ export function EditorShell({
             navigateTo(newId);
           }
         }}
-        onUndo={() => {
-          // Handled by TipTap
-        }}
+        onUndo={() => {}}
       />
 
       <main className="editor-shell-main">
+        {/* Key forces remount on tab switch to reset Editor's internal state */}
         <Editor
+          key={activeDocId}
+          title={activeDoc?.title ?? ''}
           content={activeDoc?.content ?? ''}
+          onTitleChange={handleTitleChange}
           onChange={handleContentChange}
           fontStyle={fontStyle}
           isSmallText={isSmallText}
           isFullWidth={isFullWidth}
           editable={!isLocked}
+          showTitle={true}
           autoFocus
         />
 
