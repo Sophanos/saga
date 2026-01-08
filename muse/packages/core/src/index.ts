@@ -24,6 +24,9 @@ export * from "./inbox";
 // Genesis types (AI world generation)
 export * from "./genesis";
 
+// AI tool types
+export * from "./ai";
+
 // Utilities
 export * from "./utils";
 export * from "./trial/payload";

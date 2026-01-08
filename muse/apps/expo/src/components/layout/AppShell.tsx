@@ -1,7 +1,16 @@
-import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions, Pressable } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
-import { useTheme, sizing } from '@/design-system';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  runOnJS,
+  withSpring,
+  withTiming,
+  FadeIn,
+  FadeOut,
+} from 'react-native-reanimated';
+import { Feather } from '@expo/vector-icons';
+import { useTheme, sizing, spacing, radii, typography } from '@/design-system';
 import { useLayoutStore } from '@/design-system/layout';
 import { Sidebar } from './Sidebar';
 import { AIPanel, AIFloatingButton } from '@/components/ai';
@@ -18,9 +27,11 @@ export function AppShell({ children }: AppShellProps) {
   const { width } = useWindowDimensions();
   const {
     sidebarCollapsed,
+    setSidebarCollapsed,
     sidebarWidth,
     setSidebarWidth,
     aiPanelMode,
+    setAIPanelMode,
     aiPanelWidth,
     setAIPanelWidth,
   } = useLayoutStore();
@@ -46,7 +57,13 @@ export function AppShell({ children }: AppShellProps) {
             <Sidebar />
           </View>
           {!sidebarCollapsed && (
-            <ResizeHandle side="right" onResize={setSidebarWidth} currentWidth={sidebarWidth} />
+            <ResizeHandle
+              side="right"
+              onResize={setSidebarWidth}
+              currentWidth={sidebarWidth}
+              onMinimize={() => setSidebarCollapsed(true)}
+              panelType="sidebar"
+            />
           )}
         </View>
       )}
@@ -63,7 +80,13 @@ export function AppShell({ children }: AppShellProps) {
       {/* Side Panel (docked right) */}
       {showSidePanel && (
         <View style={[styles.aiPanelContainer, { width: aiPanelWidth }]}>
-          <ResizeHandle side="left" onResize={setAIPanelWidth} currentWidth={aiPanelWidth} />
+          <ResizeHandle
+            side="left"
+            onResize={setAIPanelWidth}
+            currentWidth={aiPanelWidth}
+            onMinimize={() => setAIPanelMode('hidden')}
+            panelType="ai"
+          />
           <View style={[styles.aiPanel, { backgroundColor: colors.sidebarBg, borderLeftColor: colors.border }]}>
             <AIPanel mode="side" />
           </View>
@@ -83,33 +106,99 @@ interface ResizeHandleProps {
   side: 'left' | 'right';
   onResize: (width: number) => void;
   currentWidth: number;
+  onMinimize?: () => void;
+  panelType?: 'sidebar' | 'ai';
 }
 
-function ResizeHandle({ side, onResize, currentWidth }: ResizeHandleProps) {
-  const { colors } = useTheme();
+function ResizeHandle({ side, onResize, currentWidth, onMinimize, panelType = 'sidebar' }: ResizeHandleProps) {
+  const { colors, isDark } = useTheme();
   const startWidth = useSharedValue(currentWidth);
   const isHovered = useSharedValue(false);
+  const isDragging = useSharedValue(false);
+  const showTooltip = useSharedValue(false);
 
   const pan = Gesture.Pan()
-    .onStart(() => { startWidth.value = currentWidth; })
+    .onStart(() => {
+      startWidth.value = currentWidth;
+      isDragging.value = true;
+    })
     .onUpdate((e) => {
       const delta = side === 'right' ? e.translationX : -e.translationX;
       runOnJS(onResize)(startWidth.value + delta);
+    })
+    .onEnd(() => {
+      isDragging.value = false;
     });
 
   const hover = Gesture.Hover()
-    .onStart(() => { isHovered.value = true; })
-    .onEnd(() => { isHovered.value = false; });
+    .onStart(() => {
+      isHovered.value = true;
+      showTooltip.value = true;
+    })
+    .onEnd(() => {
+      isHovered.value = false;
+      showTooltip.value = false;
+    });
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    backgroundColor: isHovered.value ? colors.accent : 'transparent',
+  const tap = Gesture.Tap()
+    .onEnd(() => {
+      if (onMinimize) runOnJS(onMinimize)();
+    });
+
+  const handleStyle = useAnimatedStyle(() => ({
+    backgroundColor: isDragging.value
+      ? colors.accent
+      : isHovered.value
+        ? isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'
+        : 'transparent',
   }));
 
+  const iconStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(isHovered.value ? 1 : 0, { duration: 150 }),
+    transform: [{ scale: withSpring(isHovered.value ? 1 : 0.8, { damping: 20, stiffness: 300 }) }],
+  }));
+
+  const tooltipStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(showTooltip.value && !isDragging.value ? 1 : 0, { duration: 150 }),
+    transform: [
+      { translateX: side === 'right' ? 8 : -8 },
+      { scale: withSpring(showTooltip.value && !isDragging.value ? 1 : 0.95, { damping: 20, stiffness: 400 }) },
+    ],
+  }));
+
+  const shortcut = panelType === 'ai' ? '⌘J' : '⌘\\';
+
   return (
-    <GestureDetector gesture={Gesture.Simultaneous(pan, hover)}>
+    <GestureDetector gesture={Gesture.Race(tap, Gesture.Simultaneous(pan, hover))}>
       <Animated.View
-        style={[styles.resizeHandle, side === 'left' ? styles.resizeLeft : styles.resizeRight, animatedStyle]}
-      />
+        style={[styles.resizeHandle, side === 'left' ? styles.resizeLeft : styles.resizeRight, handleStyle]}
+      >
+        {/* Grip icon */}
+        <Animated.View style={[styles.resizeIcon, iconStyle]}>
+          <Feather name="more-vertical" size={12} color={colors.textMuted} />
+        </Animated.View>
+
+        {/* Tooltip */}
+        {onMinimize && (
+          <Animated.View
+            style={[
+              styles.resizeTooltip,
+              side === 'left' ? styles.tooltipLeft : styles.tooltipRight,
+              { backgroundColor: isDark ? colors.bgElevated : colors.bgApp, borderColor: colors.border },
+              tooltipStyle,
+            ]}
+          >
+            <View style={styles.tooltipRow}>
+              <Text style={[styles.tooltipLabel, { color: colors.text }]}>Close</Text>
+              <Text style={[styles.tooltipShortcut, { color: colors.textMuted }]}>{shortcut}</Text>
+            </View>
+            <View style={styles.tooltipRow}>
+              <Text style={[styles.tooltipLabel, { color: colors.text }]}>Resize</Text>
+              <Text style={[styles.tooltipShortcut, { color: colors.textMuted }]}>Drag</Text>
+            </View>
+          </Animated.View>
+        )}
+      </Animated.View>
     </GestureDetector>
   );
 }
@@ -121,7 +210,48 @@ const styles = StyleSheet.create({
   main: { flex: 1 },
   aiPanelContainer: { flexDirection: 'row' },
   aiPanel: { flex: 1, borderLeftWidth: StyleSheet.hairlineWidth },
-  resizeHandle: { width: 4, cursor: 'pointer' as const },
-  resizeLeft: { marginRight: -2, zIndex: 10 },
-  resizeRight: { marginLeft: -2, zIndex: 10 },
+  resizeHandle: {
+    width: 8,
+    cursor: 'pointer' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resizeLeft: { marginRight: -4, zIndex: 10 },
+  resizeRight: { marginLeft: -4, zIndex: 10 },
+  resizeIcon: {
+    width: 16,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.sm,
+  },
+  resizeTooltip: {
+    position: 'absolute',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing[1],
+    zIndex: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  tooltipLeft: { right: 16 },
+  tooltipRight: { left: 16 },
+  tooltipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing[4],
+  },
+  tooltipLabel: {
+    fontSize: typography.xs,
+    fontWeight: typography.medium,
+  },
+  tooltipShortcut: {
+    fontSize: typography.xs,
+  },
 });

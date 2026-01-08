@@ -15,6 +15,8 @@ Replace SyncEngine (~4000 LOC) with Convex. Consolidate AI into Convex HTTP Acti
 | 5 | ✅ Complete | AI HTTP Actions |
 | 6 | ✅ Complete | Crons infrastructure |
 | 7 | 🔲 Pending | Mobile |
+| 8 | 🚧 In Progress | AI Agent Tool Calls |
+| 9 | 🔲 Pending | Purpose-Built Workspaces |
 
 ### File Structure
 
@@ -300,3 +302,152 @@ bunx convex dev --url https://api.cascada.vision
 | muse-j3z | P1 | Expo UI - Convex Data Integration |
 | muse-nnl | P1 | Expo UI - AI Tools Panel |
 | muse-z93 | P2 | Expo UI - Native Builds (iOS/macOS) |
+
+---
+
+## Phase 8: AI Agent Tool Calls
+
+Enable AI to be proactive by manipulating the UI through tool calls.
+
+### Goal
+
+Transform the AI from a passive responder into an active collaborator that can:
+- Ask clarifying questions with structured options (0-N choices)
+- Open workspace panels and focus on entities
+- Create/update entities and relationships with confirmation
+- Display relationship graphs and analysis results
+
+### Architecture Pattern
+
+Inspired by [OpenCode](https://github.com/anomalyco/opencode) agent architecture:
+- **Agent separation by intent**: "draft" vs "revise" modes (like OpenCode's build/plan)
+- **Permission-based tool execution**: Explicit confirmation for destructive actions
+- **Subagent delegation**: `@research`, `@editor`, `@outline` mentions for specialized tasks
+
+### Technology Stack
+
+| Component | Technology | Reference |
+|-----------|------------|-----------|
+| Streaming | Vercel AI SDK v5 `streamText` | [AI SDK Docs](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) |
+| Delta Persistence | Convex Agent `DeltaStreamer` | [Convex Agent](https://github.com/get-convex/agent) |
+| Tool Calling | AI SDK tool call streaming | Built-in with v5 |
+| State | Zustand workspace store | Client-side |
+
+### Key Patterns from Convex Agent
+
+**Streaming with delta persistence:**
+- Use `saveStreamDeltas: { returnImmediately: true }` for HTTP streaming
+- `DeltaStreamer` for async delta writes with throttling
+- `compressUIMessageChunks` for efficient delta batching
+
+**HTTP Action streaming:**
+- Return `result.toUIMessageStreamResponse()` from Convex HTTP actions
+- Client subscribes to deltas via Convex real-time queries
+
+### Tool Categories
+
+| Category | Tools | Purpose |
+|----------|-------|---------|
+| **UI Control** | `ask_question`, `open_panel`, `focus_entity`, `show_graph` | Manipulate workspace |
+| **Entity Ops** | `create_entity`, `update_entity`, `create_relationship` | Modify story world |
+| **Analysis** | `analyze_consistency`, `suggest_connections`, `find_issues` | Proactive insights |
+
+### ask_question Tool
+
+Enables proactive AI assistance with flexible response types:
+- **0 options**: Free-form text input
+- **N options**: Single or multi-select choices
+- **Context hint**: Shows what the decision affects
+
+### File Locations
+
+| File | Purpose |
+|------|---------|
+| `packages/core/src/ai/tool-types.ts` | Tool type definitions |
+| `apps/expo/src/stores/workspace.ts` | Workspace state (panels, questions, focus) |
+| `apps/expo/src/components/ai/AskQuestionCard.tsx` | Question UI |
+| `apps/expo/src/components/ai/ToolCallCard.tsx` | Tool status display |
+| `convex/ai/tools.ts` | Convex tool execution |
+
+### Implementation Checklist
+
+- [x] Define tool types in `packages/core/src/ai/tool-types.ts`
+- [x] Create workspace store in `apps/expo/src/stores/workspace.ts`
+- [x] Implement `AskQuestionCard` component
+- [x] Implement `ToolCallCard` component
+- [x] Extend `ChatMessage` type with tool calls
+- [x] Update `MessageBubble` to render tool calls inline
+- [ ] Integrate Convex Agent for streaming
+- [ ] Add UI tools to Convex `ai/tools.ts`
+- [ ] Wire tool responses back to AI context
+- [ ] Test in all panel modes (side, floating, full)
+
+### References
+
+- [OpenCode Architecture](https://github.com/anomalyco/opencode) - Agent patterns, permission model
+- [Convex Agent](https://github.com/get-convex/agent) - Streaming, delta persistence, threads
+- [Vercel AI SDK](https://ai-sdk.dev) - `streamText`, tool calling, `toUIMessageStreamResponse`
+- [Convex RAG](https://github.com/get-convex/rag) - Semantic search for context
+
+---
+
+## Phase 9: Purpose-Built Workspaces
+
+Specialized environments for deep creative work.
+
+### Goal
+
+Create focused workspaces where writers can dive deep into specific aspects:
+- Character development with AI as co-creator
+- Multi-character relationship mapping
+- World-building with structured templates
+- Plot architecture with timeline visualization
+
+### Workspace Types
+
+| Workspace | Purpose | Layout | AI Role |
+|-----------|---------|--------|---------|
+| **Character Workshop** | Deep character development | Split: entity sheet + chat | Probes motivations, suggests conflicts |
+| **Relationship Mapper** | Multi-character dynamics | Graph + chat | Identifies tensions, suggests arcs |
+| **World Builder** | Factions, magic, geography | Tabbed panels + chat | Validates consistency, fills gaps |
+| **Plot Architect** | Timeline and structure | Timeline + chat | Finds holes, suggests foreshadowing |
+
+### Character Workshop
+
+Split-panel layout for focused character work:
+- Left: Editable character sheet (traits, arc, relationships)
+- Right: AI chat with character context pre-loaded
+- AI proactively asks about inconsistencies, suggests depth
+
+### World Builder Tabs
+
+| Tab | Content | AI Capabilities |
+|-----|---------|-----------------|
+| **Factions** | Groups, alliances, rivalries | Power balance analysis |
+| **Magic** | Systems, rules, costs | Rule validation, limitation suggestions |
+| **Timeline** | History, events | Anachronism detection |
+| **Geography** | Locations, travel | Distance/travel time logic |
+| **Cultures** | Customs, languages | Consistency checking |
+
+### Relationship Mapper
+
+Visual graph using React Flow:
+- Nodes: Characters with role indicators
+- Edges: Relationship types with strength
+- AI can highlight paths, suggest missing connections
+- Click to open Character Workshop for any node
+
+### Implementation Checklist
+
+- [ ] Create `WorkspacePanel` component with mode switching
+- [ ] Implement `CharacterSheet` component
+- [ ] Implement `RelationshipGraph` using React Flow
+- [ ] Implement `WorldBuilderTabs` component
+- [ ] Add workspace mode to layout store
+- [ ] Wire AI tools to workspace actions
+- [ ] Add keyboard shortcuts for workspace navigation
+
+### References
+
+- [React Flow](https://reactflow.dev) - Graph visualization
+- [Zustand](https://zustand-demo.pmnd.rs) - State management patterns

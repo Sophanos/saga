@@ -46,6 +46,28 @@ export const QUICK_ACTIONS: Record<QuickAction, { label: string; description: st
   arc: { label: 'Analyze story arc', description: 'Review character and plot arcs', icon: 'chart.line.uptrend.xyaxis' },
 };
 
+// Tool call status
+export type ToolCallStatus = 'pending' | 'running' | 'complete' | 'error';
+
+// Tool call in message
+export interface ToolCall {
+  id: string;
+  name: string;
+  status: ToolCallStatus;
+  result?: unknown;
+  error?: string;
+}
+
+// Pending question from AI
+export interface PendingQuestion {
+  id: string;
+  question: string;
+  options?: { label: string; value: string }[];
+  context?: string;
+  allowFreeform?: boolean;
+  multiSelect?: boolean;
+}
+
 // Message types
 export interface ChatMessage {
   id: string;
@@ -53,13 +75,7 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   toolCalls?: ToolCall[];
-}
-
-export interface ToolCall {
-  id: string;
-  name: string;
-  status: 'pending' | 'running' | 'complete' | 'error';
-  result?: unknown;
+  pendingQuestions?: PendingQuestion[];
 }
 
 // Chat thread

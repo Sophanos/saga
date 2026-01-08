@@ -4,9 +4,12 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  FadeIn,
   FadeInDown,
+  FadeOut,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, sizing, typography, radii, shadows } from '@/design-system';
 import { useLayoutStore, type AIPanelMode } from '@/design-system/layout';
 import { useAIStore, useCurrentThread, useHasMessages, type QuickAction, type ChatMessage } from '@/stores/ai';
@@ -14,6 +17,7 @@ import { MuseAvatar } from './MuseAvatar';
 import { ChatSelector } from './ChatSelector';
 import { WelcomeState } from './WelcomeState';
 import { AIPanelInput } from './AIPanelInput';
+import { MessageContent } from './MessageContent';
 
 interface AIPanelProps {
   mode?: AIPanelMode;
@@ -113,10 +117,8 @@ interface AIPanelHeaderProps {
 
 function AIPanelHeader({ threadName, mode, onChatSelectorToggle, onNewChat, onModeChange }: AIPanelHeaderProps) {
   const { colors } = useTheme();
+  const [showModeMenu, setShowModeMenu] = useState(false);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
-
-  // Mode-specific actions
-  const actions = getActionsForMode(mode);
 
   return (
     <View style={[styles.header, { borderBottomColor: colors.border }]}>
@@ -125,72 +127,118 @@ function AIPanelHeader({ threadName, mode, onChatSelectorToggle, onNewChat, onMo
         onPress={onChatSelectorToggle}
       >
         <Text style={[styles.chatSelectorText, { color: colors.text }]} numberOfLines={1}>{threadName}</Text>
-        <Text style={[styles.chatSelectorChevron, { color: colors.textMuted }]}>▾</Text>
+        <Feather name="chevron-down" size={14} color={colors.textMuted} />
       </Pressable>
 
       <View style={styles.headerActions}>
-        {actions.map((action) => (
-          <View key={action.id}>
-            <Pressable
-              style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed ? colors.bgHover : 'transparent' }]}
-              onPress={() => action.id === 'new' ? onNewChat() : onModeChange(action.targetMode!)}
-              onHoverIn={() => setHoveredBtn(action.id)}
-              onHoverOut={() => setHoveredBtn(null)}
-            >
-              <Text style={[styles.headerBtnIcon, { color: colors.textMuted }]}>{action.icon}</Text>
-            </Pressable>
-            {hoveredBtn === action.id && (
-              <View style={[styles.tooltip, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
-                <Text style={[styles.tooltipText, { color: colors.text }]}>{action.label}</Text>
-                {action.shortcut && <Text style={[styles.tooltipShortcut, { color: colors.textMuted }]}>{action.shortcut}</Text>}
-              </View>
-            )}
-          </View>
-        ))}
+        {/* New Chat */}
+        <View>
+          <Pressable
+            style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed ? colors.bgHover : 'transparent' }]}
+            onPress={onNewChat}
+            onHoverIn={() => setHoveredBtn('new')}
+            onHoverOut={() => setHoveredBtn(null)}
+          >
+            <Feather name="edit" size={18} color={colors.textMuted} />
+          </Pressable>
+          {hoveredBtn === 'new' && (
+            <Tooltip label="New Chat" shortcut="⌘⇧;" colors={colors} />
+          )}
+        </View>
+
+        {/* Mode Toggle */}
+        <View>
+          <Pressable
+            style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed || showModeMenu ? colors.bgHover : 'transparent' }]}
+            onPress={() => setShowModeMenu(!showModeMenu)}
+          >
+            <Feather name={mode === 'floating' ? 'square' : 'sidebar'} size={18} color={colors.textMuted} />
+          </Pressable>
+          {showModeMenu && (
+            <ModeMenu
+              currentMode={mode}
+              onSelect={(m) => { onModeChange(m); setShowModeMenu(false); }}
+              onClose={() => setShowModeMenu(false)}
+              colors={colors}
+            />
+          )}
+        </View>
+
+        {/* Hide */}
+        <View>
+          <Pressable
+            style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed ? colors.bgHover : 'transparent' }]}
+            onPress={() => onModeChange('hidden')}
+            onHoverIn={() => setHoveredBtn('hide')}
+            onHoverOut={() => setHoveredBtn(null)}
+          >
+            <Feather name="minus" size={18} color={colors.textMuted} />
+          </Pressable>
+          {hoveredBtn === 'hide' && (
+            <Tooltip label="Hide Chat" shortcut="⌘J" colors={colors} />
+          )}
+        </View>
       </View>
     </View>
   );
 }
 
-interface HeaderAction {
-  id: string;
-  icon: string;
-  label: string;
-  shortcut?: string;
-  targetMode?: AIPanelMode;
+function Tooltip({ label, shortcut, colors }: { label: string; shortcut?: string; colors: any }) {
+  return (
+    <Animated.View
+      entering={FadeIn.duration(150)}
+      exiting={FadeOut.duration(100)}
+      style={[styles.tooltip, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}
+    >
+      <Text style={[styles.tooltipText, { color: colors.text }]}>{label}</Text>
+      {shortcut && <Text style={[styles.tooltipShortcut, { color: colors.textMuted }]}>{shortcut}</Text>}
+    </Animated.View>
+  );
 }
 
-function getActionsForMode(mode: AIPanelMode): HeaderAction[] {
-  switch (mode) {
-    case 'side':
-      return [
-        { id: 'new', icon: '↗', label: 'New Chat', shortcut: '⌘⇧;' },
-        { id: 'float', icon: '◳', label: 'Float', targetMode: 'floating' },
-        { id: 'full', icon: '⬜', label: 'Expand', targetMode: 'full' },
-        { id: 'hide', icon: '»', label: 'Close', targetMode: 'hidden' },
-      ];
-    case 'floating':
-      return [
-        { id: 'new', icon: '↗', label: 'New Chat', shortcut: '⌘⇧;' },
-        { id: 'dock', icon: '▣', label: 'Dock', targetMode: 'side' },
-        { id: 'full', icon: '⬜', label: 'Expand', targetMode: 'full' },
-        { id: 'hide', icon: '×', label: 'Close', targetMode: 'hidden' },
-      ];
-    case 'full':
-      return [
-        { id: 'new', icon: '↗', label: 'New Chat', shortcut: '⌘⇧;' },
-        { id: 'dock', icon: '▣', label: 'Side Panel', targetMode: 'side' },
-        { id: 'float', icon: '◳', label: 'Float', targetMode: 'floating' },
-        { id: 'hide', icon: '»', label: 'Close', targetMode: 'hidden' },
-      ];
-    default:
-      return [];
-  }
+function ModeMenu({ currentMode, onSelect, onClose, colors }: {
+  currentMode: AIPanelMode;
+  onSelect: (mode: AIPanelMode) => void;
+  onClose: () => void;
+  colors: any;
+}) {
+  const modes: { mode: AIPanelMode; label: string; icon: keyof typeof Feather.glyphMap }[] = [
+    { mode: 'side', label: 'Side Panel', icon: 'sidebar' },
+    { mode: 'floating', label: 'Floating', icon: 'square' },
+    { mode: 'full', label: 'Full Screen', icon: 'maximize-2' },
+  ];
+
+  return (
+    <>
+      <Pressable style={styles.menuBackdrop} onPress={onClose} />
+      <Animated.View
+        entering={FadeIn.duration(150)}
+        exiting={FadeOut.duration(100)}
+        style={[styles.modeMenu, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}
+      >
+        {modes.map(({ mode, label, icon }) => (
+          <Pressable
+            key={mode}
+            style={({ pressed }) => [
+              styles.modeMenuItem,
+              { backgroundColor: pressed ? colors.bgHover : 'transparent' },
+            ]}
+            onPress={() => onSelect(mode)}
+          >
+            <Feather name={icon} size={16} color={colors.textMuted} />
+            <Text style={[styles.modeMenuText, { color: colors.text }]}>{label}</Text>
+            {currentMode === mode && <Feather name="check" size={16} color={colors.accent} />}
+          </Pressable>
+        ))}
+      </Animated.View>
+    </>
+  );
 }
 
 function MessageBubble({ message, isLast, fullWidth }: { message: ChatMessage; isLast: boolean; fullWidth?: boolean }) {
   const { colors } = useTheme();
   const isUser = message.role === 'user';
+  const hasToolContent = (message.toolCalls?.length ?? 0) > 0 || (message.pendingQuestions?.length ?? 0) > 0;
 
   return (
     <Animated.View
@@ -204,9 +252,15 @@ function MessageBubble({ message, isLast, fullWidth }: { message: ChatMessage; i
           { backgroundColor: isUser ? colors.bgElevated : 'transparent', borderColor: isUser ? colors.border : 'transparent' },
           isUser && styles.messageContentUser,
           fullWidth && styles.messageContentFull,
+          hasToolContent && styles.messageContentWithTools,
         ]}
       >
-        <Text style={[styles.messageText, { color: colors.text }]}>{message.content}</Text>
+        <MessageContent
+          content={message.content}
+          toolCalls={message.toolCalls}
+          pendingQuestions={message.pendingQuestions}
+          isUser={isUser}
+        />
       </View>
     </Animated.View>
   );
@@ -279,13 +333,11 @@ const styles = StyleSheet.create({
     maxWidth: '60%',
   },
   chatSelectorText: { fontSize: typography.sm, fontWeight: typography.semibold },
-  chatSelectorChevron: { fontSize: typography.xs },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing[0.5] },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing[1] },
   headerBtn: { width: 32, height: 32, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center' },
-  headerBtnIcon: { fontSize: typography.base },
   tooltip: {
     position: 'absolute',
-    top: 36,
+    top: 38,
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
@@ -298,6 +350,25 @@ const styles = StyleSheet.create({
   },
   tooltipText: { fontSize: typography.sm, fontWeight: typography.medium },
   tooltipShortcut: { fontSize: typography.xs },
+  menuBackdrop: { position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 199 },
+  modeMenu: {
+    position: 'absolute',
+    top: 38,
+    right: 0,
+    minWidth: 160,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    paddingVertical: spacing[1],
+    zIndex: 200,
+  },
+  modeMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    gap: spacing[2],
+  },
+  modeMenuText: { flex: 1, fontSize: typography.sm },
   content: { flex: 1 },
   messages: { flex: 1 },
   messagesContent: { padding: spacing[4], gap: spacing[4] },
@@ -309,7 +380,7 @@ const styles = StyleSheet.create({
   messageContent: { flex: 1, maxWidth: '85%', padding: spacing[3], borderRadius: radii.lg, borderWidth: 1 },
   messageContentUser: { flex: 0, marginLeft: 'auto' },
   messageContentFull: { maxWidth: '70%' },
-  messageText: { fontSize: typography.sm, lineHeight: typography.sm * typography.normal },
+  messageContentWithTools: { maxWidth: '100%', flex: 1 },
   streamingIndicator: { flexDirection: 'row', alignItems: 'center', gap: spacing[2], paddingVertical: spacing[2] },
   streamingText: { fontSize: typography.sm, fontStyle: 'italic' },
   inputContainer: { padding: spacing[3], borderTopWidth: StyleSheet.hairlineWidth },
