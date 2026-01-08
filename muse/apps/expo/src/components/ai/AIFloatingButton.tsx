@@ -66,7 +66,7 @@ export function AIFloatingButton({ hasUnread = false }: AIFloatingButtonProps) {
   };
 
   const handlePress = () => {
-    setAIPanelMode(aiPanelMode === 'hidden' ? 'sticky' : 'hidden');
+    setAIPanelMode(aiPanelMode === 'hidden' ? 'side' : 'hidden');
   };
 
   const buttonStyle = useAnimatedStyle(() => ({

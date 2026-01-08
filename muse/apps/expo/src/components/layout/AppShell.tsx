@@ -1,5 +1,4 @@
-import { View, StyleSheet, useWindowDimensions, Platform } from 'react-native';
-import { useRef } from 'react';
+import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
 import { useTheme, sizing } from '@/design-system';
@@ -29,45 +28,53 @@ export function AppShell({ children }: AppShellProps) {
   const isTablet = width >= TABLET_BREAKPOINT;
   const isDesktop = width >= DESKTOP_BREAKPOINT;
   const showSidebar = isTablet;
-  const showAIPanel = isDesktop && aiPanelMode !== 'hidden';
-  const aiPanelSticky = aiPanelMode === 'sticky';
 
   const currentSidebarWidth = sidebarCollapsed ? sizing.sidebarCollapsed : sidebarWidth;
 
+  // AI Panel mode logic
+  const showSidePanel = isDesktop && aiPanelMode === 'side';
+  const showFloating = aiPanelMode === 'floating';
+  const showFull = aiPanelMode === 'full';
+  const showFAB = aiPanelMode === 'hidden';
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
+      {/* Sidebar */}
       {showSidebar && (
         <View style={[styles.sidebarContainer, { width: currentSidebarWidth }]}>
           <View style={[styles.sidebar, { backgroundColor: colors.sidebarBg, borderRightColor: colors.border }]}>
             <Sidebar />
           </View>
           {!sidebarCollapsed && (
-            <ResizeHandle
-              side="right"
-              onResize={setSidebarWidth}
-              currentWidth={sidebarWidth}
-            />
+            <ResizeHandle side="right" onResize={setSidebarWidth} currentWidth={sidebarWidth} />
           )}
         </View>
       )}
 
-      <View style={styles.main}>{children}</View>
+      {/* Main content OR Full AI Panel */}
+      {showFull ? (
+        <View style={styles.main}>
+          <AIPanel mode="full" />
+        </View>
+      ) : (
+        <View style={styles.main}>{children}</View>
+      )}
 
-      {showAIPanel && aiPanelSticky && (
+      {/* Side Panel (docked right) */}
+      {showSidePanel && (
         <View style={[styles.aiPanelContainer, { width: aiPanelWidth }]}>
-          <ResizeHandle
-            side="left"
-            onResize={setAIPanelWidth}
-            currentWidth={aiPanelWidth}
-          />
+          <ResizeHandle side="left" onResize={setAIPanelWidth} currentWidth={aiPanelWidth} />
           <View style={[styles.aiPanel, { backgroundColor: colors.sidebarBg, borderLeftColor: colors.border }]}>
-            <AIPanel />
+            <AIPanel mode="side" />
           </View>
         </View>
       )}
 
-      {showAIPanel && !aiPanelSticky && <AIPanel floating />}
-      <AIFloatingButton />
+      {/* Floating Panel */}
+      {showFloating && <AIPanel mode="floating" />}
+
+      {/* FAB to reopen */}
+      {showFAB && <AIFloatingButton />}
     </View>
   );
 }
@@ -84,70 +91,37 @@ function ResizeHandle({ side, onResize, currentWidth }: ResizeHandleProps) {
   const isHovered = useSharedValue(false);
 
   const pan = Gesture.Pan()
-    .onStart(() => {
-      startWidth.value = currentWidth;
-    })
+    .onStart(() => { startWidth.value = currentWidth; })
     .onUpdate((e) => {
       const delta = side === 'right' ? e.translationX : -e.translationX;
-      const newWidth = startWidth.value + delta;
-      runOnJS(onResize)(newWidth);
+      runOnJS(onResize)(startWidth.value + delta);
     });
 
   const hover = Gesture.Hover()
     .onStart(() => { isHovered.value = true; })
     .onEnd(() => { isHovered.value = false; });
 
-  const composed = Gesture.Simultaneous(pan, hover);
-
   const animatedStyle = useAnimatedStyle(() => ({
     backgroundColor: isHovered.value ? colors.accent : 'transparent',
   }));
 
   return (
-    <GestureDetector gesture={composed}>
+    <GestureDetector gesture={Gesture.Simultaneous(pan, hover)}>
       <Animated.View
-        style={[
-          styles.resizeHandle,
-          side === 'left' ? styles.resizeLeft : styles.resizeRight,
-          animatedStyle,
-        ]}
+        style={[styles.resizeHandle, side === 'left' ? styles.resizeLeft : styles.resizeRight, animatedStyle]}
       />
     </GestureDetector>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  sidebarContainer: {
-    flexDirection: 'row',
-  },
-  sidebar: {
-    flex: 1,
-    borderRightWidth: StyleSheet.hairlineWidth,
-  },
-  main: {
-    flex: 1,
-  },
-  aiPanelContainer: {
-    flexDirection: 'row',
-  },
-  aiPanel: {
-    flex: 1,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-  },
-  resizeHandle: {
-    width: 4,
-    cursor: 'pointer' as const,
-  },
-  resizeLeft: {
-    marginRight: -2,
-    zIndex: 10,
-  },
-  resizeRight: {
-    marginLeft: -2,
-    zIndex: 10,
-  },
+  container: { flex: 1, flexDirection: 'row' },
+  sidebarContainer: { flexDirection: 'row' },
+  sidebar: { flex: 1, borderRightWidth: StyleSheet.hairlineWidth },
+  main: { flex: 1 },
+  aiPanelContainer: { flexDirection: 'row' },
+  aiPanel: { flex: 1, borderLeftWidth: StyleSheet.hairlineWidth },
+  resizeHandle: { width: 4, cursor: 'pointer' as const },
+  resizeLeft: { marginRight: -2, zIndex: 10 },
+  resizeRight: { marginLeft: -2, zIndex: 10 },
 });

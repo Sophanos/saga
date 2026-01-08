@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { sizing } from './tokens';
 
 export type ViewMode = 'home' | 'project';
-export type AIPanelMode = 'hidden' | 'sticky' | 'floating';
+export type AIPanelMode = 'hidden' | 'side' | 'floating' | 'full';
 
 interface LayoutState {
   // Sidebar
@@ -18,7 +18,7 @@ interface LayoutState {
   enterProject: (projectId: string) => void;
   exitProject: () => void;
 
-  // AI Panel
+  // AI Panel - three modes: side (docked), floating (overlay), full (main area)
   aiPanelMode: AIPanelMode;
   aiPanelWidth: number;
   aiPanelPosition: { x: number; y: number };
@@ -26,6 +26,7 @@ interface LayoutState {
   setAIPanelWidth: (width: number) => void;
   setAIPanelPosition: (pos: { x: number; y: number }) => void;
   toggleAIPanel: () => void;
+  cycleAIPanelMode: () => void;
 }
 
 const MIN_SIDEBAR_WIDTH = 200;
@@ -47,7 +48,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   enterProject: (projectId) => set({ viewMode: 'project', currentProjectId: projectId }),
   exitProject: () => set({ viewMode: 'home', currentProjectId: null }),
 
-  aiPanelMode: 'sticky',
+  aiPanelMode: 'side',
   aiPanelWidth: sizing.rightPanelWidth,
   aiPanelPosition: { x: 0, y: 0 },
   setAIPanelMode: (mode) => set({ aiPanelMode: mode }),
@@ -57,7 +58,14 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   setAIPanelPosition: (pos) => set({ aiPanelPosition: pos }),
   toggleAIPanel: () => {
     const current = get().aiPanelMode;
-    set({ aiPanelMode: current === 'hidden' ? 'sticky' : 'hidden' });
+    set({ aiPanelMode: current === 'hidden' ? 'side' : 'hidden' });
+  },
+  cycleAIPanelMode: () => {
+    const modes: AIPanelMode[] = ['side', 'floating', 'full'];
+    const current = get().aiPanelMode;
+    const idx = modes.indexOf(current);
+    const next = modes[(idx + 1) % modes.length];
+    set({ aiPanelMode: next });
   },
 }));
 
