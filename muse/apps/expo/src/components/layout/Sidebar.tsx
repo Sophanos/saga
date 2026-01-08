@@ -6,8 +6,10 @@
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { useTheme, spacing, sizing, typography, radii, entityColors } from '@/design-system';
+import { Feather } from '@expo/vector-icons';
+import { useTheme, spacing, typography, radii } from '@/design-system';
 import { useLayoutStore } from '@/design-system/layout';
+import { useCommandPaletteStore } from '@/stores/commandPalette';
 
 // Entity type config
 const ENTITY_TYPES = [
@@ -22,20 +24,23 @@ const ENTITY_TYPES = [
 
 export function Sidebar() {
   const { colors } = useTheme();
-  const { sidebarCollapsed, toggleSidebar } = useLayoutStore();
+  const { toggleSidebar } = useLayoutStore();
+  const { open: openCommandPalette } = useCommandPaletteStore();
   const router = useRouter();
-
-  if (sidebarCollapsed) {
-    return <CollapsedSidebar />;
-  }
 
   return (
     <View style={[styles.container, { borderRightColor: colors.border }]}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.logo, { color: colors.text }]}>📖 Mythos</Text>
-        <Pressable onPress={toggleSidebar} style={styles.collapseBtn}>
-          <Text style={{ color: colors.textMuted }}>◀</Text>
+        <Pressable
+          onPress={toggleSidebar}
+          style={({ pressed }) => [
+            styles.collapseBtn,
+            { backgroundColor: pressed ? colors.bgHover : 'transparent' },
+          ]}
+        >
+          <Feather name="sidebar" size={18} color={colors.textMuted} />
         </Pressable>
       </View>
 
@@ -59,39 +64,27 @@ export function Sidebar() {
         </Pressable>
       </View>
 
+      {/* Quick Search */}
+      <Pressable
+        onPress={openCommandPalette}
+        style={({ pressed, hovered }) => [
+          styles.searchRow,
+          { borderColor: colors.border },
+          (pressed || hovered) && { backgroundColor: colors.bgHover },
+        ]}
+      >
+        <Feather name="search" size={14} color={colors.textMuted} />
+        <Text style={[styles.searchText, { color: colors.textMuted }]}>Quick search...</Text>
+        <Text style={[styles.searchKbd, { color: colors.textMuted, backgroundColor: colors.bgHover }]}>⌘K</Text>
+      </Pressable>
+
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <ProjectView />
       </ScrollView>
 
       {/* Footer */}
       <View style={[styles.footer, { borderTopColor: colors.border }]}>
-        <SidebarItem icon="⌘" label="Shortcuts" onPress={() => {}} />
-        <SidebarItem icon="⚙" label="Settings" onPress={() => router.push('/settings')} />
-      </View>
-    </View>
-  );
-}
-
-function CollapsedSidebar() {
-  const { colors } = useTheme();
-  const { toggleSidebar, toggleAIPanel } = useLayoutStore();
-
-  return (
-    <View style={[styles.collapsed, { borderRightColor: colors.border }]}>
-      <Pressable onPress={toggleSidebar} style={styles.collapsedBtn}>
-        <Text style={{ color: colors.textMuted, fontSize: 18 }}>☰</Text>
-      </Pressable>
-
-      <View style={styles.collapsedIcons}>
-        <Pressable style={styles.collapsedBtn}>
-          <Text style={{ color: colors.textMuted }}>🏠</Text>
-        </Pressable>
-        <Pressable style={styles.collapsedBtn}>
-          <Text style={{ color: colors.textMuted }}>🔍</Text>
-        </Pressable>
-        <Pressable onPress={toggleAIPanel} style={styles.collapsedBtn}>
-          <Text style={{ color: colors.textMuted }}>🤖</Text>
-        </Pressable>
+        <SidebarItem icon="settings" label="Settings" shortcut="⌘," onPress={() => router.push('/settings')} />
       </View>
     </View>
   );
@@ -179,10 +172,12 @@ interface SidebarItemProps {
   onPress: () => void;
   active?: boolean;
   small?: boolean;
+  shortcut?: string;
 }
 
-function SidebarItem({ icon, label, onPress, active, small }: SidebarItemProps) {
+function SidebarItem({ icon, label, onPress, active, small, shortcut }: SidebarItemProps) {
   const { colors } = useTheme();
+  const isFeatherIcon = !icon.match(/[\u{1F300}-\u{1F9FF}]/u) && icon.length > 1;
 
   return (
     <Pressable
@@ -194,11 +189,18 @@ function SidebarItem({ icon, label, onPress, active, small }: SidebarItemProps) 
       ]}
     >
       <View style={[styles.itemIcon, { backgroundColor: colors.bgHover }]}>
-        <Text style={[styles.itemIconText, { color: colors.text }, small && { fontSize: 8 }]}>{icon}</Text>
+        {isFeatherIcon ? (
+          <Feather name={icon as any} size={small ? 10 : 14} color={colors.textMuted} />
+        ) : (
+          <Text style={[styles.itemIconText, { color: colors.text }, small && { fontSize: 8 }]}>{icon}</Text>
+        )}
       </View>
       <Text style={[styles.itemLabel, { color: colors.textSecondary }]} numberOfLines={1}>
         {label}
       </Text>
+      {shortcut && (
+        <Text style={[styles.shortcut, { color: colors.textMuted }]}>{shortcut}</Text>
+      )}
     </Pressable>
   );
 }
@@ -206,24 +208,6 @@ function SidebarItem({ icon, label, onPress, active, small }: SidebarItemProps) 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    borderRightWidth: StyleSheet.hairlineWidth,
-  },
-  collapsed: {
-    flex: 1,
-    alignItems: 'center',
-    paddingTop: spacing[4],
-    borderRightWidth: StyleSheet.hairlineWidth,
-  },
-  collapsedBtn: {
-    padding: spacing[2],
-    minWidth: sizing.minTouchTarget,
-    minHeight: sizing.minTouchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  collapsedIcons: {
-    marginTop: spacing[4],
-    gap: spacing[2],
   },
   header: {
     flexDirection: 'row',
@@ -237,13 +221,39 @@ const styles = StyleSheet.create({
     fontWeight: typography.semibold,
   },
   collapseBtn: {
-    padding: spacing[2],
+    width: 32,
+    height: 32,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   projectRow: {
     flexDirection: 'row',
     paddingHorizontal: spacing[3],
     gap: spacing[2],
+    marginBottom: spacing[2],
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing[3],
     marginBottom: spacing[3],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing[2],
+  },
+  searchText: {
+    flex: 1,
+    fontSize: typography.sm,
+  },
+  searchKbd: {
+    fontSize: 10,
+    fontFamily: 'monospace',
+    paddingHorizontal: spacing[2],
+    paddingVertical: 2,
+    borderRadius: radii.sm,
   },
   projectPicker: {
     flex: 1,
@@ -345,6 +355,10 @@ const styles = StyleSheet.create({
   itemLabel: {
     flex: 1,
     fontSize: typography.sm,
+  },
+  shortcut: {
+    fontSize: 10,
+    fontFamily: 'monospace',
   },
   footer: {
     borderTopWidth: StyleSheet.hairlineWidth,
