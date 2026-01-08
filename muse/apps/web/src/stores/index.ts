@@ -21,6 +21,8 @@ import type {
   ToolArtifactKind,
   ToolArtifact,
   ToolProgress,
+  WriteContentArgs,
+  WriteContentOperation,
 } from "@mythos/agent-protocol";
 
 // Re-export for backwards compatibility
@@ -187,6 +189,10 @@ export interface ChatToolInvocation {
   toolCallId: string;
   /** Approval ID for AI SDK tool approval flow */
   approvalId?: string;
+  /** Prompt message ID that triggered the tool call */
+  promptMessageId?: string;
+  /** Snapshot of selection for write_content */
+  selectionRange?: { from: number; to: number };
   /** Which tool is being invoked */
   toolName: ToolName;
   /** Tool-specific arguments */
@@ -242,10 +248,14 @@ export interface ChatContextItem {
 }
 
 export interface ChatContext {
+  /** Agent thread ID for this conversation */
+  threadId?: string;
   /** Retrieved documents from RAG */
   documents: ChatContextItem[];
   /** Retrieved entities from RAG */
   entities: ChatContextItem[];
+  /** Retrieved memories from RAG */
+  memories?: ChatContextItem[];
 }
 
 // UUID generator helper
@@ -367,6 +377,14 @@ interface MythosStore {
   setChatError: (error: string | null) => void;
   setChatContext: (context: ChatContext | null) => void;
   setConversationName: (name: string | null) => void;
+  setConversationId: (id: string) => void;
+  applyWriteContentSuggestion: (toolCallId: string) => Promise<{
+    applied: boolean;
+    appliedOperation?: string;
+    summary?: string;
+    insertedTextPreview?: string;
+    error?: string;
+  }>;
   clearChat: () => void;
   startNewConversation: () => void;
   // Session history actions
@@ -804,6 +822,84 @@ export const useMythosStore = create<MythosStore>()(
       // Persist updated session
       const { conversationId, conversationName, isNewConversation } = get().chat;
       saveChatSession({ conversationId, conversationName, isNewConversation });
+    },
+    setConversationId: (id) => {
+      set((state) => {
+        state.chat.conversationId = id;
+      });
+      const { conversationName, isNewConversation } = get().chat;
+      saveChatSession({ conversationId: id, conversationName, isNewConversation });
+    },
+    applyWriteContentSuggestion: async (toolCallId) => {
+      const state = get();
+      const editor = state.editor.editorInstance as Editor | null;
+      if (!editor || editor.isDestroyed) {
+        return { applied: false, error: "Editor is not available" };
+      }
+
+      const message = state.chat.messages.find((m) => m.id === toolCallId);
+      const tool = message?.tool;
+      if (!tool || tool.toolName !== "write_content") {
+        return { applied: false, error: "Write content tool not found" };
+      }
+
+      const args = tool.args as WriteContentArgs;
+      if (!args.content?.trim()) {
+        return { applied: false, error: "No content provided" };
+      }
+
+      const operation: WriteContentOperation =
+        args.operation ?? "insert_at_cursor";
+      let insertFrom = editor.state.selection.from;
+      let insertTo = editor.state.selection.to;
+
+      if (operation === "replace_selection") {
+        const selection = tool.selectionRange ?? { from: insertFrom, to: insertTo };
+        if (selection.from === selection.to) {
+          return { applied: false, error: "No selection to replace" };
+        }
+        insertFrom = selection.from;
+        insertTo = selection.to;
+        editor.chain().focus().insertContentAt({ from: insertFrom, to: insertTo }, args.content).run();
+      } else if (operation === "append_document") {
+        const docEnd = editor.state.doc.content.size;
+        insertFrom = docEnd;
+        editor.chain().focus().insertContentAt(docEnd, args.content).run();
+      } else {
+        insertFrom = editor.state.selection.from;
+        editor.chain().focus().insertContentAt(insertFrom, args.content).run();
+      }
+
+      const endPos = editor.state.selection.from;
+      if (endPos > insertFrom) {
+        editor
+          .chain()
+          .setTextSelection({ from: insertFrom, to: endPos })
+          .setAIGeneratedMark({
+            aiId: toolCallId,
+            aiTool: tool.toolName,
+            aiTimestamp: new Date().toISOString(),
+            aiStatus: "accepted",
+          })
+          .run();
+        editor.commands.setTextSelection(endPos);
+      }
+
+      const insertedTextPreview =
+        args.content.length > 120 ? `${args.content.slice(0, 117)}...` : args.content;
+      const summary =
+        operation === "replace_selection"
+          ? "Replaced selected text"
+          : operation === "append_document"
+            ? "Appended content"
+            : "Inserted content";
+
+      return {
+        applied: true,
+        appliedOperation: operation,
+        summary,
+        insertedTextPreview,
+      };
     },
     clearChat: () =>
       set((state) => {

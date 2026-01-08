@@ -3,15 +3,17 @@ import { User, Bot, Loader2 } from "lucide-react";
 import { ScrollArea, cn } from "@mythos/ui";
 import { formatTime24 } from "@mythos/core";
 import type { ChatMessage } from "../../../stores";
+import type { SagaSessionWriter } from "../../../hooks/useSessionHistory";
 import { ToolResultCard } from "./ToolResultCard";
 
 interface ChatMessagesProps {
   messages: ChatMessage[];
   isStreaming: boolean;
   className?: string;
+  sessionWriter?: SagaSessionWriter;
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, sessionWriter }: { message: ChatMessage; sessionWriter?: SagaSessionWriter }) {
   const isUser = message.role === "user";
   const isTool = message.kind === "tool" && message.tool;
 
@@ -55,7 +57,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         >
           {/* Render content or tool result */}
           {isTool ? (
-            <ToolResultCard messageId={message.id} tool={message.tool!} />
+            <ToolResultCard messageId={message.id} tool={message.tool!} sessionWriter={sessionWriter} />
           ) : (
             <div className="whitespace-pre-wrap break-words prose prose-invert prose-sm max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0">
               {message.content}
@@ -96,6 +98,7 @@ export function ChatMessages({
   messages,
   isStreaming,
   className,
+  sessionWriter,
 }: ChatMessagesProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -126,7 +129,7 @@ export function ChatMessages({
     <ScrollArea className={cn("flex-1", className)} ref={scrollRef}>
       <div className="py-2">
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <MessageBubble key={message.id} message={message} sessionWriter={sessionWriter} />
         ))}
 
         {/* Loading indicator */}

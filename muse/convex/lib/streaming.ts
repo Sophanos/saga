@@ -24,6 +24,7 @@ export interface SSEToolEvent {
   toolCallId: string;
   toolName: string;
   args: unknown;
+  promptMessageId?: string;
 }
 
 export interface SSEToolApprovalRequestEvent {
@@ -32,6 +33,7 @@ export interface SSEToolApprovalRequestEvent {
   toolCallId?: string;
   toolName: string;
   args: unknown;
+  promptMessageId?: string;
 }
 
 export interface SSEErrorEvent {
@@ -72,16 +74,18 @@ export function createDeltaEvent(content: string): Uint8Array {
 export function createToolEvent(
   toolCallId: string,
   toolName: string,
-  args: unknown
+  args: unknown,
+  promptMessageId?: string
 ): Uint8Array {
-  return encodeSSEEvent({ type: "tool", toolCallId, toolName, args });
+  return encodeSSEEvent({ type: "tool", toolCallId, toolName, args, promptMessageId });
 }
 
 export function createToolApprovalRequestEvent(
   approvalId: string,
   toolName: string,
   args: unknown,
-  toolCallId?: string
+  toolCallId?: string,
+  promptMessageId?: string
 ): Uint8Array {
   return encodeSSEEvent({
     type: "tool-approval-request",
@@ -89,6 +93,7 @@ export function createToolApprovalRequestEvent(
     toolCallId,
     toolName,
     args,
+    promptMessageId,
   });
 }
 
@@ -123,20 +128,21 @@ export class SSEStreamController {
     this.controller.enqueue(createDeltaEvent(content));
   }
 
-  sendTool(toolCallId: string, toolName: string, args: unknown): void {
+  sendTool(toolCallId: string, toolName: string, args: unknown, promptMessageId?: string): void {
     if (this.closed) return;
-    this.controller.enqueue(createToolEvent(toolCallId, toolName, args));
+    this.controller.enqueue(createToolEvent(toolCallId, toolName, args, promptMessageId));
   }
 
   sendToolApprovalRequest(
     approvalId: string,
     toolName: string,
     args: unknown,
-    toolCallId?: string
+    toolCallId?: string,
+    promptMessageId?: string
   ): void {
     if (this.closed) return;
     this.controller.enqueue(
-      createToolApprovalRequestEvent(approvalId, toolName, args, toolCallId)
+      createToolApprovalRequestEvent(approvalId, toolName, args, toolCallId, promptMessageId)
     );
   }
 

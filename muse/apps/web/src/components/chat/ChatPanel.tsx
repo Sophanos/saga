@@ -319,7 +319,8 @@ export function ChatPanel({
             <ChatMessages
               messages={messages}
               isStreaming={isStreaming}
-              className="flex-1 min-h-0"
+              className="flex-1"
+              sessionWriter={sessionWriter}
             />
           )}
 

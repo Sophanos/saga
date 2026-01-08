@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useEditor, EditorContent, StarterKit, Placeholder } from "@mythos/editor";
-import { EntityMark, LinterDecoration } from "@mythos/editor";
+import { EntityMark, LinterDecoration, AIGeneratedMark } from "@mythos/editor";
 import { useEntityClick } from "../../hooks/useEntityClick";
 import { useMythosStore, useLinterIssues } from "../../stores";
 
@@ -28,6 +28,7 @@ export function MythosEditor() {
         placeholder: "Begin your story...",
       }),
       EntityMark,
+      AIGeneratedMark,
       LinterDecoration,
     ],
     content: INITIAL_CONTENT,

@@ -5,6 +5,7 @@ import {
   StarterKit,
   Placeholder,
   EntityMark,
+  AIGeneratedMark,
   LinterDecoration,
   StyleDecoration,
   PasteHandler,
@@ -256,6 +257,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
           : "Select or create a document to begin...",
       }),
       EntityMark,
+      AIGeneratedMark,
       LinterDecoration,
       StyleDecoration.configure({
         onIssueSelect: (issueId) => setSelectedStyleIssueId(issueId),

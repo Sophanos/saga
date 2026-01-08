@@ -91,6 +91,17 @@
   background-color: rgba(168, 85, 247, 0.1);
 }
 
+/* AI-generated text provenance */
+.ai-generated {
+  background-color: rgba(56, 189, 248, 0.12);
+  box-shadow: inset 0 -1px 0 rgba(56, 189, 248, 0.55);
+  border-radius: 2px;
+}
+
+.ai-generated:hover {
+  background-color: rgba(56, 189, 248, 0.18);
+}
+
 /* Resize handle styling */
 [data-panel-group-direction="horizontal"] > [data-panel-resize-handle-id] {
   @apply w-1 bg-mythos-bg-tertiary transition-colors;

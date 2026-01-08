@@ -14,6 +14,7 @@ import type { ToolName, ToolProgress } from "./tools";
  * Context data sent at the start of a response.
  */
 export interface RAGContext {
+  threadId?: string;
   documents: Array<{
     id: string;
     title: string;
@@ -23,6 +24,11 @@ export interface RAGContext {
     id: string;
     name: string;
     type: string;
+    preview: string;
+  }>;
+  memories?: Array<{
+    id: string;
+    category: string;
     preview: string;
   }>;
 }
@@ -67,6 +73,7 @@ export interface ToolEvent {
   toolCallId: string;
   toolName: ToolName;
   args: unknown;
+  promptMessageId?: string;
 }
 
 /**
@@ -81,6 +88,7 @@ export interface ToolApprovalRequestEvent {
   toolCallId?: string;
   toolName: ToolName;
   args: unknown;
+  promptMessageId?: string;
 }
 
 /**

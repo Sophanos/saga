@@ -25,6 +25,8 @@ import { clarityCheckExecutor } from "./executors/clarityCheck";
 import { checkLogicExecutor } from "./executors/checkLogic";
 import { nameGeneratorExecutor } from "./executors/nameGenerator";
 import { commitDecisionExecutor } from "./executors/commitDecision";
+import { askQuestionExecutor } from "./executors/askQuestion";
+import { writeContentExecutor } from "./executors/writeContent";
 // Image search tools
 import { searchImagesExecutor } from "./executors/searchImages";
 import { findSimilarImagesExecutor } from "./executors/findSimilarImages";
@@ -59,6 +61,8 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   check_logic: checkLogicExecutor as ToolDefinition<unknown, unknown>,
   name_generator: nameGeneratorExecutor as ToolDefinition<unknown, unknown>,
   commit_decision: commitDecisionExecutor as ToolDefinition<unknown, unknown>,
+  ask_question: askQuestionExecutor as ToolDefinition<unknown, unknown>,
+  write_content: writeContentExecutor as ToolDefinition<unknown, unknown>,
   // Image search tools
   search_images: searchImagesExecutor as ToolDefinition<unknown, unknown>,
   find_similar_images: findSimilarImagesExecutor as ToolDefinition<unknown, unknown>,

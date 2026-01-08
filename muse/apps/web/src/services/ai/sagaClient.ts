@@ -130,20 +130,21 @@ export interface SagaMessagePayload {
 }
 
 export interface SagaChatPayload {
-  messages: SagaMessagePayload[];
+  prompt: string;
   projectId: string;
   mentions?: ChatMention[];
   editorContext?: EditorContext;
   contextHints?: UnifiedContextHints;
   mode?: SagaMode;
-  /** Conversation ID for session memory continuity */
-  conversationId?: string;
+  /** Agent thread ID for session continuity */
+  threadId?: string;
 }
 
 export interface ToolCallResult {
   toolCallId: string;
   toolName: ToolName;
   args: unknown;
+  promptMessageId?: string;
 }
 
 /** Alias for AgentStreamEventType - same event types used for Saga streaming */
@@ -157,6 +158,7 @@ export interface SagaStreamEvent {
   approvalId?: string;
   toolName?: string;
   args?: unknown;
+  promptMessageId?: string;
   message?: string;
   progress?: { pct?: number; stage?: string };
 }
@@ -169,6 +171,7 @@ export interface ToolApprovalRequest {
   toolCallId?: string;
   toolName: ToolName;
   args: unknown;
+  promptMessageId?: string;
 }
 
 export interface SagaStreamOptions {
@@ -275,6 +278,7 @@ function handleSSEEvent(
           toolCallId: event.toolCallId,
           toolName: event.toolName as ToolName,
           args: event.args,
+          promptMessageId: event.promptMessageId,
         });
       }
       return false;
@@ -287,6 +291,7 @@ function handleSSEEvent(
           toolCallId: event.toolCallId,
           toolName: event.toolName as ToolName,
           args: event.args,
+          promptMessageId: event.promptMessageId,
         });
       }
       return false;
@@ -596,6 +601,90 @@ export async function executeNameGenerator(
   opts?: ExecuteToolOptions
 ): Promise<NameGeneratorResult> {
   return executeSagaTool<NameGeneratorResult>("name_generator", input, opts);
+}
+
+// =============================================================================
+// Tool Result API (Human-in-the-loop continuation)
+// =============================================================================
+
+export interface ToolResultPayload {
+  projectId: string;
+  threadId: string;
+  promptMessageId: string;
+  toolCallId: string;
+  toolName: ToolName;
+  result: unknown;
+  editorContext?: EditorContext;
+}
+
+export async function sendToolResultStreaming(
+  payload: ToolResultPayload,
+  opts?: SagaStreamOptions
+): Promise<void> {
+  const { signal, apiKey, authToken, onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError } =
+    opts ?? {};
+
+  const url = getAIEndpoint('/ai/saga');
+
+  const resolvedAuthHeader = await resolveAuthHeader(authToken);
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    // Only include Supabase apikey when using Supabase Edge Functions
+    ...(!USE_CONVEX_AI && SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
+    ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
+    ...getAnonHeaders(),
+  };
+
+  if (apiKey) {
+    headers["x-openrouter-key"] = apiKey;
+  }
+
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ kind: "tool-result", ...payload }),
+      signal: createTimeoutSignal(API_TIMEOUTS.SSE_CONNECTION_MS, signal),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Tool result failed: ${response.status}`;
+      let errorCode: SagaApiErrorCode = "UNKNOWN_ERROR";
+
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorMessage;
+        errorCode = errorJson.code || errorCode;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+
+      throw new SagaApiError(errorMessage, response.status, errorCode);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new SagaApiError("No response body", 500);
+    }
+
+    await processSSEStream(reader, { onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError });
+  } catch (error) {
+    if (error instanceof SagaApiError) {
+      onError?.(error);
+    } else if (error instanceof Error) {
+      if (error.name === "AbortError") {
+        return;
+      }
+      onError?.(new SagaApiError(error.message));
+    } else {
+      onError?.(new SagaApiError("Unknown error occurred"));
+    }
+  }
 }
 
 // =============================================================================

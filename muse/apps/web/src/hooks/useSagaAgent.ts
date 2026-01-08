@@ -17,7 +17,6 @@ import { useCallback, useRef, useEffect } from "react";
 import {
   generateMessageId,
   createGetErrorMessage,
-  type BaseMessagePayload,
   type ToolCallResult,
 } from "./createAgentHook";
 import {
@@ -109,6 +108,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
   const currentProject = useMythosStore((s) => s.project.currentProject);
   const isStreaming = useMythosStore((s) => s.chat.isStreaming);
   const error = useMythosStore((s) => s.chat.error);
+  const isNewConversation = useMythosStore((s) => s.chat.isNewConversation);
   const authUser = useAuthStore((s) => s.user);
   const anonPersonalization = useAnonymousStore((s) => s.personalization);
 
@@ -118,6 +118,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
   const setChatStreaming = useMythosStore((s) => s.setChatStreaming);
   const setChatError = useMythosStore((s) => s.setChatError);
   const setChatContext = useMythosStore((s) => s.setChatContext);
+  const setConversationId = useMythosStore((s) => s.setConversationId);
   const startNewConversation = useMythosStore((s) => s.startNewConversation);
   const clearChatMessages = useMythosStore((s) => s.clearChat);
   const updateToolInvocation = useMythosStore((s) => s.updateToolInvocation);
@@ -133,6 +134,44 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
 
   // Ref for current mode (avoids re-renders for mode changes)
   const modeRef = useRef<SagaMode>(initialMode);
+
+  // Pending session persistence for server-assigned thread IDs
+  const pendingSessionMessagesRef = useRef<ChatMessage[]>([]);
+  const deferSessionPersistRef = useRef(false);
+
+  const persistSessionMessage = useCallback(
+    (message: ChatMessage) => {
+      if (!sessionWriter) return;
+      if (deferSessionPersistRef.current) {
+        pendingSessionMessagesRef.current.push(message);
+        return;
+      }
+      if (message.kind === "tool") {
+        sessionWriter.persistToolMessage?.(message);
+      } else if (message.role === "user") {
+        sessionWriter.persistUserMessage?.(message);
+      } else {
+        sessionWriter.persistAssistantMessage?.(message);
+      }
+    },
+    [sessionWriter]
+  );
+
+  const flushPendingSessionMessages = useCallback(() => {
+    if (!sessionWriter) return;
+    const pending = pendingSessionMessagesRef.current;
+    pendingSessionMessagesRef.current = [];
+    deferSessionPersistRef.current = false;
+    for (const message of pending) {
+      if (message.kind === "tool") {
+        sessionWriter.persistToolMessage?.(message);
+      } else if (message.role === "user") {
+        sessionWriter.persistUserMessage?.(message);
+      } else {
+        sessionWriter.persistAssistantMessage?.(message);
+      }
+    }
+  }, [sessionWriter]);
 
   /**
    * Set the current saga mode
@@ -160,8 +199,17 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
     };
   }, [editorChatContext]);
 
+  const getSelectionRange = useCallback(() => {
+    const editor = useMythosStore.getState().editor.editorInstance as
+      | { state: { selection: { from: number; to: number } }; isDestroyed?: boolean }
+      | null;
+    if (!editor || editor.isDestroyed) return undefined;
+    const { from, to } = editor.state.selection;
+    return { from, to };
+  }, []);
+
   const buildContextHintsPayload = useCallback(
-    (conversationId?: string) => {
+    (threadId?: string) => {
       const state = useMythosStore.getState();
       const editorContext = buildEditorContext();
 
@@ -186,7 +234,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
         entities: Array.from(state.world.entities.values()),
         relationships: state.world.relationships,
         editorContext,
-        conversationId,
+        conversationId: threadId,
         projectContext,
       });
 
@@ -229,8 +277,8 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
       // Add user message to store
       addChatMessage(userMessage);
 
-      // Persist user message to DB (fire-and-forget)
-      sessionWriter?.persistUserMessage?.(userMessage);
+      deferSessionPersistRef.current = isNewConversation;
+      persistSessionMessage(userMessage);
 
       // Create placeholder for assistant response
       const assistantMessageId = generateMessageId();
@@ -247,29 +295,20 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
       setChatError(null);
 
       try {
-        // Build messages array for API (excluding placeholder and tool messages)
-        const currentMessages = useMythosStore.getState().chat.messages;
-        const apiMessages: BaseMessagePayload[] = currentMessages
-          .filter((m) => m.role !== "system" && !m.isStreaming && m.kind !== "tool")
-          .map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          }));
+        const state = useMythosStore.getState();
+        const conversationId = state.chat.conversationId;
+        const threadId = state.chat.isNewConversation ? undefined : conversationId;
 
-        // Get conversationId from store (single source of truth)
-        const conversationId = useMythosStore.getState().chat.conversationId;
+        const contextHints = buildContextHintsPayload(threadId);
 
-        const contextHints = buildContextHintsPayload(conversationId);
-
-        // Build the payload with editor context
         const payload: SagaChatPayload = {
-          messages: apiMessages,
+          prompt: content.trim(),
           projectId,
           mentions,
           editorContext: buildEditorContext(),
           contextHints,
           mode: modeRef.current,
-          conversationId,
+          threadId,
         };
 
         await sendSagaChatStreaming(payload, {
@@ -277,15 +316,25 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
           apiKey: apiKey ?? undefined,
           onContext: (context: ChatContext) => {
             setChatContext(context);
+            const threadId = context.threadId;
+            if (threadId && threadId !== useMythosStore.getState().chat.conversationId) {
+              setConversationId(threadId);
+              if (deferSessionPersistRef.current) {
+                flushPendingSessionMessages();
+              }
+            }
           },
           onDelta: (delta: string) => {
             appendToChatMessage(assistantMessageId, delta);
           },
           onTool: (tool: ToolCallResult) => {
-            // Regular tool call (no approval needed or auto-approved)
-            // Create a tool message with the stable toolCallId from the LLM
+            const needsApproval =
+              tool.toolName === "ask_question" || tool.toolName === "write_content";
+            const selectionRange =
+              tool.toolName === "write_content" ? getSelectionRange() : undefined;
+
             const toolMessage: ChatMessage = {
-              id: tool.toolCallId, // Use the stable ID from the LLM
+              id: tool.toolCallId,
               role: "assistant",
               content: "",
               timestamp: new Date(),
@@ -294,22 +343,24 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
                 toolCallId: tool.toolCallId,
                 toolName: tool.toolName as ToolName,
                 args: tool.args,
+                promptMessageId: tool.promptMessageId,
+                selectionRange,
                 status: "proposed",
+                needsApproval,
               },
             };
             addChatMessage(toolMessage);
-            // Persist tool message to DB (fire-and-forget)
-            sessionWriter?.persistToolMessage?.(toolMessage);
+            persistSessionMessage(toolMessage);
           },
           onToolApprovalRequest: (request: ToolApprovalRequest) => {
             // AI SDK 6: Tool needs user approval before execution
-            // Create a tool message in "proposed" state (same as regular tools)
-            // The ToolResultCard will show approval UI
             const toolCallId = request.toolCallId ?? request.approvalId;
             if (!toolCallId) {
               console.warn("[useSagaAgent] tool-approval-request missing IDs");
               return;
             }
+            const selectionRange =
+              request.toolName === "write_content" ? getSelectionRange() : undefined;
             const toolMessage: ChatMessage = {
               id: toolCallId,
               role: "assistant",
@@ -321,14 +372,14 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
                 approvalId: request.approvalId,
                 toolName: request.toolName as ToolName,
                 args: request.args,
+                promptMessageId: request.promptMessageId,
+                selectionRange,
                 status: "proposed",
-                // Flag to indicate this came from SDK-level approval
                 needsApproval: true,
               },
             };
             addChatMessage(toolMessage);
-            // Persist tool message to DB (fire-and-forget)
-            sessionWriter?.persistToolMessage?.(toolMessage);
+            persistSessionMessage(toolMessage);
           },
           onProgress: (toolCallId: string, progress) => {
             // Update tool progress for long-running operations
@@ -337,11 +388,10 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
           onDone: () => {
             updateChatMessage(assistantMessageId, { isStreaming: false });
             setChatStreaming(false);
-            // Persist final assistant message to DB (fire-and-forget)
             const currentMsgs = useMythosStore.getState().chat.messages;
             const finalMessage = currentMsgs.find(m => m.id === assistantMessageId);
             if (finalMessage && finalMessage.content) {
-              sessionWriter?.persistAssistantMessage?.(finalMessage);
+              persistSessionMessage(finalMessage);
             }
           },
           onError: (err: Error) => {
@@ -383,15 +433,20 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
       enabled,
       currentProject?.id,
       apiKey,
+      isNewConversation,
       addChatMessage,
       updateChatMessage,
       appendToChatMessage,
       setChatStreaming,
       setChatError,
       setChatContext,
+      setConversationId,
       updateToolInvocation,
       buildEditorContext,
-      sessionWriter,
+      buildContextHintsPayload,
+      getSelectionRange,
+      persistSessionMessage,
+      flushPendingSessionMessages,
     ]
   );
 

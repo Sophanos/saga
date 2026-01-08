@@ -98,9 +98,22 @@ http.route({
 
     try {
       const body = await request.json();
-      const { kind = "chat", projectId, messages, mentions, mode, editorContext, contextHints, conversationId } = body as {
-        kind?: "chat" | "execute_tool" | "tool-approval";
+      const {
+        kind = "chat",
+        projectId,
+        prompt,
+        threadId,
+        messages,
+        mentions,
+        mode,
+        editorContext,
+        contextHints,
+        conversationId,
+      } = body as {
+        kind?: "chat" | "execute_tool" | "tool-result" | "tool-approval";
         projectId: string;
+        prompt?: string;
+        threadId?: string;
         messages?: Array<{ role: string; content: string }>;
         mentions?: Array<{ type: string; id: string; name: string }>;
         mode?: string;
@@ -122,14 +135,45 @@ http.route({
         return handleToolExecution(ctx, { toolName, input, projectId, auth, origin });
       }
 
+      if (kind === "tool-result") {
+        const { promptMessageId, toolCallId, toolName, result, editorContext: resultEditorContext } = body as {
+          promptMessageId: string;
+          toolCallId: string;
+          toolName: string;
+          result: unknown;
+          editorContext?: Record<string, unknown>;
+        };
+        return handleToolResult(ctx, {
+          projectId,
+          threadId: threadId ?? conversationId,
+          promptMessageId,
+          toolCallId,
+          toolName,
+          result,
+          editorContext: resultEditorContext,
+          auth,
+          origin,
+        });
+      }
+
       if (kind === "tool-approval") {
-        const { approvalId, approved } = body as { approvalId: string; approved: boolean };
-        return handleToolApproval(ctx, { approvalId, approved, projectId, messages, auth, origin });
+        return new Response(
+          JSON.stringify({ error: "tool-approval is deprecated; use tool-result" }),
+          {
+            status: 400,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          }
+        );
       }
 
       // Default: Chat with SSE streaming
-      if (!messages || messages.length === 0) {
-        return new Response(JSON.stringify({ error: "messages are required for chat" }), {
+      const resolvedPrompt =
+        typeof prompt === "string"
+          ? prompt
+          : [...(messages ?? [])].reverse().find((m) => m.role === "user")?.content;
+
+      if (!resolvedPrompt) {
+        return new Response(JSON.stringify({ error: "prompt is required for chat" }), {
           status: 400,
           headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
         });
@@ -137,12 +181,12 @@ http.route({
 
       return handleSagaChat(ctx, {
         projectId,
-        messages,
+        prompt: resolvedPrompt,
+        threadId: threadId ?? conversationId,
         mentions,
         mode,
         editorContext,
         contextHints,
-        conversationId,
         auth,
         origin,
       });
@@ -225,12 +269,12 @@ http.route({
 
 interface SagaChatParams {
   projectId: string;
-  messages: Array<{ role: string; content: string }>;
+  prompt: string;
+  threadId?: string;
   mentions?: Array<{ type: string; id: string; name: string }>;
   mode?: string;
   editorContext?: Record<string, unknown>;
   contextHints?: Record<string, unknown>;
-  conversationId?: string;
   auth: AuthResult;
   origin: string | null;
 }
@@ -239,7 +283,7 @@ async function handleSagaChat(
   ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
   params: SagaChatParams
 ): Promise<Response> {
-  const { projectId, messages, mentions, mode, editorContext, contextHints, conversationId, auth, origin } = params;
+  const { projectId, prompt, threadId, mentions, mode, editorContext, contextHints, auth, origin } = params;
 
   // Create generation stream for persistence
   const streamId = await ctx.runMutation(internal.ai.streams.create, {
@@ -252,18 +296,15 @@ async function handleSagaChat(
   const stream = createSSEStream(async (sse: SSEStreamController) => {
     try {
       // Run the streaming action
-      await ctx.runAction(internal.ai.saga.streamChat, {
+      await ctx.runAction(internal.ai.agentRuntime.runSagaAgentChatToStream, {
         streamId,
         projectId,
         userId: auth.userId!,
-        messages,
-        mentions,
+        prompt,
+        threadId,
         mode,
         editorContext,
         contextHints,
-        conversationId,
-        // Pass callback info for delta persistence
-        persistDeltas: true,
       });
 
       // Stream is managed by the action via delta table
@@ -309,14 +350,20 @@ async function streamDeltasToSSE(
           sse.sendDelta(chunk.content);
           break;
         case "tool":
-          sse.sendTool(chunk.toolCallId ?? "", chunk.toolName ?? "", chunk.args);
+          sse.sendTool(
+            chunk.toolCallId ?? "",
+            chunk.toolName ?? "",
+            chunk.args,
+            chunk.promptMessageId
+          );
           break;
         case "tool-approval-request":
           sse.sendToolApprovalRequest(
             chunk.approvalId ?? "",
             chunk.toolName ?? "",
             chunk.args,
-            chunk.toolCallId
+            chunk.toolCallId,
+            chunk.promptMessageId
           );
           break;
         case "context":
@@ -377,53 +424,55 @@ async function handleToolExecution(
   }
 }
 
-interface ToolApprovalParams {
-  approvalId: string;
-  approved: boolean;
+interface ToolResultParams {
   projectId: string;
-  messages?: Array<{ role: string; content: string }>;
+  threadId?: string;
+  promptMessageId: string;
+  toolCallId: string;
+  toolName: string;
+  result: unknown;
+  editorContext?: Record<string, unknown>;
   auth: AuthResult;
   origin: string | null;
 }
 
-async function handleToolApproval(
+async function handleToolResult(
   ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
-  params: ToolApprovalParams
+  params: ToolResultParams
 ): Promise<Response> {
-  const { approvalId, approved, projectId, auth, origin } = params;
+  const { projectId, threadId, promptMessageId, toolCallId, toolName, result, editorContext, auth, origin } = params;
 
-  if (!approved) {
-    // User denied - just acknowledge
-    return new Response(
-      JSON.stringify({ approvalId, approved: false, message: "Tool execution denied" }),
-      {
-        status: 200,
-        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
-      }
-    );
+  if (!threadId) {
+    return new Response(JSON.stringify({ error: "threadId is required" }), {
+      status: 400,
+      headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+    });
   }
 
-  // User approved - continue streaming
   const streamId = await ctx.runMutation(internal.ai.streams.create, {
     projectId,
     userId: auth.userId!,
-    type: "saga-approval",
+    type: "saga-tool-result",
   });
 
   const stream = createSSEStream(async (sse: SSEStreamController) => {
     try {
-      await ctx.runAction(internal.ai.saga.continueWithApproval, {
+      await ctx.runAction(internal.ai.agentRuntime.applyToolResultAndResumeToStream, {
         streamId,
-        approvalId,
         projectId,
         userId: auth.userId!,
-        messages: params.messages ?? [],
+        threadId,
+        promptMessageId,
+        toolCallId,
+        toolName,
+        result,
+        editorContext,
       });
 
       await streamDeltasToSSE(ctx, streamId, sse);
     } catch (error) {
-      console.error("[handleToolApproval] Error:", error);
-      sse.sendError(error instanceof Error ? error.message : "Approval error");
+      console.error("[handleToolResult] Error:", error);
+      sse.sendError(error instanceof Error ? error.message : "Tool result error");
     } finally {
       sse.complete();
     }

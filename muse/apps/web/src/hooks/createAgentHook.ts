@@ -103,6 +103,7 @@ export interface ToolCallResult {
   toolCallId: string;
   toolName: string;
   args: unknown;
+  promptMessageId?: string;
 }
 
 /**

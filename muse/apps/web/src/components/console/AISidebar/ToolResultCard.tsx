@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   GitBranch,
   FileText,
@@ -17,19 +17,33 @@ import {
   ImageIcon,
   ExternalLink,
 } from "lucide-react";
-import { Button, cn } from "@mythos/ui";
+import { Button, TextArea, cn } from "@mythos/ui";
 import {
+  useMythosStore,
+  type ChatMessage,
   type ChatToolInvocation,
   type ToolInvocationStatus,
 } from "../../../stores";
 import { useToolRuntime } from "../../../hooks/useToolRuntime";
+import { generateMessageId } from "../../../hooks/createAgentHook";
+import { sendToolResultStreaming, type ToolCallResult, type ToolApprovalRequest } from "../../../services/ai/sagaClient";
+import { useApiKey } from "../../../hooks/useApiKey";
 import { getToolLabel, getToolDanger, renderToolSummary } from "../../../tools";
 import { getEntityIconComponent } from "../../../utils/entityConfig";
 import type { EntityType } from "@mythos/core";
+import type {
+  AskQuestionArgs,
+  AskQuestionResult,
+  WriteContentArgs,
+  WriteContentOperation,
+  WriteContentResult,
+} from "@mythos/agent-protocol";
+import type { SagaSessionWriter } from "../../../hooks/useSessionHistory";
 
 interface ToolResultCardProps {
   messageId: string;
   tool: ChatToolInvocation;
+  sessionWriter?: SagaSessionWriter;
 }
 
 function getStatusIcon(status: ToolInvocationStatus) {
@@ -96,8 +110,23 @@ function getCardStyles(
   return "border-mythos-border-default bg-mythos-bg-tertiary/50";
 }
 
-export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
+export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCardProps) {
   const { acceptTool, rejectTool, retryTool, cancelTool } = useToolRuntime();
+  const { key: apiKey } = useApiKey();
+
+  const projectId = useMythosStore((s) => s.project.currentProject?.id);
+  const threadId = useMythosStore((s) => s.chat.conversationId);
+  const setChatContext = useMythosStore((s) => s.setChatContext);
+  const addChatMessage = useMythosStore((s) => s.addChatMessage);
+  const updateChatMessage = useMythosStore((s) => s.updateChatMessage);
+  const appendToChatMessage = useMythosStore((s) => s.appendToChatMessage);
+  const setChatStreaming = useMythosStore((s) => s.setChatStreaming);
+  const setChatError = useMythosStore((s) => s.setChatError);
+  const updateToolInvocation = useMythosStore((s) => s.updateToolInvocation);
+  const applyWriteContentSuggestion = useMythosStore((s) => s.applyWriteContentSuggestion);
+
+  const [answer, setAnswer] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const args = (tool.args ?? {}) as Record<string, unknown>;
   const getArg = <T,>(key: string, fallback?: T): T | undefined =>
@@ -108,6 +137,8 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
   const isFailed = tool.status === "failed";
   const isCanceled = tool.status === "canceled";
   const canRetry = isFailed || isCanceled;
+  const isAskQuestion = tool.toolName === "ask_question";
+  const isWriteContent = tool.toolName === "write_content";
 
   const danger = getToolDanger(tool.toolName);
   const label = getToolLabel(tool.toolName);
@@ -143,6 +174,230 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
       // Error is displayed via tool.error in the UI
     }
   }, [messageId, retryTool]);
+
+  const persistSessionMessage = useCallback(
+    (message: ChatMessage) => {
+      if (!sessionWriter) return;
+      if (message.kind === "tool") {
+        sessionWriter.persistToolMessage?.(message);
+      } else if (message.role === "user") {
+        sessionWriter.persistUserMessage?.(message);
+      } else {
+        sessionWriter.persistAssistantMessage?.(message);
+      }
+    },
+    [sessionWriter]
+  );
+
+  const getSelectionRange = useCallback(() => {
+    const editor = useMythosStore.getState().editor.editorInstance as
+      | { state: { selection: { from: number; to: number } }; isDestroyed?: boolean }
+      | null;
+    if (!editor || editor.isDestroyed) return undefined;
+    const { from, to } = editor.state.selection;
+    return { from, to };
+  }, []);
+
+  const handleIncomingTool = useCallback(
+    (incoming: ToolCallResult, needsApprovalOverride?: boolean, approvalId?: string) => {
+      const needsApproval =
+        needsApprovalOverride ??
+        incoming.toolName === "ask_question" ||
+        incoming.toolName === "write_content";
+      const selectionRange =
+        incoming.toolName === "write_content" ? getSelectionRange() : undefined;
+      const toolMessage: ChatMessage = {
+        id: incoming.toolCallId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date(),
+        kind: "tool",
+        tool: {
+          toolCallId: incoming.toolCallId,
+          approvalId,
+          toolName: incoming.toolName as ChatToolInvocation["toolName"],
+          args: incoming.args,
+          promptMessageId: incoming.promptMessageId,
+          selectionRange,
+          status: "proposed",
+          needsApproval,
+        },
+      };
+      addChatMessage(toolMessage);
+      persistSessionMessage(toolMessage);
+    },
+    [addChatMessage, getSelectionRange, persistSessionMessage]
+  );
+
+  const streamToolResult = useCallback(
+    async (resultPayload: AskQuestionResult | WriteContentResult, finalStatus: ToolInvocationStatus) => {
+      if (!projectId) {
+        updateToolInvocation(messageId, { status: "failed", error: "Project not available" });
+        return;
+      }
+      if (!threadId) {
+        updateToolInvocation(messageId, { status: "failed", error: "Thread not available" });
+        return;
+      }
+      if (!tool.promptMessageId) {
+        updateToolInvocation(messageId, { status: "failed", error: "Missing prompt message ID" });
+        return;
+      }
+
+      const assistantMessageId = generateMessageId();
+      const assistantMessage: ChatMessage = {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date(),
+        isStreaming: true,
+      };
+
+      addChatMessage(assistantMessage);
+      setChatStreaming(true);
+      setIsSubmitting(true);
+      updateToolInvocation(messageId, { status: "executing" });
+
+      try {
+        await sendToolResultStreaming(
+          {
+            projectId,
+            threadId,
+            promptMessageId: tool.promptMessageId,
+            toolCallId: tool.toolCallId,
+            toolName: tool.toolName,
+            result: resultPayload,
+          },
+          {
+            apiKey: apiKey ?? undefined,
+            onContext: (context) => {
+              setChatContext(context);
+            },
+            onDelta: (delta) => {
+              appendToChatMessage(assistantMessageId, delta);
+            },
+            onTool: (incoming) => {
+              handleIncomingTool(incoming);
+            },
+            onToolApprovalRequest: (request: ToolApprovalRequest) => {
+              handleIncomingTool(
+                {
+                  toolCallId: request.toolCallId ?? request.approvalId,
+                  toolName: request.toolName,
+                  args: request.args,
+                  promptMessageId: request.promptMessageId,
+                },
+                true,
+                request.approvalId
+              );
+            },
+            onDone: () => {
+              updateChatMessage(assistantMessageId, { isStreaming: false });
+              setChatStreaming(false);
+              const currentMsgs = useMythosStore.getState().chat.messages;
+              const finalMessage = currentMsgs.find((m) => m.id === assistantMessageId);
+              if (finalMessage && finalMessage.content) {
+                persistSessionMessage(finalMessage);
+              }
+              updateToolInvocation(messageId, { status: finalStatus, result: resultPayload });
+            },
+            onError: (err) => {
+              updateChatMessage(assistantMessageId, { isStreaming: false });
+              setChatStreaming(false);
+              setChatError(err.message);
+              updateToolInvocation(messageId, { status: "failed", error: err.message });
+            },
+          }
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to send tool result";
+        updateToolInvocation(messageId, { status: "failed", error: message });
+        setChatError(message);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [
+      projectId,
+      threadId,
+      tool.promptMessageId,
+      tool.toolCallId,
+      tool.toolName,
+      apiKey,
+      messageId,
+      addChatMessage,
+      appendToChatMessage,
+      updateChatMessage,
+      setChatStreaming,
+      setChatError,
+      updateToolInvocation,
+      setChatContext,
+      handleIncomingTool,
+      persistSessionMessage,
+    ]
+  );
+
+  const handleSendAnswer = useCallback(async () => {
+    if (!isAskQuestion) return;
+    const questionArgs = tool.args as AskQuestionArgs;
+    const responseType =
+      questionArgs.responseType ?? (questionArgs.choices?.length ? "choice" : "text");
+    const trimmed = answer.trim();
+    if (!trimmed) {
+      updateToolInvocation(messageId, { error: "Answer is required" });
+      return;
+    }
+    const result: AskQuestionResult = {
+      answer: trimmed,
+      choice: responseType === "choice" ? trimmed : undefined,
+    };
+    await streamToolResult(result, "executed");
+  }, [answer, isAskQuestion, messageId, tool.args, streamToolResult, updateToolInvocation]);
+
+  const handleSkipQuestion = useCallback(async () => {
+    if (!isAskQuestion) return;
+    const result: AskQuestionResult = {
+      answer: "User declined to answer.",
+    };
+    await streamToolResult(result, "rejected");
+  }, [isAskQuestion, streamToolResult]);
+
+  const handleApplyWriteContent = useCallback(async () => {
+    if (!isWriteContent) return;
+    const applyResult = await applyWriteContentSuggestion(tool.toolCallId);
+    if (!applyResult.applied) {
+      updateToolInvocation(messageId, { status: "failed", error: applyResult.error });
+      return;
+    }
+    const operation = (applyResult.appliedOperation ??
+      (getArg<WriteContentOperation>("operation", "insert_at_cursor") as WriteContentOperation));
+    const result: WriteContentResult = {
+      applied: true,
+      appliedOperation: operation,
+      summary: applyResult.summary,
+      insertedTextPreview: applyResult.insertedTextPreview,
+    };
+    await streamToolResult(result, "executed");
+  }, [
+    applyWriteContentSuggestion,
+    getArg,
+    isWriteContent,
+    messageId,
+    tool.toolCallId,
+    updateToolInvocation,
+    streamToolResult,
+  ]);
+
+  const handleRejectWriteContent = useCallback(async () => {
+    if (!isWriteContent) return;
+    const operation = getArg<WriteContentOperation>("operation", "insert_at_cursor") as WriteContentOperation;
+    const result: WriteContentResult = {
+      applied: false,
+      appliedOperation: operation,
+    };
+    await streamToolResult(result, "rejected");
+  }, [getArg, isWriteContent, streamToolResult]);
 
   // Get icon based on tool type
   const getIcon = () => {
@@ -273,6 +528,34 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
       </div>
 
       {/* Details preview */}
+      {isAskQuestion && (
+        <div className="mb-2 space-y-1">
+          <p className="text-xs text-mythos-text-primary">
+            {getArg<string>("question")}
+          </p>
+          {getArg<string>("detail") && (
+            <p className="text-xs text-mythos-text-muted">
+              {getArg<string>("detail")}
+            </p>
+          )}
+        </div>
+      )}
+
+      {isWriteContent && (
+        <div className="mb-2 space-y-2">
+          {getArg<string>("rationale") && (
+            <p className="text-xs text-mythos-text-muted">
+              {getArg<string>("rationale")}
+            </p>
+          )}
+          {getArg<string>("content") && (
+            <pre className="text-xs text-mythos-text-primary bg-mythos-bg-secondary/60 border border-mythos-border-default rounded-md p-2 whitespace-pre-wrap max-h-40 overflow-auto">
+              {getArg<string>("content")}
+            </pre>
+          )}
+        </div>
+      )}
+
       {getArg<string>("notes") && (
         <p className="text-xs text-mythos-text-muted mb-2 line-clamp-2">
           {getArg<string>("notes")}
@@ -331,7 +614,82 @@ export function ToolResultCard({ messageId, tool }: ToolResultCardProps) {
       )}
 
       {/* Actions for proposed state */}
-      {isProposed && (
+      {isProposed && isAskQuestion && (
+        <div className="mt-2 space-y-2">
+          {getArg<string[]>("choices")?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {getArg<string[]>("choices")?.map((choice) => (
+                <Button
+                  key={choice}
+                  size="sm"
+                  variant={answer === choice ? "default" : "outline"}
+                  onClick={() => setAnswer(choice)}
+                  disabled={isSubmitting}
+                  className="h-7 text-xs"
+                >
+                  {choice}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <TextArea
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              placeholder="Type your answer..."
+              className="min-h-[72px] text-xs"
+              disabled={isSubmitting}
+            />
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleSendAnswer}
+              disabled={isSubmitting || !answer.trim()}
+              className="flex-1 h-7 text-xs gap-1"
+            >
+              <Check className="w-3 h-3" />
+              Send Answer
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSkipQuestion}
+              disabled={isSubmitting}
+              className="flex-1 h-7 text-xs gap-1"
+            >
+              <X className="w-3 h-3" />
+              Skip
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isProposed && isWriteContent && (
+        <div className="flex items-center gap-2 mt-2">
+          <Button
+            size="sm"
+            onClick={handleApplyWriteContent}
+            disabled={isSubmitting}
+            variant={danger === "destructive" ? "destructive" : "default"}
+            className="flex-1 h-7 text-xs gap-1"
+          >
+            <Check className="w-3 h-3" />
+            Apply
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRejectWriteContent}
+            disabled={isSubmitting}
+            className="flex-1 h-7 text-xs gap-1"
+          >
+            <X className="w-3 h-3" />
+            Reject
+          </Button>
+        </div>
+      )}
+
+      {isProposed && !isAskQuestion && !isWriteContent && (
         <div className="flex items-center gap-2 mt-2">
           <Button
             size="sm"

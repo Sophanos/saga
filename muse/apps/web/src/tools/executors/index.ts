@@ -32,3 +32,11 @@ export { checkConsistencyExecutor, type CheckConsistencyExecutionResult } from "
 export { generateTemplateExecutor, type GenerateTemplateExecutionResult } from "./generateTemplate";
 export { clarityCheckExecutor, type ClarityCheckExecutionResult } from "./clarityCheck";
 export { commitDecisionExecutor } from "./commitDecision";
+export { askQuestionExecutor } from "./askQuestion";
+export type { AskQuestionArgs, AskQuestionResult } from "@mythos/agent-protocol";
+export { writeContentExecutor } from "./writeContent";
+export type {
+  WriteContentArgs,
+  WriteContentResult,
+  WriteContentOperation,
+} from "@mythos/agent-protocol";

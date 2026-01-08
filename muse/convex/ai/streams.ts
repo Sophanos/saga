@@ -31,6 +31,7 @@ export const chunkSchema = v.object({
   approvalId: v.optional(v.string()),
   args: v.optional(v.any()),
   data: v.optional(v.any()),
+  promptMessageId: v.optional(v.string()),
 });
 
 export type StreamChunk = {
@@ -42,6 +43,7 @@ export type StreamChunk = {
   approvalId?: string;
   args?: unknown;
   data?: unknown;
+  promptMessageId?: string;
 };
 
 // ============================================================
@@ -86,6 +88,7 @@ export const appendChunk = internalMutation({
       approvalId: v.optional(v.string()),
       args: v.optional(v.any()),
       data: v.optional(v.any()),
+      promptMessageId: v.optional(v.string()),
     }),
   },
   handler: async (ctx, { streamId, chunk }) => {

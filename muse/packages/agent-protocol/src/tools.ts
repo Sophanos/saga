@@ -45,6 +45,9 @@ export type ToolName =
   | "check_logic"
   | "name_generator"
   | "commit_decision"
+  // Human-in-the-loop editor tools
+  | "ask_question"
+  | "write_content"
   // Image search tools
   | "search_images"
   | "find_similar_images"
@@ -428,6 +431,41 @@ export interface NameGeneratorArgs {
 }
 
 // =============================================================================
+// Human-in-the-loop Editor Tools
+// =============================================================================
+
+export interface AskQuestionArgs {
+  question: string;
+  detail?: string;
+  responseType?: "text" | "choice";
+  choices?: string[];
+}
+
+export interface AskQuestionResult {
+  answer: string;
+  choice?: string;
+}
+
+export type WriteContentOperation =
+  | "replace_selection"
+  | "insert_at_cursor"
+  | "append_document";
+
+export interface WriteContentArgs {
+  operation: WriteContentOperation;
+  content: string;
+  format?: "plain" | "markdown";
+  rationale?: string;
+}
+
+export interface WriteContentResult {
+  applied: boolean;
+  appliedOperation: WriteContentOperation;
+  summary?: string;
+  insertedTextPreview?: string;
+}
+
+// =============================================================================
 // Image Search Tool Arguments
 // =============================================================================
 
@@ -681,6 +719,9 @@ export interface ToolArgsMap {
   check_logic: CheckLogicArgs;
   name_generator: NameGeneratorArgs;
   commit_decision: CommitDecisionArgs;
+  // Human-in-the-loop editor tools
+  ask_question: AskQuestionArgs;
+  write_content: WriteContentArgs;
   // Image search tools
   search_images: SearchImagesArgs;
   find_similar_images: FindSimilarImagesArgs;
@@ -1153,6 +1194,9 @@ export interface ToolResultsMap {
   check_logic: CheckLogicResult;
   name_generator: NameGeneratorResult;
   commit_decision: CommitDecisionResult;
+  // Human-in-the-loop editor tools
+  ask_question: AskQuestionResult;
+  write_content: WriteContentResult;
   // Image search tools
   search_images: SearchImagesResult;
   find_similar_images: FindSimilarImagesResult;

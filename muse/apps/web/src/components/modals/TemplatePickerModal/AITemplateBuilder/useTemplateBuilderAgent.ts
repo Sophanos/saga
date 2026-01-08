@@ -114,17 +114,8 @@ export function useTemplateBuilderAgent(): UseTemplateBuilderAgentResult {
       setPendingTool(null);
 
       try {
-        // Build API messages (exclude streaming placeholder)
-        const apiMessages: SagaChatPayload["messages"] = [
-          ...messages.map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          })),
-          { role: "user" as const, content: content.trim() },
-        ];
-
         const payload: SagaChatPayload = {
-          messages: apiMessages,
+          prompt: content.trim(),
           projectId: "template-builder", // No real project context
           mode: "creation",
         };

@@ -1,4 +1,5 @@
 export { EntityMark, type EntityMarkOptions } from "./entity-mark";
+export { AIGeneratedMark, type AIGeneratedMarkOptions } from "./ai-generated-mark";
 export {
   EntitySuggestion,
   type EntitySuggestionOptions,
