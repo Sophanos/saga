@@ -6,14 +6,16 @@
  * - Empty state with quick actions
  */
 
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { useTheme, spacing, typography, radii } from '@/design-system';
 import { useLayoutStore } from '@/design-system/layout';
 
 export default function HomeScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { toggleAIPanel, aiPanelMode } = useLayoutStore();
 
   return (
@@ -41,10 +43,19 @@ export default function HomeScreen() {
           </Text>
 
           <View style={styles.quickActions}>
-            <QuickActionButton icon="📄" label="New Chapter" onPress={() => {}} />
+            <QuickActionButton icon="📄" label="New Chapter" onPress={() => router.push('/editor')} />
             <QuickActionButton icon="🎭" label="New Character" onPress={() => {}} />
             <QuickActionButton icon="🗺" label="New Location" onPress={() => {}} />
           </View>
+
+          {Platform.OS === 'web' && (
+            <Pressable
+              onPress={() => router.push('/editor')}
+              style={[styles.editorButton, { backgroundColor: colors.accent }]}
+            >
+              <Text style={styles.editorButtonText}>Open Editor</Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </View>
@@ -143,5 +154,16 @@ const styles = StyleSheet.create({
   quickActionLabel: {
     fontSize: typography.sm,
     fontWeight: typography.medium,
+  },
+  editorButton: {
+    marginTop: spacing[4],
+    paddingHorizontal: spacing[6],
+    paddingVertical: spacing[3],
+    borderRadius: radii.md,
+  },
+  editorButtonText: {
+    color: '#fff',
+    fontSize: typography.sm,
+    fontWeight: typography.semibold,
   },
 });

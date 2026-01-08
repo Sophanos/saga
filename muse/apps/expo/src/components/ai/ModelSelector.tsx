@@ -24,7 +24,7 @@ export function ModelSelector({ visible, onClose }: ModelSelectorProps) {
   const models = Object.entries(AI_MODELS) as [AIModel, typeof AI_MODELS[AIModel]][];
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View style={[StyleSheet.absoluteFill, styles.overlay]}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <Animated.View
         entering={FadeIn.duration(150)}
@@ -109,6 +109,10 @@ export function ModelSelectorTrigger() {
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    zIndex: 1000,
+    overflow: 'visible',
+  },
   backdrop: {
     position: 'absolute',
     top: -SCREEN_HEIGHT,

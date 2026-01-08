@@ -19,7 +19,7 @@ export function ContextScope({ visible, onClose }: ContextScopeProps) {
   const scopes = Object.entries(CONTEXT_SCOPES) as [ContextScopeType, typeof CONTEXT_SCOPES[ContextScopeType]][];
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View style={[StyleSheet.absoluteFill, styles.overlay]}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <Animated.View
         entering={FadeIn.duration(150)}
@@ -115,6 +115,10 @@ export function ContextScopeTrigger() {
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    zIndex: 1000,
+    overflow: 'visible',
+  },
   backdrop: {
     position: 'absolute',
     top: -SCREEN_HEIGHT,

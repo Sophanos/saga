@@ -59,7 +59,7 @@ export function AIPanel({ mode = 'side' }: AIPanelProps) {
         threadName={thread?.name ?? 'New Chat'}
         mode={mode}
         onChatSelectorToggle={() => setShowChatSelector(!showChatSelector)}
-        onNewChat={createThread}
+        onNewChat={() => createThread()}
         onModeChange={setAIPanelMode}
       />
 
@@ -147,7 +147,7 @@ function AIPanelHeader({ threadName, mode, onChatSelectorToggle, onNewChat, onMo
         </View>
 
         {/* Mode Toggle */}
-        <View>
+        <View style={styles.menuContainer}>
           <Pressable
             style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed || showModeMenu ? colors.bgHover : 'transparent' }]}
             onPress={() => setShowModeMenu(!showModeMenu)}
@@ -303,7 +303,7 @@ function FloatingWrapper({ children }: { children: React.ReactNode }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, borderLeftWidth: StyleSheet.hairlineWidth },
-  containerFull: { borderLeftWidth: 0, maxWidth: 900, alignSelf: 'center', width: '100%' },
+  containerFull: { borderLeftWidth: 0 },
   floatingContainer: {
     position: 'absolute',
     right: spacing[4],
@@ -322,6 +322,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
     minHeight: 48,
+    zIndex: 100,
+    overflow: 'visible',
   },
   chatSelectorBtn: {
     flexDirection: 'row',
@@ -333,8 +335,9 @@ const styles = StyleSheet.create({
     maxWidth: '60%',
   },
   chatSelectorText: { fontSize: typography.sm, fontWeight: typography.semibold },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing[1] },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], overflow: 'visible' },
   headerBtn: { width: 32, height: 32, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center' },
+  menuContainer: { position: 'relative', zIndex: 200, overflow: 'visible' },
   tooltip: {
     position: 'absolute',
     top: 38,
@@ -369,10 +372,10 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   modeMenuText: { flex: 1, fontSize: typography.sm },
-  content: { flex: 1 },
+  content: { flex: 1, zIndex: 1 },
   messages: { flex: 1 },
   messagesContent: { padding: spacing[4], gap: spacing[4] },
-  messagesContentFull: { paddingHorizontal: spacing[8], maxWidth: 800, alignSelf: 'center', width: '100%' },
+  messagesContentFull: { paddingHorizontal: spacing[8] },
   messageBubble: { flexDirection: 'row', gap: spacing[2] },
   messageBubbleUser: { justifyContent: 'flex-end' },
   messageBubbleFull: { maxWidth: 800 },
@@ -383,6 +386,6 @@ const styles = StyleSheet.create({
   messageContentWithTools: { maxWidth: '100%', flex: 1 },
   streamingIndicator: { flexDirection: 'row', alignItems: 'center', gap: spacing[2], paddingVertical: spacing[2] },
   streamingText: { fontSize: typography.sm, fontStyle: 'italic' },
-  inputContainer: { padding: spacing[3], borderTopWidth: StyleSheet.hairlineWidth },
-  inputContainerFull: { paddingHorizontal: spacing[8], maxWidth: 800, alignSelf: 'center', width: '100%' },
+  inputContainer: { padding: spacing[3], borderTopWidth: StyleSheet.hairlineWidth, zIndex: 50, overflow: 'visible' },
+  inputContainerFull: { paddingHorizontal: spacing[8] },
 });

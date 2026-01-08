@@ -116,7 +116,7 @@ export function AIPanelInput({ onSend, placeholder = 'Ask about your story...' }
           {/* Text input */}
           <TextInput
             ref={inputRef}
-            style={[styles.input, { color: colors.text }]}
+            style={[styles.input, { color: colors.text, outlineStyle: 'none' } as any]}
             placeholder={placeholder}
             placeholderTextColor={colors.textMuted}
             value={inputValue}
@@ -200,6 +200,8 @@ function ContextChipView({ chip, onRemove }: ContextChipViewProps) {
 const styles = StyleSheet.create({
   wrapper: {
     position: 'relative',
+    zIndex: 100,
+    overflow: 'visible',
   },
   container: {
     borderRadius: radii.lg,
