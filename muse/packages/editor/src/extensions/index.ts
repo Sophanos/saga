@@ -18,6 +18,10 @@ export { SceneBlock, type SceneBlockOptions } from "./scene-block";
 export { SceneList, type SceneListOptions } from "./scene-list";
 export {
   SlashCommand,
+  slashCommandPluginKey,
+  defaultSlashCommandItems,
+  filterSlashCommandItems,
+  groupByCategory,
   type SlashCommandOptions,
   type SlashCommandItem,
 } from "./slash-command";
@@ -26,3 +30,37 @@ export {
   type StyleDecorationOptions,
   styleDecorationPluginKey,
 } from "./style-decoration";
+
+// Writer-focused extensions
+export { WriterKit, type WriterKitOptions } from "./writer-kit";
+export {
+  taskListExtensions,
+  TaskList,
+  TaskItem,
+  type TaskListOptions,
+} from "./task-list";
+export { imageExtension, Image, type ImageOptions } from "./image";
+export {
+  tableExtensions,
+  Table,
+  TableRow,
+  TableHeader,
+  TableCell,
+  type TableOptions,
+} from "./table";
+export {
+  formattingExtensions,
+  Underline,
+  TextStyle,
+  Color,
+  Highlight,
+  type FormattingOptions,
+} from "./formatting";
+
+// AI inline editing
+export {
+  AIBlock,
+  type AIBlockOptions,
+  type AIBlockAttributes,
+  type AIBlockStatus,
+} from "./ai-block";

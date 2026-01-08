@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mythos Editor Webview Demo</title>
+  <style>
+    /* Design Tokens - Dark Editorial Theme */
+    :root {
+      --color-bg-app: #09090b;
+      --color-bg-surface: #18181b;
+      --color-bg-elevated: #1f1f23;
+      --color-bg-hover: #27272a;
+      --color-bg-active: #3f3f46;
+      --color-border: #27272a;
+      --color-border-subtle: #1f1f23;
+      --color-text: #fafafa;
+      --color-text-secondary: #a1a1aa;
+      --color-text-muted: #71717a;
+      --color-text-ghost: #52525b;
+      --color-accent: #60a5fa;
+      --color-accent-hover: #3b82f6;
+      --color-accent-subtle: rgba(96, 165, 250, 0.12);
+      --color-purple: #a78bfa;
+      --color-green: #34d399;
+      --color-amber: #fbbf24;
+      --color-red: #f87171;
+      --color-cyan: #22d3ee;
+      --space-0: 0;
+      --space-0-5: 2px;
+      --space-1: 4px;
+      --space-1-5: 6px;
+      --space-2: 8px;
+      --space-2-5: 10px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-10: 40px;
+      --space-12: 48px;
+      --space-16: 64px;
+      --font-sans: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-serif: 'New York', 'Iowan Old Style', 'Palatino Linotype', serif;
+      --font-mono: 'SF Mono', 'Fira Code', monospace;
+      --text-xs: 11px;
+      --text-sm: 13px;
+      --text-base: 15px;
+      --text-lg: 17px;
+      --text-xl: 20px;
+      --text-2xl: 24px;
+      --text-3xl: 30px;
+      --text-4xl: 36px;
+      --font-regular: 400;
+      --font-medium: 500;
+      --font-semibold: 600;
+      --font-bold: 700;
+      --leading-tight: 1.25;
+      --leading-normal: 1.5;
+      --leading-relaxed: 1.75;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+      --radius-full: 9999px;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+      --shadow-glow: 0 0 20px rgba(96, 165, 250, 0.15);
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+      --duration-fast: 120ms;
+      --duration-normal: 200ms;
+      --duration-slow: 300ms;
+      --header-height: 44px;
+      --tab-bar-height: 40px;
+      --quick-actions-height: 56px;
+      --content-max-width: 720px;
+      --menu-width: 280px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background: var(--color-bg-app);
+      color: var(--color-text);
+    }
+
+    #root {
+      height: 100%;
+    }
+
+    /* Static Demo Styles */
+    .demo-shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* Tab Bar */
+    .demo-tab-bar {
+      display: flex;
+      align-items: center;
+      height: var(--tab-bar-height);
+      background: var(--color-bg-surface);
+      border-bottom: 1px solid var(--color-border-subtle);
+      padding: 0 var(--space-2);
+      gap: var(--space-1);
+    }
+
+    .demo-nav {
+      display: flex;
+      gap: var(--space-0-5);
+      padding-right: var(--space-2);
+      border-right: 1px solid var(--color-border-subtle);
+      margin-right: var(--space-1);
+    }
+
+    .demo-nav-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .demo-nav-btn:hover {
+      background: var(--color-bg-hover);
+    }
+
+    .demo-tabs {
+      display: flex;
+      gap: var(--space-0-5);
+    }
+
+    .demo-tab {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1-5);
+      height: 32px;
+      padding: 0 var(--space-3);
+      background: var(--color-bg-elevated);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      color: var(--color-text);
+      cursor: pointer;
+    }
+
+    .demo-tab-new {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Page Header */
+    .demo-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: var(--header-height);
+      padding: 0 var(--space-4);
+      border-bottom: 1px solid var(--color-border-subtle);
+    }
+
+    .demo-header-left {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .demo-title {
+      font-family: var(--font-display);
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+    }
+
+    .demo-privacy {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      cursor: pointer;
+    }
+
+    .demo-header-right {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .demo-share {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      padding: var(--space-1-5) var(--space-3);
+      border: none;
+      background: transparent;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+    }
+
+    .demo-share:hover {
+      background: var(--color-bg-hover);
+    }
+
+    .demo-icon-btn {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .demo-icon-btn:hover {
+      background: var(--color-bg-hover);
+    }
+
+    /* Main Content */
+    .demo-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .demo-editor {
+      flex: 1;
+      max-width: var(--content-max-width);
+      width: 100%;
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    .demo-editor-title {
+      font-family: var(--font-display);
+      font-size: var(--text-4xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-ghost);
+      margin-bottom: var(--space-4);
+    }
+
+    .demo-editor-placeholder {
+      color: var(--color-text-ghost);
+      font-size: var(--text-base);
+      line-height: var(--leading-relaxed);
+    }
+
+    /* Quick Actions */
+    .demo-quick-actions {
+      position: absolute;
+      bottom: var(--space-8);
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      background: linear-gradient(to top, var(--color-bg-app) 60%, transparent);
+      padding: var(--space-6) var(--space-4);
+    }
+
+    .demo-quick-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
+    .demo-quick-buttons {
+      display: flex;
+      gap: var(--space-2);
+    }
+
+    .demo-quick-btn {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-bg-elevated);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: all var(--duration-fast) var(--ease-out);
+    }
+
+    .demo-quick-btn:hover {
+      background: var(--color-bg-hover);
+      border-color: var(--color-text-ghost);
+      transform: translateY(-1px);
+    }
+
+    .demo-quick-more {
+      width: 36px;
+      height: 36px;
+      background: var(--color-bg-elevated);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full);
+      color: var(--color-text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Icons (using emoji/text for demo) */
+    .icon {
+      font-size: 14px;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="demo-shell">
+      <!-- Tab Bar -->
+      <div class="demo-tab-bar">
+        <div class="demo-nav">
+          <button class="demo-nav-btn">&lt;</button>
+          <button class="demo-nav-btn">&gt;</button>
+        </div>
+        <div class="demo-tabs">
+          <div class="demo-tab">New Page</div>
+        </div>
+        <button class="demo-tab-new">+</button>
+      </div>
+
+      <!-- Page Header -->
+      <header class="demo-header">
+        <div class="demo-header-left">
+          <span class="demo-title">New Page</span>
+          <button class="demo-privacy">
+            <span class="icon">🔒</span>
+            Private
+            <span class="icon">▼</span>
+          </button>
+        </div>
+        <div class="demo-header-right">
+          <button class="demo-share">Share</button>
+          <button class="demo-icon-btn">☆</button>
+          <button class="demo-icon-btn">⋯</button>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="demo-main">
+        <div class="demo-editor">
+          <h1 class="demo-editor-title">New Page</h1>
+          <p class="demo-editor-placeholder">Press '/' for commands, or start writing...</p>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="demo-quick-actions">
+          <span class="demo-quick-label">Get started with</span>
+          <div class="demo-quick-buttons">
+            <button class="demo-quick-btn">
+              <span class="icon">✨</span>
+              Ask AI
+            </button>
+            <button class="demo-quick-btn">
+              <span class="icon">📋</span>
+              AI Meeting Notes
+            </button>
+            <button class="demo-quick-btn">
+              <span class="icon">📊</span>
+              Database
+            </button>
+            <button class="demo-quick-btn">
+              <span class="icon">📝</span>
+              Form
+            </button>
+            <button class="demo-quick-more">⋯</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

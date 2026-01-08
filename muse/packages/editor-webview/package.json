@@ -1,0 +1,31 @@
+{
+  "name": "@mythos/editor-webview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tiptap/core": "^2.10.0",
+    "@tiptap/extension-placeholder": "^2.10.0",
+    "@tiptap/pm": "^2.10.0",
+    "@tiptap/react": "^2.10.0",
+    "@tiptap/starter-kit": "^2.10.0",
+    "tippy.js": "^6.3.7"
+  },
+  "devDependencies": {
+    "@mythos/editor": "workspace:*",
+    "@mythos/typescript-config": "workspace:*",
+    "@types/react": "~19.1.10",
+    "@types/react-dom": "~19.1.7",
+    "typescript": "^5.6.3"
+  },
+  "peerDependencies": {
+    "@mythos/editor": "workspace:*",
+    "react": ">=18",
+    "react-dom": ">=18"
+  }
+}
