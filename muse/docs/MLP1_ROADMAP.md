@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-08 | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-09 | **Target:** Web + macOS first, then iOS/iPad
 
 ## Summary
 
@@ -789,15 +789,133 @@ docs/
 
 ## Phase 8: Observability (PostHog + Error Logging)
 
-> **Status:** Not Started | **Priority:** P1
+> **Status:** Planning | **Priority:** P1
 
-### PostHog Integration
+### PostHog Self-Hosting on Hetzner
 
-**Self-hosted on Hetzner** (metadata only, never content)
+**Deployment:** Hobby (single-machine Docker Compose)
+
+```bash
+# Deploy on Hetzner VPS
+ssh -i ~/.ssh/hetzner_orchestrator root@78.47.165.136
+mkdir -p /opt/posthog && cd /opt/posthog
+
+# Run official deploy script
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/posthog/posthog/HEAD/bin/deploy-hobby)"
+
+# Follow prompts:
+# - Domain: posthog.cascada.vision
+# - Email: your@email.com
+```
+
+**Nginx Configuration** (`/etc/nginx/sites-available/posthog`):
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name posthog.cascada.vision;
+
+    include snippets/cloudflare_real_ip.conf;
+    ssl_certificate /etc/ssl/certs/cascada-origin.pem;
+    ssl_certificate_key /etc/ssl/private/cascada-origin.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### Convex <> PostHog Integration
+
+**Architecture:**
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ POSTHOG EVENTS (Metadata Only)                                   │
+│                    CLIENTS                                       │
+├─────────────────┬─────────────────┬─────────────────────────────┤
+│ Expo (RN)       │ Web (React)     │ Tauri (WebView)             │
+│ posthog-react-  │ posthog-js      │ posthog-js                  │
+│ native          │                 │                              │
+└────────┬────────┴────────┬────────┴────────┬────────────────────┘
+         │                 │                 │
+         └─────────────────┴─────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ PostHog Self-Hosted (posthog.cascada.vision)                    │
+│ • Product Analytics                                              │
+│ • Session Replays (web only)                                    │
+│ • Feature Flags                                                  │
+│ • A/B Experiments                                                │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Convex Server-Side Events (posthog-node)                        │
+│ • AI tool execution metrics                                      │
+│ • Billing events                                                 │
+│ • Error logging                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Expo Setup:**
+
+```bash
+npx expo install posthog-react-native expo-file-system expo-application expo-device expo-localization
+```
+
+```typescript
+// apps/expo/app/_layout.tsx
+import { PostHogProvider } from 'posthog-react-native';
+
+export default function RootLayout() {
+  return (
+    <PostHogProvider
+      apiKey={process.env.EXPO_PUBLIC_POSTHOG_API_KEY}
+      options={{ host: process.env.EXPO_PUBLIC_POSTHOG_HOST }}
+    >
+      <ConvexAuthProvider>
+        <Slot />
+      </ConvexAuthProvider>
+    </PostHogProvider>
+  );
+}
+```
+
+**Convex Server-Side:**
+
+```typescript
+// convex/lib/analytics.ts
+"use node";
+
+import { PostHog } from "posthog-node";
+
+const posthog = new PostHog(process.env.POSTHOG_API_KEY!, {
+  host: process.env.POSTHOG_HOST,
+});
+
+export async function trackServerEvent(
+  distinctId: string,
+  event: string,
+  properties?: Record<string, any>
+) {
+  posthog.capture({ distinctId, event, properties });
+  await posthog.flush();
+}
+```
+
+### Events Schema (Metadata Only)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ POSTHOG EVENTS (Metadata Only - No Content)                     │
 ├─────────────────────────────────────────────────────────────────┤
 │ Event                  │ Properties                              │
 ├────────────────────────┼─────────────────────────────────────────┤
@@ -807,40 +925,22 @@ docs/
 │ feature_used           │ feature, count                          │
 │ error_occurred         │ errorCode, component, stack (truncated) │
 │ session_start          │ platform, tier, isAnonymous             │
+│ subscription_changed   │ productId, action, store                │
 └─────────────────────────────────────────────────────────────────┘
-```
-
-### Error Logging with Convex
-
-```typescript
-// convex/schema.ts
-errorLogs: defineTable({
-  userId: v.optional(v.id("users")),
-  sessionId: v.string(),
-  level: v.string(),               // "error", "warn", "info"
-  message: v.string(),
-  stack: v.optional(v.string()),
-  context: v.optional(v.any()),    // { component, action, etc. }
-  platform: v.string(),            // "web", "macos", "ios"
-  appVersion: v.string(),
-  createdAt: v.number(),
-}).index("by_level", ["level", "createdAt"])
-  .index("by_user", ["userId", "createdAt"]),
 ```
 
 ### Tasks
 
-| Task | File | Effort |
-|------|------|--------|
-| Deploy PostHog on Hetzner | `ops/posthog/` | 4h |
-| PostHog client wrapper | `packages/analytics/` | 2h |
-| Error logging schema | `convex/schema.ts` | 1h |
-| Error logging mutation | `convex/errorLogs.ts` | 1h |
-| Web ErrorBoundary | `apps/web/src/components/ErrorBoundary.tsx` | 2h |
-| Expo error handler | `apps/expo/src/utils/errorHandler.ts` | 2h |
-| Error dashboard query | `convex/errorLogs.ts` | 1h |
-| PostHog onboarding events | `apps/web/src/hooks/useOnboardingAnalytics.ts` | 2h |
-| Quality metrics dashboard | PostHog | 3h |
+| Task | File | Effort | Status |
+|------|------|--------|--------|
+| Deploy PostHog on Hetzner | `/opt/posthog/` | 2h | 🔲 |
+| Nginx + Cloudflare DNS | `/etc/nginx/sites-available/posthog` | 30m | 🔲 |
+| @mythos/analytics package | `packages/analytics/` | 2h | 🔲 |
+| Expo PostHog integration | `apps/expo/app/_layout.tsx` | 1h | 🔲 |
+| Web PostHog integration | `apps/web/src/providers/` | 1h | 🔲 |
+| Convex server-side events | `convex/lib/analytics.ts` | 2h | 🔲 |
+| AI quality dashboard | PostHog dashboards | 2h | 🔲 |
+| Onboarding funnel | PostHog funnels | 1h | 🔲 |
 
 ### Design Journey Tracking
 
@@ -950,11 +1050,23 @@ Error occurs ──▶ ErrorBoundary catches
 ## Environment Variables
 
 ```env
-# Convex (Self-Hosted)
+# =============================================================
+# Convex (Self-Hosted on Hetzner - Cascada)
+# =============================================================
 CONVEX_SELF_HOSTED_URL=https://api.cascada.vision
-CONVEX_SELF_HOSTED_ADMIN_KEY=
+CONVEX_SELF_HOSTED_ADMIN_KEY=cascada-convex|<your-admin-key>
 
-# Better Auth
+# Public URLs (used by clients)
+VITE_CONVEX_URL=https://api.cascada.vision
+VITE_CONVEX_SITE_URL=https://cascada.vision
+
+# Expo
+EXPO_PUBLIC_CONVEX_URL=https://api.cascada.vision
+EXPO_PUBLIC_CONVEX_SITE_URL=https://cascada.vision
+
+# =============================================================
+# Better Auth (set in Convex env, not local)
+# =============================================================
 BETTER_AUTH_SECRET=         # openssl rand -base64 32
 SITE_URL=https://cascada.vision
 APPLE_CLIENT_ID=
@@ -962,21 +1074,31 @@ APPLE_CLIENT_SECRET=
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 
+# =============================================================
 # RevenueCat
+# =============================================================
 REVENUECAT_WEBHOOK_SECRET=
 EXPO_PUBLIC_REVENUECAT_API_KEY=
 
+# =============================================================
 # AI Providers
-OPENROUTER_API_KEY=
-DEEPINFRA_API_KEY=
+# =============================================================
+OPENROUTER_API_KEY=sk-or-v1-<your-key>
+DEEPINFRA_API_KEY=<your-key>
 
-# Qdrant
-QDRANT_URL=https://qdrant.cascada.vision
-QDRANT_API_KEY=
+# =============================================================
+# Qdrant (Hetzner - shared with Kora)
+# =============================================================
+QDRANT_URL=http://127.0.0.1:6333  # Internal, or https://qdrant.cascada.vision
+QDRANT_API_KEY=kora-secure-key-2024
 
-# PostHog (P8)
+# =============================================================
+# PostHog (Self-Hosted on Hetzner)
+# =============================================================
 POSTHOG_API_KEY=
 POSTHOG_HOST=https://posthog.cascada.vision
+EXPO_PUBLIC_POSTHOG_API_KEY=
+EXPO_PUBLIC_POSTHOG_HOST=https://posthog.cascada.vision
 ```
 
 ---

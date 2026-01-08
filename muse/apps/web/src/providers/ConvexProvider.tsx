@@ -9,11 +9,12 @@ import { useMemo } from "react";
 import { ConvexReactClient } from "convex/react";
 import { ConvexOfflineProvider } from "@mythos/convex-client";
 import { useAuthStore } from "../stores/auth";
+import { getSupabaseClient } from "@mythos/db";
 
 // Convex client singleton
 // Using self-hosted URL:
 // - API + HTTP Actions: api.cascada.vision
-const convexUrl = import.meta.env.VITE_CONVEX_URL || "https://api.cascada.vision";
+const convexUrl = import.meta.env["VITE_CONVEX_URL"] || "https://api.cascada.vision";
 
 let convexClient: ConvexReactClient | null = null;
 
@@ -31,19 +32,21 @@ function getConvexClient(): ConvexReactClient {
  * Convex trusts the token (relies on HTTPS security).
  */
 function useConvexAuth() {
-  const session = useAuthStore((s) => s.session);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
 
   return useMemo(
     () => ({
       isLoading,
-      isAuthenticated: !!session,
+      isAuthenticated,
       fetchAccessToken: async () => {
         // Return Supabase access token for Convex auth
+        const supabase = getSupabaseClient();
+        const { data: { session } } = await supabase.auth.getSession();
         return session?.access_token ?? null;
       },
     }),
-    [session, isLoading]
+    [isAuthenticated, isLoading]
   );
 }
 

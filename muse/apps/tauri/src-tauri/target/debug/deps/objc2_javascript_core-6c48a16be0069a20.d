@@ -1,0 +1,9 @@
+/Users/mibook/saga/muse/apps/tauri/src-tauri/target/debug/deps/objc2_javascript_core-6c48a16be0069a20.d: /Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/lib.rs /Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/mod.rs /Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/JSBase.rs /Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/JSContext.rs /Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/JSValue.rs
+
+/Users/mibook/saga/muse/apps/tauri/src-tauri/target/debug/deps/libobjc2_javascript_core-6c48a16be0069a20.rmeta: /Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/lib.rs /Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/mod.rs /Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/JSBase.rs /Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/JSContext.rs /Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/JSValue.rs
+
+/Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/lib.rs:
+/Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/mod.rs:
+/Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/JSBase.rs:
+/Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/JSContext.rs:
+/Users/mibook/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/objc2-javascript-core-0.3.2/src/generated/JSValue.rs:

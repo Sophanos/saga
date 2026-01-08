@@ -1,26 +1,50 @@
 /**
  * Sidebar - Perplexity/Notion style
  * Project picker, chapters tree, entities, settings
+ *
+ * Uses @mythos/manifest for tree logic
  */
 
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, typography, radii } from '@/design-system';
+import { entityColors } from '@/design-system/colors';
 import { useLayoutStore } from '@/design-system/layout';
 import { useCommandPaletteStore } from '@/stores/commandPalette';
+import {
+  useManifestTree,
+  useTreeExpansion,
+  type TreeNode,
+  type ManifestSection,
+  type ManifestMemory,
+  type TreeExpansionState,
+} from '@mythos/manifest';
+import type { Entity } from '@mythos/core';
+import type { Document } from '@mythos/core/schema';
 
-// Entity type config
-const ENTITY_TYPES = [
-  { type: 'character', icon: '🎭', label: 'Character' },
-  { type: 'location', icon: '🗺', label: 'Location' },
-  { type: 'item', icon: '⚔️', label: 'Item' },
-  { type: 'magic', icon: '✨', label: 'Magic System' },
-  { type: 'faction', icon: '👥', label: 'Faction' },
-  { type: 'event', icon: '📅', label: 'Event' },
-  { type: 'concept', icon: '💡', label: 'Concept' },
-] as const;
+// Mock data - replace with Convex queries
+// TODO: Move to packages/manifest/fixtures for shared mock data
+const MOCK_DOCUMENTS: Document[] = [
+  { id: 'ch1', projectId: 'p1', type: 'chapter', title: 'Chapter 1: The Beginning', orderIndex: 0, wordCount: 4500, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'sc1', projectId: 'p1', type: 'scene', parentId: 'ch1', title: 'Scene 1: Dawn', orderIndex: 0, wordCount: 800, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'sc2', projectId: 'p1', type: 'scene', parentId: 'ch1', title: 'Scene 2: Journey', orderIndex: 1, wordCount: 1200, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'ch2', projectId: 'p1', type: 'chapter', title: 'Chapter 2: The Conflict', orderIndex: 1, wordCount: 3200, createdAt: new Date(), updatedAt: new Date() },
+  { id: 'sc3', projectId: 'p1', type: 'scene', parentId: 'ch2', title: 'Scene 1: Tension', orderIndex: 0, wordCount: 1500, createdAt: new Date(), updatedAt: new Date() },
+];
+
+const MOCK_ENTITIES: Entity[] = [
+  { id: 'e1', name: 'Marcus', type: 'character', aliases: ['Marc'], properties: {}, mentions: [], createdAt: new Date(), updatedAt: new Date() },
+  { id: 'e2', name: 'Elena', type: 'character', aliases: [], properties: {}, mentions: [], createdAt: new Date(), updatedAt: new Date() },
+  { id: 'e3', name: 'The Castle', type: 'location', aliases: ['Fortress'], properties: {}, mentions: [], createdAt: new Date(), updatedAt: new Date() },
+  { id: 'e4', name: 'Enchanted Sword', type: 'item', aliases: [], properties: {}, mentions: [], createdAt: new Date(), updatedAt: new Date() },
+];
+
+const MOCK_MEMORIES: ManifestMemory[] = [
+  { id: 'm1', category: 'decision', content: 'Marcus has blue eyes and brown hair', createdAt: new Date().toISOString(), metadata: { pinned: true } },
+  { id: 'm2', category: 'decision', content: 'The story takes place in medieval times', createdAt: new Date().toISOString() },
+  { id: 'm3', category: 'style', content: 'Use short, punchy sentences for action scenes', createdAt: new Date().toISOString() },
+];
 
 export function Sidebar() {
   const { colors } = useTheme();
@@ -92,77 +116,264 @@ export function Sidebar() {
 
 function ProjectView() {
   const { colors } = useTheme();
-  const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({ ch1: true });
 
-  // Mock data - replace with Convex query
-  const chapters = [
-    { id: 'ch1', title: 'Chapter 1', scenes: [{ id: 'sc1', title: 'Scene 1' }] },
-  ];
-  const characters: any[] = [];
-  const worldEntities: any[] = [];
+  // TODO: Replace with Convex queries
+  const documents = MOCK_DOCUMENTS;
+  const entities = MOCK_ENTITIES;
+  const memories = MOCK_MEMORIES;
 
-  const toggleChapter = (id: string) => {
-    setExpandedChapters((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  // Build manifest tree using shared logic
+  const manifestData = useManifestTree({
+    documents,
+    entities,
+    memories,
+    searchQuery: '',
+  });
+
+  // Tree expansion state - default expand chapters
+  const expansion = useTreeExpansion(['chapters', 'ch1']);
 
   return (
     <>
-      {/* Chapters */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>CHAPTERS</Text>
-          <Pressable>
-            <Text style={{ color: colors.textMuted }}>+</Text>
-          </Pressable>
-        </View>
-        {chapters.map((ch) => (
-          <View key={ch.id}>
-            <View style={styles.chapterRow}>
-              <Pressable onPress={() => toggleChapter(ch.id)} style={styles.expandBtn}>
-                <Text style={{ color: colors.textMuted, fontSize: 10 }}>
-                  {expandedChapters[ch.id] ? '▼' : '▶'}
-                </Text>
-              </Pressable>
-              <SidebarItem icon="📄" label={ch.title} onPress={() => {}} active />
-            </View>
-            {expandedChapters[ch.id] && (
-              <View style={[styles.scenesContainer, { borderLeftColor: colors.border }]}>
-                <Text style={[styles.scenesLabel, { color: colors.textMuted }]}>SCENES</Text>
-                {ch.scenes.map((sc) => (
-                  <SidebarItem key={sc.id} icon="●" label={sc.title} onPress={() => {}} small />
-                ))}
-              </View>
-            )}
+      {manifestData.sections.map((section) => (
+        <SidebarSection
+          key={section.id}
+          section={section}
+          expansion={expansion}
+        />
+      ))}
+
+      {/* Characters section (always show even if empty) */}
+      {!manifestData.sections.find(s => s.type === 'characters') && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>CHARACTERS</Text>
+            <Pressable>
+              <Text style={{ color: colors.textMuted }}>+</Text>
+            </Pressable>
           </View>
-        ))}
-      </View>
-
-      {/* Characters */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>CHARACTERS</Text>
-          <Pressable>
-            <Text style={{ color: colors.textMuted }}>+</Text>
-          </Pressable>
-        </View>
-        {characters.length === 0 && (
           <Text style={[styles.emptyText, { color: colors.textMuted }]}>No characters yet</Text>
-        )}
+        </View>
+      )}
+
+      {/* World section (always show even if empty) */}
+      {!manifestData.sections.find(s => ['locations', 'items', 'magic-systems', 'factions'].includes(s.type)) && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>WORLD</Text>
+            <Pressable>
+              <Text style={{ color: colors.textMuted }}>+</Text>
+            </Pressable>
+          </View>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>No entities yet</Text>
+        </View>
+      )}
+    </>
+  );
+}
+
+interface SidebarSectionProps {
+  section: ManifestSection;
+  expansion: TreeExpansionState;
+}
+
+function SidebarSection({ section, expansion }: SidebarSectionProps) {
+  const { colors } = useTheme();
+
+  // Map section type to display title
+  const getSectionTitle = () => {
+    switch (section.type) {
+      case 'chapters': return 'CHAPTERS';
+      case 'characters': return 'CHARACTERS';
+      case 'locations': return 'LOCATIONS';
+      case 'items': return 'ITEMS';
+      case 'magic-systems': return 'MAGIC SYSTEMS';
+      case 'factions': return 'FACTIONS';
+      case 'story-bible': return 'STORY BIBLE';
+      case 'notes': return 'NOTES';
+      case 'outlines': return 'OUTLINES';
+      case 'worldbuilding': return 'WORLDBUILDING';
+      default: return section.title.toUpperCase();
+    }
+  };
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>
+          {getSectionTitle()}
+        </Text>
+        <Pressable>
+          <Text style={{ color: colors.textMuted }}>+</Text>
+        </Pressable>
       </View>
 
-      {/* World */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>WORLD</Text>
-          <Pressable>
-            <Text style={{ color: colors.textMuted }}>+</Text>
+      {section.children.map((node) => (
+        <TreeNodeRow
+          key={node.id}
+          node={node}
+          depth={0}
+          expansion={expansion}
+        />
+      ))}
+
+      {section.children.length === 0 && (
+        <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+          No {section.title.toLowerCase()} yet
+        </Text>
+      )}
+    </View>
+  );
+}
+
+interface TreeNodeRowProps {
+  node: TreeNode;
+  depth: number;
+  expansion: TreeExpansionState;
+}
+
+function TreeNodeRow({ node, depth, expansion }: TreeNodeRowProps) {
+  const { colors } = useTheme();
+  const hasChildren = node.children && node.children.length > 0;
+  const isExpanded = expansion.isExpanded(node.id);
+
+  const getNodeIcon = (): string => {
+    switch (node.type) {
+      case 'chapter': return '📄';
+      case 'scene': return '●';
+      case 'folder': return '📁';
+      case 'entity':
+        switch (node.entityType) {
+          case 'character': return '🎭';
+          case 'location': return '🗺';
+          case 'item': return '⚔️';
+          case 'magic_system': return '✨';
+          case 'faction': return '👥';
+          case 'event': return '📅';
+          case 'concept': return '💡';
+          default: return '○';
+        }
+      case 'memory': return '📌';
+      case 'note': return '📝';
+      default: return '○';
+    }
+  };
+
+  const getNodeColor = (): string | undefined => {
+    if (node.entityType) {
+      switch (node.entityType) {
+        case 'character': return entityColors.character;
+        case 'location': return entityColors.location;
+        case 'item': return entityColors.item;
+        case 'magic_system': return entityColors.magic;
+        case 'faction': return entityColors.faction;
+        default: return undefined;
+      }
+    }
+    return undefined;
+  };
+
+  const iconColor = getNodeColor();
+
+  // Chapter row with expand button
+  if (node.type === 'chapter') {
+    return (
+      <View>
+        <View style={styles.chapterRow}>
+          <Pressable onPress={() => expansion.toggle(node.id)} style={styles.expandBtn}>
+            <Text style={{ color: colors.textMuted, fontSize: 10 }}>
+              {isExpanded ? '▼' : '▶'}
+            </Text>
           </Pressable>
+          <SidebarItem
+            icon={getNodeIcon()}
+            label={node.name}
+            onPress={() => {}}
+            active={false}
+          />
         </View>
-        {worldEntities.length === 0 && (
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>No entities yet</Text>
+        {isExpanded && hasChildren && (
+          <View style={[styles.scenesContainer, { borderLeftColor: colors.border }]}>
+            <Text style={[styles.scenesLabel, { color: colors.textMuted }]}>SCENES</Text>
+            {node.children!.map((child) => (
+              <TreeNodeRow
+                key={child.id}
+                node={child}
+                depth={depth + 1}
+                expansion={expansion}
+              />
+            ))}
+          </View>
         )}
       </View>
-    </>
+    );
+  }
+
+  // Scene row (indented)
+  if (node.type === 'scene') {
+    return (
+      <SidebarItem
+        icon={getNodeIcon()}
+        label={node.name}
+        onPress={() => {}}
+        small
+      />
+    );
+  }
+
+  // Entity row
+  if (node.type === 'entity') {
+    return (
+      <SidebarItem
+        icon={getNodeIcon()}
+        label={node.name}
+        onPress={() => {}}
+        iconColor={iconColor}
+      />
+    );
+  }
+
+  // Folder row (expandable)
+  if (node.type === 'folder' && hasChildren) {
+    return (
+      <View>
+        <Pressable
+          onPress={() => expansion.toggle(node.id)}
+          style={({ pressed }) => [
+            styles.item,
+            pressed && { backgroundColor: colors.sidebarItemHover },
+          ]}
+        >
+          <Text style={{ color: colors.textMuted, fontSize: 10, width: 16 }}>
+            {isExpanded ? '▼' : '▶'}
+          </Text>
+          <Text style={[styles.itemLabel, { color: colors.textSecondary }]}>
+            {node.name}
+          </Text>
+        </Pressable>
+        {isExpanded && (
+          <View style={{ marginLeft: spacing[3] }}>
+            {node.children!.map((child) => (
+              <TreeNodeRow
+                key={child.id}
+                node={child}
+                depth={depth + 1}
+                expansion={expansion}
+              />
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  // Default row
+  return (
+    <SidebarItem
+      icon={getNodeIcon()}
+      label={node.name}
+      onPress={() => {}}
+    />
   );
 }
 
@@ -173,11 +384,12 @@ interface SidebarItemProps {
   active?: boolean;
   small?: boolean;
   shortcut?: string;
+  iconColor?: string;
 }
 
-function SidebarItem({ icon, label, onPress, active, small, shortcut }: SidebarItemProps) {
+function SidebarItem({ icon, label, onPress, active, small, shortcut, iconColor }: SidebarItemProps) {
   const { colors } = useTheme();
-  const isFeatherIcon = !icon.match(/[\u{1F300}-\u{1F9FF}]/u) && icon.length > 1;
+  const isFeatherIcon = !icon.match(/[\u{1F300}-\u{1F9FF}]/u) && !icon.match(/[●○▼▶]/) && icon.length > 1;
 
   return (
     <Pressable
@@ -188,11 +400,20 @@ function SidebarItem({ icon, label, onPress, active, small, shortcut }: SidebarI
         pressed && { backgroundColor: colors.sidebarItemHover, opacity: 0.7 },
       ]}
     >
-      <View style={[styles.itemIcon, { backgroundColor: colors.bgHover }]}>
+      <View style={[
+        styles.itemIcon,
+        { backgroundColor: iconColor ? `${iconColor}20` : colors.bgHover }
+      ]}>
         {isFeatherIcon ? (
-          <Feather name={icon as any} size={small ? 10 : 14} color={colors.textMuted} />
+          <Feather name={icon as any} size={small ? 10 : 14} color={iconColor || colors.textMuted} />
         ) : (
-          <Text style={[styles.itemIconText, { color: colors.text }, small && { fontSize: 8 }]}>{icon}</Text>
+          <Text style={[
+            styles.itemIconText,
+            { color: iconColor || colors.text },
+            small && { fontSize: 8 }
+          ]}>
+            {icon}
+          </Text>
         )}
       </View>
       <Text style={[styles.itemLabel, { color: colors.textSecondary }]} numberOfLines={1}>

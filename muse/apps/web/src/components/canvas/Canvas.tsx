@@ -224,6 +224,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
         label: "Scene",
         description: "Create a scene under the current chapter",
         keywords: ["scene", "chapter"],
+        action: () => createSceneRef.current(),
       },
     ],
     []

@@ -177,6 +177,9 @@ function sendToNative(message: EditorToNativeMessage): void {
   } else if (window.editor?.postMessage) {
     // Android WebView or fallback
     window.editor.postMessage(messageStr);
+  } else if (window.parent !== window) {
+    // Running in iframe - postMessage to parent
+    window.parent.postMessage({ type: 'editor-bridge-response', payload: message }, '*');
   } else {
     // Development fallback - log to console
     console.log('[EditorBridge →]', message);
@@ -411,3 +414,19 @@ export function requestAI(selectedText: string, prompt?: string, action?: string
 }
 
 export default createEditorBridge;
+
+// =============================================================================
+// iframe Message Listener
+// =============================================================================
+
+// Listen for postMessage from parent window (iframe mode)
+if (typeof window !== 'undefined') {
+  window.addEventListener('message', (event) => {
+    if (event.data?.type === 'editor-bridge' && event.data?.payload) {
+      const bridge = window.editorBridge;
+      if (bridge) {
+        bridge.receive(event.data.payload);
+      }
+    }
+  });
+}

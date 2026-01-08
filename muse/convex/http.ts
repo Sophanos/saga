@@ -23,6 +23,8 @@ import {
   type SSEStreamController,
 } from "./lib/streaming";
 import { validateAuth, type AuthResult } from "./lib/httpAuth";
+import { authComponent, createAuth } from "./betterAuth";
+import { verifyRevenueCatWebhook } from "./lib/webhookSecurity";
 
 const http = httpRouter();
 
@@ -74,6 +76,103 @@ http.route({
     return new Response(JSON.stringify({ status: "ok", timestamp: Date.now() }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// ============================================================
+// Better Auth Routes
+// ============================================================
+
+// Register all Better Auth HTTP routes
+authComponent.registerRoutes(http, createAuth, {
+  cors: true,
+  allowedOrigins: [
+    "https://cascada.vision",
+    "https://api.cascada.vision",
+    "mythos://",
+    "tauri://localhost",
+    "http://localhost:3000",
+    "http://localhost:1420",
+    "http://localhost:8082",
+  ],
+});
+
+// ============================================================
+// RevenueCat Webhook
+// ============================================================
+
+http.route({
+  path: "/webhooks/revenuecat",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    try {
+      // Verify webhook authenticity
+      const authHeader = request.headers.get("Authorization");
+      const isValid = await verifyRevenueCatWebhook(authHeader);
+
+      if (!isValid) {
+        console.error("[webhook/revenuecat] Invalid authorization");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const body = await request.json();
+      const event = body.event;
+
+      if (!event || !event.type) {
+        return new Response(JSON.stringify({ error: "Invalid event payload" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // Log for debugging (remove in production)
+      console.log(`[webhook/revenuecat] Received event: ${event.type}`, {
+        appUserId: event.app_user_id,
+        productId: event.product_id,
+        store: event.store,
+        environment: event.environment,
+      });
+
+      // Process the webhook event
+      const result = await ctx.runMutation(internal.subscriptions.processWebhookEvent, {
+        event,
+      });
+
+      return new Response(JSON.stringify({ success: true, ...result }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[webhook/revenuecat] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Webhook processing failed" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// RevenueCat webhook CORS preflight
+http.route({
+  path: "/webhooks/revenuecat",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      },
     });
   }),
 });

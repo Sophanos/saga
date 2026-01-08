@@ -277,7 +277,7 @@ export function useSessionHistory(): UseSessionHistoryResult {
       (async () => {
         try {
           const ensured = await ensureCurrentSession();
-          if (!ensured) return;
+          if (!ensured || !conversationId) return;
           await createMessage(toChatMessageInsert(conversationId, message));
         } catch (error) {
           console.error(`Failed to persist ${role} message:`, error);

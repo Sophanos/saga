@@ -114,6 +114,7 @@ const { sidebarWidth, setSidebarWidth, aiPanelWidth, setAIPanelWidth } = useLayo
 - Colors/tokens → `@/design-system`
 - Entity config → `@mythos/core/entities/config.ts`
 - AI prompts → `@mythos/prompts`
+- Tier limits → `convex/lib/tierConfig.ts` (memory retention, quotas, features)
 
 **File size limit**: Keep files under 800 LOC.
 
@@ -148,3 +149,9 @@ QDRANT_API_KEY=
 - Entity forms/cards
 - Chat message list
 - Tool execution cards
+
+**Self-Hosted: Convex, Posthog, Qdrant, BetterAuth:**
+```bash
+ssh -i ~/.ssh/hetzner_orchestrator root@78.47.165.136
+# Root prefers key-only (initial password: Hereclitus.Tao480!)
+```

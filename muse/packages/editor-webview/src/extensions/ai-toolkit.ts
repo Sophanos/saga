@@ -298,6 +298,9 @@ function createChangeWidget(id: string, _change: AiChange, view: EditorView): HT
 // =============================================================================
 
 function createAiToolkitPlugin(rules: AiSuggestionRule[]): Plugin<AiToolkitState> {
+  // Store EditorView reference outside plugin for decoration access
+  let editorViewRef: EditorView | null = null;
+
   return new Plugin<AiToolkitState>({
     key: aiToolkitPluginKey,
 
@@ -428,14 +431,17 @@ function createAiToolkitPlugin(rules: AiSuggestionRule[]): Plugin<AiToolkitState
       decorations(state) {
         const pluginState = aiToolkitPluginKey.getState(state);
         if (!pluginState) return DecorationSet.empty;
-        const view = (this as unknown as { spec: { _editorView?: EditorView } }).spec._editorView;
-        return createChangeDecorations(pluginState, state.doc, view);
+        return createChangeDecorations(pluginState, state.doc, editorViewRef ?? undefined);
       },
     },
 
     view(editorView) {
-      (this as unknown as { spec: { _editorView: EditorView } }).spec._editorView = editorView;
-      return {};
+      editorViewRef = editorView;
+      return {
+        destroy() {
+          editorViewRef = null;
+        },
+      };
     },
   });
 }

@@ -50,7 +50,7 @@ type SuggestionMeta =
 function createSuggestionDecorations(
   suggestion: Suggestion,
   isSelected: boolean,
-  view: EditorView
+  view?: EditorView
 ): Decoration[] {
   const decorations: Decoration[] = [];
 
@@ -72,15 +72,17 @@ function createSuggestionDecorations(
   );
 
   // Widget decoration for accept/reject buttons at end of suggestion
-  const widget = Decoration.widget(
-    suggestion.to,
-    () => createSuggestionWidget(suggestion, view),
-    {
-      side: 1, // Place after the position
-      key: `suggestion-widget-${suggestion.id}`,
-    }
-  );
-  decorations.push(widget);
+  if (view) {
+    const widget = Decoration.widget(
+      suggestion.to,
+      () => createSuggestionWidget(suggestion, view),
+      {
+        side: 1, // Place after the position
+        key: `suggestion-widget-${suggestion.id}`,
+      }
+    );
+    decorations.push(widget);
+  }
 
   return decorations;
 }
@@ -137,6 +139,9 @@ function createSuggestionWidget(suggestion: Suggestion, view: EditorView): HTMLE
  * Creates the ProseMirror plugin for managing suggestions
  */
 function createSuggestionPlugin(): Plugin<SuggestionPluginState> {
+  // Store EditorView reference outside plugin for decoration access
+  let editorViewRef: EditorView | null = null;
+
   return new Plugin<SuggestionPluginState>({
     key: suggestionPluginKey,
 
@@ -228,10 +233,10 @@ function createSuggestionPlugin(): Plugin<SuggestionPluginState> {
 
         const decorations: Decoration[] = [];
 
-        for (const [id, suggestion] of pluginState.suggestions) {
-          const isSelected = pluginState.selectedId === id;
+        for (const [, suggestion] of pluginState.suggestions) {
+          const isSelected = pluginState.selectedId === suggestion.id;
           decorations.push(
-            ...createSuggestionDecorations(suggestion, isSelected, this.spec.view as unknown as EditorView)
+            ...createSuggestionDecorations(suggestion, isSelected, editorViewRef ?? undefined)
           );
         }
 
@@ -240,15 +245,10 @@ function createSuggestionPlugin(): Plugin<SuggestionPluginState> {
     },
 
     view(editorView: EditorView) {
-      // Store view reference for decorations
-      (this as unknown as { spec: { view: EditorView } }).spec.view = editorView;
-
+      editorViewRef = editorView;
       return {
-        update() {
-          // Re-render handled by decorations
-        },
         destroy() {
-          // Cleanup if needed
+          editorViewRef = null;
         },
       };
     },

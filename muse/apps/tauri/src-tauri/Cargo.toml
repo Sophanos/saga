@@ -1,0 +1,31 @@
+[package]
+name = "mythos"
+version = "0.0.1"
+description = "AI-powered creative writing environment"
+authors = ["Mythos Team"]
+edition = "2021"
+
+[lib]
+name = "mythos_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-shell = "2"
+tauri-plugin-deep-link = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Optional: In-App Purchases (Mac App Store)
+# Uncomment when ready to integrate StoreKit
+# tauri-plugin-iap = { git = "https://github.com/AltSernique/tauri-plugin-iap", tag = "v2.0.0" }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

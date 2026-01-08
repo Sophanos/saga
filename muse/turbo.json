@@ -5,9 +5,13 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      "outputs": ["dist/**", "build/**", ".next/**", "!.next/cache/**"]
     },
     "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "dev:web": {
       "cache": false,
       "persistent": true
     },
@@ -22,6 +26,18 @@
     },
     "clean": {
       "cache": false
+    },
+    "tauri:dev": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["@mythos/editor-webview#dev"]
+    },
+    "tauri:build": {
+      "dependsOn": ["@mythos/editor-webview#build", "^build"],
+      "outputs": ["src-tauri/target/**", "src-tauri/resources/**"]
+    },
+    "@mythos/editor-webview#build": {
+      "outputs": ["build/**"]
     }
   }
 }

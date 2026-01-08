@@ -2,7 +2,6 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   useFloating,
   offset,
-  flip,
   shift,
   inline,
   arrow,

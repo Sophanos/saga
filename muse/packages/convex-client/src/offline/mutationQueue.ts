@@ -7,7 +7,6 @@
 
 import { get, set, createStore } from "idb-keyval";
 import type { ConvexReactClient } from "convex/react";
-import type { FunctionReference } from "convex/server";
 
 // Dedicated store for mutation queue
 const queueStore = createStore("convex-cache", "mutations");

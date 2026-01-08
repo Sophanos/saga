@@ -3,12 +3,12 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
 function resolveWebAppPort(env: Record<string, string>, fallback: number): number {
-  const explicitPort = Number(env.VITE_WEB_APP_PORT);
+  const explicitPort = Number(env["VITE_WEB_APP_PORT"]);
   if (!Number.isNaN(explicitPort) && explicitPort > 0) {
     return explicitPort;
   }
 
-  const baseUrl = env.VITE_WEB_APP_URL?.trim();
+  const baseUrl = env["VITE_WEB_APP_URL"]?.trim();
   if (baseUrl) {
     try {
       const parsed = new URL(baseUrl);
@@ -35,6 +35,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@": resolve(__dirname, "./src"),
       },
+      dedupe: ["react", "react-dom"],
     },
     server: {
       port,

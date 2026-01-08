@@ -384,7 +384,7 @@ interface MythosStore {
   setThreadId: (id: string) => void;
   applyWriteContentSuggestion: (toolCallId: string) => Promise<{
     applied: boolean;
-    appliedOperation?: string;
+    appliedOperation?: WriteContentOperation;
     summary?: string;
     insertedTextPreview?: string;
     error?: string;

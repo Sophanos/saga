@@ -2,7 +2,6 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   useFloating,
   offset,
-  flip,
   shift,
   autoUpdate,
   FloatingPortal,

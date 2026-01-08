@@ -2,6 +2,30 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 /**
+ * Subscription status values
+ */
+export const subscriptionStatus = v.union(
+  v.literal("active"),
+  v.literal("trialing"),
+  v.literal("past_due"),
+  v.literal("canceled"),
+  v.literal("expired"),
+  v.literal("paused"),
+  v.literal("grace_period")
+);
+
+/**
+ * Subscription provider/store
+ */
+export const subscriptionStore = v.union(
+  v.literal("APP_STORE"),
+  v.literal("MAC_APP_STORE"),
+  v.literal("PLAY_STORE"),
+  v.literal("STRIPE"),
+  v.literal("PROMOTIONAL")
+);
+
+/**
  * Saga Convex Schema
  *
  * This schema mirrors the core Supabase tables that need real-time sync.
@@ -269,6 +293,65 @@ export default defineSchema({
       searchField: "text",
       filterFields: ["projectId", "type"],
     }),
+
+  // ============================================================
+  // SUBSCRIPTIONS (RevenueCat unified)
+  // ============================================================
+  subscriptions: defineTable({
+    // User reference (Better Auth user ID)
+    userId: v.string(),
+    // RevenueCat customer ID
+    revenuecatId: v.string(),
+    // Current subscription status
+    status: subscriptionStatus,
+    // Store that processed the purchase
+    store: subscriptionStore,
+    // Product/plan identifier
+    productId: v.string(),
+    // Entitlement IDs granted
+    entitlements: v.array(v.string()),
+    // Subscription timing
+    purchasedAt: v.number(),
+    expiresAt: v.optional(v.number()),
+    // Grace period (for billing issues)
+    gracePeriodExpiresAt: v.optional(v.number()),
+    // Cancellation
+    canceledAt: v.optional(v.number()),
+    willRenew: v.boolean(),
+    // Trial info
+    isTrialPeriod: v.boolean(),
+    trialExpiresAt: v.optional(v.number()),
+    // Pricing (for analytics)
+    priceInCents: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    // Metadata
+    lastSyncedAt: v.number(),
+    rawEvent: v.optional(v.any()), // Last webhook event for debugging
+  })
+    .index("by_user", ["userId"])
+    .index("by_revenuecat", ["revenuecatId"])
+    .index("by_status", ["status"])
+    .index("by_user_status", ["userId", "status"]),
+
+  // ============================================================
+  // SUBSCRIPTION EVENTS (Audit log)
+  // ============================================================
+  subscriptionEvents: defineTable({
+    userId: v.string(),
+    revenuecatId: v.string(),
+    eventType: v.string(), // INITIAL_PURCHASE, RENEWAL, CANCELLATION, etc.
+    store: subscriptionStore,
+    productId: v.string(),
+    transactionId: v.optional(v.string()),
+    environment: v.string(), // SANDBOX or PRODUCTION
+    priceInCents: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    rawEvent: v.any(),
+    processedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_revenuecat", ["revenuecatId"])
+    .index("by_type", ["eventType"]),
 
   // ============================================================
   // AI USAGE TRACKING

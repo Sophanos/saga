@@ -34,7 +34,6 @@ import type { EntityType } from "@mythos/core";
 import type {
   AskQuestionArgs,
   AskQuestionResult,
-  WriteContentArgs,
   WriteContentOperation,
   WriteContentResult,
 } from "@mythos/agent-protocol";
@@ -202,8 +201,8 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
     (incoming: ToolCallResult, needsApprovalOverride?: boolean, approvalId?: string) => {
       const needsApproval =
         needsApprovalOverride ??
-        incoming.toolName === "ask_question" ||
-        incoming.toolName === "write_content";
+        (incoming.toolName === "ask_question" ||
+        incoming.toolName === "write_content");
       const selectionRange =
         incoming.toolName === "write_content" ? getSelectionRange() : undefined;
       const toolMessage: ChatMessage = {
@@ -634,7 +633,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
           ) : (
             <TextArea
               value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
+              onChange={setAnswer}
               placeholder="Type your answer..."
               className="min-h-[72px] text-xs"
               disabled={isSubmitting}
