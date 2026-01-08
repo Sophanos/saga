@@ -3,16 +3,13 @@
 import { convexTest } from "convex-test";
 import { defineSchema, componentsGeneric } from "convex/server";
 import type { AgentComponent } from "@convex-dev/agent";
-import { schema as agentComponentSchema } from "@convex-dev/agent/dist/component/schema.js";
+import { register as registerAgentComponent } from "@convex-dev/agent/test";
 
 export const modules = import.meta.glob("../**/*.ts");
-export const componentModules = import.meta.glob(
-  "../../node_modules/@convex-dev/agent/dist/component/**/*.js"
-);
 
 export function initConvexTest(schema = defineSchema({})) {
   const t = convexTest(schema, modules);
-  t.registerComponent("agent", agentComponentSchema, componentModules);
+  registerAgentComponent(t, "agent");
   return t;
 }
 
