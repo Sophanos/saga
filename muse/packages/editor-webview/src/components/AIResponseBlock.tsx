@@ -54,8 +54,8 @@ export function AIResponseBlock({
     open: true,
     placement: 'bottom-start',
     middleware: [
-      offset(4),
-      shift({ padding: 8, crossAxis: true }),
+      offset(2),
+      shift({ padding: 16 }),
     ],
     whileElementsMounted: autoUpdate,
   });

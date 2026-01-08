@@ -103,8 +103,8 @@ export function AICommandPalette({
     placement: 'bottom-start',
     middleware: [
       inline(),
-      offset(6),
-      shift({ padding: 8, crossAxis: true }),
+      offset(4),
+      shift({ padding: 16 }),
       arrow({ element: arrowRef, padding: 8 }),
     ],
     whileElementsMounted: autoUpdate,
