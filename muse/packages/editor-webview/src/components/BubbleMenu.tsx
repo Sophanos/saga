@@ -43,15 +43,15 @@ export function BubbleMenu({ editor, onAskAI }: BubbleMenuProps) {
 
   const handleLink = useCallback(() => {
     if (!editor) return;
-    const previousUrl = editor.getAttributes('link').href;
+    const previousUrl = editor.getAttributes('link')['href'];
     const url = window.prompt('URL:', previousUrl);
 
     if (url === null) return;
     if (url === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      (editor.chain().focus().extendMarkRange('link') as any).unsetLink().run();
       return;
     }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    (editor.chain().focus().extendMarkRange('link') as any).setLink({ href: url }).run();
   }, [editor]);
 
   const setColor = useCallback(
@@ -185,7 +185,7 @@ export function BubbleMenu({ editor, onAskAI }: BubbleMenuProps) {
           >
             <span
               style={{
-                borderBottom: `3px solid ${editor.getAttributes('textStyle').color || 'currentColor'}`,
+                borderBottom: `3px solid ${editor.getAttributes('textStyle')['color'] || 'currentColor'}`,
               }}
             >
               A
@@ -218,7 +218,7 @@ export function BubbleMenu({ editor, onAskAI }: BubbleMenuProps) {
           >
             <span
               style={{
-                backgroundColor: editor.getAttributes('highlight').color || 'transparent',
+                backgroundColor: editor.getAttributes('highlight')['color'] || 'transparent',
                 padding: '0 4px',
               }}
             >

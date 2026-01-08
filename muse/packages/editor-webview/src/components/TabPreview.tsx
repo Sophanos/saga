@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 interface TabPreviewProps {
@@ -53,7 +53,6 @@ export function TabPreview({ title, content, isVisible, anchorRect }: TabPreview
 
   const { x, y, placement } = computePosition(anchorRect);
   const displayTitle = title || 'Untitled';
-  const hasContent = content && content.trim().length > 0;
 
   const transformOrigin = placement === 'bottom' ? 'top center' : 'bottom center';
   const translateY = placement === 'bottom' ? '-4px' : '4px';

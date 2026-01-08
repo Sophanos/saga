@@ -14,7 +14,7 @@ export interface SlashCommandMenuRef {
 }
 
 export const SlashCommandMenu = forwardRef<SlashCommandMenuRef, SlashCommandMenuProps>(
-  ({ items, editor, command }, ref) => {
+  ({ items, command }, ref) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
 
     const grouped = groupByCategory(items);

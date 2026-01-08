@@ -1,7 +1,6 @@
 import { ReactRenderer } from '@tiptap/react';
 import tippy, { type Instance } from 'tippy.js';
 import type { SuggestionOptions, SuggestionProps } from '@tiptap/suggestion';
-import type { Editor } from '@tiptap/core';
 import { SlashCommandMenu, type SlashCommandMenuRef } from './SlashCommandMenu';
 import type { SlashCommandItem } from '@mythos/editor';
 
@@ -13,7 +12,7 @@ export function createSlashCommandSuggestion(): Partial<SuggestionOptions<SlashC
 
       return {
         onStart: (props: SuggestionProps<SlashCommandItem>) => {
-          component = new ReactRenderer(SlashCommandMenu, {
+          component = new ReactRenderer(SlashCommandMenu as any, {
             props: {
               items: props.items,
               editor: props.editor,

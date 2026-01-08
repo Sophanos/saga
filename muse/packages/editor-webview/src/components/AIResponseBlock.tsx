@@ -1,9 +1,18 @@
-/**
- * AIResponseBlock - Notion-style AI response block in editor
- * Shows streaming response with actions: Insert below, Replace, Retry, Discard
- */
+import { useState, useCallback, useRef, useEffect } from 'react';
+import {
+  useFloating,
+  offset,
+  flip,
+  shift,
+  autoUpdate,
+  FloatingPortal,
+  type ReferenceType,
+} from '@floating-ui/react';
 
-import { useState, useCallback, useRef } from 'react';
+export interface SelectionVirtualElement {
+  getBoundingClientRect: () => DOMRect;
+  getClientRects: () => DOMRectList | DOMRect[];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -14,6 +23,7 @@ export type AIBlockStatus = 'idle' | 'streaming' | 'complete' | 'error';
 interface AIResponseBlockProps {
   status: AIBlockStatus;
   response: string;
+  virtualElement?: SelectionVirtualElement | null;
   onInsertBelow: (text: string) => void;
   onRetry: () => void;
   onDiscard: () => void;
@@ -28,6 +38,7 @@ interface AIResponseBlockProps {
 export function AIResponseBlock({
   status,
   response,
+  virtualElement,
   onInsertBelow,
   onRetry,
   onDiscard,
@@ -36,7 +47,26 @@ export function AIResponseBlock({
 }: AIResponseBlockProps) {
   const [followUpQuery, setFollowUpQuery] = useState('');
   const [showScopeDropdown, setShowScopeDropdown] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const { refs, floatingStyles } = useFloating({
+    open: true,
+    placement: 'bottom-start',
+    middleware: [
+      offset(4),
+      shift({ padding: 8, crossAxis: true }),
+    ],
+    whileElementsMounted: autoUpdate,
+  });
+
+  useEffect(() => {
+    if (virtualElement) refs.setReference(virtualElement as ReferenceType);
+  }, [virtualElement, refs]);
+
+  useEffect(() => {
+    requestAnimationFrame(() => setIsVisible(true));
+  }, []);
 
   const handleFollowUp = useCallback(() => {
     if (followUpQuery.trim()) {
@@ -49,8 +79,12 @@ export function AIResponseBlock({
   const hasResponse = response && response.length > 0;
   const isComplete = status === 'complete';
 
-  return (
-    <div className="ai-response-block">
+  const content = (
+    <div
+      ref={refs.setFloating}
+      className={`ai-response-block ${isVisible ? 'ai-response-block--visible' : ''}`}
+      style={virtualElement ? floatingStyles : undefined}
+    >
       {/* Header with Avatar and Status */}
       <div className="ai-response-header">
         <div className="ai-response-avatar">
@@ -470,9 +504,25 @@ export function AIResponseBlock({
           color: var(--color-text-secondary, #6b6b6b);
           cursor: pointer;
         }
+
+        .ai-response-block {
+          z-index: 999;
+          width: 600px;
+          max-width: calc(100vw - 32px);
+          opacity: 0;
+          transform: translateY(-8px);
+          transition: opacity 150ms ease-out, transform 150ms ease-out;
+        }
+
+        .ai-response-block--visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
       `}</style>
     </div>
   );
+
+  return virtualElement ? <FloatingPortal>{content}</FloatingPortal> : content;
 }
 
 export default AIResponseBlock;

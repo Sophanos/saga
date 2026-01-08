@@ -150,7 +150,7 @@ function extractPreviewText(html: string, maxLength = 280): string {
     const doc = parser.parseFromString(html, 'text/html');
 
     // Process lists to add markers
-    doc.querySelectorAll('li').forEach((li, index) => {
+    doc.querySelectorAll('li').forEach((li) => {
       const parent = li.parentElement;
       const isOrdered = parent?.tagName === 'OL';
       const isTaskList = li.hasAttribute('data-type') && li.getAttribute('data-type') === 'taskItem';

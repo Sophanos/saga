@@ -394,7 +394,7 @@ interface ToggleItemProps {
   onToggle?: () => void;
 }
 
-function ToggleItem({ id, label, checked = false, onToggle }: ToggleItemProps) {
+function ToggleItem({ label, checked = false, onToggle }: ToggleItemProps) {
   return (
     <button className="toggle-item" onClick={onToggle}>
       <span className="toggle-item-label">{label}</span>

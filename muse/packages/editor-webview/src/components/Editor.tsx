@@ -4,7 +4,7 @@ import { WriterKit, SlashCommand } from '@mythos/editor';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createSlashCommandSuggestion } from './suggestion';
 import { BubbleMenu } from './BubbleMenu';
-import { AICommandPalette, type AIQuickAction } from './AICommandPalette';
+import { AICommandPalette, type AIQuickAction, type SelectionVirtualElement } from './AICommandPalette';
 import { AIResponseBlock } from './AIResponseBlock';
 import 'tippy.js/dist/tippy.css';
 
@@ -14,6 +14,8 @@ type AIBlockStatus = 'idle' | 'streaming' | 'complete' | 'error';
 interface AIState {
   isOpen: boolean;
   position: { x: number; y: number } | null;
+  /** Virtual element for Floating UI positioning */
+  virtualElement: SelectionVirtualElement | null;
   selectedText: string;
   showResponse: boolean;
   status: AIBlockStatus;
@@ -61,6 +63,7 @@ export function Editor({
   const [aiState, setAIState] = useState<AIState>({
     isOpen: false,
     position: null,
+    virtualElement: null,
     selectedText: '',
     showResponse: false,
     status: 'idle',
@@ -145,73 +148,50 @@ export function Editor({
 
     const { from, to } = editor.state.selection;
     const maxPos = editor.state.doc.nodeSize - 2;
-    const targetPos = Math.max(0, Math.min(to, maxPos));
+    const startPos = Math.max(0, Math.min(from, maxPos));
+    const endPos = Math.max(0, Math.min(to, maxPos));
 
-    try {
-      const coords = editor.view.coordsAtPos(targetPos);
-      const editorElement = editor.view.dom;
-      const editorRect = editorElement.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const isEndVisible = coords.bottom > 0 && coords.top < viewportHeight;
+    const startCoords = editor.view.coordsAtPos(startPos);
+    const endCoords = editor.view.coordsAtPos(endPos);
+    const viewportHeight = window.innerHeight;
+    const paletteHeight = 500;
+    const spaceBelow = viewportHeight - endCoords.bottom;
+    const hasEnoughSpaceBelow = spaceBelow >= paletteHeight;
+    const isSelectionVisible = endCoords.bottom > 0 && endCoords.top < viewportHeight;
 
-      if (!isEndVisible) {
-        setAIState((s) => ({
-          ...s,
-          isOpen: false,
-          showJumpIndicator: true,
-          selectedText,
-          selectionEndPos: targetPos,
-          showResponse: false,
-          position: null,
-        }));
-        return;
-      }
-
-      const paletteWidth = 420;
-      let xPos = coords.left - editorRect.left;
-      xPos = Math.max(0, Math.min(xPos, editorRect.width - paletteWidth));
-      const yPos = coords.bottom - editorRect.top + 8;
-
+    if (!isSelectionVisible || !hasEnoughSpaceBelow) {
       setAIState((s) => ({
         ...s,
-        isOpen: true,
-        position: { x: xPos, y: yPos },
+        isOpen: false,
+        showJumpIndicator: true,
         selectedText,
+        selectionEndPos: endPos,
         showResponse: false,
-        selectionEndPos: targetPos,
-        showJumpIndicator: false,
+        virtualElement: null,
       }));
-    } catch (error) {
-      console.warn('AI palette positioning error:', error);
-      try {
-        const fallbackPos = Math.max(0, Math.min(from, maxPos));
-        const coords = editor.view.coordsAtPos(fallbackPos);
-        const editorRect = editor.view.dom.getBoundingClientRect();
-
-        setAIState((s) => ({
-          ...s,
-          isOpen: true,
-          position: {
-            x: Math.max(0, coords.left - editorRect.left),
-            y: coords.bottom - editorRect.top + 8
-          },
-          selectedText,
-          showResponse: false,
-          selectionEndPos: fallbackPos,
-          showJumpIndicator: false,
-        }));
-      } catch {
-        setAIState((s) => ({
-          ...s,
-          isOpen: true,
-          position: { x: 0, y: 60 },
-          selectedText,
-          showResponse: false,
-          selectionEndPos: 0,
-          showJumpIndicator: false,
-        }));
-      }
+      return;
     }
+
+    const rect = new DOMRect(
+      startCoords.left,
+      startCoords.top,
+      endCoords.right - startCoords.left,
+      endCoords.bottom - startCoords.top
+    );
+    const virtualElement: SelectionVirtualElement = {
+      getBoundingClientRect: () => rect,
+      getClientRects: () => [rect],
+    };
+
+    setAIState((s) => ({
+      ...s,
+      isOpen: true,
+      virtualElement,
+      selectedText,
+      showResponse: false,
+      selectionEndPos: endPos,
+      showJumpIndicator: false,
+    }));
   }, [editor]);
 
   const jumpToSelectionEnd = useCallback(() => {
@@ -219,34 +199,35 @@ export function Editor({
 
     const maxPos = editor.state.doc.nodeSize - 2;
     const targetPos = Math.max(0, Math.min(aiState.selectionEndPos, maxPos));
+    const coords = editor.view.coordsAtPos(targetPos);
+    const scrollTarget = window.scrollY + coords.top - 100;
 
-    try {
-      const coords = editor.view.coordsAtPos(targetPos);
-      window.scrollTo({
-        top: window.scrollY + coords.top - 150,
-        behavior: 'smooth'
-      });
+    window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
 
-      setTimeout(() => {
-        const newCoords = editor.view.coordsAtPos(targetPos);
-        const editorRect = editor.view.dom.getBoundingClientRect();
-        const paletteWidth = 420;
+    setTimeout(() => {
+      const newCoords = editor.view.coordsAtPos(targetPos);
+      const { from } = editor.state.selection;
+      const startPos = Math.max(0, Math.min(from, maxPos));
+      const startCoords = editor.view.coordsAtPos(startPos);
 
-        let xPos = newCoords.left - editorRect.left;
-        xPos = Math.max(0, Math.min(xPos, editorRect.width - paletteWidth));
-        const yPos = newCoords.bottom - editorRect.top + 8;
+      const rect = new DOMRect(
+        startCoords.left,
+        startCoords.top,
+        newCoords.right - startCoords.left,
+        newCoords.bottom - startCoords.top
+      );
+      const virtualElement: SelectionVirtualElement = {
+        getBoundingClientRect: () => rect,
+        getClientRects: () => [rect],
+      };
 
-        setAIState((s) => ({
-          ...s,
-          isOpen: true,
-          showJumpIndicator: false,
-          position: { x: xPos, y: yPos },
-        }));
-      }, 350);
-    } catch (error) {
-      console.warn('Jump to selection error:', error);
-      setAIState((s) => ({ ...s, showJumpIndicator: false }));
-    }
+      setAIState((s) => ({
+        ...s,
+        isOpen: true,
+        showJumpIndicator: false,
+        virtualElement,
+      }));
+    }, 400);
   }, [editor, aiState.selectionEndPos]);
 
   const handleAISubmit = useCallback(
@@ -424,65 +405,47 @@ export function Editor({
       {editor && <BubbleMenu editor={editor} onAskAI={handleBubbleMenuAI} />}
 
       {aiState.showJumpIndicator && (
-        <button
-          className="ai-jump-indicator"
-          onClick={jumpToSelectionEnd}
-          title="Jump to selection end"
-        >
+        <button className="ai-jump-indicator" onClick={jumpToSelectionEnd}>
           <div className="ai-jump-avatar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M7 8.5C8.5 7 11 6.5 12 6.5C13 6.5 15.5 7 17 8.5"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
+              <path d="M7 8.5C8.5 7 11 6.5 12 6.5C13 6.5 15.5 7 17 8.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
               <circle cx="9" cy="12" r="1.5" fill="currentColor" />
-              <path
-                d="M14 11C14 11 15 10.5 16 11.5"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-              <path
-                d="M10 17C11 18 13 18 14 17"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
+              <path d="M14 11C14 11 15 10.5 16 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              <path d="M10 17C11 18 13 18 14 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </div>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <span className="ai-jump-text">Jump to selection</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12l7 7 7-7" />
           </svg>
         </button>
       )}
 
-      {aiState.isOpen && aiState.position && (
+      {aiState.isOpen && aiState.virtualElement && (
         <AICommandPalette
           selectedText={aiState.selectedText}
-          position={aiState.position}
+          virtualElement={aiState.virtualElement}
           onClose={() => setAIState((s) => ({ ...s, isOpen: false, showJumpIndicator: false }))}
           onSubmit={handleAISubmit}
         />
       )}
 
-      {aiState.showResponse && (
-        <div className="ai-response-container" style={aiState.position ? { top: aiState.position.y } : undefined}>
-          <AIResponseBlock
-            status={aiState.status}
-            response={aiState.response}
-            onInsertBelow={handleInsertBelow}
-            onRetry={handleRetry}
-            onDiscard={handleDiscard}
-            onFollowUp={handleFollowUp}
-            onStop={() => setAIState((s) => ({ ...s, status: 'complete' }))}
-          />
-        </div>
+      {aiState.showResponse && aiState.virtualElement && (
+        <AIResponseBlock
+          status={aiState.status}
+          response={aiState.response}
+          virtualElement={aiState.virtualElement}
+          onInsertBelow={handleInsertBelow}
+          onRetry={handleRetry}
+          onDiscard={handleDiscard}
+          onFollowUp={handleFollowUp}
+          onStop={() => setAIState((s) => ({ ...s, status: 'complete' }))}
+        />
       )}
 
       <style>{`
         .editor-container {
+          position: relative;
           flex: 1;
           display: flex;
           flex-direction: column;
@@ -853,14 +816,6 @@ export function Editor({
           cursor: col-resize;
         }
 
-        /* AI Response Container */
-        .ai-response-container {
-          position: relative;
-          max-width: 708px;
-          width: 100%;
-          margin: 0 auto;
-        }
-
         /* Jump to Selection Indicator */
         .ai-jump-indicator {
           position: fixed;
@@ -908,6 +863,10 @@ export function Editor({
         }
 
         .ai-jump-indicator svg:last-child {
+          color: var(--color-text-secondary);
+        }
+
+        .ai-jump-text {
           color: var(--color-text-secondary);
         }
       `}</style>

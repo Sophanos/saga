@@ -9,6 +9,18 @@ export interface EditorDocument {
   updatedAt: number;
 }
 
+function createDefaultDocument(): EditorDocument {
+  const now = Date.now();
+  return {
+    id: `doc-${now}`,
+    title: 'Untitled',
+    content: '',
+    isDirty: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 interface UseEditorStateOptions {
   initialDocuments?: EditorDocument[];
   onSave?: (doc: EditorDocument) => Promise<void>;
@@ -18,22 +30,14 @@ export function useEditorState({ initialDocuments = [], onSave }: UseEditorState
   const [documents, setDocuments] = useState<EditorDocument[]>(
     initialDocuments.length > 0
       ? initialDocuments
-      : [createDocument()]
+      : [createDefaultDocument()]
   );
   const [activeDocId, setActiveDocId] = useState<string>(documents[0]?.id ?? '');
 
   const activeDocument = documents.find((d) => d.id === activeDocId) ?? null;
 
   const createDocument = useCallback((): EditorDocument => {
-    const now = Date.now();
-    return {
-      id: `doc-${now}`,
-      title: 'Untitled',
-      content: '',
-      isDirty: false,
-      createdAt: now,
-      updatedAt: now,
-    };
+    return createDefaultDocument();
   }, []);
 
   const addDocument = useCallback((doc?: Partial<EditorDocument>) => {
@@ -96,17 +100,5 @@ export function useEditorState({ initialDocuments = [], onSave }: UseEditorState
     deleteDocument,
     saveDocument,
     saveActiveDocument,
-  };
-}
-
-function createDocument(): EditorDocument {
-  const now = Date.now();
-  return {
-    id: `doc-${now}`,
-    title: 'Untitled',
-    content: '',
-    isDirty: false,
-    createdAt: now,
-    updatedAt: now,
   };
 }
