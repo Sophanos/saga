@@ -77,6 +77,7 @@ export const clarityCheckExecutor: ToolDefinition<
         {
           apiKey: ctx.apiKey,
           signal: ctx.signal,
+          projectId: ctx.projectId,
         }
       );
 

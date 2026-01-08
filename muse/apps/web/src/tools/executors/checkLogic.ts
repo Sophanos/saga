@@ -84,7 +84,7 @@ export const checkLogicExecutor: ToolDefinition<CheckLogicArgs, CheckLogicExecut
           characters,
           strictness: args.strictness ?? ctx.preferences?.logicStrictness ?? "balanced",
         },
-        { apiKey: ctx.apiKey, signal: ctx.signal }
+        { apiKey: ctx.apiKey, signal: ctx.signal, projectId: ctx.projectId }
       );
 
       ctx.onProgress?.({ stage: "Processing results...", pct: 80 });

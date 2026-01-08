@@ -15,6 +15,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import {
   createSSEStream,
   getStreamingHeaders,
@@ -108,7 +109,6 @@ http.route({
         mode,
         editorContext,
         contextHints,
-        conversationId,
       } = body as {
         kind?: "chat" | "execute_tool" | "tool-result" | "tool-approval";
         projectId: string;
@@ -119,13 +119,37 @@ http.route({
         mode?: string;
         editorContext?: Record<string, unknown>;
         contextHints?: Record<string, unknown>;
-        conversationId?: string;
       };
 
       if (!projectId) {
         return new Response(JSON.stringify({ error: "projectId is required" }), {
           status: 400,
           headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (!auth.userId) {
+        return new Response(JSON.stringify({ error: "Authenticated user required" }), {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      const isTemplateBuilder = projectId === "template-builder";
+      const projectIdValue = projectId as Id<"projects">;
+
+      if (!isTemplateBuilder) {
+        await ctx.runQuery(internal.projects.assertOwner, {
+          projectId: projectIdValue,
+          userId: auth.userId,
+        });
+      }
+
+      if (threadId && !isTemplateBuilder) {
+        await ctx.runQuery(internal.ai.threads.assertThreadOwnership, {
+          threadId,
+          projectId: projectIdValue,
+          userId: auth.userId,
         });
       }
 
@@ -145,7 +169,7 @@ http.route({
         };
         return handleToolResult(ctx, {
           projectId,
-          threadId: threadId ?? conversationId,
+          threadId,
           promptMessageId,
           toolCallId,
           toolName,
@@ -182,7 +206,7 @@ http.route({
       return handleSagaChat(ctx, {
         projectId,
         prompt: resolvedPrompt,
-        threadId: threadId ?? conversationId,
+        threadId,
         mentions,
         mode,
         editorContext,
@@ -237,13 +261,25 @@ http.route({
         });
       }
 
+      if (!auth.userId) {
+        return new Response(JSON.stringify({ error: "Authenticated user required" }), {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      await ctx.runQuery(internal.projects.assertOwner, {
+        projectId: projectId as Id<"projects">,
+        userId: auth.userId,
+      });
+
       // Call internal action for entity detection
       const result = await ctx.runAction(internal.ai.detect.detectEntities, {
         text,
         projectId,
         entityTypes,
         minConfidence,
-        userId: auth.userId!,
+        userId: auth.userId,
       });
 
       return new Response(JSON.stringify(result), {

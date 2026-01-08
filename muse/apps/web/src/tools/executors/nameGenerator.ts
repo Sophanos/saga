@@ -53,7 +53,7 @@ export const nameGeneratorExecutor: ToolDefinition<NameGeneratorArgs, NameGenera
           style,
           avoid: avoidNames,
         },
-        { apiKey: ctx.apiKey, signal: ctx.signal }
+        { apiKey: ctx.apiKey, signal: ctx.signal, projectId: ctx.projectId }
       );
 
       ctx.onProgress?.({ stage: "Complete!", pct: 100 });

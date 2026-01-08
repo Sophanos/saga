@@ -17,19 +17,27 @@ export interface RAGContext {
   threadId?: string;
   documents: Array<{
     id: string;
-    title: string;
+    title?: string;
+    type: string;
     preview: string;
+    score?: number;
+    source?: "qdrant" | "lexical" | "memory" | "text";
   }>;
   entities: Array<{
     id: string;
-    name: string;
+    name?: string;
     type: string;
     preview: string;
+    score?: number;
+    source?: "qdrant" | "lexical" | "memory" | "text";
   }>;
   memories?: Array<{
     id: string;
-    category: string;
+    category?: string;
+    type: string;
     preview: string;
+    score?: number;
+    source?: "qdrant" | "lexical" | "memory" | "text";
   }>;
 }
 

@@ -242,9 +242,13 @@ export interface ChatMessage {
 
 export interface ChatContextItem {
   id: string;
-  title: string;
+  title?: string;
+  name?: string;
   type: string;
   preview: string;
+  category?: string;
+  score?: number;
+  source?: "qdrant" | "lexical" | "memory" | "text";
 }
 
 export interface ChatContext {
@@ -258,20 +262,20 @@ export interface ChatContext {
   memories?: ChatContextItem[];
 }
 
-// UUID generator helper
-const generateConversationId = (): string =>
-  crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
 // Load persisted session for hydration
 const persistedSession = loadChatSession();
+const initialConversationId = persistedSession?.conversationId ?? null;
+const initialIsNewConversation = initialConversationId
+  ? (persistedSession?.isNewConversation ?? false)
+  : true;
 
 // Chat slice
 interface ChatState {
   messages: ChatMessage[];
   isStreaming: boolean;
   error: string | null;
-  /** Active conversation ID - single source of truth */
-  conversationId: string;
+  /** Active conversation ID (server thread ID when known) */
+  conversationId: string | null;
   /** User-defined conversation name */
   conversationName: string | null;
   /** Whether this is a new conversation (no messages sent yet) */
@@ -377,7 +381,7 @@ interface MythosStore {
   setChatError: (error: string | null) => void;
   setChatContext: (context: ChatContext | null) => void;
   setConversationName: (name: string | null) => void;
-  setConversationId: (id: string) => void;
+  setThreadId: (id: string) => void;
   applyWriteContentSuggestion: (toolCallId: string) => Promise<{
     applied: boolean;
     appliedOperation?: string;
@@ -458,9 +462,9 @@ export const useMythosStore = create<MythosStore>()(
       messages: [],
       isStreaming: false,
       error: null,
-      conversationId: persistedSession?.conversationId ?? generateConversationId(),
+      conversationId: initialConversationId,
       conversationName: persistedSession?.conversationName ?? null,
-      isNewConversation: persistedSession?.isNewConversation ?? true,
+      isNewConversation: initialIsNewConversation,
       lastContext: null,
       sessions: [],
       sessionsLoading: false,
@@ -616,11 +620,10 @@ export const useMythosStore = create<MythosStore>()(
         state.search.lastRunAt = null;
         state.search.source = { kind: "query" };
         // Clear chat and start fresh session
-        const newConversationId = generateConversationId();
         state.chat.messages = [];
         state.chat.isStreaming = false;
         state.chat.error = null;
-        state.chat.conversationId = newConversationId;
+        state.chat.conversationId = null;
         state.chat.conversationName = null;
         state.chat.isNewConversation = true;
         state.chat.lastContext = null;
@@ -630,7 +633,7 @@ export const useMythosStore = create<MythosStore>()(
         state.chat.sessionsError = null;
         // Persist new session (outside immer callback)
         saveChatSession({
-          conversationId: newConversationId,
+          conversationId: null,
           conversationName: null,
           isNewConversation: true,
         });
@@ -760,15 +763,13 @@ export const useMythosStore = create<MythosStore>()(
       set((state) => {
         state.chat.messages.push(message);
         state.chat.error = null;
-        // Flip isNewConversation on first user message
-        if (message.role === "user" && state.chat.isNewConversation) {
-          state.chat.isNewConversation = false;
-        }
       });
-      // Persist session state on user messages
+      // Persist session state on user messages only when threadId is known
       if (message.role === "user") {
         const { conversationId, conversationName, isNewConversation } = get().chat;
-        saveChatSession({ conversationId, conversationName, isNewConversation });
+        if (conversationId) {
+          saveChatSession({ conversationId, conversationName, isNewConversation });
+        }
       }
     },
     updateChatMessage: (id, updates) =>
@@ -823,12 +824,13 @@ export const useMythosStore = create<MythosStore>()(
       const { conversationId, conversationName, isNewConversation } = get().chat;
       saveChatSession({ conversationId, conversationName, isNewConversation });
     },
-    setConversationId: (id) => {
+    setThreadId: (id) => {
       set((state) => {
         state.chat.conversationId = id;
+        state.chat.isNewConversation = false;
       });
-      const { conversationName, isNewConversation } = get().chat;
-      saveChatSession({ conversationId: id, conversationName, isNewConversation });
+      const { conversationName } = get().chat;
+      saveChatSession({ conversationId: id, conversationName, isNewConversation: false });
     },
     applyWriteContentSuggestion: async (toolCallId) => {
       const state = get();
@@ -909,19 +911,18 @@ export const useMythosStore = create<MythosStore>()(
         state.chat.lastContext = null;
       }),
     startNewConversation: () => {
-      const newId = generateConversationId();
       set((state) => {
         state.chat.messages = [];
         state.chat.error = null;
         state.chat.isStreaming = false;
         state.chat.lastContext = null;
-        state.chat.conversationId = newId;
+        state.chat.conversationId = null;
         state.chat.conversationName = null;
         state.chat.isNewConversation = true;
       });
       // Persist new session
       saveChatSession({
-        conversationId: newId,
+        conversationId: null,
         conversationName: null,
         isNewConversation: true,
       });
@@ -967,7 +968,7 @@ export const useMythosStore = create<MythosStore>()(
         state.chat.messages = messages;
         state.chat.conversationId = sessionId;
         state.chat.conversationName = sessionName;
-        state.chat.isNewConversation = messages.length === 0;
+        state.chat.isNewConversation = false;
         state.chat.error = null;
         state.chat.isStreaming = false;
         state.chat.lastContext = null;
@@ -976,7 +977,7 @@ export const useMythosStore = create<MythosStore>()(
       saveChatSession({
         conversationId: sessionId,
         conversationName: sessionName,
-        isNewConversation: messages.length === 0,
+        isNewConversation: false,
       });
     },
 

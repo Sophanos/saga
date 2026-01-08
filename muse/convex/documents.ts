@@ -168,6 +168,12 @@ export const create = mutation({
       updatedAt: now,
     });
 
+    await ctx.runMutation(internal.ai.embeddings.enqueueEmbeddingJob, {
+      projectId: args.projectId,
+      targetType: "document",
+      targetId: id,
+    });
+
     return id;
   },
 });
@@ -210,6 +216,15 @@ export const update = mutation({
       ...cleanUpdates,
       updatedAt: Date.now(),
     });
+
+    const document = await ctx.db.get(id);
+    if (document) {
+      await ctx.runMutation(internal.ai.embeddings.enqueueEmbeddingJob, {
+        projectId: document.projectId,
+        targetType: "document",
+        targetId: document._id,
+      });
+    }
 
     return id;
   },

@@ -7,6 +7,7 @@
 
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { verifyProjectAccess, verifyEntityAccess } from "./lib/auth";
 
@@ -170,6 +171,12 @@ export const create = mutation({
       updatedAt: now,
     });
 
+    await ctx.runMutation(internal.ai.embeddings.enqueueEmbeddingJob, {
+      projectId: args.projectId,
+      targetType: "entity",
+      targetId: id,
+    });
+
     return id;
   },
 });
@@ -204,6 +211,15 @@ export const update = mutation({
       ...cleanUpdates,
       updatedAt: Date.now(),
     });
+
+    const entity = await ctx.db.get(id);
+    if (entity) {
+      await ctx.runMutation(internal.ai.embeddings.enqueueEmbeddingJob, {
+        projectId: entity.projectId,
+        targetType: "entity",
+        targetId: entity._id,
+      });
+    }
 
     return id;
   },

@@ -40,6 +40,7 @@ export const genesisWorldExecutor: ToolDefinition<GenesisWorldArgs, GenesisWorld
       const result = await executeGenesisWorld(args, {
         apiKey: ctx.apiKey,
         signal: ctx.signal,
+        projectId: ctx.projectId,
       });
 
       ctx.onProgress?.({ stage: "Creating entities...", pct: 50 });

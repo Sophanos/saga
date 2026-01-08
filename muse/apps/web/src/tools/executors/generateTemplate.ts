@@ -42,6 +42,7 @@ export const generateTemplateExecutor: ToolDefinition<GenerateTemplateArgs, Gene
       const result = await executeGenerateTemplate(args, {
         apiKey: ctx.apiKey,
         signal: ctx.signal,
+        projectId: ctx.projectId,
       });
 
       ctx.onProgress?.({ stage: "Building template...", pct: 70 });

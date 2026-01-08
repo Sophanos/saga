@@ -11,8 +11,8 @@ const STORAGE_KEY = "mythos.chat.session.v1";
  * Persisted chat session metadata
  */
 export interface PersistedChatSession {
-  /** Active conversation ID */
-  conversationId: string;
+  /** Active conversation ID (server thread ID, if known) */
+  conversationId: string | null;
   /** User-defined conversation name (null if not set) */
   conversationName: string | null;
   /** Whether this is a new conversation (no messages sent yet) */
@@ -36,12 +36,16 @@ export function loadChatSession(): PersistedChatSession | null {
     if (
       typeof parsed === "object" &&
       parsed !== null &&
-      "conversationId" in parsed &&
-      typeof (parsed as PersistedChatSession).conversationId === "string"
+      "conversationId" in parsed
     ) {
       const session = parsed as PersistedChatSession;
+      const conversationId =
+        typeof session.conversationId === "string"
+          ? session.conversationId.trim() || null
+          : session.conversationId ?? null;
+
       return {
-        conversationId: session.conversationId,
+        conversationId,
         conversationName: session.conversationName ?? null,
         isNewConversation: session.isNewConversation ?? true,
       };

@@ -108,7 +108,6 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
   const currentProject = useMythosStore((s) => s.project.currentProject);
   const isStreaming = useMythosStore((s) => s.chat.isStreaming);
   const error = useMythosStore((s) => s.chat.error);
-  const isNewConversation = useMythosStore((s) => s.chat.isNewConversation);
   const authUser = useAuthStore((s) => s.user);
   const anonPersonalization = useAnonymousStore((s) => s.personalization);
 
@@ -118,7 +117,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
   const setChatStreaming = useMythosStore((s) => s.setChatStreaming);
   const setChatError = useMythosStore((s) => s.setChatError);
   const setChatContext = useMythosStore((s) => s.setChatContext);
-  const setConversationId = useMythosStore((s) => s.setConversationId);
+  const setThreadId = useMythosStore((s) => s.setThreadId);
   const startNewConversation = useMythosStore((s) => s.startNewConversation);
   const clearChatMessages = useMythosStore((s) => s.clearChat);
   const updateToolInvocation = useMythosStore((s) => s.updateToolInvocation);
@@ -274,10 +273,15 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
         mentions,
       };
 
+      const stateBefore = useMythosStore.getState();
+      const wasNewConversation =
+        stateBefore.chat.isNewConversation || !stateBefore.chat.conversationId;
+      const existingThreadId = stateBefore.chat.conversationId ?? undefined;
+
       // Add user message to store
       addChatMessage(userMessage);
 
-      deferSessionPersistRef.current = isNewConversation;
+      deferSessionPersistRef.current = wasNewConversation;
       persistSessionMessage(userMessage);
 
       // Create placeholder for assistant response
@@ -295,9 +299,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
       setChatError(null);
 
       try {
-        const state = useMythosStore.getState();
-        const conversationId = state.chat.conversationId;
-        const threadId = state.chat.isNewConversation ? undefined : conversationId;
+        const threadId = wasNewConversation ? undefined : existingThreadId;
 
         const contextHints = buildContextHintsPayload(threadId);
 
@@ -318,7 +320,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
             setChatContext(context);
             const threadId = context.threadId;
             if (threadId && threadId !== useMythosStore.getState().chat.conversationId) {
-              setConversationId(threadId);
+              setThreadId(threadId);
               if (deferSessionPersistRef.current) {
                 flushPendingSessionMessages();
               }
@@ -433,14 +435,14 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
       enabled,
       currentProject?.id,
       apiKey,
-      isNewConversation,
+      // isNewConversation is read via stateBefore to avoid post-mutation flips
       addChatMessage,
       updateChatMessage,
       appendToChatMessage,
       setChatStreaming,
       setChatError,
       setChatContext,
-      setConversationId,
+      setThreadId,
       updateToolInvocation,
       buildEditorContext,
       buildContextHintsPayload,

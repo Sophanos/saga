@@ -53,7 +53,7 @@ export const checkConsistencyExecutor: ToolDefinition<CheckConsistencyArgs, Chec
 
       const result = await executeCheckConsistency(
         { ...args, text, entities },
-        { apiKey: ctx.apiKey, signal: ctx.signal }
+        { apiKey: ctx.apiKey, signal: ctx.signal, projectId: ctx.projectId }
       );
 
       ctx.onProgress?.({ stage: "Processing results...", pct: 80 });

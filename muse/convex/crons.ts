@@ -48,4 +48,15 @@ crons.interval(
   internal.maintenance.cleanupStalePresence
 );
 
+// ============================================================
+// Embedding Sync
+// Runs every 30s to process embedding outbox
+// ============================================================
+
+crons.interval(
+  "sync-embeddings",
+  { seconds: 30 },
+  internal.ai.embeddings.processEmbeddingJobs
+);
+
 export default crons;

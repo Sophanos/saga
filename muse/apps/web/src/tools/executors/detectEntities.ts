@@ -44,7 +44,7 @@ export const detectEntitiesExecutor: ToolDefinition<DetectEntitiesArgs, DetectEn
 
       const result = await executeDetectEntities(
         { ...args, text },
-        { apiKey: ctx.apiKey, signal: ctx.signal }
+        { apiKey: ctx.apiKey, signal: ctx.signal, projectId: ctx.projectId }
       );
 
       ctx.onProgress?.({ stage: "Processing results...", pct: 80 });

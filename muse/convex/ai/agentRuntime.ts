@@ -7,6 +7,7 @@
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal, components } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { Agent } from "@convex-dev/agent";
 import { createOpenAI } from "@ai-sdk/openai";
 import { buildSystemPrompt, retrieveRAGContext, type RAGContext } from "./rag";
@@ -14,6 +15,7 @@ import { askQuestionTool, writeContentTool } from "./tools/editorTools";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
+const LEXICAL_LIMIT = 20;
 
 const openrouter = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -73,6 +75,8 @@ export const runSagaAgentChatToStream = internalAction({
   },
   handler: async (ctx, args) => {
     const { streamId, projectId, userId, prompt, mode, editorContext, contextHints } = args;
+    const isTemplateBuilder = projectId === "template-builder";
+    const projectIdValue = projectId as Id<"projects">;
 
     if (!process.env.OPENROUTER_API_KEY) {
       await ctx.runMutation(internal.ai.streams.fail, {
@@ -83,12 +87,27 @@ export const runSagaAgentChatToStream = internalAction({
     }
 
     try {
-      const threadId = args.threadId
-        ? args.threadId
-        : (await sagaAgent.createThread(ctx, {
-            userId,
-            title: "Saga Conversation",
-          })).threadId;
+      let threadId = args.threadId;
+      if (threadId && !isTemplateBuilder) {
+        await ctx.runQuery(internal.ai.threads.assertThreadOwnership, {
+          threadId,
+          projectId: projectIdValue,
+          userId,
+        });
+      } else {
+        threadId = (await sagaAgent.createThread(ctx, {
+          userId,
+          title: "Saga Conversation",
+        })).threadId;
+      }
+
+      if (!isTemplateBuilder) {
+        await ctx.runMutation(internal.ai.threads.upsertThread, {
+          threadId,
+          projectId: projectIdValue,
+          userId,
+        });
+      }
 
       const { messageId: promptMessageId } = await sagaAgent.saveMessage(ctx, {
         threadId,
@@ -104,8 +123,24 @@ export const runSagaAgentChatToStream = internalAction({
         },
       });
 
+      const lexicalDocuments = isTemplateBuilder
+        ? []
+        : await ctx.runQuery(internal.ai.lexical.searchDocuments, {
+            projectId: projectIdValue,
+            query: prompt,
+            limit: LEXICAL_LIMIT,
+          });
+      const lexicalEntities = isTemplateBuilder
+        ? []
+        : await ctx.runQuery(internal.ai.lexical.searchEntities, {
+            projectId: projectIdValue,
+            query: prompt,
+            limit: LEXICAL_LIMIT,
+          });
+
       const ragContext = await retrieveRAGContext(prompt, projectId, {
         excludeMemories: false,
+        lexical: { documents: lexicalDocuments, entities: lexicalEntities },
       });
 
       await appendStreamChunk(ctx, streamId, {
@@ -200,6 +235,8 @@ export const applyToolResultAndResumeToStream = internalAction({
       result,
       editorContext,
     } = args;
+    const isTemplateBuilder = projectId === "template-builder";
+    const projectIdValue = projectId as Id<"projects">;
 
     if (!process.env.OPENROUTER_API_KEY) {
       await ctx.runMutation(internal.ai.streams.fail, {
@@ -210,6 +247,14 @@ export const applyToolResultAndResumeToStream = internalAction({
     }
 
     try {
+      if (!isTemplateBuilder) {
+        await ctx.runQuery(internal.ai.threads.assertThreadOwnership, {
+          threadId,
+          projectId: projectIdValue,
+          userId,
+        });
+      }
+
       await sagaAgent.saveMessage(ctx, {
         threadId,
         userId,

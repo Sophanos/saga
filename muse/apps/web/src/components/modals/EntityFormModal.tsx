@@ -46,6 +46,7 @@ import {
   type EntityIconName,
 } from "@mythos/core";
 import { executeNameGenerator } from "../../services/ai/sagaClient";
+import { useMythosStore } from "../../stores";
 import { useAuthStore } from "../../stores/auth";
 import type { NameCulture, NameStyle } from "@mythos/agent-protocol";
 
@@ -714,6 +715,7 @@ export function EntityFormModal({
   const [isGeneratingNames, setIsGeneratingNames] = useState(false);
   const [generatedNames, setGeneratedNames] = useState<string[]>([]);
   const user = useAuthStore((state) => state.user);
+  const currentProject = useMythosStore((state) => state.project.currentProject);
 
   // Reset form when modal opens with different entity/mode
   useEffect(() => {
@@ -726,24 +728,33 @@ export function EntityFormModal({
 
   // Generate names using AI
   const handleGenerateNames = useCallback(async () => {
+    const projectId = currentProject?.id;
+    if (!projectId) {
+      console.warn("[EntityFormModal] Missing project for name generation");
+      return;
+    }
+
     setIsGeneratingNames(true);
     setGeneratedNames([]);
     try {
       const prefs = user?.preferences?.writing;
-      const result = await executeNameGenerator({
-        entityType: formData.type,
-        count: 5,
-        culture: (prefs?.namingCulture as NameCulture) || undefined,
-        style: (prefs?.namingStyle as NameStyle) || "standard",
-        avoid: formData.aliases.length > 0 ? formData.aliases : undefined,
-      });
+      const result = await executeNameGenerator(
+        {
+          entityType: formData.type,
+          count: 5,
+          culture: (prefs?.namingCulture as NameCulture) || undefined,
+          style: (prefs?.namingStyle as NameStyle) || "standard",
+          avoid: formData.aliases.length > 0 ? formData.aliases : undefined,
+        },
+        { projectId }
+      );
       setGeneratedNames(result.names.map((n) => n.name));
     } catch (error) {
       console.error("[EntityFormModal] Name generation failed:", error);
     } finally {
       setIsGeneratingNames(false);
     }
-  }, [formData.type, formData.aliases, user?.preferences?.writing]);
+  }, [currentProject?.id, formData.type, formData.aliases, user?.preferences?.writing]);
 
   // Select a generated name
   const handleSelectName = useCallback((name: string) => {

@@ -55,7 +55,11 @@ export default defineSchema({
     .index("by_parent", ["parentId"])
     .index("by_project_type", ["projectId", "type"])
     .index("by_project_order", ["projectId", "orderIndex"])
-    .index("by_supabase_id", ["supabaseId"]),
+    .index("by_supabase_id", ["supabaseId"])
+    .searchIndex("search_documents", {
+      searchField: "contentText",
+      filterFields: ["projectId", "type"],
+    }),
 
   // ============================================================
   // ENTITIES (characters, locations, items, etc.)
@@ -81,7 +85,11 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_type", ["projectId", "type"])
     .index("by_project_name", ["projectId", "name"])
-    .index("by_supabase_id", ["supabaseId"]),
+    .index("by_supabase_id", ["supabaseId"])
+    .searchIndex("search_entities", {
+      searchField: "name",
+      filterFields: ["projectId", "type"],
+    }),
 
   // ============================================================
   // RELATIONSHIPS (World Graph edges)
@@ -175,6 +183,19 @@ export default defineSchema({
     .index("by_user", ["userId"]),
 
   // ============================================================
+  // AI THREAD MAPPINGS
+  // ============================================================
+  sagaThreads: defineTable({
+    threadId: v.string(),
+    projectId: v.id("projects"),
+    userId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_thread", ["threadId"])
+    .index("by_project_user", ["projectId", "userId"]),
+
+  // ============================================================
   // AI GENERATION STREAMS (for polling-based streaming)
   // ============================================================
   generationStreams: defineTable({
@@ -203,6 +224,23 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_user_status", ["userId", "status"])
     .index("by_user_created", ["userId", "createdAt"]),
+
+  // ============================================================
+  // EMBEDDING OUTBOX
+  // ============================================================
+  embeddingJobs: defineTable({
+    projectId: v.id("projects"),
+    targetType: v.string(), // "document" | "entity"
+    targetId: v.string(),
+    status: v.string(), // "pending" | "processing" | "synced" | "failed"
+    attempts: v.number(),
+    lastError: v.optional(v.string()),
+    chunksProcessed: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_project_target", ["projectId", "targetType", "targetId"]),
 
   // ============================================================
   // AI USAGE TRACKING

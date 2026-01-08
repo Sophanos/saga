@@ -209,6 +209,7 @@ export function useTemplateBuilderAgent(): UseTemplateBuilderAgentResult {
     try {
       const result = await executeGenerateTemplate(pendingTool.args, {
         apiKey: apiKey ?? undefined,
+        projectId: "template-builder",
       });
       setPendingTool((prev) =>
         prev ? { ...prev, status: "executed", result } : null

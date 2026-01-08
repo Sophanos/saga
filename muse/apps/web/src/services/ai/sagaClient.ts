@@ -191,6 +191,8 @@ export interface SagaStreamOptions {
 }
 
 export interface ExecuteToolOptions {
+  /** Project ID required by the Saga endpoint */
+  projectId: string;
   signal?: AbortSignal;
   /** OpenRouter API key for BYOK mode */
   apiKey?: string;
@@ -463,9 +465,13 @@ interface ExecuteToolResponse<T> {
 async function executeSagaTool<T>(
   toolName: string,
   input: unknown,
-  opts?: ExecuteToolOptions
+  opts: ExecuteToolOptions
 ): Promise<T> {
-  const { signal, apiKey, authToken } = opts ?? {};
+  const { projectId, signal, apiKey, authToken } = opts;
+
+  if (!projectId) {
+    throw new SagaApiError("projectId is required for tool execution", 400, "TOOL_EXECUTION_ERROR");
+  }
 
   const url = getAIEndpoint('/ai/saga');
 
@@ -489,7 +495,7 @@ async function executeSagaTool<T>(
   const response = await fetchWithRetry(url, {
     method: "POST",
     headers,
-    body: JSON.stringify({ kind: "execute_tool", toolName, input }),
+    body: JSON.stringify({ kind: "execute_tool", projectId, toolName, input }),
     signal: createTimeoutSignal(API_TIMEOUTS.TOOL_EXECUTION_MS, signal),
   });
 
@@ -520,7 +526,7 @@ async function executeSagaTool<T>(
  */
 export async function executeGenesisWorld(
   input: GenesisWorldArgs,
-  opts?: ExecuteToolOptions
+  opts: ExecuteToolOptions
 ): Promise<GenesisWorldResult> {
   return executeSagaTool<GenesisWorldResult>("genesis_world", input, opts);
 }
@@ -530,7 +536,7 @@ export async function executeGenesisWorld(
  */
 export async function executeDetectEntities(
   input: DetectEntitiesArgs & { text: string },
-  opts?: ExecuteToolOptions
+  opts: ExecuteToolOptions
 ): Promise<DetectEntitiesResult> {
   return executeSagaTool<DetectEntitiesResult>("detect_entities", input, opts);
 }
@@ -540,7 +546,7 @@ export async function executeDetectEntities(
  */
 export async function executeCheckConsistency(
   input: CheckConsistencyArgs & { text: string; entities?: unknown[] },
-  opts?: ExecuteToolOptions
+  opts: ExecuteToolOptions
 ): Promise<CheckConsistencyResult> {
   return executeSagaTool<CheckConsistencyResult>("check_consistency", input, opts);
 }
@@ -550,7 +556,7 @@ export async function executeCheckConsistency(
  */
 export async function executeGenerateTemplate(
   input: GenerateTemplateArgs,
-  opts?: ExecuteToolOptions
+  opts: ExecuteToolOptions
 ): Promise<GenerateTemplateResult> {
   return executeSagaTool<GenerateTemplateResult>("generate_template", input, opts);
 }
@@ -561,7 +567,7 @@ export async function executeGenerateTemplate(
  */
 export async function executeClarityCheck(
   input: ClarityCheckArgs & { text: string },
-  opts?: ExecuteToolOptions
+  opts: ExecuteToolOptions
 ): Promise<ClarityCheckResult> {
   return executeSagaTool<ClarityCheckResult>("clarity_check", input, opts);
 }
@@ -587,7 +593,7 @@ export async function executeCheckLogic(
       knowledge?: string[];
     }>;
   },
-  opts?: ExecuteToolOptions
+  opts: ExecuteToolOptions
 ): Promise<CheckLogicResult> {
   return executeSagaTool<CheckLogicResult>("check_logic", input, opts);
 }
@@ -598,7 +604,7 @@ export async function executeCheckLogic(
  */
 export async function executeNameGenerator(
   input: NameGeneratorArgs,
-  opts?: ExecuteToolOptions
+  opts: ExecuteToolOptions
 ): Promise<NameGeneratorResult> {
   return executeSagaTool<NameGeneratorResult>("name_generator", input, opts);
 }

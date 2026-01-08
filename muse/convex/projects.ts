@@ -6,7 +6,7 @@
  */
 
 import { v } from "convex/values";
-import { query, mutation, internalMutation } from "./_generated/server";
+import { query, mutation, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
@@ -47,6 +47,26 @@ async function verifyProjectOwnership(
 
   return userId;
 }
+
+/**
+ * Internal check for project ownership (no auth context).
+ */
+export const assertOwner = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.string(),
+  },
+  handler: async (ctx, { projectId, userId }) => {
+    const project = await ctx.db.get(projectId);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+    if (project.ownerId !== userId) {
+      throw new Error("Access denied");
+    }
+    return true;
+  },
+});
 
 // ============================================================
 // QUERIES
