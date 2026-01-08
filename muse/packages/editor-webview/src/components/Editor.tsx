@@ -6,6 +6,10 @@ import { createSlashCommandSuggestion } from './suggestion';
 import { BubbleMenu } from './BubbleMenu';
 import { AICommandPalette, type AIQuickAction, type SelectionVirtualElement } from './AICommandPalette';
 import { AIResponseBlock } from './AIResponseBlock';
+import { BatchApprovalBar } from './BatchApprovalBar';
+import { AIGeneratedMark } from '../extensions/ai-generated-mark';
+import { SuggestionPlugin, type Suggestion } from '../extensions/suggestion-plugin';
+import { useEditorBridge, type EditorInstance } from '../bridge';
 import 'tippy.js/dist/tippy.css';
 
 type FontStyle = 'default' | 'serif' | 'mono';
@@ -25,6 +29,13 @@ interface AIState {
   showJumpIndicator: boolean;
 }
 
+interface SuggestionState {
+  /** All pending suggestions */
+  suggestions: Suggestion[];
+  /** Currently selected suggestion ID */
+  selectedId: string | null;
+}
+
 interface EditorProps {
   content?: string;
   title?: string;
@@ -32,6 +43,9 @@ interface EditorProps {
   onTitleChange?: (title: string) => void;
   onSelectionChange?: (selection: { from: number; to: number; text: string } | null) => void;
   onAskAI?: (selectedText: string, prompt?: string, action?: AIQuickAction) => void;
+  onSuggestionAccepted?: (suggestion: Suggestion) => void;
+  onSuggestionRejected?: (suggestion: Suggestion) => void;
+  onSuggestionsChange?: (suggestions: Suggestion[]) => void;
   placeholder?: string;
   fontStyle?: FontStyle;
   isSmallText?: boolean;
@@ -39,6 +53,8 @@ interface EditorProps {
   autoFocus?: boolean;
   editable?: boolean;
   showTitle?: boolean;
+  /** Enable bridge for WebView communication (Tauri/React Native) */
+  enableBridge?: boolean;
 }
 
 export function Editor({
@@ -48,6 +64,9 @@ export function Editor({
   onTitleChange,
   onSelectionChange,
   onAskAI,
+  onSuggestionAccepted: _onSuggestionAccepted,
+  onSuggestionRejected: _onSuggestionRejected,
+  onSuggestionsChange: _onSuggestionsChange,
   placeholder = "Press '/' for commands, or start writing...",
   fontStyle = 'default',
   isSmallText = false,
@@ -55,10 +74,17 @@ export function Editor({
   autoFocus = false,
   editable = true,
   showTitle = true,
+  enableBridge: _enableBridge = false,
 }: EditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const [localTitle, setLocalTitle] = useState(title);
+
+  // Suggestion state (reserved for future suggestion feature)
+  const [_suggestionState, _setSuggestionState] = useState<SuggestionState>({
+    suggestions: [],
+    selectedId: null,
+  });
 
   const [aiState, setAIState] = useState<AIState>({
     isOpen: false,
@@ -73,6 +99,20 @@ export function Editor({
     showJumpIndicator: false,
   });
 
+  // Handlers for suggestion callbacks
+  const handleSuggestionAccepted = useCallback((suggestion: Suggestion) => {
+    _onSuggestionAccepted?.(suggestion);
+  }, [_onSuggestionAccepted]);
+
+  const handleSuggestionRejected = useCallback((suggestion: Suggestion) => {
+    _onSuggestionRejected?.(suggestion);
+  }, [_onSuggestionRejected]);
+
+  const handleSuggestionsChange = useCallback((suggestions: Suggestion[]) => {
+    _setSuggestionState(prev => ({ ...prev, suggestions }));
+    _onSuggestionsChange?.(suggestions);
+  }, [_onSuggestionsChange]);
+
   const editor = useEditor({
     extensions: [
       WriterKit,
@@ -82,6 +122,13 @@ export function Editor({
       }),
       SlashCommand.configure({
         suggestion: createSlashCommandSuggestion(),
+      }),
+      // AI suggestion extensions
+      AIGeneratedMark,
+      SuggestionPlugin.configure({
+        onAccept: handleSuggestionAccepted,
+        onReject: handleSuggestionRejected,
+        onSuggestionsChange: handleSuggestionsChange,
       }),
     ],
     content,
@@ -101,6 +148,11 @@ export function Editor({
       }
     },
   });
+
+  // Bridge for WebView communication (Tauri/React Native)
+  useEditorBridge(
+    _enableBridge ? (editor as unknown as EditorInstance) : null
+  );
 
   // Sync title from props
   useEffect(() => {
@@ -330,6 +382,17 @@ export function Editor({
     [simulateStreamingResponse]
   );
 
+  // Suggestion handlers for batch approval bar
+  const handleAcceptAll = useCallback(() => {
+    if (!editor) return;
+    (editor as unknown as { commands: { acceptAllSuggestions: () => boolean } }).commands.acceptAllSuggestions();
+  }, [editor]);
+
+  const handleRejectAll = useCallback(() => {
+    if (!editor) return;
+    (editor as unknown as { commands: { rejectAllSuggestions: () => boolean } }).commands.rejectAllSuggestions();
+  }, [editor]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
@@ -339,6 +402,17 @@ export function Editor({
         const { from, to } = editor.state.selection;
         const selectedText = from !== to ? editor.state.doc.textBetween(from, to, ' ') : '';
         openAIPalette(selectedText);
+      }
+
+      // Suggestion keyboard shortcuts
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'Enter') {
+        // ⌘⇧⏎ - Accept all suggestions
+        e.preventDefault();
+        handleAcceptAll();
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'Backspace') {
+        // ⌘⇧⌫ - Reject all suggestions
+        e.preventDefault();
+        handleRejectAll();
       }
 
       if (e.key === 'Escape') {
@@ -354,7 +428,7 @@ export function Editor({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [editor, openAIPalette, aiState.isOpen, aiState.showResponse, aiState.status, handleDiscard]);
+  }, [editor, openAIPalette, aiState.isOpen, aiState.showResponse, aiState.status, handleDiscard, handleAcceptAll, handleRejectAll]);
 
   useEffect(() => {
     const handleOpenAIPalette = () => {
@@ -442,6 +516,13 @@ export function Editor({
           onStop={() => setAIState((s) => ({ ...s, status: 'complete' }))}
         />
       )}
+
+      {/* Batch approval bar for multiple pending suggestions */}
+      <BatchApprovalBar
+        suggestions={_suggestionState.suggestions}
+        onAcceptAll={handleAcceptAll}
+        onRejectAll={handleRejectAll}
+      />
 
       <style>{`
         .editor-container {

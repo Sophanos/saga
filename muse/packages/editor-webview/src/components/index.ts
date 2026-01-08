@@ -17,3 +17,5 @@ export {
   AIResponseBlock,
   type AIBlockStatus,
 } from './AIResponseBlock';
+export { BatchApprovalBar } from './BatchApprovalBar';
+export { TabPreview } from './TabPreview';

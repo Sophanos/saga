@@ -1,0 +1,724 @@
+/* =============================================================================
+   AI Toolkit Styles
+   - Comprehensive styling for AI suggestions, changes, and diff view
+   - Inspired by Tiptap's AI toolkit patterns
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   CSS Variables for AI Theming
+   ----------------------------------------------------------------------------- */
+
+:root {
+  /* Change type colors */
+  --ai-insert-bg: rgba(34, 197, 94, 0.15);
+  --ai-insert-border: rgba(34, 197, 94, 0.5);
+  --ai-insert-text: rgb(22, 163, 74);
+
+  --ai-delete-bg: rgba(239, 68, 68, 0.12);
+  --ai-delete-border: rgba(239, 68, 68, 0.4);
+  --ai-delete-text: rgb(220, 38, 38);
+
+  --ai-replace-bg: rgba(251, 191, 36, 0.15);
+  --ai-replace-border: rgba(251, 191, 36, 0.5);
+  --ai-replace-text: rgb(180, 130, 20);
+
+  /* Rule colors */
+  --ai-grammar-bg: #FFE6E6;
+  --ai-grammar-color: #DC143C;
+
+  --ai-spelling-bg: #FFF3E6;
+  --ai-spelling-color: #FF8C00;
+
+  --ai-style-bg: #E6EDFF;
+  --ai-style-color: #4169E1;
+
+  --ai-clarity-bg: #E6F5E6;
+  --ai-clarity-color: #228B22;
+
+  --ai-generation-bg: #F3E8FF;
+  --ai-generation-color: #8B5CF6;
+
+  /* UI colors */
+  --ai-widget-bg: var(--color-bg-surface, #f5f5f5);
+  --ai-widget-border: var(--color-border, #e5e5e5);
+  --ai-selected-ring: rgba(59, 130, 246, 0.5);
+}
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ai-insert-bg: rgba(34, 197, 94, 0.2);
+    --ai-insert-text: rgb(74, 222, 128);
+
+    --ai-delete-bg: rgba(239, 68, 68, 0.18);
+    --ai-delete-text: rgb(248, 113, 113);
+
+    --ai-replace-bg: rgba(251, 191, 36, 0.2);
+    --ai-replace-text: rgb(252, 211, 77);
+
+    --ai-widget-bg: var(--color-bg-surface, #2a2a2a);
+    --ai-widget-border: var(--color-border, #404040);
+
+    --ai-grammar-bg: rgba(220, 20, 60, 0.15);
+    --ai-spelling-bg: rgba(255, 140, 0, 0.15);
+    --ai-style-bg: rgba(65, 105, 225, 0.15);
+    --ai-clarity-bg: rgba(34, 139, 34, 0.15);
+    --ai-generation-bg: rgba(139, 92, 246, 0.2);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   AI Generated Mark (approved content)
+   ----------------------------------------------------------------------------- */
+
+.ai-generated {
+  position: relative;
+}
+
+.ai-generated.ai-status-pending {
+  background: var(--ai-generation-bg);
+  border-bottom: 1px dashed var(--ai-generation-color);
+}
+
+.ai-generated.ai-status-approved {
+  /* Minimal styling - content is now "owned" by the user */
+}
+
+.ai-generated.ai-status-rejected {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+/* -----------------------------------------------------------------------------
+   AI Changes (Diff View) - AiToolkit
+   ----------------------------------------------------------------------------- */
+
+.ai-change {
+  position: relative;
+  transition: all 150ms ease;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Insert - green highlight */
+.ai-change-insert {
+  background: var(--ai-insert-bg);
+  border-bottom: 2px solid var(--ai-insert-border);
+  text-decoration-color: var(--ai-insert-text);
+}
+
+.ai-change-insert:hover {
+  background: rgba(34, 197, 94, 0.25);
+}
+
+.ai-change-insert.ai-change-selected {
+  background: rgba(34, 197, 94, 0.3);
+  box-shadow: 0 0 0 2px var(--ai-selected-ring);
+}
+
+/* Delete - red strikethrough */
+.ai-change-delete {
+  background: var(--ai-delete-bg);
+  text-decoration: line-through;
+  text-decoration-color: var(--ai-delete-text);
+  color: var(--ai-delete-text);
+  opacity: 0.7;
+}
+
+.ai-change-delete:hover {
+  opacity: 0.9;
+}
+
+.ai-change-delete.ai-change-selected {
+  box-shadow: 0 0 0 2px var(--ai-selected-ring);
+}
+
+/* Replace - shows both old (strikethrough) and new (highlight) */
+.ai-change-replace {
+  background: var(--ai-replace-bg);
+  border-bottom: 2px solid var(--ai-replace-border);
+}
+
+.ai-change-replace:hover {
+  background: rgba(251, 191, 36, 0.25);
+}
+
+.ai-change-replace.ai-change-selected {
+  background: rgba(251, 191, 36, 0.3);
+  box-shadow: 0 0 0 2px var(--ai-selected-ring);
+}
+
+/* -----------------------------------------------------------------------------
+   Change Widgets (Accept/Reject Buttons) - AiToolkit
+   ----------------------------------------------------------------------------- */
+
+.ai-change-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  vertical-align: middle;
+  user-select: none;
+}
+
+.ai-change-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--ai-widget-border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 100ms ease;
+  background: var(--ai-widget-bg);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ai-change-btn:hover {
+  transform: scale(1.1);
+}
+
+.ai-change-btn:active {
+  transform: scale(0.95);
+}
+
+/* Accept button */
+.ai-change-btn-accept {
+  color: var(--ai-insert-text);
+  border-color: var(--ai-insert-border);
+}
+
+.ai-change-btn-accept:hover {
+  background: var(--ai-insert-bg);
+}
+
+/* Reject button */
+.ai-change-btn-reject {
+  color: var(--ai-delete-text);
+  border-color: var(--ai-delete-border);
+}
+
+.ai-change-btn-reject:hover {
+  background: var(--ai-delete-bg);
+}
+
+/* -----------------------------------------------------------------------------
+   Legacy Suggestion Decorations (SuggestionPlugin compatibility)
+   ----------------------------------------------------------------------------- */
+
+.suggestion {
+  position: relative;
+  transition: background-color 150ms ease;
+}
+
+.suggestion-insert {
+  background: var(--ai-insert-bg);
+  border-bottom: 2px solid var(--ai-insert-border);
+}
+
+.suggestion-insert:hover {
+  background: rgba(34, 197, 94, 0.25);
+}
+
+.suggestion-insert.suggestion-selected {
+  background: rgba(34, 197, 94, 0.3);
+  border-bottom-color: rgba(34, 197, 94, 0.8);
+}
+
+.suggestion-replace {
+  background: var(--ai-replace-bg);
+  border-bottom: 2px solid var(--ai-replace-border);
+}
+
+.suggestion-replace:hover {
+  background: rgba(251, 191, 36, 0.25);
+}
+
+.suggestion-replace.suggestion-selected {
+  background: rgba(251, 191, 36, 0.3);
+  border-bottom-color: rgba(251, 191, 36, 0.8);
+}
+
+.suggestion-delete {
+  background: var(--ai-delete-bg);
+  text-decoration: line-through;
+  text-decoration-color: var(--ai-delete-text);
+  color: rgba(var(--color-text-rgb, 0, 0, 0), 0.6);
+}
+
+.suggestion-delete:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.suggestion-delete.suggestion-selected {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.suggestion-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  vertical-align: middle;
+  user-select: none;
+}
+
+.suggestion-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 100ms ease;
+  background: var(--ai-widget-bg);
+  color: var(--color-text-secondary, #666);
+}
+
+.suggestion-btn:hover {
+  transform: scale(1.1);
+}
+
+.suggestion-btn:active {
+  transform: scale(0.95);
+}
+
+.suggestion-btn-accept {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--ai-insert-text);
+}
+
+.suggestion-btn-accept:hover {
+  background: rgba(34, 197, 94, 0.2);
+}
+
+.suggestion-btn-reject {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--ai-delete-text);
+}
+
+.suggestion-btn-reject:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* -----------------------------------------------------------------------------
+   Rule-Based Suggestion Styling
+   ----------------------------------------------------------------------------- */
+
+.ai-rule-grammar {
+  background: var(--ai-grammar-bg);
+  border-bottom: 2px wavy var(--ai-grammar-color);
+}
+
+.ai-rule-spelling {
+  background: var(--ai-spelling-bg);
+  border-bottom: 2px wavy var(--ai-spelling-color);
+}
+
+.ai-rule-style {
+  background: var(--ai-style-bg);
+  border-bottom: 2px dashed var(--ai-style-color);
+}
+
+.ai-rule-clarity {
+  background: var(--ai-clarity-bg);
+  border-bottom: 2px dotted var(--ai-clarity-color);
+}
+
+.ai-rule-ai-generation {
+  background: var(--ai-generation-bg);
+  border-bottom: 2px solid var(--ai-generation-color);
+}
+
+/* -----------------------------------------------------------------------------
+   Unified Diff View
+   ----------------------------------------------------------------------------- */
+
+.ai-diff-view {
+  font-family: var(--font-mono, 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ai-diff-line {
+  display: block;
+  padding: 2px 8px;
+  margin: 0;
+}
+
+.ai-diff-line-insert {
+  background: var(--ai-insert-bg);
+  border-left: 3px solid var(--ai-insert-text);
+}
+
+.ai-diff-line-insert::before {
+  content: '+';
+  color: var(--ai-insert-text);
+  margin-right: 8px;
+  font-weight: 600;
+}
+
+.ai-diff-line-delete {
+  background: var(--ai-delete-bg);
+  border-left: 3px solid var(--ai-delete-text);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.ai-diff-line-delete::before {
+  content: '-';
+  color: var(--ai-delete-text);
+  margin-right: 8px;
+  font-weight: 600;
+}
+
+.ai-diff-line-context {
+  background: transparent;
+  border-left: 3px solid var(--ai-widget-border);
+  color: var(--color-text-muted, #666);
+}
+
+.ai-diff-line-context::before {
+  content: ' ';
+  margin-right: 8px;
+}
+
+/* -----------------------------------------------------------------------------
+   Batch Approval Bar
+   ----------------------------------------------------------------------------- */
+
+.batch-approval-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--color-bg-elevated, #fff);
+  border: 1px solid var(--color-border, #e5e5e5);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.04),
+    0 4px 8px rgba(0, 0, 0, 0.08),
+    0 12px 24px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  font-size: 14px;
+  backdrop-filter: blur(8px);
+}
+
+.batch-approval-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary, #666);
+  padding-right: 12px;
+  border-right: 1px solid var(--color-border, #e5e5e5);
+}
+
+.batch-approval-count .count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--ai-generation-color);
+  color: white;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.batch-approval-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+
+.batch-btn-accept-all {
+  background: var(--ai-insert-text);
+  color: white;
+}
+
+.batch-btn-accept-all:hover {
+  background: rgb(21, 128, 61);
+  transform: translateY(-1px);
+}
+
+.batch-btn-reject-all {
+  background: transparent;
+  color: var(--color-text-secondary, #666);
+  border: 1px solid var(--color-border, #e5e5e5);
+}
+
+.batch-btn-reject-all:hover {
+  background: var(--ai-delete-bg);
+  color: var(--ai-delete-text);
+  border-color: var(--ai-delete-border);
+}
+
+/* -----------------------------------------------------------------------------
+   Review State Overlay
+   ----------------------------------------------------------------------------- */
+
+.ai-review-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-review-card {
+  background: var(--color-bg-elevated, #fff);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+.ai-review-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-review-title::before {
+  content: '✨';
+}
+
+.ai-review-description {
+  color: var(--color-text-secondary, #666);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.ai-review-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.ai-review-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+
+.ai-review-btn-accept {
+  background: var(--ai-insert-text);
+  color: white;
+  border: none;
+}
+
+.ai-review-btn-accept:hover {
+  background: rgb(21, 128, 61);
+}
+
+.ai-review-btn-reject {
+  background: transparent;
+  color: var(--color-text, #333);
+  border: 1px solid var(--color-border, #e5e5e5);
+}
+
+.ai-review-btn-reject:hover {
+  background: var(--ai-delete-bg);
+  color: var(--ai-delete-text);
+  border-color: var(--ai-delete-border);
+}
+
+/* -----------------------------------------------------------------------------
+   Streaming Indicator
+   ----------------------------------------------------------------------------- */
+
+.ai-streaming-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--ai-generation-bg);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--ai-generation-color);
+}
+
+.ai-streaming-dots {
+  display: flex;
+  gap: 3px;
+}
+
+.ai-streaming-dot {
+  width: 4px;
+  height: 4px;
+  background: var(--ai-generation-color);
+  border-radius: 50%;
+  animation: ai-streaming-pulse 1.4s ease-in-out infinite;
+}
+
+.ai-streaming-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.ai-streaming-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes ai-streaming-pulse {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Suggestion Popover
+   ----------------------------------------------------------------------------- */
+
+.ai-suggestion-popover {
+  position: absolute;
+  background: var(--color-bg-elevated, #fff);
+  border: 1px solid var(--color-border, #e5e5e5);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  max-width: 300px;
+}
+
+.ai-suggestion-popover-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-suggestion-popover-rule {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ai-suggestion-popover-content {
+  font-size: 13px;
+  color: var(--color-text-secondary, #666);
+  line-height: 1.4;
+}
+
+.ai-suggestion-popover-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border, #e5e5e5);
+}
+
+/* -----------------------------------------------------------------------------
+   Keyboard Shortcut Hints
+   ----------------------------------------------------------------------------- */
+
+.ai-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  background: var(--color-bg-surface, #f5f5f5);
+  border: 1px solid var(--color-border, #e5e5e5);
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--color-text-secondary, #666);
+}
+
+/* -----------------------------------------------------------------------------
+   Animations
+   ----------------------------------------------------------------------------- */
+
+@keyframes ai-change-appear {
+  0% {
+    background-color: rgba(139, 92, 246, 0.4);
+  }
+  100% {
+    background-color: var(--ai-insert-bg);
+  }
+}
+
+.ai-change-insert {
+  animation: ai-change-appear 400ms ease-out;
+}
+
+@keyframes suggestion-appear {
+  from {
+    background-color: rgba(59, 130, 246, 0.3);
+  }
+  to {
+    background-color: var(--ai-insert-bg);
+  }
+}
+
+.suggestion-insert {
+  animation: suggestion-appear 300ms ease-out;
+}
+
+/* -----------------------------------------------------------------------------
+   Accessibility
+   ----------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-streaming-dot,
+  .ai-change-insert,
+  .suggestion-insert {
+    animation: none;
+  }
+}
+
+/* Focus styles for keyboard navigation */
+.ai-change-btn:focus-visible,
+.suggestion-btn:focus-visible,
+.batch-btn:focus-visible,
+.ai-review-btn:focus-visible {
+  outline: 2px solid var(--ai-generation-color);
+  outline-offset: 2px;
+}
