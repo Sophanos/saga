@@ -12,6 +12,14 @@ import { Agent } from "@convex-dev/agent";
 import { createOpenAI } from "@ai-sdk/openai";
 import { buildSystemPrompt, retrieveRAGContext, type RAGContext } from "./rag";
 import { askQuestionTool, writeContentTool } from "./tools/editorTools";
+import {
+  searchContextTool,
+  readDocumentTool,
+  searchChaptersTool,
+  searchWorldTool,
+  getEntityTool,
+} from "./tools/ragTools";
+import { createQwenEmbeddingModel } from "../lib/deepinfraEmbedding";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
@@ -29,14 +37,84 @@ const openrouter = createOpenAI({
 const sagaAgent = new Agent(components.agent, {
   name: "Saga",
   languageModel: openrouter.chat(DEFAULT_MODEL),
+
+  // Thread memory: vector search for similar past messages
+  textEmbeddingModel: createQwenEmbeddingModel(),
+  contextOptions: {
+    recentMessages: 20,
+    searchOptions: {
+      limit: 10,
+      vectorSearch: true,
+      textSearch: true,
+      messageRange: { before: 2, after: 1 },
+    },
+    searchOtherThreads: false,
+  },
+
   tools: {
     ask_question: askQuestionTool,
     write_content: writeContentTool,
+    search_context: searchContextTool,
+    read_document: readDocumentTool,
+    search_chapters: searchChaptersTool,
+    search_world: searchWorldTool,
+    get_entity: getEntityTool,
   },
-  maxSteps: 4,
+  maxSteps: 8,
 });
 
 const approvalTools = new Set(["ask_question", "write_content"]);
+const autoExecuteTools = new Set([
+  "search_context",
+  "read_document",
+  "search_chapters",
+  "search_world",
+  "get_entity",
+]);
+
+type ActionCtx = Parameters<Parameters<typeof internalAction>[0]>[0];
+
+async function executeRagTool(
+  ctx: ActionCtx,
+  toolName: string,
+  args: Record<string, unknown>,
+  projectId: string
+): Promise<unknown> {
+  switch (toolName) {
+    case "search_context":
+      return ctx.runAction(internal.ai.tools.ragHandlers.executeSearchContext, {
+        projectId,
+        query: args.query as string,
+        scope: args.scope as string | undefined,
+        limit: args.limit as number | undefined,
+      });
+    case "read_document":
+      return ctx.runAction(internal.ai.tools.ragHandlers.executeReadDocument, {
+        projectId,
+        documentId: args.documentId as string,
+      });
+    case "search_chapters":
+      return ctx.runAction(internal.ai.tools.ragHandlers.executeSearchChapters, {
+        projectId,
+        query: args.query as string,
+        type: args.type as string | undefined,
+      });
+    case "search_world":
+      return ctx.runAction(internal.ai.tools.ragHandlers.executeSearchWorld, {
+        projectId,
+        query: args.query as string,
+        category: args.category as string | undefined,
+      });
+    case "get_entity":
+      return ctx.runAction(internal.ai.tools.ragHandlers.executeGetEntity, {
+        projectId,
+        entityId: args.entityId as string,
+        includeRelationships: args.includeRelationships as boolean | undefined,
+      });
+    default:
+      throw new Error(`Unknown RAG tool: ${toolName}`);
+  }
+}
 
 async function appendStreamChunk(
   ctx: Parameters<Parameters<typeof internalAction>[0]>[0],
@@ -176,28 +254,76 @@ export const runSagaAgentChatToStream = internalAction({
         }
       }
 
-      const toolCalls = await result.toolCalls;
-      for (const call of toolCalls) {
-        if (approvalTools.has(call.toolName)) {
-          await appendStreamChunk(ctx, streamId, {
-            type: "tool-approval-request",
-            content: "",
-            approvalId: call.toolCallId,
-            toolCallId: call.toolCallId,
-            toolName: call.toolName,
-            args: call.args,
-            promptMessageId,
+      let toolCalls = await result.toolCalls;
+      let currentResult = result;
+      let currentPromptMessageId = promptMessageId;
+
+      while (toolCalls.length > 0) {
+        const autoExecuteCalls = toolCalls.filter((c) => autoExecuteTools.has(c.toolName));
+        const pendingCalls = toolCalls.filter((c) => !autoExecuteTools.has(c.toolName));
+
+        for (const call of autoExecuteCalls) {
+          const toolResult = await executeRagTool(ctx, call.toolName, call.args, projectId);
+
+          await sagaAgent.saveMessage(ctx, {
+            threadId: threadId!,
+            userId,
+            message: {
+              role: "tool",
+              content: [{ type: "tool-result", toolCallId: call.toolCallId, toolName: call.toolName, result: toolResult }],
+            },
           });
-        } else {
+
           await appendStreamChunk(ctx, streamId, {
             type: "tool",
             content: "",
             toolCallId: call.toolCallId,
             toolName: call.toolName,
             args: call.args,
-            promptMessageId,
+            data: toolResult,
           });
         }
+
+        for (const call of pendingCalls) {
+          if (approvalTools.has(call.toolName)) {
+            await appendStreamChunk(ctx, streamId, {
+              type: "tool-approval-request",
+              content: "",
+              approvalId: call.toolCallId,
+              toolCallId: call.toolCallId,
+              toolName: call.toolName,
+              args: call.args,
+              promptMessageId: currentPromptMessageId,
+            });
+          } else {
+            await appendStreamChunk(ctx, streamId, {
+              type: "tool",
+              content: "",
+              toolCallId: call.toolCallId,
+              toolName: call.toolName,
+              args: call.args,
+              promptMessageId: currentPromptMessageId,
+            });
+          }
+        }
+
+        if (pendingCalls.length > 0 || autoExecuteCalls.length === 0) {
+          break;
+        }
+
+        currentResult = await sagaAgent.streamText(
+          ctx,
+          { threadId: threadId! },
+          { promptMessageId: currentPromptMessageId, system: systemPrompt }
+        );
+
+        for await (const delta of currentResult.textStream) {
+          if (delta) {
+            await appendStreamChunk(ctx, streamId, { type: "delta", content: delta });
+          }
+        }
+
+        toolCalls = await currentResult.toolCalls;
       }
 
       await ctx.runMutation(internal.ai.streams.complete, { streamId });

@@ -12,6 +12,20 @@ Transform Mythos from a writing tool into an **AI co-author** that:
 
 ---
 
+## Platform Strategy
+
+```
+🎯 PRIMARY (MLP 1)                    📱 FUTURE
+─────────────────                     ────────
+macOS (Tauri)     Web (Expo Web)      iOS/iPad (Expo RN)
+React → WebView   React → Browser     Same editor.bundle.js
+apps/tauri/       apps/expo/
+```
+
+**Why:** Writers use desktops. Tauri = native feel (~5MB vs Electron 150MB). Mobile later.
+
+---
+
 ## Infrastructure (Self-Hosted on Hetzner)
 
 | Service | Location | Purpose |
@@ -350,16 +364,24 @@ export default http;
 ### MLP 1 Progress Summary
 
 ```
-Phase 1: Editor WebView Bundle     [██░░░░░░░░]  20% (TipTap components exist, bridge/marks not started)
-Phase 2: Convex Agent Integration  [████████░░]  80% (Agent + RAG + streaming + tools complete)
-Phase 3: Expo Integration          [███░░░░░░░]  30% (AI Panel done, MythosEditor not started)
-Phase 4: RAG Pipeline              [███████░░░]  70% (hybrid + rerank + cron complete, UI pending)
-Phase 5: Skills + Polish           [█░░░░░░░░░]  10% (writing-coach exists, skill tools not started)
+Phase 1: Editor WebView Bundle     [██████████] 100% ✅ (Mark, Plugin, AIToolkit, Bridge, Vite)
+Phase 2: Convex Agent Integration  [████████░░]  85% (Agent + embedding + thread memory)
+Phase 3: Tauri + Expo Integration  [████░░░░░░]  40% (AI Panel done, Tauri shell pending)
+Phase 4: RAG Pipeline              [█████████░]  90% (hybrid + rerank + cron, UI pending)
+Phase 5: Skills + Polish           [█░░░░░░░░░]  10% (writing-coach exists)
 ─────────────────────────────────────────────────────
-Overall MLP 1:                     [████░░░░░░]  ~40%
+Overall MLP 1:                     [███████░░░]  ~65%
 ```
 
 **Last Updated:** 2026-01-08
+
+**Phase 1 Complete - Build Output:**
+```
+packages/editor-webview/build/
+├── editor.bundle.js  (785KB gzip:233KB)
+├── style.css
+└── editor.html  ← Load in Tauri/WKWebView
+```
 
 ### Critical Path to MLP 1
 
@@ -2818,6 +2840,107 @@ If web search is added:
 - Use separate `<web-search-results>` delimiter
 - Apply stricter sanitization (web content is higher risk than user's own documents)
 - Consider content filtering for obviously malicious patterns
+
+---
+
+## Agent-Invocable RAG Tools (Implemented 2026-01-08)
+
+### Overview
+
+The agent now has on-demand RAG tools instead of only auto-injecting context. This gives the agent control over when and what to search.
+
+**Hybrid Approach:**
+- Minimal auto-RAG on every message (lightweight context)
+- Agent calls `search_context` for deeper, targeted searches
+- Agent calls `read_document` to fetch full content when snippets aren't enough
+
+### Tool Definitions (`convex/ai/tools/ragTools.ts`)
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `search_context` | Search documents, entities, memories | `query`, `scope?`, `limit?` |
+| `read_document` | Get full document content | `documentId` |
+| `search_chapters` | Search manuscript by type | `query`, `type?` |
+| `search_world` | Search worldbuilding content | `query`, `category?` |
+| `get_entity` | Get entity with relationships | `entityId`, `includeRelationships?` |
+
+### Tool Execution Flow
+
+```
+Agent calls search_context({ query: "magic system" })
+         │
+         ▼
+┌─────────────────────────────┐
+│ agentRuntime detects tool   │
+│ in autoExecuteTools set     │
+└───────────┬─────────────────┘
+            │
+            ▼
+┌─────────────────────────────┐
+│ executeRagTool() dispatches │
+│ to internal action handler  │
+└───────────┬─────────────────┘
+            │
+            ▼
+┌─────────────────────────────┐
+│ Handler runs RAG pipeline:  │
+│ embed → search → rerank     │
+└───────────┬─────────────────┘
+            │
+            ▼
+┌─────────────────────────────┐
+│ Result saved to thread      │
+│ Agent continues with result │
+└─────────────────────────────┘
+```
+
+### ChunkContext Support
+
+When searching, you can request surrounding chunks for fuller context:
+
+```typescript
+const context = await retrieveRAGContext(query, projectId, {
+  chunkContext: { before: 2, after: 1 },
+});
+// Returns matched chunk + 2 before + 1 after
+```
+
+### Memories Table (`convex/schema.ts`)
+
+New table for storing AI-learned decisions, facts, and preferences:
+
+```typescript
+memories: defineTable({
+  projectId: v.id("projects"),
+  text: v.string(),
+  type: v.string(),        // "decision" | "fact" | "preference" | "style"
+  confidence: v.float64(),
+  source: v.string(),      // "user" | "agent" | "inferred"
+  pinned: v.boolean(),
+  expiresAt: v.optional(v.number()), // null = never (pro), 90 days (free)
+  // ... vectorId, entityIds, etc.
+})
+```
+
+**Expiration Policy:**
+- Free tier: 90 days, then auto-expire
+- Pro tier: Pinned memories never expire
+
+### Files Added/Modified
+
+```
+convex/ai/tools/
+├── ragTools.ts      # Tool definitions (NEW)
+├── ragHandlers.ts   # Server-side handlers (NEW)
+├── index.ts         # Exports (UPDATED)
+
+convex/ai/
+├── agentRuntime.ts  # Auto-execute RAG tools (UPDATED)
+├── rag.ts           # ChunkContext option (UPDATED)
+
+convex/
+├── schema.ts        # memories table (UPDATED)
+```
 
 ---
 

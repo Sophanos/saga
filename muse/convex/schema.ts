@@ -243,6 +243,34 @@ export default defineSchema({
     .index("by_project_target", ["projectId", "targetType", "targetId"]),
 
   // ============================================================
+  // AI MEMORIES
+  // ============================================================
+  memories: defineTable({
+    projectId: v.id("projects"),
+    userId: v.optional(v.string()),
+    text: v.string(),
+    type: v.string(), // "decision" | "fact" | "preference" | "style"
+    confidence: v.float64(),
+    source: v.string(), // "user" | "agent" | "inferred"
+    entityIds: v.optional(v.array(v.string())),
+    documentId: v.optional(v.id("documents")),
+    pinned: v.boolean(),
+    expiresAt: v.optional(v.number()), // null = never (pro), 90 days (free)
+    vectorId: v.optional(v.string()),
+    vectorSyncedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_type", ["projectId", "type"])
+    .index("by_pinned", ["projectId", "pinned"])
+    .index("by_expiry", ["expiresAt"])
+    .searchIndex("search_memories", {
+      searchField: "text",
+      filterFields: ["projectId", "type"],
+    }),
+
+  // ============================================================
   // AI USAGE TRACKING
   // ============================================================
   aiUsage: defineTable({

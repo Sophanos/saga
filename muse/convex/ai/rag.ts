@@ -187,12 +187,18 @@ function buildContextFromCandidates(candidates: RAGCandidate[]): RAGContext {
   return context;
 }
 
+export interface ChunkContextOptions {
+  before?: number;
+  after?: number;
+}
+
 export async function retrieveRAGContext(
   query: string,
   projectId: string,
   options?: {
     excludeMemories?: boolean;
     lexical?: { documents: LexicalHit[]; entities: LexicalHit[] };
+    chunkContext?: ChunkContextOptions;
   }
 ): Promise<RAGContext> {
   const context: RAGContext = {
