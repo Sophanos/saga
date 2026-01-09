@@ -7,8 +7,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      'react-native': path.resolve(__dirname, '../../node_modules/react-native-web'),
     },
-    dedupe: ['react', 'react-dom'],
+    dedupe: ['react', 'react-dom', 'react-native-web'],
   },
   clearScreen: false,
   server: {

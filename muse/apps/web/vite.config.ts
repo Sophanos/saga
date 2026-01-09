@@ -34,8 +34,9 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": resolve(__dirname, "./src"),
+        "react-native": resolve(__dirname, "../../node_modules/react-native-web"),
       },
-      dedupe: ["react", "react-dom"],
+      dedupe: ["react", "react-dom", "react-native-web"],
     },
     server: {
       port,
