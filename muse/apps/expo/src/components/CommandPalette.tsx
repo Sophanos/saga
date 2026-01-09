@@ -21,8 +21,9 @@ import {
   useCommandPaletteOpen,
   useCommandPaletteQuery,
   useCommandPaletteFilter,
-} from '@/stores/commandPalette';
-import { commandRegistry, type Command, type CommandFilter } from '@/commands';
+  type CommandFilter,
+} from '@mythos/state';
+import { commandRegistry, type Command } from '@mythos/commands';
 
 const FILTER_LABELS: Record<CommandFilter, string> = {
   all: 'All',

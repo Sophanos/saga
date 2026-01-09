@@ -4,8 +4,7 @@
 
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-import { useCommandPaletteStore } from '@/stores/commandPalette';
-import { useLayoutStore } from '@/design-system/layout';
+import { useCommandPaletteStore, useLayoutStore } from '@mythos/state';
 
 export function useKeyboardShortcuts() {
   const { toggle: toggleCommandPalette } = useCommandPaletteStore();

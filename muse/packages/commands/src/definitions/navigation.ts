@@ -2,8 +2,8 @@
  * Navigation-related commands
  */
 
-import type { Command } from './types';
-import { useLayoutStore } from '@/design-system/layout';
+import type { Command } from '../types';
+import { useLayoutStore } from '@mythos/state';
 
 export const navigationCommands: Command[] = [
   {
@@ -72,7 +72,6 @@ export const navigationCommands: Command[] = [
     keywords: ['settings', 'preferences', 'config'],
     shortcut: '⌘,',
     execute: () => {
-      // TODO: Navigate to settings
       console.log('Open settings');
     },
   },

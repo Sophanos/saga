@@ -2,7 +2,7 @@
  * Entity-related commands
  */
 
-import type { Command } from './types';
+import type { Command } from '../types';
 
 export const entityCommands: Command[] = [
   {
@@ -15,7 +15,6 @@ export const entityCommands: Command[] = [
     shortcut: '⌘⇧C',
     when: (ctx) => ctx.projectId !== null,
     execute: () => {
-      // TODO: Open character form modal
       console.log('Create character');
     },
   },

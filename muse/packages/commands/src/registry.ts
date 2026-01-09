@@ -12,7 +12,7 @@ function buildSearchCache(cmd: Command): string {
   return [cmd.label, cmd.description ?? '', ...cmd.keywords].join(' ').toLowerCase();
 }
 
-class CommandRegistry {
+export class CommandRegistry {
   private commands: Map<string, CachedCommand> = new Map();
 
   register(command: Command): void {
@@ -25,6 +25,10 @@ class CommandRegistry {
 
   registerMany(commands: Command[]): void {
     commands.forEach((cmd) => this.register(cmd));
+  }
+
+  unregister(id: string): void {
+    this.commands.delete(id);
   }
 
   get(id: string): Command | undefined {
