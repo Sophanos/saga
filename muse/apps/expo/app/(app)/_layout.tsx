@@ -34,18 +34,13 @@ export default function AppLayout() {
     }
   }, [session, isPending, router]);
 
-  // Show loading while checking auth
-  if (isPending) {
+  // Show loading while checking auth or redirecting
+  if (isPending || !session?.user) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? palette.gray[950] : palette.white }}>
         <ActivityIndicator size="large" color={isDark ? '#fff' : '#000'} />
       </View>
     );
-  }
-
-  // Don't render app content if not authenticated
-  if (!session?.user) {
-    return null;
   }
 
   return (

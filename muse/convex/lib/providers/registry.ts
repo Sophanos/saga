@@ -79,7 +79,7 @@ export const DEFAULT_PROVIDERS: Record<string, Omit<LlmProvider, "enabled">> = {
 
 interface ProviderInstance {
   chat: (model: string) => LanguageModel;
-  embedding?: (model: string) => EmbeddingModel<string>;
+  embedding?: (model: string) => EmbeddingModel;
 }
 
 const providerCache = new Map<string, ProviderInstance>();
@@ -126,8 +126,8 @@ export function createProviderInstance(
     case "vercel-deepinfra": {
       const provider = createDeepInfra({ apiKey });
       return {
-        chat: (model) => provider.languageModel(model),
-        embedding: (model) => provider.textEmbeddingModel(model),
+        chat: (model) => provider.languageModel(model) as unknown as LanguageModel,
+        embedding: (model) => provider.textEmbeddingModel(model) as unknown as EmbeddingModel,
       };
     }
 
@@ -205,7 +205,7 @@ export function getLanguageModel(providerSlug: string, modelId: string): Languag
 export function getEmbeddingModel(
   providerSlug: string,
   modelId: string
-): EmbeddingModel<string> | null {
+): EmbeddingModel | null {
   const provider = getProvider(providerSlug);
   if (!provider?.embedding) return null;
 

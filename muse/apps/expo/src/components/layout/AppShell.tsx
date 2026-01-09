@@ -56,7 +56,7 @@ export function AppShell({ children }: AppShellProps) {
   const showSidePanel = isDesktop && aiPanelMode === 'side';
   const showFloating = aiPanelMode === 'floating';
   const showFull = aiPanelMode === 'full';
-  const showFAB = aiPanelMode === 'hidden';
+  const showFAB = true; // Always show floating button
 
   const clearAllTimeouts = useCallback(() => {
     if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);

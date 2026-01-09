@@ -4,7 +4,7 @@
  * Email/password and social sign in.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -23,15 +23,26 @@ import {
   signInWithEmail,
   signInWithApple,
   signInWithGoogle,
+  useSession,
 } from "@/lib/auth";
 
 export default function SignInScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
+  const { data: session } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signInSuccess, setSignInSuccess] = useState(false);
+
+  // Navigate when session is established after successful sign-in
+  // This prevents race condition where navigation happens before session state updates
+  useEffect(() => {
+    if (signInSuccess && session?.user) {
+      router.replace("/");
+    }
+  }, [signInSuccess, session, router]);
 
   const handleEmailSignIn = async () => {
     if (!email || !password) {
@@ -46,12 +57,14 @@ export default function SignInScreen() {
       const result = await signInWithEmail(email, password);
       if (result.error) {
         setError(result.error.message);
+        setIsLoading(false);
       } else {
-        router.replace("/(app)");
+        // Mark sign-in as successful - navigation will happen in useEffect
+        // when session state is properly updated
+        setSignInSuccess(true);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
-    } finally {
       setIsLoading(false);
     }
   };

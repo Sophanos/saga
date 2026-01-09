@@ -4,6 +4,8 @@
  */
 
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { createStorageAdapter } from '@mythos/storage';
 
 // Layout sizing constants (in pixels)
 export const LAYOUT_SIZING = {
@@ -45,42 +47,67 @@ interface LayoutState {
   setAIPanelPosition: (pos: { x: number; y: number }) => void;
   toggleAIPanel: () => void;
   cycleAIPanelMode: () => void;
+
+  // Reset
+  reset: () => void;
 }
 
-export const useLayoutStore = create<LayoutState>((set, get) => ({
+const initialState = {
   sidebarCollapsed: false,
   sidebarWidth: LAYOUT_SIZING.sidebarDefault,
-  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-  setSidebarWidth: (width) => set({
-    sidebarWidth: Math.max(LAYOUT_SIZING.sidebarMin, Math.min(LAYOUT_SIZING.sidebarMax, width)),
-  }),
-
-  viewMode: 'home',
-  currentProjectId: null,
-  enterProject: (projectId) => set({ viewMode: 'project', currentProjectId: projectId }),
-  exitProject: () => set({ viewMode: 'home', currentProjectId: null }),
-
-  aiPanelMode: 'side',
+  viewMode: 'home' as ViewMode,
+  currentProjectId: null as string | null,
+  aiPanelMode: 'side' as AIPanelMode,
   aiPanelWidth: LAYOUT_SIZING.aiPanelDefault,
   aiPanelPosition: { x: 0, y: 0 },
-  setAIPanelMode: (mode) => set({ aiPanelMode: mode }),
-  setAIPanelWidth: (width) => set({
-    aiPanelWidth: Math.max(LAYOUT_SIZING.aiPanelMin, Math.min(LAYOUT_SIZING.aiPanelMax, width)),
-  }),
-  setAIPanelPosition: (pos) => set({ aiPanelPosition: pos }),
-  toggleAIPanel: () => {
-    const current = get().aiPanelMode;
-    set({ aiPanelMode: current === 'hidden' ? 'side' : 'hidden' });
-  },
-  cycleAIPanelMode: () => {
-    const modes: AIPanelMode[] = ['side', 'floating', 'full'];
-    const current = get().aiPanelMode;
-    const idx = modes.indexOf(current);
-    const next = modes[(idx + 1) % modes.length];
-    set({ aiPanelMode: next });
-  },
-}));
+};
+
+export const useLayoutStore = create<LayoutState>()(
+  persist(
+    (set, get) => ({
+      ...initialState,
+
+      toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      setSidebarWidth: (width) => set({
+        sidebarWidth: Math.max(LAYOUT_SIZING.sidebarMin, Math.min(LAYOUT_SIZING.sidebarMax, width)),
+      }),
+
+      enterProject: (projectId) => set({ viewMode: 'project', currentProjectId: projectId }),
+      exitProject: () => set({ viewMode: 'home', currentProjectId: null }),
+
+      setAIPanelMode: (mode) => set({ aiPanelMode: mode }),
+      setAIPanelWidth: (width) => set({
+        aiPanelWidth: Math.max(LAYOUT_SIZING.aiPanelMin, Math.min(LAYOUT_SIZING.aiPanelMax, width)),
+      }),
+      setAIPanelPosition: (pos) => set({ aiPanelPosition: pos }),
+      toggleAIPanel: () => {
+        const current = get().aiPanelMode;
+        set({ aiPanelMode: current === 'hidden' ? 'side' : 'hidden' });
+      },
+      cycleAIPanelMode: () => {
+        const modes: AIPanelMode[] = ['side', 'floating', 'full'];
+        const current = get().aiPanelMode;
+        const idx = modes.indexOf(current);
+        const next = modes[(idx + 1) % modes.length];
+        set({ aiPanelMode: next });
+      },
+
+      reset: () => set(initialState),
+    }),
+    {
+      name: 'mythos-layout',
+      storage: createJSONStorage(() => createStorageAdapter()),
+      partialize: (state) => ({
+        sidebarCollapsed: state.sidebarCollapsed,
+        sidebarWidth: state.sidebarWidth,
+        aiPanelMode: state.aiPanelMode,
+        aiPanelWidth: state.aiPanelWidth,
+        aiPanelPosition: state.aiPanelPosition,
+      }),
+    }
+  )
+);
 
 // Selectors
 export const useSidebarCollapsed = () => useLayoutStore((s) => s.sidebarCollapsed);

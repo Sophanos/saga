@@ -166,14 +166,14 @@ export const generateImageAction = internalAction({
     const startTime = Date.now();
 
     // Check tier access
-    const access = checkTaskAccess("image", userTierId);
+    const access = checkTaskAccess("image_generate", userTierId);
     if (!access.allowed) {
       return { success: false, error: "Image generation not available on current tier" };
     }
 
     const selectedTier = (args.tier as ImageTier) ?? selectImageTier({ quality: "standard" });
     const tierConfig = IMAGE_TIERS[selectedTier];
-    const imageModel = getModelForTaskSync("image", userTierId);
+    const resolved = getModelForTaskSync("image_generate", userTierId);
 
     const apiKey = process.env["OPENROUTER_API_KEY"];
     if (!apiKey) {
@@ -197,7 +197,7 @@ export const generateImageAction = internalAction({
           "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
         },
         body: JSON.stringify({
-          model: imageModel,
+          model: resolved.model,
           messages: [{ role: "user", content: prompt }],
           temperature: 0.7,
           max_tokens: 4096,
@@ -262,8 +262,8 @@ export const generateImageAction = internalAction({
       await ctx.runMutation(internal.aiUsage.trackUsage, {
         userId,
         projectId,
-        endpoint: "image",
-        model: imageModel,
+        endpoint: "image_generate",
+        model: resolved.model,
         promptTokens: data.usage?.prompt_tokens ?? 0,
         completionTokens: data.usage?.completion_tokens ?? 0,
         totalTokens: data.usage?.total_tokens ?? 0,
@@ -285,8 +285,8 @@ export const generateImageAction = internalAction({
       await ctx.runMutation(internal.aiUsage.trackUsage, {
         userId,
         projectId,
-        endpoint: "image",
-        model: imageModel,
+        endpoint: "image_generate",
+        model: resolved.model,
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,

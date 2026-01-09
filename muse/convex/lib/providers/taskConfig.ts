@@ -7,9 +7,8 @@
 
 import type { QueryCtx } from "../../_generated/server";
 import type { AITaskSlug, TierId, LlmTaskConfig, AIModality, ResolvedModel } from "./types";
-import { getModalityForTask } from "./types";
 import { getModelWithFallback } from "./registry";
-import { TIER_DEFAULTS, isTierHigher } from "../tierConfig";
+import { isTierHigher } from "../tierConfig";
 
 // ============================================================================
 // DEFAULT TASK CONFIGS (Hardcoded fallback)

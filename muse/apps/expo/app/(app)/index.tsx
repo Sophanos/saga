@@ -10,27 +10,16 @@ import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme, spacing, typography, radii } from '@/design-system';
-import { useLayoutStore } from '@mythos/state';
-
 export default function HomeScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { toggleAIPanel, aiPanelMode } = useLayoutStore();
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing[2] }]}>
         <Text style={[styles.title, { color: colors.text }]}>Welcome to Mythos</Text>
-        <Pressable
-          onPress={toggleAIPanel}
-          style={[styles.aiButton, { backgroundColor: colors.accent }]}
-        >
-          <Text style={styles.aiButtonText}>
-            {aiPanelMode === 'hidden' ? '🤖 Open AI' : '🤖 Close AI'}
-          </Text>
-        </Pressable>
       </View>
 
       {/* Content */}
@@ -94,16 +83,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: typography.xl,
     fontWeight: typography.semibold,
-  },
-  aiButton: {
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2],
-    borderRadius: radii.md,
-  },
-  aiButtonText: {
-    color: '#fff',
-    fontSize: typography.sm,
-    fontWeight: typography.medium,
   },
   content: {
     flex: 1,

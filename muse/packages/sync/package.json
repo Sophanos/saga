@@ -25,7 +25,6 @@
     }
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.47.10",
     "@mythos/state": "workspace:*",
     "uuid": "^11.0.5"
   },

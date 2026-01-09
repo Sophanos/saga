@@ -11,9 +11,12 @@ export * from "./types";
 // Client
 export {
   createMemoryClient,
+  createConvexMemoryClient,
   MemoryApiError,
   type MemoryClient,
-  type MemoryClientConfig,
+  type LegacyMemoryClientConfig,
+  type LegacyMemoryClientConfig as MemoryClientConfig,
+  type ConvexMemoryAdapter,
 } from "./client";
 
 // Store

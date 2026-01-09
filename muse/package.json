@@ -7,7 +7,7 @@
     "tooling/*"
   ],
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "turbo dev --filter=!@mythos/mobile",
     "dev:expo": "bun run --filter @mythos/expo dev",
     "dev:expo:web": "bun run --filter @mythos/expo dev:web",
     "dev:editor": "bun run --filter @mythos/editor-webview dev",
@@ -39,11 +39,11 @@
     "@ai-sdk/google": "^3.0.1",
     "@ai-sdk/openai": "^3.0.1",
     "@better-auth/expo": "^1.4.10",
-    "@convex-dev/agent": "^0.3.2",
+    "@convex-dev/agent": "0.3.2",
     "@convex-dev/better-auth": "^0.10.9",
     "@convex-dev/rate-limiter": "^0.3.2",
     "@tanstack/react-query": "^5.90.16",
-    "ai": "^6.0.3",
+    "ai": "6.0.23",
     "better-auth": "1.4.9",
     "convex": "^1.31.2",
     "dev": "^0.1.3",

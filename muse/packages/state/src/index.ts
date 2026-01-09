@@ -284,3 +284,12 @@ export type {
   UseProgressiveNudgeActionsOptions,
   UseProgressiveNudgeActionsResult,
 } from "./progressive";
+
+// ============================================================
+// RESET UTILITIES
+// ============================================================
+export {
+  resetAllClientState,
+  clearAllPersistedStorage,
+  hardReset,
+} from "./resetAll";

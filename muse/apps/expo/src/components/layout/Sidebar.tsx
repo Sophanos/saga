@@ -238,23 +238,23 @@ function TreeNodeRow({ node, depth, expansion }: TreeNodeRowProps) {
 
   const getNodeIcon = (): string => {
     switch (node.type) {
-      case 'chapter': return '📄';
-      case 'scene': return '●';
-      case 'folder': return '📁';
+      case 'chapter': return 'file-text';
+      case 'scene': return 'circle';
+      case 'folder': return 'folder';
       case 'entity':
         switch (node.entityType) {
-          case 'character': return '🎭';
-          case 'location': return '🗺';
-          case 'item': return '⚔️';
-          case 'magic_system': return '✨';
-          case 'faction': return '👥';
-          case 'event': return '📅';
-          case 'concept': return '💡';
-          default: return '○';
+          case 'character': return 'user';
+          case 'location': return 'map-pin';
+          case 'item': return 'box';
+          case 'magic_system': return 'zap';
+          case 'faction': return 'users';
+          case 'event': return 'calendar';
+          case 'concept': return 'lightbulb';
+          default: return 'circle';
         }
-      case 'memory': return '📌';
-      case 'note': return '📝';
-      default: return '○';
+      case 'memory': return 'bookmark';
+      case 'note': return 'edit-3';
+      default: return 'circle';
     }
   };
 
@@ -388,7 +388,6 @@ interface SidebarItemProps {
 
 function SidebarItem({ icon, label, onPress, active, small, shortcut, iconColor }: SidebarItemProps) {
   const { colors } = useTheme();
-  const isFeatherIcon = !icon.match(/[\u{1F300}-\u{1F9FF}]/u) && !icon.match(/[●○▼▶]/) && icon.length > 1;
 
   return (
     <Pressable
@@ -403,17 +402,7 @@ function SidebarItem({ icon, label, onPress, active, small, shortcut, iconColor 
         styles.itemIcon,
         { backgroundColor: iconColor ? `${iconColor}20` : colors.bgHover }
       ]}>
-        {isFeatherIcon ? (
-          <Feather name={icon as any} size={small ? 10 : 14} color={iconColor || colors.textMuted} />
-        ) : (
-          <Text style={[
-            styles.itemIconText,
-            { color: iconColor || colors.text },
-            small && { fontSize: 8 }
-          ]}>
-            {icon}
-          </Text>
-        )}
+        <Feather name={icon as any} size={small ? 10 : 14} color={iconColor || colors.textMuted} />
       </View>
       <Text style={[styles.itemLabel, { color: colors.textSecondary }]} numberOfLines={1}>
         {label}

@@ -264,7 +264,7 @@ export const runCoach = internalAction({
       throw new Error("OPENROUTER_API_KEY not configured");
     }
 
-    const model = getModelForTaskSync("coach", tierId);
+    const resolved = getModelForTaskSync("coach", tierId);
     const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre);
 
     const response = await fetch(OPENROUTER_API_URL, {
@@ -276,7 +276,7 @@ export const runCoach = internalAction({
         "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
       },
       body: JSON.stringify({
-        model,
+        model: resolved.model,
         messages: [
           { role: "system", content: WRITING_COACH_SYSTEM },
           { role: "user", content: userPrompt },
@@ -300,7 +300,7 @@ export const runCoach = internalAction({
       userId,
       projectId: projectId as Id<"projects">,
       endpoint: "coach",
-      model,
+      model: resolved.model,
       promptTokens: data.usage?.prompt_tokens ?? 0,
       completionTokens: data.usage?.completion_tokens ?? 0,
       totalTokens: data.usage?.total_tokens ?? 0,
@@ -355,7 +355,7 @@ export const runCoachToStream = internalAction({
         return;
       }
 
-      const model = getModelForTaskSync("coach", tierId);
+      const resolved = getModelForTaskSync("coach", tierId);
       const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre);
 
       const response = await fetch(OPENROUTER_API_URL, {
@@ -367,7 +367,7 @@ export const runCoachToStream = internalAction({
           "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
         },
         body: JSON.stringify({
-          model,
+          model: resolved.model,
           messages: [
             { role: "system", content: WRITING_COACH_SYSTEM },
             { role: "user", content: userPrompt },
@@ -407,7 +407,7 @@ export const runCoachToStream = internalAction({
         userId,
         projectId: projectId as Id<"projects">,
         endpoint: "coach",
-        model,
+        model: resolved.model,
         promptTokens: data.usage?.prompt_tokens ?? 0,
         completionTokens: data.usage?.completion_tokens ?? 0,
         totalTokens: data.usage?.total_tokens ?? 0,

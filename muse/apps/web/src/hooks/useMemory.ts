@@ -1,68 +1,110 @@
 /**
  * useMemory Hook
  *
- * Provides access to the Writer Memory Layer with caching.
- * Wraps the memory client and cache store for easy use.
+ * Provides access to the Writer Memory Layer using Convex.
+ * Wraps Convex queries/mutations with caching.
  */
 
 import { useCallback, useMemo, useState, useEffect } from "react";
-import {
-  createMemoryClient,
-  type MemoryClient,
-  type MemoryCacheState,
-  type MemoryRecord,
-  type MemoryCategory,
-  type MemoryWriteRequest,
-  type MemoryReadRequest,
-  MemoryApiError,
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
+import type {
+  MemoryRecord,
+  MemoryCategory,
+  MemoryWriteRequest,
+  MemoryReadRequest,
 } from "@mythos/memory";
-import { getSupabaseClient } from "@mythos/db";
 import { useMemoryStore } from "../stores/memory";
-import { useMythosStore } from "../stores";
-import { useApiKey } from "./useApiKey";
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "";
+import type { MemoryCacheState } from "@mythos/memory";
+import { useLayoutStore } from "@mythos/state";
 
 // =============================================================================
 // Types
 // =============================================================================
 
 export interface UseMemoryOptions {
-  /** Auto-fetch memories on mount */
   autoFetch?: boolean;
-  /** Categories to fetch */
   categories?: MemoryCategory[];
 }
 
 export interface UseMemoryResult {
-  /** All cached memories for the current project */
   memories: MemoryRecord[];
-  /** Memories by category */
   byCategory: (category: MemoryCategory) => MemoryRecord[];
-  /** Write a new memory */
   write: (params: Omit<MemoryWriteRequest, "projectId">) => Promise<MemoryRecord | null>;
-  /** Read memories (refreshes cache) */
   read: (params?: Omit<MemoryReadRequest, "projectId">) => Promise<MemoryRecord[]>;
-  /** Delete memories */
   remove: (memoryIds: string[]) => Promise<number>;
-  /** Forget memories (alias for remove) */
   forget: (memoryIds: string[]) => Promise<number>;
-  /** Pin or unpin a memory */
   pin: (memoryId: string, pinned: boolean) => Promise<boolean>;
-  /** Redact a memory */
   redact: (memoryId: string, reason?: string) => Promise<boolean>;
-  /** Learn style from content */
   learnStyle: (documentId: string, content: string) => Promise<Array<{ id: string; content: string }>>;
-  /** Loading state */
   isLoading: boolean;
-  /** Error state */
   error: string | null;
-  /** Clear error */
   clearError: () => void;
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+function mapCategoryToType(category: MemoryCategory): string {
+  const map: Record<MemoryCategory, string> = {
+    decision: "decision",
+    style: "style",
+    preference: "preference",
+    session: "session",
+  };
+  return map[category] ?? "decision";
+}
+
+function mapTypeToCategory(type: string): MemoryCategory {
+  const map: Record<string, MemoryCategory> = {
+    decision: "decision",
+    fact: "decision",
+    style: "style",
+    preference: "preference",
+    session: "session",
+    context: "session",
+  };
+  return map[type] ?? "decision";
+}
+
+interface ConvexMemory {
+  _id: Id<"memories">;
+  projectId: Id<"projects">;
+  userId?: string;
+  text: string;
+  type: string;
+  confidence: number;
+  source: string;
+  entityIds?: string[];
+  documentId?: Id<"documents">;
+  pinned: boolean;
+  expiresAt?: number;
+  vectorId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+function toMemoryRecord(mem: ConvexMemory): MemoryRecord {
+  return {
+    id: mem._id,
+    projectId: mem.projectId,
+    category: mapTypeToCategory(mem.type),
+    scope: mem.type === "session" ? "conversation" : "project",
+    ownerId: mem.userId,
+    content: mem.text,
+    metadata: {
+      source: mem.source as "user" | "ai" | "system",
+      confidence: mem.confidence,
+      entityIds: mem.entityIds,
+      documentId: mem.documentId,
+      pinned: mem.pinned,
+      expiresAt: mem.expiresAt ? new Date(mem.expiresAt).toISOString() : undefined,
+    },
+    createdAt: new Date(mem.createdAt).toISOString(),
+    updatedAt: new Date(mem.updatedAt).toISOString(),
+  };
 }
 
 // =============================================================================
@@ -72,14 +114,11 @@ export interface UseMemoryResult {
 export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
   const { autoFetch = false, categories } = options ?? {};
 
-  // State
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Store access
-  const currentProject = useMythosStore((s) => s.project.currentProject);
-  const projectId = currentProject?.id;
-  const { key: apiKey } = useApiKey();
+  const currentProjectId = useLayoutStore((s) => s.currentProjectId);
+  const projectId = currentProjectId as Id<"projects"> | null;
 
   // Cache store
   const upsertLocal = useMemoryStore((s: MemoryCacheState) => s.upsertLocal);
@@ -88,94 +127,51 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
   const getByCategory = useMemoryStore((s: MemoryCacheState) => s.getByCategory);
   const getRecent = useMemoryStore((s: MemoryCacheState) => s.getRecent);
 
-  // Create client with auth headers
-  const client = useMemo<MemoryClient | null>(() => {
-    if (!SUPABASE_URL) return null;
+  // Convex queries and mutations
+  const convexMemories = useQuery(
+    api.memories.list,
+    projectId ? { projectId, limit: 100 } : "skip"
+  );
 
-    return createMemoryClient({
-      supabaseUrl: SUPABASE_URL,
-      getAuthHeaders: async () => {
-        const headers: Record<string, string> = {};
+  const createMemory = useMutation(api.memories.create);
+  const updateMemory = useMutation(api.memories.update);
+  const removeMemory = useMutation(api.memories.remove);
 
-        // Add API key if available
-        if (apiKey) {
-          headers["x-openrouter-key"] = apiKey;
-        }
-
-        // Add auth token
-        const supabase = getSupabaseClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          headers["Authorization"] = `Bearer ${session.access_token}`;
-        }
-
-        return headers;
-      },
-    });
-  }, [apiKey]);
-
-  // Get cached memories for current project
+  // Convert Convex memories to MemoryRecord format
   const memories = useMemo(() => {
-    if (!projectId) return [];
-    return getRecent(projectId);
-  }, [projectId, getRecent]);
+    if (!convexMemories || !projectId) return [];
+    return convexMemories.map(toMemoryRecord);
+  }, [convexMemories, projectId]);
 
-  // Get memories by category
-  // Note: Session memories are conversation-scoped and require getSession(projectId, conversationId)
+  // Update cache when Convex data changes
+  useEffect(() => {
+    if (memories.length > 0 && projectId) {
+      const grouped = new Map<MemoryCategory, MemoryRecord[]>();
+      for (const mem of memories) {
+        if (mem.category === "session") continue;
+        const list = grouped.get(mem.category) ?? [];
+        list.push(mem);
+        grouped.set(mem.category, list);
+      }
+      for (const [cat, mems] of grouped) {
+        setCategoryCache(projectId, cat, mems);
+      }
+    }
+  }, [memories, projectId, setCategoryCache]);
+
   const byCategory = useCallback(
     (category: MemoryCategory): MemoryRecord[] => {
       if (!projectId) return [];
-      // Session memories are handled separately via store.getSession()
       if (category === "session") return [];
       return getByCategory(projectId, category);
     },
     [projectId, getByCategory]
   );
 
-  const buildUpdatePayload = useCallback((memory: MemoryRecord) => {
-    const metadata = memory.metadata ?? {};
-    const {
-      conversationId,
-      source,
-      confidence,
-      entityIds,
-      documentId,
-      toolCallId,
-      toolName,
-      expiresAt,
-      pinned,
-      redacted,
-      redactedAt,
-      redactionReason,
-    } = metadata;
-
-    return {
-      id: memory.id,
-      category: memory.category,
-      content: memory.content,
-      scope: memory.scope,
-      conversationId,
-      metadata: {
-        source,
-        confidence,
-        entityIds,
-        documentId,
-        toolCallId,
-        toolName,
-        expiresAt,
-        pinned,
-        redacted,
-        redactedAt,
-        redactionReason,
-      },
-    } satisfies Omit<MemoryWriteRequest, "projectId">;
-  }, []);
-
-  // Write a memory
   const write = useCallback(
     async (params: Omit<MemoryWriteRequest, "projectId">): Promise<MemoryRecord | null> => {
-      if (!client || !projectId) {
-        setError("Memory system not available");
+      if (!projectId) {
+        setError("No project selected");
         return null;
       }
 
@@ -183,105 +179,74 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
       setError(null);
 
       try {
-        const memory = await client.write({ ...params, projectId });
+        const id = await createMemory({
+          projectId,
+          text: params.content,
+          type: mapCategoryToType(params.category),
+          confidence: params.metadata?.confidence,
+          source: params.metadata?.source,
+          entityIds: params.metadata?.entityIds,
+          pinned: params.metadata?.pinned,
+          expiresAt: params.metadata?.expiresAt
+            ? new Date(params.metadata.expiresAt).getTime()
+            : undefined,
+        });
+
+        const memory: MemoryRecord = {
+          id,
+          projectId,
+          category: params.category,
+          scope: params.scope ?? "project",
+          content: params.content,
+          metadata: params.metadata,
+          createdAt: new Date().toISOString(),
+        };
+
         upsertLocal(projectId, memory);
         return memory;
-      } catch (err: unknown) {
-        const message = err instanceof MemoryApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Failed to write memory";
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to write memory";
         setError(message);
         return null;
       } finally {
         setIsLoading(false);
       }
     },
-    [client, projectId, upsertLocal]
+    [projectId, createMemory, upsertLocal]
   );
 
-  // Read memories
   const read = useCallback(
-    async (params?: Omit<MemoryReadRequest, "projectId">): Promise<MemoryRecord[]> => {
-      if (!client || !projectId) {
-        return [];
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const memories = await client.read({ ...params, projectId });
-
-        // Update cache by category (session memories excluded - they're conversation-scoped)
-        if (params?.["categories"]?.length === 1) {
-          const cat = params["categories"][0];
-          if (cat !== "session") {
-            setCategoryCache(projectId, cat, memories);
-          }
-        } else {
-          // Group and cache by category
-          const grouped = new Map<MemoryCategory, MemoryRecord[]>();
-          for (const mem of memories) {
-            const list = grouped.get(mem.category) ?? [];
-            list.push(mem);
-            grouped.set(mem.category, list);
-          }
-          for (const [cat, mems] of grouped) {
-            // Skip session - it's conversation-scoped and handled separately
-            if (cat !== "session") {
-              setCategoryCache(projectId, cat, mems);
-            }
-          }
-        }
-
-        return memories;
-      } catch (err: unknown) {
-        const message = err instanceof MemoryApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Failed to read memories";
-        setError(message);
-        return [];
-      } finally {
-        setIsLoading(false);
-      }
+    async (_params?: Omit<MemoryReadRequest, "projectId">): Promise<MemoryRecord[]> => {
+      // Convex queries are reactive, so we just return current memories
+      return memories;
     },
-    [client, projectId, setCategoryCache]
+    [memories]
   );
 
-  // Delete memories
   const remove = useCallback(
     async (memoryIds: string[]): Promise<number> => {
-      if (!client || !projectId || memoryIds.length === 0) {
-        return 0;
-      }
+      if (!projectId || memoryIds.length === 0) return 0;
 
       setIsLoading(true);
       setError(null);
 
       try {
-        const count = await client.delete({ projectId, memoryIds });
-        // Remove from local cache after successful delete
-        if (count > 0) {
-          removeLocal(projectId, memoryIds);
+        let count = 0;
+        for (const id of memoryIds) {
+          await removeMemory({ id: id as Id<"memories"> });
+          count++;
         }
+        removeLocal(projectId, memoryIds);
         return count;
-      } catch (err: unknown) {
-        const message = err instanceof MemoryApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Failed to delete memories";
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to delete memories";
         setError(message);
         return 0;
       } finally {
         setIsLoading(false);
       }
     },
-    [client, projectId, removeLocal]
+    [projectId, removeMemory, removeLocal]
   );
 
   const forget = useCallback(
@@ -293,122 +258,53 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
 
   const pin = useCallback(
     async (memoryId: string, pinned: boolean): Promise<boolean> => {
-      if (!projectId) {
-        return false;
-      }
+      if (!projectId) return false;
 
-      const memory = memories.find((item) => item.id === memoryId);
-      if (!memory) {
-        setError("Memory not found in cache");
-        return false;
-      }
-
-      const payload = buildUpdatePayload(memory);
-      const result = await write({
-        ...payload,
-        metadata: {
-          ...payload.metadata,
+      try {
+        await updateMemory({
+          id: memoryId as Id<"memories">,
           pinned,
-        },
-      });
-
-      return Boolean(result);
+        });
+        return true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to pin memory";
+        setError(message);
+        return false;
+      }
     },
-    [memories, projectId, buildUpdatePayload, write]
+    [projectId, updateMemory]
   );
 
   const redact = useCallback(
-    async (memoryId: string, reason?: string): Promise<boolean> => {
-      if (!projectId) {
-        return false;
-      }
-
-      const memory = memories.find((item) => item.id === memoryId);
-      if (!memory) {
-        setError("Memory not found in cache");
-        return false;
-      }
-
-      const payload = buildUpdatePayload(memory);
-      const result = await write({
-        ...payload,
-        metadata: {
-          ...payload.metadata,
-          redacted: true,
-          redactionReason: reason,
-        },
-      });
-
-      return Boolean(result);
-    },
-    [memories, projectId, buildUpdatePayload, write]
-  );
-
-  // Learn style
-  const learnStyle = useCallback(
-    async (documentId: string, content: string): Promise<Array<{ id: string; content: string }>> => {
-      if (!client || !projectId) {
-        setError("Memory system not available");
-        return [];
-      }
-
-      setIsLoading(true);
-      setError(null);
+    async (memoryId: string, _reason?: string): Promise<boolean> => {
+      if (!projectId) return false;
 
       try {
-        const learned = await client.learnStyle({ projectId, documentId, content });
-
-        // Get userId for ownerId field
-        const supabase = getSupabaseClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        const userId = session?.user?.id;
-
-        // Cache the learned style memories
-        const now = new Date().toISOString();
-        for (const item of learned) {
-          upsertLocal(projectId, {
-            id: item.id,
-            projectId,
-            ownerId: userId,
-            category: "style",
-            scope: "user",
-            content: item.content,
-            metadata: {
-              source: "ai",
-              documentId,
-            },
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-
-        return learned;
-      } catch (err: unknown) {
-        const message = err instanceof MemoryApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Failed to learn style";
+        // For redaction, we delete the memory
+        await removeMemory({ id: memoryId as Id<"memories"> });
+        removeLocal(projectId, [memoryId]);
+        return true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to redact memory";
         setError(message);
-        return [];
-      } finally {
-        setIsLoading(false);
+        return false;
       }
     },
-    [client, projectId, upsertLocal]
+    [projectId, removeMemory, removeLocal]
   );
 
-  // Clear error
+  const learnStyle = useCallback(
+    async (_documentId: string, _content: string): Promise<Array<{ id: string; content: string }>> => {
+      // Style learning is handled server-side via Convex actions
+      // This is a no-op on the client - the AI will learn style during interactions
+      return [];
+    },
+    []
+  );
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
-
-  // Auto-fetch on mount if enabled
-  useEffect(() => {
-    if (autoFetch && projectId && client) {
-      read({ categories });
-    }
-  }, [autoFetch, projectId, client, categories, read]);
 
   return {
     memories,

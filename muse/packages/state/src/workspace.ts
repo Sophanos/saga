@@ -162,19 +162,25 @@ interface WorkspaceState {
   executeToolCall: (tool: ToolCallPayload) => void;
   updateToolExecution: (id: string, update: Partial<WorkspaceToolExecution>) => void;
   clearToolExecutions: () => void;
+
+  // Reset
+  reset: () => void;
 }
 
+const initialState = {
+  activePanel: null as PanelType | null,
+  panelParams: {} as Record<string, unknown>,
+  worldBuilderTab: 'factions' as WorldBuilderTab,
+  focusedEntityId: null as string | null,
+  workshopEntities: [] as string[],
+  highlightedEntityId: null as string | null,
+  pendingQuestions: [] as WorkspacePendingQuestion[],
+  graphConfig: null as GraphConfig | null,
+  toolExecutions: [] as WorkspaceToolExecution[],
+};
+
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
-  // Initial state
-  activePanel: null,
-  panelParams: {},
-  worldBuilderTab: 'factions',
-  focusedEntityId: null,
-  workshopEntities: [],
-  highlightedEntityId: null,
-  pendingQuestions: [],
-  graphConfig: null,
-  toolExecutions: [],
+  ...initialState,
 
   // Panel Control
   openPanel: (panel, params = {}) => set({
@@ -334,6 +340,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   })),
 
   clearToolExecutions: () => set({ toolExecutions: [] }),
+
+  reset: () => set(initialState),
 }));
 
 // Selector hooks

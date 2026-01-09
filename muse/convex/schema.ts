@@ -28,24 +28,22 @@ export const subscriptionStore = v.union(
 /**
  * Saga Convex Schema
  *
- * This schema mirrors the core Supabase tables that need real-time sync.
- * Tables NOT migrated (kept in Supabase):
- * - subscriptions, profiles (auth/billing)
- * - memories (Qdrant sync tracking)
- * - ai_request_logs, activity_log (append-only analytics)
+ * Convex is the single source of truth for all application data.
+ * User identity is provided by Better Auth (ctx.auth.getUserIdentity().subject).
+ * Vector data is stored in Qdrant with eventual consistency via outbox patterns.
  */
 export default defineSchema({
   // ============================================================
   // PROJECTS
   // ============================================================
   projects: defineTable({
-    supabaseId: v.optional(v.string()), // Link to Supabase project for billing/auth (optional for new projects)
+    supabaseId: v.optional(v.string()), // Legacy migration field (deprecated)
     name: v.string(),
     description: v.optional(v.string()),
     genre: v.optional(v.string()),
     styleConfig: v.optional(v.any()), // Writing style preferences
     linterConfig: v.optional(v.any()), // Consistency linter rules
-    ownerId: v.string(), // Supabase user ID
+    ownerId: v.string(), // Better Auth user ID
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -58,7 +56,7 @@ export default defineSchema({
   // ============================================================
   documents: defineTable({
     projectId: v.id("projects"),
-    supabaseId: v.optional(v.string()), // For migration tracking
+    supabaseId: v.optional(v.string()), // Legacy migration field (deprecated)
     parentId: v.optional(v.id("documents")), // Hierarchical structure
     type: v.string(), // "chapter", "scene", "note", "outline", "worldbuilding"
     title: v.optional(v.string()),
@@ -90,7 +88,7 @@ export default defineSchema({
   // ============================================================
   entities: defineTable({
     projectId: v.id("projects"),
-    supabaseId: v.optional(v.string()), // For migration tracking
+    supabaseId: v.optional(v.string()), // Legacy migration field (deprecated)
     type: v.string(), // "character", "location", "item", "magic_system", "faction", "event", "concept"
     name: v.string(),
     aliases: v.array(v.string()),
@@ -217,6 +215,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_thread", ["threadId"])
+    .index("by_project", ["projectId"])
     .index("by_project_user", ["projectId", "userId"]),
 
   // ============================================================
@@ -718,4 +717,22 @@ export default defineSchema({
     .index("by_thread", ["threadId"])
     .index("by_user_date", ["userId", "createdAt"])
     .index("by_endpoint", ["endpoint"]),
+
+  // ============================================================
+  // VECTOR DELETE OUTBOX
+  // ============================================================
+  vectorDeleteJobs: defineTable({
+    projectId: v.id("projects"),
+    filter: v.any(), // Qdrant filter JSON
+    targetType: v.optional(v.string()), // "document" | "entity" | "memory" | "project"
+    targetId: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    status: v.string(), // "pending" | "processing" | "completed" | "failed"
+    attempts: v.number(),
+    lastError: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_project", ["projectId"]),
 });

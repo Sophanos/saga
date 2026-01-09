@@ -225,7 +225,7 @@ export const extractDynamics = internalAction({
       throw new Error("OPENROUTER_API_KEY not configured");
     }
 
-    const model = getModelForTaskSync("dynamics", tierId);
+    const resolved = getModelForTaskSync("dynamics", tierId);
     const userPrompt = buildExtractionPrompt(content, sceneMarker, knownEntities);
 
     const response = await fetch(OPENROUTER_API_URL, {
@@ -237,7 +237,7 @@ export const extractDynamics = internalAction({
         "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
       },
       body: JSON.stringify({
-        model,
+        model: resolved.model,
         messages: [
           { role: "system", content: DYNAMICS_EXTRACTOR_SYSTEM },
           { role: "user", content: userPrompt },
@@ -261,7 +261,7 @@ export const extractDynamics = internalAction({
       userId,
       projectId: projectId as Id<"projects">,
       endpoint: "dynamics",
-      model,
+      model: resolved.model,
       promptTokens: data.usage?.prompt_tokens ?? 0,
       completionTokens: data.usage?.completion_tokens ?? 0,
       totalTokens: data.usage?.total_tokens ?? 0,

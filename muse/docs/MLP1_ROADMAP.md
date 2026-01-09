@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-09 | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-09 (Supabase removal 85%) | **Target:** Web + macOS first, then iOS/iPad
 
 ## Summary
 
@@ -35,7 +35,7 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 │ 8. Observability (PostHog+Clarity) Complete         [██████████] ✅ │
 │ 9. Rate Limiting                   Complete         [██████████] ✅ │
 │10. Tier Config Migration           Complete         [██████████] ✅ │
-│11. Supabase → Convex Migration     In Progress      [██████░░░░] 60%│
+│11. Supabase → Convex Migration     In Progress      [████████░░] 85%│
 │12. CI/CD (GitHub Actions)          Complete         [██████████] ✅ │
 ├─────────────────────────────────────────────────────────────────────┤
 │ OVERALL MLP 1                                       [█████████░] 94%│
@@ -1138,7 +1138,7 @@ checkTaskAccess("lint", "pro")   // → { allowed: true }
 
 ---
 
-## Phase 11: Supabase → Convex Migration (60%)
+## Phase 11: Supabase → Convex Migration (85%)
 
 ### Migration Architecture
 
@@ -1149,7 +1149,10 @@ convex/
 │   └── types.ts                 # Migration types
 ├── collaboration.ts             # ✅ Project members + invitations
 ├── projectAssets.ts             # ✅ File storage management
-├── maintenance.ts               # ✅ Cleanup jobs (invitations, assets)
+├── maintenance.ts               # ✅ Cleanup jobs + vector delete processing
+├── memories.ts                  # ✅ AI memories CRUD + vector sync
+├── account.ts                   # ✅ Account deletion cascade
+├── lib/entitlements.ts          # ✅ Subscription/tier checks
 └── crons.ts                     # ✅ Daily/weekly cleanup crons
 ```
 
@@ -1161,6 +1164,9 @@ convex/
 | `projectInvitations` | ✅ Done | Token-based, 7-day expiry |
 | `projectAssets` | ✅ Done | File storage, soft delete |
 | `tierConfigs` | ✅ Done | Seed from TIER_DEFAULTS |
+| `memories` | ✅ Done | AI memories with Qdrant vector sync |
+| `vectorDeleteJobs` | ✅ Done | Outbox for Qdrant deletions |
+| `subscriptions` | ✅ Done | RevenueCat webhook sync |
 
 ### Collaboration Features
 
@@ -1179,6 +1185,17 @@ convex/
 |------|----------|--------|
 | `expire-old-invitations` | Daily 4:00 AM UTC | Mark expired invitations |
 | `cleanup-deleted-assets` | Weekly Sunday 5:00 AM UTC | Hard delete soft-deleted assets (30+ days) |
+| `process-vector-delete-jobs` | Every minute | Process pending Qdrant deletions |
+| `purge-expired-memories` | Daily 2:00 AM UTC | Delete tier-expired memories |
+
+### Remaining Tasks
+
+| Task | Priority | Notes |
+|------|----------|-------|
+| Delete account button (Expo settings) | P1 | UI to test `account.deleteMyAccount` |
+| useCollaboration.ts | P2 | Convex Realtime/presence (Figma model) |
+| useStreamingEntityDetection.ts | P2 | Convex actions |
+| Remove @mythos/db imports (~15 hooks) | P2 | Package deleted, hooks need rewrite |
 
 ### Tables to DEPRECATE
 

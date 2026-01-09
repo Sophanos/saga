@@ -155,12 +155,20 @@ Prompts in `convex/ai/prompts/` - System prompts for each AI module.
 ## Environment
 
 ```env
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
+# Auth (Better Auth)
+BETTER_AUTH_SECRET=
+SITE_URL=https://cascada.vision
+
+# AI
 OPENROUTER_API_KEY=
 DEEPINFRA_API_KEY=
+
+# Vectors
 QDRANT_URL=
 QDRANT_API_KEY=
+
+# Convex (auto-configured)
+CONVEX_URL=https://convex.cascada.vision
 ```
 
 ## Infrastructure

@@ -196,7 +196,7 @@ export const learnStyle = internalAction({
       throw new Error("OPENROUTER_API_KEY not configured");
     }
 
-    const model = getModelForTaskSync("style", tierId);
+    const resolved = getModelForTaskSync("style", tierId);
     const maxFindings = Math.min(Math.max(1, args.maxFindings ?? DEFAULT_MAX_FINDINGS), 20);
 
     const response = await fetch(OPENROUTER_API_URL, {
@@ -208,7 +208,7 @@ export const learnStyle = internalAction({
         "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
       },
       body: JSON.stringify({
-        model,
+        model: resolved.model,
         messages: [
           { role: "system", content: STYLE_EXTRACTION_PROMPT },
           {
@@ -292,7 +292,7 @@ export const learnStyle = internalAction({
       userId,
       projectId,
       endpoint: "style",
-      model,
+      model: resolved.model,
       promptTokens: data.usage?.prompt_tokens ?? 0,
       completionTokens: data.usage?.completion_tokens ?? 0,
       totalTokens: data.usage?.total_tokens ?? 0,

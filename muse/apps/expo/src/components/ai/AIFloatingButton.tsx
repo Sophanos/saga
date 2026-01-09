@@ -78,11 +78,6 @@ export function AIFloatingButton({ hasUnread = false }: AIFloatingButtonProps) {
     opacity: ringOpacity.value,
   }));
 
-  // Only show when panel is hidden
-  if (aiPanelMode !== 'hidden') {
-    return null;
-  }
-
   return (
     <Animated.View
       entering={FadeIn.duration(200)}

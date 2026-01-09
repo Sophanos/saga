@@ -81,4 +81,26 @@ crons.weekly(
   internal.maintenance.cleanupDeletedAssets
 );
 
+// ============================================================
+// Vector Delete Job Processing
+// Runs every minute to process pending Qdrant vector deletions
+// ============================================================
+
+crons.interval(
+  "process-vector-delete-jobs",
+  { minutes: 1 },
+  internal.maintenance.processVectorDeleteJobs
+);
+
+// ============================================================
+// Memory Expiry Cleanup
+// Runs daily at 2:00 AM UTC to purge expired memories
+// ============================================================
+
+crons.daily(
+  "purge-expired-memories",
+  { hourUTC: 2, minuteUTC: 0 },
+  internal.memories.purgeExpired
+);
+
 export default crons;

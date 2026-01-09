@@ -142,21 +142,27 @@ interface AIState {
   // Message actions
   sendMessage: (content: string) => void;
   setStreaming: (streaming: boolean) => void;
+
+  // Reset
+  reset: () => void;
 }
 
-export const useAIStore = create<AIState>((set, get) => ({
-  // Initial state
-  currentThreadId: null,
-  threads: [],
+const initialState = {
+  currentThreadId: null as string | null,
+  threads: [] as ChatThread[],
   inputValue: '',
-  contextChips: [],
-  selectedModel: 'auto',
-  enabledScopes: ['scene', 'chapter'],
+  contextChips: [] as ContextChip[],
+  selectedModel: 'auto' as AIModel,
+  enabledScopes: ['scene', 'chapter'] as ContextScope[],
   webSearchEnabled: false,
   isStreaming: false,
   showModelSelector: false,
   showContextScope: false,
   showChatSelector: false,
+};
+
+export const useAIStore = create<AIState>((set, get) => ({
+  ...initialState,
 
   // Input actions
   setInputValue: (value) => set({ inputValue: value }),
@@ -241,6 +247,8 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   setStreaming: (streaming) => set({ isStreaming: streaming }),
+
+  reset: () => set(initialState),
 }));
 
 // Selector hooks for convenience

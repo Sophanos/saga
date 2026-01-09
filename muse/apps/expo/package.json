@@ -23,7 +23,6 @@
     "@mythos/consent": "workspace:*",
     "@mythos/convex-client": "workspace:*",
     "@mythos/core": "workspace:*",
-    "@mythos/db": "workspace:*",
     "@mythos/editor-webview": "workspace:*",
     "@mythos/manifest": "workspace:*",
     "@mythos/state": "workspace:*",

@@ -2,18 +2,15 @@
  * Convex Provider for Saga Web App
  *
  * Wraps the app with Convex client and offline-first support.
- * Uses Supabase auth tokens for Convex authentication (client-side only).
+ * Uses Better Auth tokens for Convex authentication.
  */
 
 import { useMemo } from "react";
 import { ConvexReactClient } from "convex/react";
 import { ConvexOfflineProvider } from "@mythos/convex-client";
-import { useAuthStore } from "../stores/auth";
-import { getSupabaseClient } from "@mythos/db";
+import { authClient } from "../lib/auth";
 
 // Convex client singleton
-// Using self-hosted URL:
-// - API + HTTP Actions: convex.cascada.vision
 const convexUrl = import.meta.env["VITE_CONVEX_URL"] || "https://convex.cascada.vision";
 
 let convexClient: ConvexReactClient | null = null;
@@ -26,27 +23,25 @@ function getConvexClient(): ConvexReactClient {
 }
 
 /**
- * Auth hook for Convex that uses Supabase session
- *
- * Client-side only validation - passes Supabase JWT to Convex.
- * Convex trusts the token (relies on HTTPS security).
+ * Auth hook for Convex that uses Better Auth session
  */
 function useConvexAuth() {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isLoading = useAuthStore((s) => s.isLoading);
+  const { data: session, isPending } = authClient.useSession();
 
   return useMemo(
     () => ({
-      isLoading,
-      isAuthenticated,
+      isLoading: isPending,
+      isAuthenticated: !!session?.user,
       fetchAccessToken: async () => {
-        // Return Supabase access token for Convex auth
-        const supabase = getSupabaseClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        return session?.access_token ?? null;
+        // convexClient plugin handles token exchange with Better Auth
+        // The token is automatically managed by the crossDomainClient plugin
+        const token = await authClient.$fetch("/api/auth/convex-token", {
+          method: "GET",
+        });
+        return token?.data?.token ?? null;
       },
     }),
-    [isAuthenticated, isLoading]
+    [session, isPending]
   );
 }
 
@@ -56,20 +51,6 @@ interface ConvexProviderProps {
 
 /**
  * Convex provider component with offline-first support.
- *
- * Features:
- * - TanStack Query for caching layer
- * - IndexedDB persistence for offline data
- * - Offline mutation queue with automatic retry
- * - Last-write-wins conflict resolution
- *
- * @example
- * ```tsx
- * // In main.tsx
- * <ConvexProvider>
- *   <App />
- * </ConvexProvider>
- * ```
  */
 export function ConvexProvider({ children }: ConvexProviderProps) {
   const client = useMemo(() => getConvexClient(), []);
@@ -91,7 +72,4 @@ export function ConvexProvider({ children }: ConvexProviderProps) {
   );
 }
 
-/**
- * Re-export offline hook for use in components
- */
 export { useConvexOffline } from "@mythos/convex-client";

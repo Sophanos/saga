@@ -5,10 +5,11 @@
  */
 
 import { createAuthClient } from "better-auth/react";
-import { convexClient } from "@convex-dev/better-auth/client/plugins";
+import { convexClient, crossDomainClient } from "@convex-dev/better-auth/client/plugins";
 import { expoClient } from "@better-auth/expo/client";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 import { initAuthConfig, setPlatform } from "@mythos/auth";
 import { initRevenueCat as initRC } from "@mythos/auth/revenuecat";
 
@@ -20,7 +21,7 @@ const expoOS = Constants.platform?.ios ? "ios"
 setPlatform(expoOS as "ios" | "android" | "web");
 
 // Environment variables
-// BetterAuth runs on Convex HTTP Actions port (3221), served via cascada.vision
+// BetterAuth runs on Convex HTTP Actions (port 3221), served via cascada.vision
 const CONVEX_SITE_URL = process.env.EXPO_PUBLIC_CONVEX_SITE_URL || "https://cascada.vision";
 const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://convex.cascada.vision";
 const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
@@ -30,17 +31,30 @@ const scheme = Constants.expoConfig?.scheme || "mythos";
 
 /**
  * Better Auth client for Expo
+ * - Web: Uses crossDomainClient (localStorage + Better-Auth-Cookie header)
+ * - Native: Uses expoClient (SecureStore)
  */
+const isWeb = Platform.OS === "web";
+
 export const authClient = createAuthClient({
   baseURL: CONVEX_SITE_URL,
-  plugins: [
-    expoClient({
-      scheme,
-      storagePrefix: scheme,
-      storage: SecureStore,
-    }),
-    convexClient(),
-  ],
+  plugins: isWeb
+    ? [
+        // Web: crossDomainClient handles cross-origin auth via localStorage
+        crossDomainClient({
+          storagePrefix: "better-auth",
+        }),
+        convexClient(),
+      ]
+    : [
+        // Native: expoClient uses SecureStore
+        expoClient({
+          scheme,
+          storagePrefix: scheme,
+          storage: SecureStore,
+        }),
+        convexClient(),
+      ],
 });
 
 /**
@@ -77,14 +91,34 @@ export async function initRevenueCat() {
  * Sign in with email
  */
 export async function signInWithEmail(email: string, password: string) {
-  return authClient.signIn.email({ email, password });
+  // Pass callbackURL to prevent crossDomain redirect to site root
+  const result = await authClient.signIn.email({
+    email,
+    password,
+    callbackURL: typeof window !== 'undefined' ? window.location.origin : undefined,
+  });
+  
+  // Debug: Check if cookie was stored
+  if (typeof window !== 'undefined' && window.localStorage) {
+    console.log('[auth] localStorage after sign-in:', {
+      'better-auth_cookie': localStorage.getItem('better-auth_cookie'),
+    });
+  }
+  
+  return result;
 }
 
 /**
  * Sign up with email
  */
 export async function signUpWithEmail(email: string, password: string, name?: string) {
-  return authClient.signUp.email({ email, password, name: name || "" });
+  // Pass callbackURL to prevent crossDomain redirect to site root
+  return authClient.signUp.email({
+    email,
+    password,
+    name: name || "",
+    callbackURL: typeof window !== 'undefined' ? window.location.origin : undefined,
+  });
 }
 
 /**

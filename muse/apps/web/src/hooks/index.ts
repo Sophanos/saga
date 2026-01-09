@@ -79,16 +79,8 @@ export type {
   UseAnalysisHistorySyncResult,
 } from "./useAnalysisHistorySync";
 
-// Auth sync
-export {
-  useSupabaseAuthSync,
-  signInWithGoogle,
-  signInWithApple,
-  signInWithEmail,
-  signUpWithEmail,
-  signOut,
-  updateProfile,
-} from "./useSupabaseAuthSync";
+// Auth - now handled by Better Auth in @mythos/auth
+// See apps/web/src/lib/auth.ts for auth client
 
 // Online status
 export {

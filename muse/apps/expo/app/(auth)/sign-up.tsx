@@ -4,7 +4,7 @@
  * Create a new account with email/password.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -18,17 +18,27 @@ import {
 import { useRouter, Link } from "expo-router";
 import { useTheme } from "@/design-system";
 import { spacing, radii, typography } from "@/design-system/tokens";
-import { signUpWithEmail } from "@/lib/auth";
+import { signUpWithEmail, useSession } from "@/lib/auth";
 
 export default function SignUpScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
+  const { data: session } = useSession();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signUpSuccess, setSignUpSuccess] = useState(false);
+
+  // Navigate when session is established after successful sign-up
+  // This prevents race condition where navigation happens before session state updates
+  useEffect(() => {
+    if (signUpSuccess && session?.user) {
+      router.replace("/");
+    }
+  }, [signUpSuccess, session, router]);
 
   const handleSignUp = async () => {
     if (!email || !password) {
@@ -53,12 +63,14 @@ export default function SignUpScreen() {
       const result = await signUpWithEmail(email, password, name);
       if (result.error) {
         setError(result.error.message);
+        setIsLoading(false);
       } else {
-        router.replace("/(app)");
+        // Mark sign-up as successful - navigation will happen in useEffect
+        // when session state is properly updated
+        setSignUpSuccess(true);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
-    } finally {
       setIsLoading(false);
     }
   };

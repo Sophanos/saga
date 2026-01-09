@@ -15,7 +15,7 @@ import type { Id } from "./_generated/dataModel";
 // ============================================================
 
 /**
- * Get the authenticated user's ID from Supabase JWT
+ * Get the authenticated user's ID from Better Auth JWT
  * Throws if not authenticated
  */
 async function getAuthUserId(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }): Promise<string> {
@@ -23,7 +23,6 @@ async function getAuthUserId(ctx: { auth: { getUserIdentity: () => Promise<{ sub
   if (!identity) {
     throw new Error("Unauthenticated");
   }
-  // Supabase JWT uses 'subject' for user ID
   return identity.subject;
 }
 
@@ -339,6 +338,56 @@ export const removeInternal = internalMutation({
     // Delete collaboration data (members, invitations)
     await ctx.runMutation(internal.collaboration.removeProjectMembersInternal, {
       projectId: id,
+    });
+
+    // Delete memories
+    await ctx.runMutation(internal.memories.removeByProject, { projectId: id });
+
+    // Delete embedding jobs
+    const embeddingJobs = await ctx.db
+      .query("embeddingJobs")
+      .withIndex("by_project_target", (q) => q.eq("projectId", id))
+      .collect();
+
+    for (const job of embeddingJobs) {
+      await ctx.db.delete(job._id);
+    }
+
+    // Delete saga threads
+    const sagaThreads = await ctx.db
+      .query("sagaThreads")
+      .withIndex("by_project", (q) => q.eq("projectId", id))
+      .collect();
+
+    for (const thread of sagaThreads) {
+      await ctx.db.delete(thread._id);
+    }
+
+    // Delete AI usage
+    const aiUsage = await ctx.db
+      .query("aiUsage")
+      .withIndex("by_project", (q) => q.eq("projectId", id))
+      .collect();
+
+    for (const usage of aiUsage) {
+      await ctx.db.delete(usage._id);
+    }
+
+    // Enqueue project-wide vector deletion (for Qdrant cleanup)
+    const now = Date.now();
+    await ctx.db.insert("vectorDeleteJobs", {
+      projectId: id,
+      filter: {
+        must: [
+          { key: "project_id", match: { value: id } },
+        ],
+      },
+      targetType: "project",
+      reason: "project_deletion",
+      status: "pending",
+      attempts: 0,
+      createdAt: now,
+      updatedAt: now,
     });
 
     // Finally delete the project
