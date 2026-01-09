@@ -2,21 +2,54 @@
  * Settings Screen - Modal presentation
  */
 
-import { View, Text, StyleSheet, Pressable, Switch } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Switch, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, spacing, typography, radii } from '@/design-system';
 import { useLayoutStore } from '@mythos/state';
+import { useSession, signOut } from '@/lib/auth';
 
 export default function SettingsScreen() {
   const { colors, isDark } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { sidebarCollapsed, toggleSidebar } = useLayoutStore();
+  const { data: session } = useSession();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.replace('/');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
       <View style={[styles.content, { paddingBottom: insets.bottom + spacing[4] }]}>
+        {/* Account */}
+        {session?.user && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>ACCOUNT</Text>
+
+            <View style={[styles.row, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
+              <Text style={[styles.rowLabel, { color: colors.text }]}>Email</Text>
+              <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                {session.user.email}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={handleSignOut}
+              style={[styles.row, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}
+            >
+              <Text style={[styles.rowLabel, { color: '#ef4444' }]}>Sign Out</Text>
+              <Text style={[styles.rowValue, { color: colors.textSecondary }]}>→</Text>
+            </Pressable>
+          </View>
+        )}
+
         {/* Appearance */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>APPEARANCE</Text>
