@@ -671,14 +671,156 @@ embeddingJobs: defineTable({
 
 #### Tauri ← Expo Web Convergence (Next)
 
+**Philosophy:** Treat desktop as **capability-based**, not platform forks. No `.tauri.ts` proliferation.
+
 | Step | Task | Status |
 |------|------|--------|
-| 1 | Point Tauri devUrl to Expo Web (`:8082`) | 🔲 |
+| 1 | Point Tauri devUrl to Expo Web (`:19006`) | 🔲 |
 | 2 | Test all features in WebView context | 🔲 |
-| 3 | Replace Tauri components with Expo Web | 🔲 |
+| 3 | Create `@mythos/platform` capability layer | 🔲 |
 | 4 | Production: Expo export → Tauri resources | 🔲 |
-| 5 | Native menus + shortcuts | 🔲 |
-| 6 | Auto-update + code signing | 🔲 |
+| 5 | Native macOS menus via Tauri Menu API | 🔲 |
+| 6 | Code signing + notarization | 🔲 |
+| 7 | Auto-updater integration | 🔲 |
+
+#### `@mythos/platform` Capability Layer
+
+Single abstraction for platform capabilities (no scattered `.tauri.ts` files):
+
+```
+packages/platform/
+├── src/
+│   ├── index.ts              # Platform detection + capability exports
+│   ├── capabilities/
+│   │   ├── storage.ts        # Persistent key-value storage
+│   │   ├── fs.ts             # File system access
+│   │   ├── menus.ts          # Native menus (Tauri only)
+│   │   ├── updater.ts        # Auto-update (Tauri only)
+│   │   └── window.ts         # Window controls
+│   └── adapters/
+│       ├── tauri/            # Tauri plugin implementations
+│       ├── web/              # Web API implementations
+│       └── native/           # React Native implementations
+```
+
+**Capability Matrix:**
+
+| Capability | Web | Tauri | React Native |
+|------------|-----|-------|--------------|
+| `storage` | localStorage | `tauri-plugin-store` | SecureStore/AsyncStorage |
+| `fs` | File System Access API | `tauri-plugin-fs` | react-native-fs |
+| `menus` | ❌ | Native AppKit menus | ❌ |
+| `updater` | ❌ | `tauri-plugin-updater` | App Store |
+| `window` | ❌ | `@tauri-apps/api/window` | ❌ |
+
+**Usage:**
+
+```typescript
+import { storage, fs, platform } from '@mythos/platform';
+
+// Auto-selects correct implementation
+await storage.set('recentProjects', projectIds);
+const data = await fs.readFile(path);
+
+if (platform.capabilities.menus) {
+  menus.setApplicationMenu(writerMenus);
+}
+```
+
+#### Native macOS Menus (Tauri v2 Menu API)
+
+Ship expected Mac affordances via `@tauri-apps/api/menu`:
+
+```typescript
+// packages/platform/src/adapters/tauri/menus.ts
+import { Menu, MenuItem, Submenu } from '@tauri-apps/api/menu';
+
+const fileMenu = await Submenu.new({
+  text: 'File',
+  items: [
+    await MenuItem.new({ text: 'New Project', accelerator: 'CmdOrCtrl+N', action: 'new_project' }),
+    await MenuItem.new({ text: 'Open...', accelerator: 'CmdOrCtrl+O', action: 'open_project' }),
+    await MenuItem.new({ text: 'Export...', accelerator: 'CmdOrCtrl+Shift+E', action: 'export' }),
+  ],
+});
+
+const editMenu = await Submenu.new({
+  text: 'Edit',
+  items: [
+    await MenuItem.new({ text: 'Undo', accelerator: 'CmdOrCtrl+Z', action: 'undo' }),
+    await MenuItem.new({ text: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', action: 'redo' }),
+    { item: 'Separator' },
+    await MenuItem.new({ text: 'Find...', accelerator: 'CmdOrCtrl+F', action: 'find' }),
+  ],
+});
+
+const viewMenu = await Submenu.new({
+  text: 'View',
+  items: [
+    await MenuItem.new({ text: 'Toggle Sidebar', accelerator: 'CmdOrCtrl+\\', action: 'toggle_sidebar' }),
+    await MenuItem.new({ text: 'Zen Mode', accelerator: 'CmdOrCtrl+Shift+F', action: 'zen_mode' }),
+    await MenuItem.new({ text: 'AI Panel', accelerator: 'CmdOrCtrl+J', action: 'toggle_ai' }),
+  ],
+});
+```
+
+#### Code Signing + Notarization (macOS)
+
+**Required for distribution** (avoid "app is damaged" warnings):
+
+```json
+// apps/tauri/src-tauri/tauri.macos.conf.json
+{
+  "bundle": {
+    "macOS": {
+      "signingIdentity": "Developer ID Application: Your Name (TEAMID)",
+      "providerShortName": "TEAMID",
+      "entitlements": "./entitlements.plist",
+      "minimumSystemVersion": "10.15"
+    }
+  }
+}
+```
+
+| Task | Tool | Notes |
+|------|------|-------|
+| Code signing | `codesign` | Apple Developer Certificate |
+| Notarization | `notarytool` | Required for Gatekeeper |
+| Stapling | `stapler` | Offline verification |
+| CI automation | GitHub Actions | `tauri-action` handles this |
+
+#### Auto-Updater (Tauri v2)
+
+```typescript
+// packages/platform/src/adapters/tauri/updater.ts
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
+
+export async function checkForUpdates() {
+  const update = await check();
+  if (update) {
+    await update.downloadAndInstall();
+    await relaunch();
+  }
+}
+```
+
+**Update server options:**
+- GitHub Releases (free, recommended)
+- S3/CloudFlare R2 (self-hosted)
+- Custom endpoint
+
+#### Platform-Specific Config Overlays
+
+Tauri v2 supports config merging for platform-specific settings:
+
+```
+apps/tauri/src-tauri/
+├── tauri.conf.json           # Base config (all platforms)
+├── tauri.macos.conf.json     # macOS: signing, entitlements, sandbox
+├── tauri.windows.conf.json   # Windows: installer, code signing
+└── tauri.linux.conf.json     # Linux: AppImage, deb settings
+```
 
 #### Expo iOS/iPad (Future)
 
@@ -687,27 +829,33 @@ embeddingJobs: defineTable({
 | MythosEditor WebView wrapper | 🔲 |
 | Touch keyboard handling | 🔲 |
 | Offline queue sync | 🔲 |
+| iPad trackpad/mouse support | 🔲 |
 
 #### Web → Shared Packages Refactor (Post-MLP1)
 
-After Expo-web is finalized, migrate remaining `apps/web/` code to shared packages for Tauri reuse.
+After Expo-web is finalized, migrate remaining `apps/web/` code to shared packages.
 
-**Candidates:**
+**Move to `@mythos/state`:**
 
-| File | Target | Notes |
-|------|--------|-------|
-| `stores/navigation.ts` | `@mythos/state` | Navigation state |
-| `stores/projectSelection.ts` | `@mythos/state` | Selected project |
-| `stores/chatSessionStorage.ts` | `@mythos/state` | Chat persistence |
-| `tools/executors/*` | `@mythos/tools` | Client-side tool executors |
+| File | Notes |
+|------|-------|
+| `stores/navigation.ts` | Navigation state |
+| `stores/projectSelection.ts` | Selected project |
+| `stores/chatSessionStorage.ts` | Chat persistence |
+
+**Move to `@mythos/platform`:**
+
+| File | Capability |
+|------|------------|
+| `stores/memory.ts` | `storage` adapter |
+| File open/save logic | `fs` adapter |
 
 **Keep platform-specific:**
 
 | File | Reason |
 |------|--------|
-| `stores/memory.ts` | Already uses `@mythos/memory`, just needs storage adapter |
 | `stores/undo.ts` | Editor UX - needs client-side speed |
-| `stores/history.ts` | Session stats - sync aggregates to Convex, not every change |
+| `stores/history.ts` | Session stats - sync aggregates to Convex |
 
 ### Phase 5: Skills + Polish
 
