@@ -94,7 +94,9 @@ authComponent.registerRoutes(http, createAuth, {
       "tauri://localhost",
       "http://localhost:3000",
       "http://localhost:1420",
+      "http://localhost:8081",
       "http://localhost:8082",
+      "http://localhost:8083",
     ],
   },
 });
