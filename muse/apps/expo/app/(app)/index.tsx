@@ -10,7 +10,7 @@ import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme, spacing, typography, radii } from '@/design-system';
-import { useLayoutStore } from '@/design-system/layout';
+import { useLayoutStore } from '@mythos/state';
 
 export default function HomeScreen() {
   const { colors } = useTheme();

@@ -6,7 +6,7 @@ import { View, Text, StyleSheet, Pressable, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, spacing, typography, radii } from '@/design-system';
-import { useLayoutStore } from '@/design-system/layout';
+import { useLayoutStore } from '@mythos/state';
 
 export default function SettingsScreen() {
   const { colors, isDark } = useTheme();

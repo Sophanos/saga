@@ -20,9 +20,12 @@ import { ConvexReactClient, ConvexProvider } from 'convex/react';
 import { ConvexBetterAuthProvider } from '@convex-dev/better-auth/react';
 import { palette } from '@/design-system/colors';
 import { authClient, initAuth, initRevenueCat } from '@/lib/auth';
+import { initAnalytics } from '@/lib/analytics';
+import { initConsent } from '@/lib/consent';
+import { initClarity } from '@/lib/clarity';
 
 // Initialize Convex client
-const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL || 'https://api.cascada.vision';
+const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL || 'https://convex.cascada.vision';
 const convex = new ConvexReactClient(convexUrl, {
   skipConvexDeploymentUrlCheck: true, // Self-hosted
 });
@@ -38,10 +41,17 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  // Initialize auth and RevenueCat on mount
+  // Initialize services on mount
   useEffect(() => {
     initAuth();
     initRevenueCat();
+
+    // Initialize consent first, then analytics/clarity based on consent
+    initConsent().then(() => {
+      // Analytics and Clarity will respect consent state via adapters
+      initAnalytics();
+      initClarity();
+    });
   }, []);
 
   // Set system UI background color

@@ -10,6 +10,11 @@ const config = getDefaultConfig(__dirname);
 // Enable CSS support for web
 config.resolver.sourceExts.push('css');
 
+// Fix import.meta issue with zustand and other packages
+// This makes Metro prefer CJS builds over ESM builds that use import.meta
+// See: https://github.com/pmndrs/zustand/discussions/1967
+config.resolver.unstable_conditionNames = ['browser', 'require', 'react-native'];
+
 // Watch all packages in the monorepo
 config.watchFolders = [monorepoRoot];
 
@@ -20,9 +25,9 @@ config.resolver.extraNodeModules = {
   'react-native': path.resolve(__dirname, 'node_modules/react-native'),
 };
 
-// Dedupe React across the monorepo
+// Dedupe React across the monorepo (but NOT react-native - it needs special Flow handling)
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName === 'react' || moduleName === 'react-dom' || moduleName === 'react-native') {
+  if (moduleName === 'react' || moduleName === 'react-dom') {
     return {
       filePath: require.resolve(moduleName, { paths: [__dirname] }),
       type: 'sourceFile',

@@ -4,13 +4,19 @@ import { ConvexReactClient, ConvexProvider } from 'convex/react';
 import { ConvexBetterAuthProvider } from '@convex-dev/better-auth/react';
 import App from './App';
 import { authClient, initAuth, setupAuthDeepLinks } from './lib/auth';
+import { initAnalytics } from './lib/analytics';
+import { initClarity } from './lib/clarity';
 import './styles/global.css';
 
 // Initialize auth configuration
 initAuth();
 
+// Initialize analytics
+initAnalytics();
+initClarity();
+
 // Initialize Convex client
-const convexUrl = import.meta.env.VITE_CONVEX_URL || 'https://api.cascada.vision';
+const convexUrl = import.meta.env.VITE_CONVEX_URL || 'https://convex.cascada.vision';
 const convex = new ConvexReactClient(convexUrl, {
   skipConvexDeploymentUrlCheck: true, // Self-hosted
 });

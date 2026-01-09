@@ -8,7 +8,7 @@
 import React, { Suspense, lazy } from 'react';
 import { Platform, View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useTheme, typography } from '@/design-system';
-import { useLayoutStore } from '@/design-system/layout';
+import { useLayoutStore } from '@mythos/state';
 
 // Lazy load editor only on web
 const LazyEditorShell = Platform.OS === 'web'
