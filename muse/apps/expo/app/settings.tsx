@@ -29,26 +29,32 @@ export default function SettingsScreen() {
     <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
       <View style={[styles.content, { paddingBottom: insets.bottom + spacing[4] }]}>
         {/* Account */}
-        {session?.user && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>ACCOUNT</Text>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>ACCOUNT</Text>
 
+          {session?.user ? (
+            <>
+              <View style={[styles.row, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
+                <Text style={[styles.rowLabel, { color: colors.text }]}>Email</Text>
+                <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                  {session.user.email}
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={handleSignOut}
+                style={[styles.row, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}
+              >
+                <Text style={[styles.rowLabel, { color: '#ef4444' }]}>Sign Out</Text>
+                <Text style={[styles.rowValue, { color: colors.textSecondary }]}>→</Text>
+              </Pressable>
+            </>
+          ) : (
             <View style={[styles.row, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
-              <Text style={[styles.rowLabel, { color: colors.text }]}>Email</Text>
-              <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
-                {session.user.email}
-              </Text>
+              <Text style={[styles.rowLabel, { color: colors.textMuted }]}>Not signed in</Text>
             </View>
-
-            <Pressable
-              onPress={handleSignOut}
-              style={[styles.row, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}
-            >
-              <Text style={[styles.rowLabel, { color: '#ef4444' }]}>Sign Out</Text>
-              <Text style={[styles.rowValue, { color: colors.textSecondary }]}>→</Text>
-            </Pressable>
-          </View>
-        )}
+          )}
+        </View>
 
         {/* Appearance */}
         <View style={styles.section}>
