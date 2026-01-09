@@ -36,8 +36,9 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 │ 9. Rate Limiting                   Complete         [██████████] ✅ │
 │10. Tier Config Migration           Complete         [██████████] ✅ │
 │11. Supabase → Convex Migration     In Progress      [██████░░░░] 60%│
+│12. CI/CD (GitHub Actions)          Complete         [██████████] ✅ │
 ├─────────────────────────────────────────────────────────────────────┤
-│ OVERALL MLP 1                                       [█████████░] 93%│
+│ OVERALL MLP 1                                       [█████████░] 94%│
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1361,7 +1362,41 @@ EXPO_PUBLIC_CLARITY_PROJECT_ID=...
 
 ---
 
-## Phase 12: Real-Time Collaboration (Future)
+## Phase 12: CI/CD (GitHub Actions) ✅ COMPLETE
+
+### Files Created
+
+```
+.github/workflows/
+├── ci.yml                          # Typecheck, lint, test on PR/push
+└── deploy-convex.yml               # Auto-deploy Convex on changes
+```
+
+### CI Workflow (`ci.yml`)
+
+| Job | Command | Trigger |
+|-----|---------|---------|
+| `typecheck` | `bun run typecheck` | PR + push to main |
+| `lint` | `bun run lint` | PR + push to main |
+| `test` | `bunx vitest convex/ai/__tests__ --run` | PR + push to main |
+
+### Convex Deploy Workflow (`deploy-convex.yml`)
+
+Auto-deploys Convex when files in `convex/` change on main branch.
+
+### GitHub Secrets Required
+
+> **Note:** Configure these in GitHub repo settings → Secrets when ready to enable CI.
+
+| Secret | Purpose | How to Get |
+|--------|---------|------------|
+| `CONVEX_DEPLOY_KEY` | Auto-deploy Convex | `npx convex deploy-key` |
+| `CONVEX_URL` | E2E tests | Your Convex deployment URL |
+| `OPENROUTER_API_KEY` | E2E tests (AI calls) | OpenRouter dashboard |
+
+---
+
+## Phase 13: Real-Time Collaboration (Future)
 
 > **Status:** Planned | **Priority:** P2
 
