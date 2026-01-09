@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useLayoutStore } from '@/design-system/layout';
-import { useAIStore } from '@/stores/ai';
+import { useLayoutStore, useAIStore } from '@mythos/state';
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

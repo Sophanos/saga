@@ -6,7 +6,7 @@
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import Animated, { FadeIn, FadeOut, SlideInUp } from 'react-native-reanimated';
 import { useTheme, spacing, radii, typography, shadows } from '@/design-system';
-import { useAIStore, type ChatThread } from '@/stores/ai';
+import { useAIStore, type ChatThread } from '@mythos/state';
 
 interface ChatSelectorProps {
   visible: boolean;

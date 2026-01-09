@@ -5,7 +5,92 @@
  * Provides Zustand stores that work on both web and native platforms.
  */
 
-// Auth store
+// ============================================================
+// AI STORE
+// ============================================================
+export {
+  useAIStore,
+  useCurrentThread,
+  useHasMessages,
+  AI_MODELS,
+  CONTEXT_SCOPES,
+  QUICK_ACTIONS,
+} from "./ai";
+export type {
+  AIModel,
+  ContextScope,
+  QuickAction,
+  ChatMessage,
+  ChatThread,
+  ContextChip,
+  MessageToolCall,
+  PendingQuestion,
+  ToolCallStatus,
+  QuestionOption,
+} from "./ai";
+
+// ============================================================
+// WORKSPACE STORE
+// ============================================================
+export {
+  useWorkspaceStore,
+  usePendingQuestions,
+  useActivePanel,
+  useFocusedEntity,
+  useGraphConfig,
+  useToolExecutions,
+} from "./workspace";
+export type {
+  PanelType,
+  WorldBuilderTab,
+  ToolCallType,
+  WorkspaceToolExecution,
+  WorkspacePendingQuestion,
+  GraphConfig,
+  ToolCallPayload,
+  AskQuestionPayload,
+  OpenPanelPayload,
+  FocusEntityPayload,
+  ShowGraphPayload,
+  CreateEntityPayload,
+  CreateRelationshipPayload,
+} from "./workspace";
+
+// ============================================================
+// COMMAND PALETTE STORE
+// ============================================================
+export {
+  useCommandPaletteStore,
+  useCommandPaletteOpen,
+  useCommandPaletteQuery,
+  useCommandPaletteFilter,
+} from "./commandPalette";
+export type {
+  CommandCategory,
+  CommandFilter,
+} from "./commandPalette";
+
+// ============================================================
+// LAYOUT STORE
+// ============================================================
+export {
+  useLayoutStore,
+  useSidebarCollapsed,
+  useSidebarWidth,
+  useViewMode,
+  useCurrentProjectId,
+  useAIPanelMode,
+  useAIPanelWidth,
+  LAYOUT_SIZING,
+} from "./layout";
+export type {
+  ViewMode,
+  AIPanelMode,
+} from "./layout";
+
+// ============================================================
+// AUTH STORE
+// ============================================================
 export { createAuthStore } from "./auth";
 export type { AuthState, User } from "./auth";
 

@@ -9,8 +9,7 @@ import { View, Text, Pressable, ScrollView, StyleSheet, TextInput } from 'react-
 import { useState, useMemo } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, typography, radii } from '@/design-system';
-import { useLayoutStore } from '@/design-system/layout';
-import { useCommandPaletteStore } from '@/stores/commandPalette';
+import { useLayoutStore, useCommandPaletteStore } from '@mythos/state';
 import {
   useManifestTree,
   useTreeExpansion,

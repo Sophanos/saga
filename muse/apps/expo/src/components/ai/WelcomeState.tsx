@@ -8,7 +8,7 @@ import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
 import { useTheme, spacing, typography } from '@/design-system';
 import { MuseAvatar } from './MuseAvatar';
 import { QuickActions } from './QuickActions';
-import { type QuickAction } from '@/stores/ai';
+import { type QuickAction } from '@mythos/state';
 
 interface WelcomeStateProps {
   onAction: (action: QuickAction) => void;

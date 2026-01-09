@@ -17,7 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useEffect } from 'react';
 import { useTheme, spacing, sizing, radii, shadows } from '@/design-system';
-import { useLayoutStore } from '@/design-system/layout';
+import { useLayoutStore } from '@mythos/state';
 import { MuseAvatar } from './MuseAvatar';
 
 interface AIFloatingButtonProps {

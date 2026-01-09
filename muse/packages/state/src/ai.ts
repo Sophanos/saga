@@ -4,16 +4,24 @@
  */
 
 import { create } from 'zustand';
+import type { ToolCallStatus, QuestionOption } from '@mythos/core';
 
-// Model definitions
+// Re-export shared types
+export type { ToolCallStatus, QuestionOption };
+
+/**
+ * UI Model selection - maps to backend model IDs
+ * Backend uses OpenRouter IDs like "anthropic/claude-sonnet-4"
+ * Frontend uses simplified names for UI
+ */
 export type AIModel = 'auto' | 'claude-sonnet' | 'claude-opus' | 'gemini-flash' | 'gpt-4o';
 
-export const AI_MODELS: Record<AIModel, { label: string; badge?: string; icon: string }> = {
-  auto: { label: 'Automatic', icon: 'wand.and.stars' },
-  'claude-sonnet': { label: 'Claude Sonnet', badge: 'Fast', icon: 'sparkles' },
-  'claude-opus': { label: 'Claude Opus', badge: 'Smart', icon: 'sparkles' },
-  'gemini-flash': { label: 'Gemini Flash', icon: 'bolt.fill' },
-  'gpt-4o': { label: 'GPT-4o', icon: 'circle.grid.cross' },
+export const AI_MODELS: Record<AIModel, { label: string; badge?: string; icon: string; modelId: string }> = {
+  auto: { label: 'Automatic', icon: 'wand.and.stars', modelId: 'auto' },
+  'claude-sonnet': { label: 'Claude Sonnet', badge: 'Fast', icon: 'sparkles', modelId: 'anthropic/claude-sonnet-4' },
+  'claude-opus': { label: 'Claude Opus', badge: 'Smart', icon: 'sparkles', modelId: 'anthropic/claude-opus-4' },
+  'gemini-flash': { label: 'Gemini Flash', icon: 'bolt.fill', modelId: 'google/gemini-2.0-flash-001' },
+  'gpt-4o': { label: 'GPT-4o', icon: 'circle.grid.cross', modelId: 'openai/gpt-4o' },
 };
 
 // Context scope options
@@ -46,11 +54,8 @@ export const QUICK_ACTIONS: Record<QuickAction, { label: string; description: st
   arc: { label: 'Analyze story arc', description: 'Review character and plot arcs', icon: 'chart.line.uptrend.xyaxis' },
 };
 
-// Tool call status
-export type ToolCallStatus = 'pending' | 'running' | 'complete' | 'error';
-
 // Tool call in message
-export interface ToolCall {
+export interface MessageToolCall {
   id: string;
   name: string;
   status: ToolCallStatus;
@@ -58,11 +63,11 @@ export interface ToolCall {
   error?: string;
 }
 
-// Pending question from AI
+// Pending question from AI (extends QuestionOption from core)
 export interface PendingQuestion {
   id: string;
   question: string;
-  options?: { label: string; value: string }[];
+  options?: QuestionOption[];
   context?: string;
   allowFreeform?: boolean;
   multiSelect?: boolean;
@@ -74,7 +79,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
-  toolCalls?: ToolCall[];
+  toolCalls?: MessageToolCall[];
   pendingQuestions?: PendingQuestion[];
 }
 
@@ -233,8 +238,6 @@ export const useAIStore = create<AIState>((set, get) => ({
       inputValue: '',
       isStreaming: true,
     }));
-
-    // TODO: Send to Convex agent
   },
 
   setStreaming: (streaming) => set({ isStreaming: streaming }),

@@ -8,7 +8,7 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useTheme, spacing, typography } from '@/design-system';
 import { ToolCallCard } from './ToolCallCard';
 import { AskQuestionCard } from './AskQuestionCard';
-import { useWorkspaceStore } from '@/stores/workspace';
+import { useWorkspaceStore } from '@mythos/state';
 import { useCallback } from 'react';
 
 interface ToolCall {

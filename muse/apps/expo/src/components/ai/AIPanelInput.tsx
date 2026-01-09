@@ -13,7 +13,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useRef, useCallback } from 'react';
 import { useTheme, spacing, radii, typography } from '@/design-system';
-import { useAIStore, type ContextChip } from '@/stores/ai';
+import { useAIStore, type ContextChip } from '@mythos/state';
 import { ModelSelector, ModelSelectorTrigger } from './ModelSelector';
 import { ContextScope, ContextScopeTrigger } from './ContextScope';
 

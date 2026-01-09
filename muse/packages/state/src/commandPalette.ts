@@ -1,9 +1,12 @@
 /**
- * Command Palette Store
+ * Command Palette Store - UI state for command palette
  */
 
 import { create } from 'zustand';
-import type { CommandFilter } from '@/commands/types';
+
+// Command categories
+export type CommandCategory = 'entity' | 'ai' | 'navigation' | 'general';
+export type CommandFilter = 'all' | CommandCategory;
 
 const FILTER_ORDER: CommandFilter[] = ['all', 'entity', 'ai', 'navigation', 'general'];
 

@@ -1,7 +1,7 @@
 import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useTheme, spacing, radii, typography, shadows } from '@/design-system';
-import { useAIStore, AI_MODELS, type AIModel } from '@/stores/ai';
+import { useAIStore, AI_MODELS, type AIModel } from '@mythos/state';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 

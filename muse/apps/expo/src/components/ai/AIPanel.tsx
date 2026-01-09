@@ -11,8 +11,7 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, sizing, typography, radii, shadows } from '@/design-system';
-import { useLayoutStore, type AIPanelMode } from '@/design-system/layout';
-import { useAIStore, useCurrentThread, useHasMessages, type QuickAction, type ChatMessage } from '@/stores/ai';
+import { useLayoutStore, type AIPanelMode, useAIStore, useCurrentThread, useHasMessages, type QuickAction, type ChatMessage } from '@mythos/state';
 import { MuseAvatar } from './MuseAvatar';
 import { ChatSelector } from './ChatSelector';
 import { WelcomeState } from './WelcomeState';

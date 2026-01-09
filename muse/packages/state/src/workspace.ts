@@ -4,26 +4,17 @@
  */
 
 import { create } from 'zustand';
+import type {
+  PanelType,
+  WorldBuilderTab,
+  QuestionOption,
+  ToolCallStatus,
+} from '@mythos/core';
 
-// Panel types for workspace control
-export type PanelType =
-  | 'character'
-  | 'relationship'
-  | 'world'
-  | 'timeline'
-  | 'factions'
-  | 'magic';
+// Re-export shared types
+export type { PanelType, WorldBuilderTab, QuestionOption };
 
-// World builder tabs
-export type WorldBuilderTab =
-  | 'factions'
-  | 'magic'
-  | 'timeline'
-  | 'geography'
-  | 'cultures'
-  | 'history';
-
-// Tool call types
+// Tool call types supported by workspace
 export type ToolCallType =
   | 'ask_question'
   | 'open_panel'
@@ -34,14 +25,8 @@ export type ToolCallType =
   | 'analyze_consistency'
   | 'suggest_connections';
 
-// Question option
-export interface QuestionOption {
-  label: string;
-  value: string;
-}
-
-// Pending question from AI
-export interface PendingQuestion {
+// Pending question from AI (workspace-scoped)
+export interface WorkspacePendingQuestion {
   id: string;
   question: string;
   options?: QuestionOption[];
@@ -49,7 +34,7 @@ export interface PendingQuestion {
   allowFreeform?: boolean;
   multiSelect?: boolean;
   timestamp: number;
-  messageId?: string; // Associated chat message
+  messageId?: string;
 }
 
 // Graph configuration
@@ -60,10 +45,10 @@ export interface GraphConfig {
 }
 
 // Tool execution record
-export interface ToolExecution {
+export interface WorkspaceToolExecution {
   id: string;
   type: ToolCallType;
-  status: 'pending' | 'running' | 'complete' | 'error';
+  status: ToolCallStatus;
   params: Record<string, unknown>;
   result?: unknown;
   error?: string;
@@ -142,13 +127,13 @@ interface WorkspaceState {
   highlightedEntityId: string | null;
 
   // Pending Questions
-  pendingQuestions: PendingQuestion[];
+  pendingQuestions: WorkspacePendingQuestion[];
 
   // Graph View
   graphConfig: GraphConfig | null;
 
   // Tool Executions (for tracking)
-  toolExecutions: ToolExecution[];
+  toolExecutions: WorkspaceToolExecution[];
 
   // Actions - Panel Control
   openPanel: (panel: PanelType, params?: Record<string, unknown>) => void;
@@ -163,7 +148,7 @@ interface WorkspaceState {
   clearWorkshop: () => void;
 
   // Actions - Questions
-  addQuestion: (question: Omit<PendingQuestion, 'timestamp'>) => void;
+  addQuestion: (question: Omit<WorkspacePendingQuestion, 'timestamp'>) => void;
   answerQuestion: (id: string, answer: string | string[]) => void;
   dismissQuestion: (id: string) => void;
   clearQuestions: () => void;
@@ -175,7 +160,7 @@ interface WorkspaceState {
 
   // Actions - Tool Execution
   executeToolCall: (tool: ToolCallPayload) => void;
-  updateToolExecution: (id: string, update: Partial<ToolExecution>) => void;
+  updateToolExecution: (id: string, update: Partial<WorkspaceToolExecution>) => void;
   clearToolExecutions: () => void;
 }
 
@@ -239,13 +224,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const state = get();
     const question = state.pendingQuestions.find(q => q.id === id);
 
-    // Remove the question
     set({
       pendingQuestions: state.pendingQuestions.filter(q => q.id !== id),
     });
 
-    // The answer should be sent back to the AI - this will be handled by the AI store
-    // For now, we just log it
+    // Log for now - will be handled by AI integration
     console.log('[Workspace] Question answered:', { id, answer, question });
   },
 
@@ -275,7 +258,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   // Tool Execution
   executeToolCall: (tool) => {
     const id = `tool-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    const execution: ToolExecution = {
+    const execution: WorkspaceToolExecution = {
       id,
       type: tool.type as ToolCallType,
       status: 'running',
@@ -283,12 +266,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       timestamp: Date.now(),
     };
 
-    // Add to executions
     set((state) => ({
       toolExecutions: [...state.toolExecutions, execution],
     }));
 
-    // Execute based on type
     const state = get();
 
     switch (tool.type) {
@@ -331,11 +312,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         break;
       }
 
-      // Entity operations would call Convex mutations
       case 'create_entity':
       case 'create_relationship':
-        // These will be handled by Convex mutations
-        // Mark as pending until the mutation completes
+        // These are handled by Convex mutations
         console.log('[Workspace] Entity operation:', tool);
         break;
 

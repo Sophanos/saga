@@ -10,8 +10,7 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, typography, radii } from '@/design-system';
 import { entityColors } from '@/design-system/colors';
-import { useLayoutStore } from '@/design-system/layout';
-import { useCommandPaletteStore } from '@/stores/commandPalette';
+import { useLayoutStore, useCommandPaletteStore } from '@mythos/state';
 import {
   useManifestTree,
   useTreeExpansion,

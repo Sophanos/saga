@@ -14,7 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, radii, typography } from '@/design-system';
-import { useLayoutStore } from '@/design-system/layout';
+import { useLayoutStore } from '@mythos/state';
 import { Sidebar } from './Sidebar';
 import { AIPanel, AIFloatingButton } from '@/components/ai';
 

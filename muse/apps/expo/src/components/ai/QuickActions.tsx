@@ -6,7 +6,7 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useTheme, spacing, radii, typography } from '@/design-system';
-import { QUICK_ACTIONS, type QuickAction } from '@/stores/ai';
+import { QUICK_ACTIONS, type QuickAction } from '@mythos/state';
 
 interface QuickActionsProps {
   onAction: (action: QuickAction) => void;

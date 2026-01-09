@@ -1,7 +1,7 @@
 import { View, Text, Pressable, Switch, StyleSheet, Dimensions } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useTheme, spacing, radii, typography, shadows } from '@/design-system';
-import { useAIStore, CONTEXT_SCOPES, type ContextScope as ContextScopeType } from '@/stores/ai';
+import { useAIStore, CONTEXT_SCOPES, type ContextScope as ContextScopeType } from '@mythos/state';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
