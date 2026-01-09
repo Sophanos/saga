@@ -39,12 +39,11 @@ export interface SyncEngineConfig {
 export class SyncEngine {
   private local: LocalDbAdapter;
   private projectId: string;
-  private isOnline: boolean;
 
   constructor(config: SyncEngineConfig) {
     this.local = config.local;
     this.projectId = config.projectId;
-    this.isOnline = config.isOnline;
+    useOfflineStore.getState().setOnline(config.isOnline);
   }
 
   async start(): Promise<void> {
@@ -57,7 +56,6 @@ export class SyncEngine {
   }
 
   setOnline(isOnline: boolean): void {
-    this.isOnline = isOnline;
     useOfflineStore.getState().setOnline(isOnline);
   }
 
