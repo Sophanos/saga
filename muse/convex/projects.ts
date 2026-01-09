@@ -49,6 +49,50 @@ async function verifyProjectOwnership(
 }
 
 /**
+ * Verify user has access to the project (is a member)
+ */
+async function verifyProjectAccess(
+  ctx: { db: any; auth: { getUserIdentity: () => Promise<{ subject: string } | null> } },
+  projectId: Id<"projects">
+): Promise<{ userId: string; role: "owner" | "editor" | "viewer" }> {
+  const userId = await getAuthUserId(ctx);
+  const project = await ctx.db.get(projectId);
+
+  if (!project) {
+    throw new Error("Project not found");
+  }
+
+  const member = await ctx.db
+    .query("projectMembers")
+    .withIndex("by_project_user", (q: any) =>
+      q.eq("projectId", projectId).eq("userId", userId)
+    )
+    .unique();
+
+  if (!member) {
+    throw new Error("Access denied");
+  }
+
+  return { userId, role: member.role };
+}
+
+/**
+ * Verify user can edit the project (owner or editor)
+ */
+async function verifyProjectEditor(
+  ctx: { db: any; auth: { getUserIdentity: () => Promise<{ subject: string } | null> } },
+  projectId: Id<"projects">
+): Promise<string> {
+  const { userId, role } = await verifyProjectAccess(ctx, projectId);
+
+  if (role === "viewer") {
+    throw new Error("Edit access denied");
+  }
+
+  return userId;
+}
+
+/**
  * Internal check for project ownership (no auth context).
  */
 export const assertOwner = internalQuery({
@@ -73,30 +117,47 @@ export const assertOwner = internalQuery({
 // ============================================================
 
 /**
- * List all projects for the authenticated user
+ * List all projects for the authenticated user (owned + member)
  */
 export const list = query({
   args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
 
-    return await ctx.db
-      .query("projects")
-      .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+    // Get projects where user is a member
+    const memberships = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
+
+    const projectIds = memberships.map((m) => m.projectId);
+
+    // Fetch all projects
+    const projects = await Promise.all(
+      projectIds.map((id) => ctx.db.get(id))
+    );
+
+    // Filter out nulls (deleted projects) and add role info
+    return projects
+      .filter((p): p is NonNullable<typeof p> => p !== null)
+      .map((p) => {
+        const membership = memberships.find((m) => m.projectId === p._id);
+        return { ...p, role: membership?.role };
+      });
   },
 });
 
 /**
- * Get a single project by ID (with ownership check)
+ * Get a single project by ID (with access check)
  */
 export const get = query({
   args: {
     id: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    await verifyProjectOwnership(ctx, args.id);
-    return await ctx.db.get(args.id);
+    const { role } = await verifyProjectAccess(ctx, args.id);
+    const project = await ctx.db.get(args.id);
+    return project ? { ...project, role } : null;
   },
 });
 
@@ -155,12 +216,19 @@ export const create = mutation({
       updatedAt: now,
     });
 
+    // Add owner as project member
+    await ctx.runMutation(internal.collaboration.addProjectMemberInternal, {
+      projectId: id,
+      userId,
+      role: "owner",
+    });
+
     return id;
   },
 });
 
 /**
- * Update a project
+ * Update a project (requires editor access)
  */
 export const update = mutation({
   args: {
@@ -172,7 +240,7 @@ export const update = mutation({
     linterConfig: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    await verifyProjectOwnership(ctx, args.id);
+    await verifyProjectEditor(ctx, args.id);
 
     const { id, ...updates } = args;
 
@@ -264,6 +332,14 @@ export const removeInternal = internalMutation({
     for (const stream of streams) {
       await ctx.db.delete(stream._id);
     }
+
+    // Delete project assets
+    await ctx.runMutation(internal.projectAssets.deleteByProject, { projectId: id });
+
+    // Delete collaboration data (members, invitations)
+    await ctx.runMutation(internal.collaboration.removeProjectMembersInternal, {
+      projectId: id,
+    });
 
     // Finally delete the project
     await ctx.db.delete(id);

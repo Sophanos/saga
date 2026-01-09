@@ -8,7 +8,7 @@
 import { v } from "convex/values";
 import { query, mutation, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id, Doc } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { verifyProjectAccess, verifyDocumentAccess } from "./lib/auth";
 
 // ============================================================
@@ -168,7 +168,7 @@ export const create = mutation({
       updatedAt: now,
     });
 
-    await ctx.runMutation(internal.ai.embeddings.enqueueEmbeddingJob, {
+    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
       projectId: args.projectId,
       targetType: "document",
       targetId: id,
@@ -206,8 +206,8 @@ export const update = mutation({
 
     // Add contentText if provided
     if (contentText !== undefined) {
-      cleanUpdates.contentText = contentText;
-      cleanUpdates.wordCount = contentText
+      cleanUpdates["contentText"] = contentText;
+      cleanUpdates["wordCount"] = contentText
         .split(/\s+/)
         .filter(Boolean).length;
     }
@@ -219,7 +219,7 @@ export const update = mutation({
 
     const document = await ctx.db.get(id);
     if (document) {
-      await ctx.runMutation(internal.ai.embeddings.enqueueEmbeddingJob, {
+      await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
         projectId: document.projectId,
         targetType: "document",
         targetId: document._id,

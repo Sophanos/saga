@@ -24,7 +24,7 @@ export async function verifyRevenueCatWebhook(
     return false;
   }
 
-  const expectedToken = process.env.REVENUECAT_WEBHOOK_SECRET;
+  const expectedToken = process.env["REVENUECAT_WEBHOOK_SECRET"];
   if (!expectedToken) {
     console.error("[webhookSecurity] REVENUECAT_WEBHOOK_SECRET not configured");
     return false;
@@ -52,7 +52,7 @@ export async function verifyStripeWebhook(
     return false;
   }
 
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  const secret = process.env["STRIPE_WEBHOOK_SECRET"];
   if (!secret) {
     console.error("[webhookSecurity] STRIPE_WEBHOOK_SECRET not configured");
     return false;

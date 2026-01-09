@@ -171,7 +171,7 @@ export const create = mutation({
       updatedAt: now,
     });
 
-    await ctx.runMutation(internal.ai.embeddings.enqueueEmbeddingJob, {
+    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
       projectId: args.projectId,
       targetType: "entity",
       targetId: id,
@@ -214,7 +214,7 @@ export const update = mutation({
 
     const entity = await ctx.db.get(id);
     if (entity) {
-      await ctx.runMutation(internal.ai.embeddings.enqueueEmbeddingJob, {
+      await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
         projectId: entity.projectId,
         targetType: "entity",
         targetId: entity._id,
