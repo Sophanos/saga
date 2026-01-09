@@ -10,7 +10,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import * as SQLite from "expo-sqlite";
 import { SyncEngine, type Mutation, type QueuedAiRequest } from "@mythos/sync";
 import { createSqliteAdapter, type SQLiteDatabase } from "@mythos/sync/native";
-import { getMobileSupabase } from "./supabase";
 import { useOfflineStore } from "@mythos/state";
 
 /**
@@ -141,12 +140,8 @@ export function useSyncEngine(options: UseSyncEngineOptions): UseSyncEngineResul
         // Create SQLite adapter (cast to our interface which is compatible)
         const adapter = createSqliteAdapter(db as unknown as SQLiteDatabase);
 
-        // Get Supabase client
-        const supabase = getMobileSupabase();
-
         // Create sync engine
         const newEngine = new SyncEngine({
-          supabase,
           local: adapter,
           projectId: pid,
           isOnline: useOfflineStore.getState().isOnline,
