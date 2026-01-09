@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CollaborativeEditor, Editor } from './components';
 import type { NativeToEditorMessage } from './bridge';
@@ -32,7 +32,7 @@ function useCollaborationConfig() {
           documentId: detail.documentId,
           user: detail.user,
           authToken: detail.authToken,
-          convexUrl: detail.convexUrl ?? import.meta.env.VITE_CONVEX_URL,
+          convexUrl: detail.convexUrl ?? import.meta.env['VITE_CONVEX_URL'],
         });
       }
       if (detail.type === 'disconnectCollaboration') {
