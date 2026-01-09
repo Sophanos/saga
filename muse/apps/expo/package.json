@@ -4,9 +4,9 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "expo start --port 8082",
-    "dev:web": "expo start --web --port 8082",
-    "dev:ios": "expo start --ios --port 8082",
+    "dev": "expo start --port 19006",
+    "dev:web": "expo start --web --port 19006",
+    "dev:ios": "expo start --ios --port 19006",
     "build:web": "expo export --platform web",
     "ios": "expo run:ios",
     "macos": "expo run:macos",

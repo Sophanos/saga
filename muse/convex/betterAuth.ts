@@ -59,6 +59,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       "http://localhost:8081",
       "http://localhost:8082",
       "http://localhost:8083",
+      "http://localhost:19006",
     ],
 
     // Database adapter (Convex)
