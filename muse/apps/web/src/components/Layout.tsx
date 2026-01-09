@@ -19,6 +19,7 @@ import { TryPersonalizationModal } from "./try/TryPersonalizationModal";
 import { useMythosStore, useCurrentProject, useChatMode } from "../stores";
 import { useGlobalShortcuts, useProgressiveLinter } from "../hooks";
 import { useCollaboration } from "../hooks/useCollaboration";
+import { useAuthStore } from "../stores/auth";
 import { useProgressivePanelVisibility } from "@mythos/state";
 
 interface LayoutProps {
@@ -32,6 +33,11 @@ interface LayoutProps {
   onProjectCreated?: (projectId: string) => void;
 }
 
+function CollaborationController({ projectId }: { projectId: string }) {
+  useCollaboration(projectId);
+  return null;
+}
+
 export function Layout({
   isAnonymous = false,
   onSignUp,
@@ -40,9 +46,7 @@ export function Layout({
 }: LayoutProps) {
   // Get current project for collaboration
   const project = useCurrentProject();
-
-  // Activate collaboration (members, presence, activity) when project is loaded
-  useCollaboration(project?.id ?? null);
+  const currentUser = useAuthStore((s) => s.user);
 
   const hudEntity = useMythosStore((state) => state.ui.hudEntity);
   const hudPosition = useMythosStore((state) => state.ui.hudPosition);
@@ -78,6 +82,9 @@ export function Layout({
 
   return (
     <div className="flex flex-col h-full" onClick={handleClickOutside}>
+      {project?.id && currentUser ? (
+        <CollaborationController projectId={project.id} />
+      ) : null}
       <Header />
       <PanelGroup direction="horizontal" className="flex-1">
         {/* Left Pane: Project Picker (hidden in gardener mode until unlocked) */}

@@ -68,6 +68,28 @@ All self-hosted on Hetzner (EU data sovereignty).
 - Comment threads
 - Share/publish flow
 
+#### Track A Status (Convex ProseMirror Sync + Presence)
+
+**Completed**
+- Convex components registered: `@convex-dev/prosemirror-sync`, `@convex-dev/presence`
+- Server sync API wired in `convex/prosemirrorSync.ts` with auth + document snapshot sync
+- Presence API wired in `convex/presence.ts` with project/document rooms + AI presence helper
+- Thread access model updated for shared scopes (project/document/private)
+
+**In Progress**
+- Editor WebView integration with `useTiptapSync` + presence cursor rendering
+- Bridge protocol: `connectCollaboration` / `disconnectCollaboration` messages
+- Web hook migration off Supabase (`useCollaboration.ts`)
+- AI presence toggling during streams
+
+**Remaining (Track A)**
+- Client UI: remote cursors/selections decorations + collaborator list updates
+- `apps/tauri` WebView connect on ready (auth + room binding)
+- Expo web `EditorShell` pass-through for project/document/user
+- Replace legacy Supabase `CollaborationClient` with Convex client in `@mythos/sync`
+- Update agent editorContext to include `documentId` and use scoped threads consistently
+- Add activity logging path or defer (optional, not required for v1)
+
 ### Phase 6: Mobile
 - Expo iOS/iPad build
 - Touch-optimized editor

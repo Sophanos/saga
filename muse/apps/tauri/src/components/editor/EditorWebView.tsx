@@ -17,6 +17,11 @@ export interface EditorWebViewProps {
   onAIRequest?: (selectedText: string, prompt?: string, action?: string) => void;
   onReady?: () => void;
   className?: string;
+  projectId?: string;
+  documentId?: string;
+  user?: { id: string; name: string; avatarUrl?: string };
+  authToken?: string;
+  convexUrl?: string;
 }
 
 export function EditorWebView({
@@ -26,6 +31,11 @@ export function EditorWebView({
   onAIRequest,
   onReady,
   className = '',
+  projectId,
+  documentId,
+  user,
+  authToken,
+  convexUrl,
 }: EditorWebViewProps) {
   const [prodUrl, setProdUrl] = useState<string | null>(null);
 
@@ -34,14 +44,47 @@ export function EditorWebView({
     [onContentChange, onSelectionChange, onAIRequest, onReady]
   );
 
-  const { iframeRef, editorState, setContent } = useEditorBridge(bridgeOptions);
+  const {
+    iframeRef,
+    editorState,
+    setContent,
+    connectCollaboration,
+    disconnectCollaboration,
+  } = useEditorBridge(bridgeOptions);
 
-  // Set initial content when editor is ready
+  const shouldConnect = !!projectId && !!documentId && !!user;
+
+  // Set initial content when editor is ready (non-collab only)
   useEffect(() => {
-    if (editorState.ready && initialContent) {
+    if (editorState.ready && initialContent && !shouldConnect) {
       setContent(initialContent);
     }
-  }, [editorState.ready, initialContent, setContent]);
+  }, [editorState.ready, initialContent, setContent, shouldConnect]);
+
+  useEffect(() => {
+    if (!editorState.ready || !shouldConnect || !projectId || !documentId || !user) return;
+    connectCollaboration({
+      projectId,
+      documentId,
+      user,
+      authToken,
+      convexUrl: convexUrl ?? import.meta.env.VITE_CONVEX_URL,
+    });
+
+    return () => {
+      disconnectCollaboration();
+    };
+  }, [
+    editorState.ready,
+    shouldConnect,
+    projectId,
+    documentId,
+    user,
+    authToken,
+    convexUrl,
+    connectCollaboration,
+    disconnectCollaboration,
+  ]);
 
   // For production, resolve resource path
   useEffect(() => {

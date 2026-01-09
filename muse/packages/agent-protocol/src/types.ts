@@ -49,6 +49,8 @@ export type SagaMode = "onboarding" | "creation" | "editing" | "analysis";
  * Provides information about the user's current editing state.
  */
 export interface EditorContext {
+  /** ID of the currently open document */
+  documentId?: string;
   /** Title of the currently open document */
   documentTitle?: string;
   /** Clipped excerpt of the current document (when available) */

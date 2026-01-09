@@ -4,6 +4,7 @@ import { PageHeader } from './PageHeader';
 import { MoreMenu } from './MoreMenu';
 import { QuickActions, type QuickActionType } from './QuickActions';
 import { Editor } from './Editor';
+import { CollaborativeEditor } from './CollaborativeEditor';
 
 type FontStyle = 'default' | 'serif' | 'mono';
 type PrivacyLevel = 'private' | 'workspace' | 'public';
@@ -15,6 +16,14 @@ interface DocumentState {
   isDirty: boolean;
 }
 
+interface CollaborationConfig {
+  projectId: string;
+  documentId?: string;
+  user: { id: string; name: string; avatarUrl?: string };
+  authToken?: string | null;
+  convexUrl?: string;
+}
+
 interface EditorShellProps {
   initialDocuments?: DocumentState[];
   onDocumentChange?: (doc: DocumentState) => void;
@@ -24,6 +33,7 @@ interface EditorShellProps {
   colorScheme?: 'light' | 'dark';
   /** When true, adds left padding to TabBar for sidebar toggle button */
   sidebarCollapsed?: boolean;
+  collaboration?: CollaborationConfig;
 }
 
 const CSS_TOKENS = `
@@ -208,6 +218,7 @@ export function EditorShell({
   onShare,
   hideQuickActions = false,
   sidebarCollapsed = false,
+  collaboration,
 }: EditorShellProps) {
   useEffect(() => {
     const styleId = 'editor-webview-tokens';
@@ -233,6 +244,9 @@ export function EditorShell({
   const [historyIndex, setHistoryIndex] = useState(0);
 
   const activeDoc = documents.find((d) => d.id === activeDocId);
+  const collaborationDocumentId = collaboration?.documentId ?? activeDocId;
+  const shouldUseCollaboration =
+    !!collaboration && !!collaboration.projectId && !!collaboration.user && !!collaborationDocumentId;
 
   // Build tabs with content preview for hover tooltip
   const tabs: Tab[] = documents.map((d) => ({
@@ -374,19 +388,39 @@ export function EditorShell({
 
       <main className="editor-shell-main">
         {/* Key forces remount on tab switch to reset Editor's internal state */}
-        <Editor
-          key={activeDocId}
-          title={activeDoc?.title ?? ''}
-          content={activeDoc?.content ?? ''}
-          onTitleChange={handleTitleChange}
-          onChange={handleContentChange}
-          fontStyle={fontStyle}
-          isSmallText={isSmallText}
-          isFullWidth={isFullWidth}
-          editable={!isLocked}
-          showTitle={true}
-          autoFocus
-        />
+        {shouldUseCollaboration ? (
+          <CollaborativeEditor
+            key={activeDocId}
+            projectId={collaboration!.projectId}
+            documentId={collaborationDocumentId}
+            user={collaboration!.user}
+            authToken={collaboration!.authToken ?? undefined}
+            convexUrl={collaboration!.convexUrl}
+            title={activeDoc?.title ?? ''}
+            onTitleChange={handleTitleChange}
+            onChange={handleContentChange}
+            fontStyle={fontStyle}
+            isSmallText={isSmallText}
+            isFullWidth={isFullWidth}
+            editable={!isLocked}
+            showTitle={true}
+            autoFocus
+          />
+        ) : (
+          <Editor
+            key={activeDocId}
+            title={activeDoc?.title ?? ''}
+            content={activeDoc?.content ?? ''}
+            onTitleChange={handleTitleChange}
+            onChange={handleContentChange}
+            fontStyle={fontStyle}
+            isSmallText={isSmallText}
+            isFullWidth={isFullWidth}
+            editable={!isLocked}
+            showTitle={true}
+            autoFocus
+          />
+        )}
 
         {isEmpty && !hideQuickActions && (
           <QuickActions

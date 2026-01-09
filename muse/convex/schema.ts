@@ -210,13 +210,17 @@ export default defineSchema({
   sagaThreads: defineTable({
     threadId: v.string(),
     projectId: v.id("projects"),
-    userId: v.string(),
+    scope: v.union(v.literal("project"), v.literal("document"), v.literal("private")),
+    documentId: v.optional(v.id("documents")),
+    createdBy: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_thread", ["threadId"])
     .index("by_project", ["projectId"])
-    .index("by_project_user", ["projectId", "userId"]),
+    .index("by_project_scope", ["projectId", "scope"])
+    .index("by_project_document", ["projectId", "documentId"])
+    .index("by_project_creator", ["projectId", "createdBy"]),
 
   // ============================================================
   // AI GENERATION STREAMS (for polling-based streaming)

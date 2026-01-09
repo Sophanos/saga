@@ -1,12 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import { AIGeneratedMark } from './extensions/ai-generated-mark';
-import { SuggestionPlugin } from './extensions/suggestion-plugin';
-import { AiToolkitExtension, getAiToolkit } from './extensions/ai-toolkit';
-import { createEditorBridge } from './bridge';
+import { CollaborativeEditor, Editor } from './components';
+import type { NativeToEditorMessage } from './bridge';
 import './styles/tokens.css';
 import './styles/suggestions.css';
 
@@ -16,105 +11,75 @@ interface EditorBundleProps {
   editable?: boolean;
 }
 
-function EditorBundle({ 
-  initialContent = '', 
-  placeholder = "Start writing...",
-  editable = true 
-}: EditorBundleProps) {
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Placeholder.configure({ placeholder }),
-      AIGeneratedMark,
-      SuggestionPlugin,
-      AiToolkitExtension,
-    ],
-    content: initialContent,
-    editable,
-    autofocus: 'end',
-  });
+interface CollaborationConfig {
+  projectId: string;
+  documentId: string;
+  user: { id: string; name: string; avatarUrl?: string };
+  authToken?: string;
+  convexUrl?: string;
+}
 
-  React.useEffect(() => {
-    if (!editor) return;
+function useCollaborationConfig() {
+  const [config, setConfig] = useState<CollaborationConfig | null>(null);
 
-    const bridge = createEditorBridge();
-    
-    bridge.registerEditor({
-      commands: {
-        setContent: (content: string) => editor.commands.setContent(content),
-        insertContent: (content: string) => editor.commands.insertContent(content),
-        insertContentAt: (pos: number, content: string) => editor.commands.insertContentAt(pos, content),
-        addSuggestion: (s) => (editor.commands as any).addSuggestion(s),
-        acceptSuggestion: (id: string) => (editor.commands as any).acceptSuggestion(id),
-        rejectSuggestion: (id: string) => (editor.commands as any).rejectSuggestion(id),
-        acceptAllSuggestions: () => (editor.commands as any).acceptAllSuggestions(),
-        rejectAllSuggestions: () => (editor.commands as any).rejectAllSuggestions(),
-        selectSuggestion: (id: string | null) => (editor.commands as any).selectSuggestion(id),
-        focus: () => editor.commands.focus(),
-        blur: () => editor.commands.blur(),
-        undo: () => editor.commands.undo(),
-        redo: () => editor.commands.redo(),
-      },
-      setEditable: (val: boolean) => editor.setEditable(val),
-      getHTML: () => editor.getHTML(),
-      getText: () => editor.getText(),
-      state: editor.state,
-    });
-
-    editor.on('update', () => {
-      bridge.send({ type: 'contentChange', content: editor.getText(), html: editor.getHTML() });
-    });
-
-    editor.on('selectionUpdate', () => {
-      const { from, to } = editor.state.selection;
-      if (from !== to) {
-        const text = editor.state.doc.textBetween(from, to, ' ');
-        bridge.send({ type: 'selectionChange', selection: { from, to, text } });
-      } else {
-        bridge.send({ type: 'selectionChange', selection: null });
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail as NativeToEditorMessage | undefined;
+      if (!detail) return;
+      if (detail.type === 'connectCollaboration') {
+        setConfig({
+          projectId: detail.projectId,
+          documentId: detail.documentId,
+          user: detail.user,
+          authToken: detail.authToken,
+          convexUrl: detail.convexUrl ?? import.meta.env.VITE_CONVEX_URL,
+        });
       }
-    });
+      if (detail.type === 'disconnectCollaboration') {
+        setConfig(null);
+      }
+    };
 
-    editor.on('focus', () => bridge.send({ type: 'editorFocused' }));
-    editor.on('blur', () => bridge.send({ type: 'editorBlurred' }));
+    window.addEventListener('editor-bridge-message', handler as EventListener);
+    return () => window.removeEventListener('editor-bridge-message', handler as EventListener);
+  }, []);
 
-    (window as any).editor = editor;
-    (window as any).getAiToolkit = () => getAiToolkit(editor);
-  }, [editor]);
+  return config;
+}
 
-  if (!editor) return null;
+function EditorBundle({
+  initialContent = '',
+  placeholder = 'Start writing...',
+  editable = true,
+}: EditorBundleProps) {
+  const collaboration = useCollaborationConfig();
+
+  if (collaboration) {
+    return (
+      <CollaborativeEditor
+        projectId={collaboration.projectId}
+        documentId={collaboration.documentId}
+        user={collaboration.user}
+        authToken={collaboration.authToken}
+        convexUrl={collaboration.convexUrl}
+        placeholder={placeholder}
+        editable={editable}
+        showTitle={false}
+        autoFocus
+        enableBridge
+      />
+    );
+  }
 
   return (
-    <div className="editor-bundle">
-      <EditorContent editor={editor} />
-      <style>{`
-        html, body, #root {
-          margin: 0;
-          padding: 0;
-          height: 100%;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        .editor-bundle {
-          height: 100%;
-          padding: 24px;
-          box-sizing: border-box;
-        }
-        .editor-bundle .ProseMirror {
-          outline: none;
-          min-height: 100%;
-        }
-        .editor-bundle .ProseMirror p {
-          margin: 0 0 0.5em;
-        }
-        .editor-bundle .ProseMirror p.is-editor-empty:first-child::before {
-          content: attr(data-placeholder);
-          color: #adb5bd;
-          pointer-events: none;
-          float: left;
-          height: 0;
-        }
-      `}</style>
-    </div>
+    <Editor
+      content={initialContent}
+      placeholder={placeholder}
+      editable={editable}
+      showTitle={false}
+      autoFocus
+      enableBridge
+    />
   );
 }
 

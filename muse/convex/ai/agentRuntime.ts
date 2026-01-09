@@ -39,6 +39,41 @@ import {
 import { createQwenEmbeddingModel } from "../lib/deepinfraEmbedding";
 import { ServerAgentEvents } from "../lib/analytics";
 
+const AI_PRESENCE_ROOM_PREFIXES = {
+  project: "project",
+  document: "document",
+};
+
+function resolveEditorDocumentId(editorContext: unknown): string | undefined {
+  if (!editorContext || typeof editorContext !== "object") return undefined;
+  const maybe = (editorContext as { documentId?: unknown }).documentId;
+  return typeof maybe === "string" && maybe.length > 0 ? maybe : undefined;
+}
+
+async function setAiPresence(
+  ctx: ActionCtx,
+  projectId: string,
+  documentId: string | undefined,
+  isTyping: boolean
+) {
+  if (!documentId) return;
+
+  const roomIds = [
+    `${AI_PRESENCE_ROOM_PREFIXES.document}:${documentId}`,
+    `${AI_PRESENCE_ROOM_PREFIXES.project}:${projectId}`,
+  ];
+
+  await Promise.all(
+    roomIds.map((roomId) =>
+      ctx.runMutation((internal as any)["presence"].setAiPresence, {
+        roomId,
+        documentId,
+        isTyping,
+      })
+    )
+  );
+}
+
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
 const LEXICAL_LIMIT = 20;
@@ -324,16 +359,26 @@ export const runSagaAgentChatToStream = internalAction({
       return;
     }
 
+    let presenceDocumentId: string | undefined;
+
     try {
       const startTime = Date.now();
       const sagaAgent = getSagaAgent();
       let threadId = args.threadId;
+      const editorDocumentId = resolveEditorDocumentId(editorContext);
+      let threadScope: "project" | "document" | "private" = editorDocumentId ? "document" : "project";
+      let threadDocumentId: Id<"documents"> | undefined = editorDocumentId
+        ? (editorDocumentId as Id<"documents">)
+        : undefined;
+
       if (threadId && !isTemplateBuilder) {
-        await ctx.runQuery((internal as any)["ai/threads"].assertThreadOwnership, {
+        const threadAccess = await ctx.runQuery((internal as any)["ai/threads"].assertThreadAccess, {
           threadId,
           projectId: projectIdValue,
           userId,
         });
+        threadScope = threadAccess.scope;
+        threadDocumentId = threadAccess.documentId ?? undefined;
       } else {
         threadId = (await sagaAgent.createThread(ctx, {
           userId,
@@ -346,7 +391,18 @@ export const runSagaAgentChatToStream = internalAction({
           threadId,
           projectId: projectIdValue,
           userId,
+          scope: threadScope,
+          documentId: threadDocumentId,
         });
+      }
+
+      presenceDocumentId = editorDocumentId ?? (threadDocumentId ? String(threadDocumentId) : undefined);
+      if (!isTemplateBuilder && presenceDocumentId) {
+        try {
+          await setAiPresence(ctx, projectId, presenceDocumentId, true);
+        } catch (error) {
+          console.warn("[agentRuntime] Failed to set AI presence:", error);
+        }
       }
 
       const { messageId: promptMessageId } = await sagaAgent.saveMessage(ctx, {
@@ -561,9 +617,25 @@ export const runSagaAgentChatToStream = internalAction({
       // Track stream completed
       await ServerAgentEvents.streamCompleted(userId, Date.now() - startTime);
 
+      if (!isTemplateBuilder && presenceDocumentId) {
+        try {
+          await setAiPresence(ctx, projectId, presenceDocumentId, false);
+        } catch (error) {
+          console.warn("[agentRuntime] Failed to clear AI presence:", error);
+        }
+      }
+
       await ctx.runMutation((internal as any)["ai/streams"].complete, { streamId });
     } catch (error) {
       console.error("[agentRuntime.runSagaAgentChatToStream] Error:", error);
+
+      if (!isTemplateBuilder && presenceDocumentId) {
+        try {
+          await setAiPresence(ctx, projectId, presenceDocumentId, false);
+        } catch (presenceError) {
+          console.warn("[agentRuntime] Failed to clear AI presence:", presenceError);
+        }
+      }
 
       // Track stream failed
       await ServerAgentEvents.streamFailed(userId, error instanceof Error ? error.message : "Unknown error");
@@ -611,14 +683,27 @@ export const applyToolResultAndResumeToStream = internalAction({
       return;
     }
 
+    let presenceDocumentId: string | undefined;
+
     try {
       const sagaAgent = getSagaAgent();
       if (!isTemplateBuilder) {
-        await ctx.runQuery((internal as any)["ai/threads"].assertThreadOwnership, {
+        const threadAccess = await ctx.runQuery((internal as any)["ai/threads"].assertThreadAccess, {
           threadId,
           projectId: projectIdValue,
           userId,
         });
+        presenceDocumentId =
+          resolveEditorDocumentId(editorContext) ??
+          (threadAccess.documentId ? String(threadAccess.documentId) : undefined);
+
+        if (presenceDocumentId) {
+          try {
+            await setAiPresence(ctx, projectId, presenceDocumentId, true);
+          } catch (error) {
+            console.warn("[agentRuntime] Failed to set AI presence:", error);
+          }
+        }
       }
 
       await sagaAgent.saveMessage(ctx, {
@@ -689,9 +774,26 @@ export const applyToolResultAndResumeToStream = internalAction({
         }
       }
 
+      if (!isTemplateBuilder && presenceDocumentId) {
+        try {
+          await setAiPresence(ctx, projectId, presenceDocumentId, false);
+        } catch (error) {
+          console.warn("[agentRuntime] Failed to clear AI presence:", error);
+        }
+      }
+
       await ctx.runMutation((internal as any)["ai/streams"].complete, { streamId });
     } catch (error) {
       console.error("[agentRuntime.applyToolResultAndResumeToStream] Error:", error);
+
+      if (!isTemplateBuilder && presenceDocumentId) {
+        try {
+          await setAiPresence(ctx, projectId, presenceDocumentId, false);
+        } catch (presenceError) {
+          console.warn("[agentRuntime] Failed to clear AI presence:", presenceError);
+        }
+      }
+
       await ctx.runMutation((internal as any)["ai/streams"].fail, {
         streamId,
         error: error instanceof Error ? error.message : "Unknown error",

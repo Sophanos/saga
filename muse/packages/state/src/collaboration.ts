@@ -36,6 +36,8 @@ export interface CollaboratorPresence {
   color: string;
   cursor?: { from: number; to: number };
   documentId?: string;
+  status?: "idle" | "typing" | "online" | "offline" | string;
+  isAi?: boolean;
   lastSeen: string;
 }
 

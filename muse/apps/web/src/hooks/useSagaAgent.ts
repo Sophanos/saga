@@ -191,6 +191,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
     const documentExcerpt = !selectionText ? ctx.document?.excerpt?.trim() : undefined;
 
     return {
+      documentId: ctx.document?.id,
       documentTitle: ctx.document?.title,
       documentExcerpt: documentExcerpt || undefined,
       selectionText: selectionText || undefined,

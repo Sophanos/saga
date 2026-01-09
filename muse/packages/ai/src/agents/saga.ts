@@ -45,6 +45,7 @@ export type SagaMode = z.infer<typeof SagaModeSchema>;
  * Editor context provides information about the user's current editing state.
  */
 export const EditorContextSchema = z.object({
+  documentId: z.string().optional(),
   documentTitle: z.string().optional(),
   documentExcerpt: z.string().optional(),
   selectionText: z.string().optional(),

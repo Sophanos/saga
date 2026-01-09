@@ -247,7 +247,7 @@ http.route({
       }
 
       if (threadId && !isTemplateBuilder) {
-        await ctx.runQuery((internal as any)["ai/threads"].assertThreadOwnership, {
+        await ctx.runQuery((internal as any)["ai/threads"].assertThreadAccess, {
           threadId,
           projectId: projectIdValue,
           userId: auth.userId,

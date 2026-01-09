@@ -3,6 +3,7 @@ export { PageHeader } from './PageHeader';
 export { MoreMenu } from './MoreMenu';
 export { QuickActions, type QuickActionType } from './QuickActions';
 export { Editor, type EditorProps } from './Editor';
+export { CollaborativeEditor, type CollaborativeEditorProps } from './CollaborativeEditor';
 export { EditorShell, type DocumentState, type EditorShellProps } from './EditorShell';
 export { SlashCommandMenu } from './SlashCommandMenu';
 export { createSlashCommandSuggestion } from './suggestion';

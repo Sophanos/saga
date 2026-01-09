@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-09 (Supabase removal 90%) | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-09 (Collab Track A complete) | **Target:** Web + macOS first, then iOS/iPad
 
 ## Summary
 
@@ -37,8 +37,9 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 │10. Tier Config Migration           Complete         [██████████] ✅ │
 │11. Supabase → Convex Migration     In Progress      [█████████░] 90%│
 │12. CI/CD (GitHub Actions)          Complete         [██████████] ✅ │
+│13. Real-Time Collaboration         Track A Done     [████████░░] 80%│
 ├─────────────────────────────────────────────────────────────────────┤
-│ OVERALL MLP 1                                       [█████████░] 94%│
+│ OVERALL MLP 1                                       [█████████░] 95%│
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1587,9 +1588,9 @@ Auto-deploys Convex when files in `convex/` change on main branch.
 
 ---
 
-## Phase 13: Real-Time Collaboration
+## Phase 13: Real-Time Collaboration ✅ TRACK A COMPLETE
 
-> **Status:** In Progress | **Priority:** P1
+> **Status:** Track A Complete | **Priority:** P1 | **Updated:** 2026-01-09
 
 Figma-level multiplayer editing with AI as first-class participant.
 
@@ -1605,28 +1606,28 @@ Figma-level multiplayer editing with AI as first-class participant.
 
 | Task | Description | Status |
 |------|-------------|--------|
-| Add prosemirror-sync component | Register in `convex.config.ts`, handles OT merging | 🔲 |
-| Add presence component | Project + document scoped presence rooms | 🔲 |
-| Thread scope migration | Replace `userId` ownership with `scope: project\|document\|private` | 🔲 |
-| `assertThreadAccess` | New access check for shared document threads | 🔲 |
-| AI presence state | Publish "Muse is typing" while streaming | 🔲 |
+| Add prosemirror-sync component | Register in `convex.config.ts`, handles OT merging | ✅ |
+| Add presence component | Project + document scoped presence rooms | ✅ |
+| Thread scope migration | Replace `userId` ownership with `scope: project\|document\|private` | ✅ |
+| `assertThreadAccess` | New access check for shared document threads | ✅ |
+| AI presence state | Publish "Muse is typing" while streaming | ✅ |
 
 #### 13.2 Editor Integration
 
 | Task | Description | Status |
 |------|-------------|--------|
-| Collaboration props | Add `projectId`, `documentId`, `user` to Editor.tsx | 🔲 |
-| Sync hook | `useConvexProsemirrorSync()` returns extensions + status | 🔲 |
-| Cursor broadcast | Publish selection to presence on `onSelectionUpdate` | 🔲 |
-| Bridge messages | Add `connectCollaboration` / `disconnectCollaboration` | 🔲 |
+| Collaboration props | Add `projectId`, `documentId`, `user` to editor shell/bridge | ✅ |
+| Sync hook | `useTiptapSync` returns extensions + status | ✅ |
+| Cursor broadcast | Publish selection to presence on `onSelectionUpdate` | ✅ |
+| Bridge messages | Add `connectCollaboration` / `disconnectCollaboration` | ✅ |
 
 #### 13.3 UI Components
 
 | Task | Description | Status |
 |------|-------------|--------|
-| Remote cursors | TipTap decoration plugin, colored cursor + name label | 🔲 |
-| Remote selections | Semi-transparent highlight for other users' selections | 🔲 |
-| Collaborator avatars | Toolbar showing online users + AI with status dots | 🔲 |
+| Remote cursors | TipTap decoration plugin, colored cursor + name label | ✅ |
+| Remote selections | Semi-transparent highlight for other users' selections | ✅ |
+| Collaborator avatars | Toolbar showing online users + AI with status dots | ✅ |
 | AI activity indicator | "Muse is writing..." with cancel button | 🔲 |
 | Conflict resolution | Modal for AI vs human edit conflicts | 🔲 |
 
@@ -1634,15 +1635,48 @@ Figma-level multiplayer editing with AI as first-class participant.
 
 | Task | Description | Status |
 |------|-------------|--------|
-| Replace `useCollaboration.ts` | Swap Supabase presence/postgres_changes → Convex | 🔲 |
+| Replace `useCollaboration.ts` | Swap Supabase presence/postgres_changes → Convex | ✅ |
 | Replace `CollaborationClient` | New `ConvexCollaborationClient` in `@mythos/sync` | 🔲 |
-| Tauri iframe auth | Pass auth token via bridge, editor connects to Convex directly | 🔲 |
+| Tauri iframe auth | Pass auth token via bridge, editor connects to Convex directly | ✅ |
+
+### Files Created (Track A)
+
+```
+convex/
+├── convex.config.ts                 # prosemirror-sync + presence components
+├── presence.ts                      # Presence room management
+├── prosemirrorSync.ts               # OT sync component
+├── collaboration.ts                 # Members query + access helpers
+├── ai/threads.ts                    # assertThreadAccess, document scopes
+├── schema.ts                        # Updated for collaboration
+
+packages/editor-webview/
+├── src/components/
+│   ├── CollaborativeEditor.tsx      # useTiptapSync + presence wrapper
+│   ├── Editor.tsx                   # Bridge events, cursor updates
+│   └── EditorShell.tsx              # Collaboration props
+├── src/extensions/
+│   ├── remote-cursor.ts             # Remote cursor decoration plugin
+│   └── index.ts                     # Extension exports
+└── src/bridge.ts                    # connectCollaboration messages
+
+apps/
+├── expo/app/(app)/editor.tsx        # Collaboration wiring
+├── tauri/src/components/editor/
+│   └── EditorWebView.tsx            # WebView collaboration props
+├── tauri/src/hooks/useEditorBridge.ts
+└── web/src/hooks/useCollaboration.ts # Convex presence + members
+```
 
 ### Done Criteria
 
-- Two users (Expo web + Tauri) see live text sync + remote cursors
-- AI edits appear as collaborative operations visible to all
-- Supabase no longer needed for presence/sync
+- [x] Two users (Expo web + Tauri) see live text sync + remote cursors
+- [x] AI edits appear as collaborative operations visible to all
+- [x] Supabase no longer needed for presence/sync
+
+### Track B (Future)
+
+Yjs CRDT + custom Convex provider — swap later if needed, API boundaries designed to allow it.
 
 ---
 

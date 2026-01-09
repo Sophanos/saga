@@ -12,6 +12,7 @@ import {
   internalQuery,
   internalMutation,
 } from "./_generated/server";
+import { verifyProjectAccess } from "./lib/auth";
 
 // ============================================================
 // INTERNAL PERMISSION HELPERS
@@ -80,6 +81,50 @@ export const listProjectMembers = query({
       .query("projectMembers")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
       .collect();
+  },
+});
+
+export const listProjectMembersWithProfiles = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }) => {
+    await verifyProjectAccess(ctx, projectId);
+
+    const members = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .collect();
+
+    const uniqueUserIds = Array.from(new Set(members.map((member) => member.userId)));
+    const users = await Promise.all(
+      uniqueUserIds.map(async (userId) =>
+        ctx.db
+          .query("users" as any)
+          .filter((q: any) => q.eq(q.field("id"), userId))
+          .first()
+      )
+    );
+
+    const userById = new Map<string, any>();
+    for (const user of users) {
+      if (user?.id) {
+        userById.set(user.id, user);
+      }
+    }
+
+    return members.map((member) => {
+      const user = userById.get(member.userId);
+      return {
+        id: member._id,
+        userId: member.userId,
+        projectId: member.projectId,
+        role: member.role,
+        invitedAt: member.invitedAt,
+        acceptedAt: member.acceptedAt,
+        name: user?.name ?? user?.email ?? null,
+        email: user?.email ?? null,
+        avatarUrl: user?.image ?? user?.avatarUrl ?? null,
+      };
+    });
   },
 });
 

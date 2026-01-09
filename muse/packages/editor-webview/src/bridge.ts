@@ -53,6 +53,16 @@ export type NativeToEditorMessage =
   | { type: 'acceptAllSuggestions' }
   | { type: 'rejectAllSuggestions' }
   | { type: 'selectSuggestion'; id: string | null }
+  // Collaboration
+  | {
+      type: 'connectCollaboration';
+      projectId: string;
+      documentId: string;
+      user: CollaborationUser;
+      authToken?: string;
+      convexUrl?: string;
+    }
+  | { type: 'disconnectCollaboration' }
   // Editor control
   | { type: 'focus' }
   | { type: 'blur' }
@@ -76,6 +86,12 @@ export interface EditorBridgeOptions {
   placeholder?: string;
   editable?: boolean;
   fontStyle?: 'default' | 'serif' | 'mono';
+}
+
+export interface CollaborationUser {
+  id: string;
+  name: string;
+  avatarUrl?: string;
 }
 
 // =============================================================================
@@ -189,7 +205,14 @@ function sendToNative(message: EditorToNativeMessage): void {
 /**
  * Handle message from native
  */
+function dispatchBridgeMessage(message: NativeToEditorMessage): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('editor-bridge-message', { detail: message }));
+}
+
 function handleNativeMessage(message: NativeToEditorMessage): void {
+  dispatchBridgeMessage(message);
+
   if (!registeredEditor) {
     // Queue message if editor not ready
     messageQueue.push(message);
@@ -259,6 +282,11 @@ function handleNativeMessage(message: NativeToEditorMessage): void {
 
     case 'redo':
       editor.commands.redo();
+      break;
+
+    case 'connectCollaboration':
+    case 'disconnectCollaboration':
+      // Handled by host listener.
       break;
 
     case 'configure':

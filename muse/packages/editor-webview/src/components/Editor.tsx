@@ -1,7 +1,8 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
 import { WriterKit, SlashCommand } from '@mythos/editor';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { type AnyExtension, type Content } from '@tiptap/core';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { createSlashCommandSuggestion } from './suggestion';
 import { BubbleMenu } from './BubbleMenu';
 import { AICommandPalette, type AIQuickAction, type SelectionVirtualElement } from './AICommandPalette';
@@ -9,7 +10,17 @@ import { AIResponseBlock } from './AIResponseBlock';
 import { BatchApprovalBar } from './BatchApprovalBar';
 import { AIGeneratedMark } from '../extensions/ai-generated-mark';
 import { SuggestionPlugin, type Suggestion } from '../extensions/suggestion-plugin';
-import { useEditorBridge, type EditorInstance } from '../bridge';
+import {
+  RemoteCursorExtension,
+  updateRemoteCursors,
+  type RemoteCursorUser,
+} from '../extensions/remote-cursor';
+import {
+  useEditorBridge,
+  type EditorInstance,
+  type EditorToNativeMessage,
+  type NativeToEditorMessage,
+} from '../bridge';
 import 'tippy.js/dist/tippy.css';
 
 type FontStyle = 'default' | 'serif' | 'mono';
@@ -37,7 +48,7 @@ interface SuggestionState {
 }
 
 interface EditorProps {
-  content?: string;
+  content?: Content;
   title?: string;
   onChange?: (content: string) => void;
   onTitleChange?: (title: string) => void;
@@ -46,6 +57,8 @@ interface EditorProps {
   onSuggestionAccepted?: (suggestion: Suggestion) => void;
   onSuggestionRejected?: (suggestion: Suggestion) => void;
   onSuggestionsChange?: (suggestions: Suggestion[]) => void;
+  onBridgeMessage?: (message: NativeToEditorMessage) => void;
+  onCursorChange?: (selection: { from: number; to: number }) => void;
   placeholder?: string;
   fontStyle?: FontStyle;
   isSmallText?: boolean;
@@ -55,6 +68,14 @@ interface EditorProps {
   showTitle?: boolean;
   /** Enable bridge for WebView communication (Tauri/React Native) */
   enableBridge?: boolean;
+  /** Additional TipTap extensions (collaboration, etc.) */
+  extraExtensions?: AnyExtension[];
+  /** Remote cursor presence data */
+  remoteCursors?: RemoteCursorUser[];
+  /** Current user ID for cursor filtering */
+  currentUserId?: string;
+  /** Disable syncing content from props (useful for collaboration) */
+  syncContentFromProps?: boolean;
 }
 
 export function Editor({
@@ -67,6 +88,8 @@ export function Editor({
   onSuggestionAccepted: _onSuggestionAccepted,
   onSuggestionRejected: _onSuggestionRejected,
   onSuggestionsChange: _onSuggestionsChange,
+  onBridgeMessage,
+  onCursorChange,
   placeholder = "Press '/' for commands, or start writing...",
   fontStyle = 'default',
   isSmallText = false,
@@ -75,9 +98,15 @@ export function Editor({
   editable = true,
   showTitle = true,
   enableBridge: _enableBridge = false,
+  extraExtensions,
+  remoteCursors,
+  currentUserId,
+  syncContentFromProps = true,
 }: EditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const lastContentRef = useRef<Content | null>(null);
+  const bridgeSendRef = useRef<((message: EditorToNativeMessage) => void) | null>(null);
   const [localTitle, setLocalTitle] = useState(title);
 
   // Suggestion state (reserved for future suggestion feature)
@@ -113,8 +142,16 @@ export function Editor({
     _onSuggestionsChange?.(suggestions);
   }, [_onSuggestionsChange]);
 
-  const editor = useEditor({
-    extensions: [
+  const remoteCursorExtension = useMemo(() => {
+    if (!remoteCursors) return null;
+    return RemoteCursorExtension.configure({
+      users: [],
+      currentUserId,
+    });
+  }, [remoteCursors, currentUserId]);
+
+  const editorExtensions = useMemo(() => {
+    return [
       WriterKit,
       Placeholder.configure({
         placeholder,
@@ -130,29 +167,83 @@ export function Editor({
         onReject: handleSuggestionRejected,
         onSuggestionsChange: handleSuggestionsChange,
       }),
-    ],
+      ...(remoteCursorExtension ? [remoteCursorExtension] : []),
+      ...(extraExtensions ?? []),
+    ];
+  }, [
+    placeholder,
+    handleSuggestionAccepted,
+    handleSuggestionRejected,
+    handleSuggestionsChange,
+    remoteCursorExtension,
+    extraExtensions,
+  ]);
+
+  const editor = useEditor({
+    extensions: editorExtensions,
     content,
     editable,
     autofocus: autoFocus && !showTitle ? 'end' : false,
     immediatelyRender: false,
     onUpdate: ({ editor }) => {
-      onChange?.(editor.getHTML());
+      const html = editor.getHTML();
+      onChange?.(html);
+      if (_enableBridge && bridgeSendRef.current) {
+        bridgeSendRef.current({
+          type: 'contentChange',
+          content: editor.getText(),
+          html,
+        });
+      }
     },
     onSelectionUpdate: ({ editor }) => {
       const { from, to } = editor.state.selection;
-      if (from !== to) {
-        const text = editor.state.doc.textBetween(from, to, ' ');
-        onSelectionChange?.({ from, to, text });
+      const selection =
+        from !== to
+          ? { from, to, text: editor.state.doc.textBetween(from, to, ' ') }
+          : null;
+      if (selection) {
+        onSelectionChange?.(selection);
       } else {
         onSelectionChange?.(null);
+      }
+      onCursorChange?.({ from, to });
+      if (_enableBridge && bridgeSendRef.current) {
+        bridgeSendRef.current({ type: 'selectionChange', selection });
       }
     },
   });
 
   // Bridge for WebView communication (Tauri/React Native)
-  useEditorBridge(
-    _enableBridge ? (editor as unknown as EditorInstance) : null
+  const { send: sendBridgeMessage } = useEditorBridge(
+    _enableBridge ? (editor as unknown as EditorInstance) : null,
+    { onMessage: onBridgeMessage }
   );
+
+  useEffect(() => {
+    bridgeSendRef.current = sendBridgeMessage;
+  }, [sendBridgeMessage]);
+
+  useEffect(() => {
+    if (!editor || !_enableBridge) return;
+    const handleFocus = () => {
+      bridgeSendRef.current?.({ type: 'editorFocused' });
+    };
+    const handleBlur = () => {
+      bridgeSendRef.current?.({ type: 'editorBlurred' });
+    };
+    editor.on('focus', handleFocus);
+    editor.on('blur', handleBlur);
+    return () => {
+      editor.off('focus', handleFocus);
+      editor.off('blur', handleBlur);
+    };
+  }, [editor, _enableBridge]);
+
+  useEffect(() => {
+    if (!editor || !remoteCursors) return;
+    updateRemoteCursors(editor, remoteCursors);
+  }, [editor, remoteCursors]);
 
   // Sync title from props
   useEffect(() => {
@@ -178,7 +269,10 @@ export function Editor({
     const newTitle = e.target.value;
     setLocalTitle(newTitle);
     onTitleChange?.(newTitle);
-  }, [onTitleChange]);
+    if (_enableBridge && bridgeSendRef.current) {
+      bridgeSendRef.current({ type: 'titleChange', title: newTitle });
+    }
+  }, [onTitleChange, _enableBridge]);
 
   const handleTitleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter') {
@@ -450,10 +544,12 @@ export function Editor({
   );
 
   useEffect(() => {
-    if (editor && content !== editor.getHTML()) {
-      editor.commands.setContent(content);
-    }
-  }, [content, editor]);
+    if (!syncContentFromProps || !editor) return;
+    if (typeof content === 'undefined') return;
+    if (lastContentRef.current === content) return;
+    lastContentRef.current = content;
+    editor.commands.setContent(content);
+  }, [content, editor, syncContentFromProps]);
 
   const fontFamilyClass = `editor-font--${fontStyle}`;
   const sizeClass = isSmallText ? 'editor-size--small' : '';
@@ -791,6 +887,36 @@ export function Editor({
         /* Selection */
         .editor-content .ProseMirror ::selection {
           background: rgba(45, 170, 219, 0.3);
+        }
+
+        /* Remote cursors */
+        .remote-selection {
+          border-radius: 2px;
+        }
+
+        .remote-cursor {
+          position: relative;
+          margin-left: -1px;
+          border-left: 2px solid;
+          height: 1.2em;
+          pointer-events: none;
+        }
+
+        .remote-cursor__label {
+          position: absolute;
+          top: -20px;
+          left: -1px;
+          padding: 2px 6px;
+          border-radius: 6px;
+          color: #ffffff;
+          font-size: 11px;
+          font-weight: 600;
+          white-space: nowrap;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .remote-cursor--ai .remote-cursor__label {
+          text-transform: none;
         }
 
         /* Entity marks (from @mythos/editor) */

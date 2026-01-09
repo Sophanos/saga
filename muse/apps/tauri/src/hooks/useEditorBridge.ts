@@ -28,6 +28,15 @@ export type NativeToEditorMessage =
   | { type: 'acceptAllSuggestions' }
   | { type: 'rejectAllSuggestions' }
   | { type: 'selectSuggestion'; id: string | null }
+  | {
+      type: 'connectCollaboration';
+      projectId: string;
+      documentId: string;
+      user: { id: string; name: string; avatarUrl?: string };
+      authToken?: string;
+      convexUrl?: string;
+    }
+  | { type: 'disconnectCollaboration' }
   | { type: 'focus' }
   | { type: 'blur' }
   | { type: 'setEditable'; editable: boolean }
@@ -96,6 +105,22 @@ export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
   const focus = useCallback(() => sendToEditor({ type: 'focus' }), [sendToEditor]);
   const blur = useCallback(() => sendToEditor({ type: 'blur' }), [sendToEditor]);
 
+  const connectCollaboration = useCallback(
+    (payload: {
+      projectId: string;
+      documentId: string;
+      user: { id: string; name: string; avatarUrl?: string };
+      authToken?: string;
+      convexUrl?: string;
+    }) => sendToEditor({ type: 'connectCollaboration', ...payload }),
+    [sendToEditor]
+  );
+
+  const disconnectCollaboration = useCallback(
+    () => sendToEditor({ type: 'disconnectCollaboration' }),
+    [sendToEditor]
+  );
+
   // Listen for messages from iframe via postMessage
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -163,5 +188,7 @@ export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
     insertContent,
     focus,
     blur,
+    connectCollaboration,
+    disconnectCollaboration,
   };
 }

@@ -24,3 +24,7 @@ export type {
   AiToolkitState,
   AiToolkitOptions,
 } from './ai-toolkit';
+
+// Collaboration
+export { RemoteCursorExtension, updateRemoteCursors } from './remote-cursor';
+export type { RemoteCursorUser } from './remote-cursor';

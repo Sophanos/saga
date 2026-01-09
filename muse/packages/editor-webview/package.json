@@ -13,8 +13,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@convex-dev/presence": "^0.3.0",
+    "@convex-dev/prosemirror-sync": "^0.2.0",
     "@floating-ui/react": "^0.26.28",
     "@tiptap/core": "^2.10.0",
+    "convex": "^1.31.2",
     "@tiptap/extension-placeholder": "^2.10.0",
     "@tiptap/pm": "^2.10.0",
     "@tiptap/react": "^2.10.0",

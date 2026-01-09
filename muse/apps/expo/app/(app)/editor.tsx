@@ -8,7 +8,13 @@
 import React, { Suspense, lazy } from 'react';
 import { Platform, View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useTheme, typography } from '@/design-system';
-import { useLayoutStore } from '@mythos/state';
+import { useAuthStore } from '@mythos/auth';
+import {
+  useLayoutStore,
+  useCurrentProject,
+  useDocuments,
+  useProjectStore,
+} from '@mythos/state';
 
 // Lazy load editor only on web
 const LazyEditorShell = Platform.OS === 'web'
@@ -18,6 +24,22 @@ const LazyEditorShell = Platform.OS === 'web'
 export default function EditorScreen() {
   const { colors } = useTheme();
   const { aiPanelMode, sidebarCollapsed } = useLayoutStore();
+  const user = useAuthStore((s) => s.user);
+  const sessionToken = useAuthStore((s) => s.session?.token ?? undefined);
+  const project = useCurrentProject();
+  const documents = useDocuments();
+  const currentDocumentId = useProjectStore((s) => s.currentDocumentId);
+
+  const activeDocumentId =
+    currentDocumentId ?? documents[0]?.id ?? null;
+
+  const collaborationUser = user
+    ? {
+        id: user.id,
+        name: user.name ?? user.email,
+        avatarUrl: user.image ?? undefined,
+      }
+    : null;
 
   // Hide quick actions when AI panel is visible (side or floating mode)
   const hideQuickActions = aiPanelMode === 'side' || aiPanelMode === 'floating';
@@ -38,6 +60,16 @@ export default function EditorScreen() {
           <LazyEditorShell
             hideQuickActions={hideQuickActions}
             sidebarCollapsed={sidebarCollapsed}
+            collaboration={
+              project && activeDocumentId && collaborationUser
+                ? {
+                    projectId: project.id,
+                    documentId: activeDocumentId,
+                    user: collaborationUser,
+                    authToken: sessionToken,
+                  }
+                : undefined
+            }
             onQuickAction={(action: string) => {
               console.log('Quick action:', action);
             }}
