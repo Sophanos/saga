@@ -235,6 +235,7 @@ export function ChatInput({
                 color: text.primary,
                 caretColor: accent.primary,
               }}
+              data-testid="chat-input"
             />
 
             {/* Mention dropdown */}
@@ -292,6 +293,7 @@ export function ChatInput({
                 background: input.trim() && !isStreaming ? accent.primary : border.default,
                 color: input.trim() && !isStreaming ? "white" : text.muted,
               }}
+              data-testid="chat-send"
             >
               <ArrowUp className="w-4 h-4" />
             </button>
@@ -341,6 +343,7 @@ export function ChatInput({
             "focus:outline-none focus:ring-1 focus:ring-mythos-accent-purple/30",
             "disabled:opacity-50"
           )}
+          data-testid="chat-input"
         />
         <Button
           variant="ghost"
@@ -348,6 +351,7 @@ export function ChatInput({
           onClick={handleSend}
           disabled={!input.trim() || isStreaming}
           className="absolute right-1 bottom-1 h-7 w-7"
+          data-testid="chat-send"
         >
           <Send className="w-4 h-4" />
         </Button>

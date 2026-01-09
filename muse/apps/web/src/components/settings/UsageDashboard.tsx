@@ -21,15 +21,17 @@ interface StatCardProps {
   subtext?: string;
   icon?: React.ReactNode;
   className?: string;
+  testId?: string;
 }
 
-function StatCard({ label, value, subtext, icon, className }: StatCardProps) {
+function StatCard({ label, value, subtext, icon, className, testId }: StatCardProps) {
   return (
     <div
       className={cn(
         "flex items-center gap-3 p-3 rounded-lg bg-mythos-bg-tertiary/50",
         className
       )}
+      data-testid={testId}
     >
       {icon && (
         <div className="flex items-center justify-center w-8 h-8 rounded-md bg-mythos-bg-secondary text-mythos-accent-primary">
@@ -100,12 +102,14 @@ export function UsageDashboard({
           value={usage.wordsWritten}
           subtext="This period"
           icon={<PenLine className="w-4 h-4" />}
+          testId="billing-words-written"
         />
         <StatCard
           label="Tokens Remaining"
           value={usage.tokensRemaining}
           subtext="Until reset"
           icon={<Zap className="w-4 h-4" />}
+          testId="billing-tokens-remaining"
         />
       </div>
     </div>

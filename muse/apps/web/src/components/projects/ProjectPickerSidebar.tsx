@@ -3,6 +3,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  CreditCard,
   FilePlus,
   FolderPlus,
   Plus,
@@ -194,6 +195,7 @@ export function ProjectPickerSidebar() {
             aria-haspopup="true"
             aria-expanded={isOpen}
             className="w-full flex items-center justify-between rounded-lg border border-mythos-border-default bg-mythos-bg-secondary px-3 py-2 text-left hover:bg-mythos-bg-hover transition-colors"
+            data-testid="project-picker-toggle"
           >
             <div className="flex items-center gap-2">
               <div className="h-7 w-7 rounded-md bg-mythos-bg-tertiary flex items-center justify-center text-xs font-semibold text-mythos-text-primary">
@@ -231,10 +233,24 @@ export function ProjectPickerSidebar() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => {
+                        openModal({ type: "billing" });
+                        setIsOpen(false);
+                      }}
+                      title="Billing"
+                      data-testid="project-billing-button"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => {
                         openModal({ type: "settings" });
                         setIsOpen(false);
                       }}
                       title="Settings"
+                      data-testid="project-settings-button"
                     >
                       <Settings className="w-4 h-4" />
                     </Button>

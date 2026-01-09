@@ -111,6 +111,7 @@ export function WorldGraphCanvas({
       }}
       proOptions={{ hideAttribution: true }}
       className="bg-mythos-bg-primary"
+      data-testid="world-graph-canvas"
     >
       <Background
         color="#334155"

@@ -272,19 +272,21 @@ function CollaborativeEditorInner({
   }
 
   return (
-    <Editor
-      {...editorProps}
-      content={sync.initialContent}
-      extraExtensions={[sync.extension]}
-      remoteCursors={remoteCursors}
-      currentUserId={user.id}
-      onCursorChange={handleCursorChange}
-      onFocusChange={handleFocusChange}
-      onEditorReady={handleEditorReady}
-      onSuggestionAccepted={handleSuggestionAccepted}
-      onSuggestionRejected={handleSuggestionRejected}
-      syncContentFromProps={false}
-    />
+    <div data-testid="collab-editor" style={{ height: "100%" }}>
+      <Editor
+        {...editorProps}
+        content={sync.initialContent}
+        extraExtensions={[sync.extension]}
+        remoteCursors={remoteCursors}
+        currentUserId={user.id}
+        onCursorChange={handleCursorChange}
+        onFocusChange={handleFocusChange}
+        onEditorReady={handleEditorReady}
+        onSuggestionAccepted={handleSuggestionAccepted}
+        onSuggestionRejected={handleSuggestionRejected}
+        syncContentFromProps={false}
+      />
+    </div>
   );
 }
 

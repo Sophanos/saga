@@ -475,6 +475,9 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
         "rounded-lg border p-3 my-2",
         getCardStyles(tool.status, danger, needsApproval)
       )}
+      data-testid="tool-result-card"
+      data-tool-name={tool.toolName}
+      data-tool-status={tool.status}
     >
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
@@ -614,7 +617,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
 
       {/* Actions for proposed state */}
       {isProposed && isAskQuestion && (
-        <div className="mt-2 space-y-2">
+        <div className="mt-2 space-y-2" data-testid="tool-approval-request">
           {getArg<string[]>("choices")?.length ? (
             <div className="flex flex-wrap gap-2">
               {getArg<string[]>("choices")?.map((choice) => (
@@ -637,6 +640,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
               placeholder="Type your answer..."
               className="min-h-[72px] text-xs"
               disabled={isSubmitting}
+              data-testid="tool-approval-input"
             />
           )}
           <div className="flex items-center gap-2">
@@ -645,6 +649,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
               onClick={handleSendAnswer}
               disabled={isSubmitting || !answer.trim()}
               className="flex-1 h-7 text-xs gap-1"
+              data-testid="tool-approval-accept"
             >
               <Check className="w-3 h-3" />
               Send Answer
@@ -655,6 +660,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
               onClick={handleSkipQuestion}
               disabled={isSubmitting}
               className="flex-1 h-7 text-xs gap-1"
+              data-testid="tool-approval-reject"
             >
               <X className="w-3 h-3" />
               Skip
@@ -704,6 +710,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
               "flex-1 h-7 text-xs gap-1",
               needsApproval && "bg-mythos-accent-yellow hover:bg-mythos-accent-yellow/90 text-black"
             )}
+            data-testid="tool-approval-accept"
           >
             <Check className="w-3 h-3" />
             {needsApproval ? "Approve" : getActionLabel()}
@@ -713,6 +720,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
             size="sm"
             onClick={handleReject}
             className="flex-1 h-7 text-xs gap-1"
+            data-testid="tool-approval-reject"
           >
             <X className="w-3 h-3" />
             {needsApproval ? "Deny" : "Cancel"}

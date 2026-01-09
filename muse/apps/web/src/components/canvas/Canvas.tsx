@@ -710,7 +710,11 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       {/* Editor */}
       <ScrollArea className="flex-1">
         <div className="max-w-3xl mx-auto px-8 py-6">
-          <div className="mythos-editor" onClick={handleEntityClick}>
+          <div
+            className="mythos-editor"
+            onClick={handleEntityClick}
+            data-testid="editor-surface"
+          >
             <EditorContent editor={editor} />
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useMythosStore, useModal } from "../../stores";
 import { useEntityPersistence } from "../../hooks/useEntityPersistence";
+import { BillingSettings } from "../settings/BillingSettings";
 import { SettingsModal } from "../settings/SettingsModal";
 import { ExportModal } from "./ExportModal";
 import { ImportModal } from "./ImportModal";
@@ -71,6 +72,9 @@ export function ModalHost() {
   switch (modal.type) {
     case "settings":
       return <SettingsModal isOpen={true} onClose={closeModal} initialSection="profile" />;
+
+    case "billing":
+      return <BillingSettings isOpen={true} onClose={closeModal} />;
 
     case "import":
       return <ImportModal isOpen={true} onClose={closeModal} />;

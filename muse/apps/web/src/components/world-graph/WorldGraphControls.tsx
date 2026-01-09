@@ -31,6 +31,7 @@ export function WorldGraphControls({
               key={type}
               onClick={() => onToggleType(type)}
               title={label}
+              data-testid={`world-graph-toggle-${type}`}
               className={cn(
                 "p-2 rounded-md transition-all",
                 isVisible
@@ -71,6 +72,7 @@ export function WorldGraphControls({
           size="sm"
           onClick={onResetLayout}
           className="gap-1.5 bg-mythos-bg-secondary/90 backdrop-blur-sm"
+          data-testid="world-graph-reset-layout"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           Layout

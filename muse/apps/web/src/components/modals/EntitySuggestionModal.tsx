@@ -219,6 +219,9 @@ function EntityRow({
           ? "border-mythos-accent-primary/50 bg-mythos-bg-tertiary/50"
           : "border-mythos-border-default bg-mythos-bg-secondary"
       )}
+      data-testid="entity-detect-result"
+      data-entity-name={entity.name}
+      data-entity-type={entity.type}
     >
       {/* Main row */}
       <div className="flex items-center gap-3 p-3">
@@ -547,6 +550,7 @@ export function EntitySuggestionModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="entity-modal-title"
+      data-testid="entity-detect-modal"
     >
       {/* Backdrop */}
       <div
@@ -614,7 +618,7 @@ export function EntitySuggestionModal({
           </div>
 
           {/* Entity list */}
-          <ScrollArea className="h-[calc(100%-60px)]">
+          <ScrollArea className="h-[calc(100%-60px)]" data-testid="entity-detect-results">
             <div className="space-y-4 pr-4 pb-4">
               {ENTITY_TYPES.map((type) => {
                 const typeEntities = groupedEntities[type];
@@ -664,6 +668,7 @@ export function EntitySuggestionModal({
             onClick={handleApply}
             disabled={isProcessing || selectedCount === 0}
             className="gap-1.5 min-w-[140px]"
+            data-testid="entity-create-from-detection"
           >
             {isProcessing ? (
               <>

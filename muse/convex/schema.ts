@@ -445,6 +445,44 @@ export default defineSchema({
     .index("by_type", ["eventType"]),
 
   // ============================================================
+  // E2E TEST FIXTURES (guarded by E2E_TEST_MODE)
+  // ============================================================
+  e2eDetectionFixtures: defineTable({
+    projectId: v.id("projects"),
+    key: v.string(),
+    entities: v.array(
+      v.object({
+        name: v.string(),
+        type: v.string(),
+        aliases: v.array(v.string()),
+        confidence: v.number(),
+        properties: v.any(),
+      })
+    ),
+    stats: v.optional(
+      v.object({
+        totalFound: v.number(),
+        byType: v.any(),
+      })
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_key", ["projectId", "key"]),
+
+  e2eSagaScripts: defineTable({
+    projectId: v.id("projects"),
+    userId: v.string(),
+    scenario: v.string(),
+    steps: v.array(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_user_scenario", ["projectId", "userId", "scenario"]),
+
+  // ============================================================
   // MIGRATIONS
   // ============================================================
   migrations: defineTable({

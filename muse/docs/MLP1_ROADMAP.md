@@ -21,6 +21,10 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 - AI presence keepalive during long-running streaming responses
 - Embedding job deduplication to prevent redundant queue churn
 
+**E2E Coverage (04–08):**
+- Deterministic Convex E2E harness (fixtures + saga scripts + embeddings)
+- Playwright specs for World Graph, AI streaming, RAG, collaboration, and billing
+
 **Writer Tools (from user feedback):**
 - Focus Mode with Zen UI, timers, word goals, brainstorm prompts
 - Grammar/Style via DeepL API (German) + LLM fallback

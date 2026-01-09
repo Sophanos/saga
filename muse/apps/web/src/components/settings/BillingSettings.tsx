@@ -298,6 +298,7 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
       aria-modal="true"
       aria-labelledby="billing-modal-title"
       onKeyDown={(e) => e.key === 'Escape' && handleClose()}
+      data-testid="billing-modal"
     >
       {/* Backdrop */}
       <div
@@ -359,6 +360,7 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
                       "px-2 py-0.5 text-xs font-medium rounded-full",
                       getTierBadgeColor(subscription.tier)
                     )}
+                    data-testid="billing-current-tier"
                   >
                     {TIER_CONFIG[subscription.tier].name}
                   </span>

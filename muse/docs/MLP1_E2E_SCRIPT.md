@@ -21,7 +21,10 @@ Note: “Tauri native shell” automation is not covered by Playwright alone in 
 - `CONVEX_URL` (required for backend polling/setup)
 - `EXPO_PUBLIC_CONVEX_URL` / `EXPO_PUBLIC_CONVEX_SITE_URL` (as required by local dev)
 - `OPENROUTER_API_KEY` (only if not using mock mode)
+- `E2E_TEST_MODE=true` (enable deterministic E2E harness paths)
+- `E2E_TEST_SECRET` / `PLAYWRIGHT_E2E_SECRET` (shared secret for Convex E2E mutations/actions)
 - `E2E_MOCK_AI=true` (recommended for CI reliability)
+- `QDRANT_URL` (required for E2E-06 RAG pipeline)
 - `EXPO_PUBLIC_E2E=true` (enable the Expo E2E harness route)
 
 ## E2E-01: Infrastructure
@@ -32,7 +35,7 @@ Note: “Tauri native shell” automation is not covered by Playwright alone in 
 - Polling utilities for debounced autosave and eventual consistency
 
 ### Artifacts
-- `muse/e2e/playwright.config.ts`
+- `muse/e2e/playwright.config.mjs`
 - `muse/e2e/global-setup.ts`
 - `muse/e2e/fixtures/auth.ts`
 - `muse/e2e/fixtures/convex.ts`
@@ -70,75 +73,68 @@ Note: “Tauri native shell” automation is not covered by Playwright alone in 
 1. Provide text containing entities (“Elena walked to the Citadel.”)
 2. Trigger detection via the detect-and-persist action
 3. Persist detected entities into Convex `entities`
-4. Verify entities exist
+4. Open World Graph and verify entity nodes + counts
+
+### Artifacts
+- `muse/e2e/entities.spec.ts`
+- `muse/convex/e2e.ts` (detection fixtures)
+- `muse/apps/web/src/components/world-graph/*` (test ids)
 
 ### Dependencies / Notes
-- Detection must have a deterministic mock mode for CI (`E2E_MOCK_AI=true`).
-- A single backend entrypoint should exist for “detect + persist” to avoid duplicating logic in UIs.
-- World Graph UI tests are deferred until the graph is exposed in Expo/Tauri.
+- Detection uses deterministic fixtures in E2E mode (`E2E_TEST_MODE=true`).
+- World Graph selectors: `world-graph-view`, `wg-node-<entityId>`, `wg-entity-count`.
+- Run on `tauri-web` (web app); Expo does not include World Graph yet.
 
 ---
 
-# Future Phases
+# E2E-05–08 (Implemented)
 
 ## E2E-05: AI Agent Chat + Streaming
-### Goal
-Validate that the AI panel streams responses reliably and attaches tool calls/results correctly.
-
 ### Scenarios
 1. Start a new thread; send a message; verify streamed tokens appear in UI
-2. Verify tool-call chunk rendering (if using generationStreams)
-3. Verify thread mapping is created in `sagaThreads`
-4. Verify retry/fallback behavior (if configured) does not break UI state
+2. Verify tool-approval request rendering (ask_question)
 
-### Dependencies
-- Stable test selectors for AI panel input/output
-- Deterministic mock model mode for CI (optional but strongly recommended)
+### Artifacts
+- `muse/e2e/ai-chat.spec.ts`
+- `muse/convex/e2e.ts` (saga scripts)
+- Chat selectors: `chat-input`, `chat-send`, `chat-message-assistant`, `tool-approval-request`
+
+### Notes
+- Deterministic streaming enabled in `E2E_TEST_MODE` via saga scripts.
+- Runs on `tauri-web` (AI sidebar).
 
 ## E2E-06: RAG Pipeline (Embeddings → Qdrant → Search)
-### Goal
-Validate that content changes lead to embedding jobs and that search retrieves expected results.
-
 ### Scenarios
-1. Create doc with unique phrase; wait for embedding job completion
-2. Search for phrase; verify top result is the doc
-3. Update doc; verify embedding refresh and search results update
-4. Delete doc/project; verify vector delete jobs execute
+1. Create doc with unique phrase; process embedding jobs immediately
+2. Query RAG context; verify document preview contains phrase
 
-### Dependencies
-- Observable embedding job status in UI or accessible via Convex queries
-- Dedicated test Qdrant instance/collection isolation
-- Deterministic embedding mode for CI if required
+### Artifacts
+- `muse/e2e/rag.spec.ts`
+- `muse/convex/e2e.ts` (`processEmbeddingJobsNow`, `retrieveRagContext`)
+
+### Notes
+- Requires `QDRANT_URL` and `E2E_TEST_MODE=true` for deterministic embeddings.
 
 ## E2E-07: Real-Time Collaboration
-### Goal
-Validate multi-user editing: presence, cursors, and synchronized doc state.
-
 ### Scenarios
 1. Two browser contexts sign in as two users
 2. Both open same document
 3. User A types; user B sees updates
-4. Presence indicators show both users
-5. Conflict-free merges across edits
+4. (When editor-webview is active) remote cursor label appears
 
-### Dependencies
-- Two test accounts
-- Collaboration UI selectors and a stable way to open same doc in both contexts
+### Artifacts
+- `muse/e2e/collaboration.spec.ts`
+- `muse/packages/editor-webview/src/components/CollaborativeEditor.tsx` (collab editor test id)
 
 ## E2E-08: Billing + Tier Limits
-### Goal
-Validate feature gating and usage limits (free/pro entitlements).
-
 ### Scenarios
-1. Free user cannot access premium features (or sees upgrade prompt)
-2. Pro user can access premium features
-3. Usage counters increment and enforce limits
-4. Subscription status changes are reflected in UI
+1. Mock billing-subscription response; verify tier + tokens in UI
+2. Upsert subscription state via E2E harness; verify tier resolution
 
-### Dependencies
-- Test-mode RevenueCat/Stripe configuration
-- A deterministic way to set subscription state (admin action or webhook replay)
-- Clear UI selectors for gated features and upgrade prompts
+### Artifacts
+- `muse/e2e/billing.spec.ts`
+- `muse/convex/e2e.ts` (`upsertSubscription`, `getUserTierForE2E`)
+- Billing selectors: `project-billing-button`, `billing-modal`, `billing-current-tier`, `billing-tokens-remaining`
 
 ---
 

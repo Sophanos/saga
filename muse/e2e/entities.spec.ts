@@ -1,42 +1,80 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { getConvexHelpers } from "./fixtures/convex";
 
-function extractId(text: string | null) {
-  if (!text) return null;
-  const parts = text.split(":");
-  return parts.length > 1 ? parts.slice(1).join(":").trim() : null;
+const hasE2EHarness =
+  process.env.E2E_TEST_MODE === "true" &&
+  !!(process.env.PLAYWRIGHT_E2E_SECRET || process.env.E2E_TEST_SECRET);
+
+function skipIfNotWeb(projectName: string): boolean {
+  return projectName !== "tauri-web";
 }
 
-test("detects and persists entities", async ({ page }) => {
-  const runId = `${Date.now()}`;
+async function openProject(page: Page, projectId: string): Promise<void> {
+  await page.addInitScript((id: string) => {
+    window.localStorage.setItem("mythos:lastProjectId", id);
+  }, projectId);
+  await page.goto("/");
+}
 
-  await page.goto("/e2e");
-  await page.getByTestId("e2e-project-name").fill(`E2E/Entities/${runId}`);
-  await page.getByTestId("e2e-create-project").click();
+test.describe("E2E-04 Entity Detection + World Graph", () => {
+  test.skip(({ project }) => skipIfNotWeb(project.name), "World Graph is web-only");
+  test.skip(!hasE2EHarness, "E2E harness not configured");
 
-  const projectIdText = await page.getByTestId("e2e-project-id").textContent();
-  const projectId = extractId(projectIdText);
-  expect(projectId).toBeTruthy();
+  test("detects entities and renders world graph", async ({ page }) => {
+    const runId = `${Date.now()}`;
+    const convex = await getConvexHelpers(page);
 
-  let convex;
-  try {
-    convex = await getConvexHelpers(page);
-  } catch (error) {
-    test.skip(true, "Missing Convex auth token in storage state");
-    return;
-  }
+    const projectId = await convex.createProject({
+      name: `E2E/WorldGraph/${runId}`,
+    });
 
-  const text = "Elena walked to the Citadel.";
-  const result = await convex.detectAndPersist({
-    projectId: projectId as string,
-    text,
+    await convex.createDocument({
+      projectId,
+      type: "chapter",
+      title: `World Graph Doc ${runId}`,
+      contentText: "Seed text",
+    });
+
+    await convex.setDetectionFixture({
+      projectId,
+      entities: [
+        { name: "Elena", type: "character" },
+        { name: "Citadel", type: "location" },
+        { name: "Ashen Guard", type: "faction" },
+      ],
+    });
+
+    const detection = await convex.detectAndPersist({
+      projectId,
+      text: "Elena met the Ashen Guard at the Citadel.",
+    });
+
+    expect(detection.entities.length).toBeGreaterThanOrEqual(3);
+
+    if (detection.entities.length >= 2) {
+      await convex.createRelationship({
+        projectId,
+        sourceId: detection.entities[0].id as any,
+        targetId: detection.entities[1].id as any,
+        type: "knows",
+        bidirectional: true,
+      });
+    }
+
+    await openProject(page, projectId as string);
+    await expect(page.getByTestId("editor-surface")).toBeVisible();
+
+    await page.keyboard.press("Meta+G");
+    await page.keyboard.press("Control+G");
+
+    await expect(page.getByTestId("world-graph-view")).toBeVisible();
+
+    for (const entity of detection.entities) {
+      await expect(page.getByTestId(`wg-node-${entity.id}`)).toBeVisible();
+    }
+
+    await expect(page.getByTestId("wg-entity-count")).toHaveText(
+      String(detection.entities.length)
+    );
   });
-
-  expect(result.entities.length).toBeGreaterThan(0);
-
-  const entities = await convex.listEntities(projectId as string);
-  const names = entities.map((entity: { name: string }) => entity.name);
-
-  expect(names).toContain("Elena");
-  expect(names).toContain("Citadel");
 });

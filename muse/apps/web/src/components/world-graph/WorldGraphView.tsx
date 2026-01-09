@@ -54,7 +54,10 @@ export function WorldGraphView() {
   }, [setCanvasView]);
 
   return (
-    <div className="h-full flex flex-col bg-mythos-bg-primary relative">
+    <div
+      className="h-full flex flex-col bg-mythos-bg-primary relative"
+      data-testid="world-graph-view"
+    >
       {/* Header bar */}
       <div className="h-10 border-b border-mythos-border-default bg-mythos-bg-secondary flex items-center justify-between px-3">
         <div className="flex items-center gap-2">
@@ -68,6 +71,7 @@ export function WorldGraphView() {
           size="sm"
           onClick={handleBackToEditor}
           className="gap-1.5 text-xs"
+          data-testid="world-graph-back-to-editor"
         >
           <FileText className="w-3.5 h-3.5" />
           Editor

@@ -101,6 +101,9 @@ async function maybeKeepAiTypingAlive(opts: {
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
 const LEXICAL_LIMIT = 20;
+const E2E_TEST_MODE = process.env["E2E_TEST_MODE"] === "true";
+const SAGA_TEST_MODE = process.env["SAGA_TEST_MODE"] === "true";
+const TEST_MODE = E2E_TEST_MODE || SAGA_TEST_MODE;
 
 const openrouter = createOpenAI({
   apiKey: process.env["OPENROUTER_API_KEY"],
@@ -168,7 +171,7 @@ function createTestLanguageModel() {
 }
 
 function createSagaAgent() {
-  const testMode = process.env["SAGA_TEST_MODE"] === "true";
+  const testMode = TEST_MODE;
   const languageModel = testMode ? createTestLanguageModel() : openrouter.chat(DEFAULT_MODEL);
 
   return new Agent(components.agent, {
@@ -399,6 +402,18 @@ function buildEmptyContext(): RAGContext {
   return { documents: [], entities: [], memories: [] };
 }
 
+function resolveE2EScenario(contextHints: unknown): string | undefined {
+  if (!contextHints || typeof contextHints !== "object") return undefined;
+  const hints = contextHints as { e2eScenario?: unknown; testScenario?: unknown };
+  if (typeof hints.e2eScenario === "string" && hints.e2eScenario.trim().length > 0) {
+    return hints.e2eScenario;
+  }
+  if (typeof hints.testScenario === "string" && hints.testScenario.trim().length > 0) {
+    return hints.testScenario;
+  }
+  return undefined;
+}
+
 export const runSagaAgentChatToStream = internalAction({
   args: {
     streamId: v.string(),
@@ -414,8 +429,9 @@ export const runSagaAgentChatToStream = internalAction({
     const { streamId, projectId, userId, prompt, mode, editorContext, contextHints } = args;
     const isTemplateBuilder = projectId === "template-builder";
     const projectIdValue = projectId as Id<"projects">;
+    const testMode = TEST_MODE;
 
-    if (!process.env["OPENROUTER_API_KEY"]) {
+    if (!testMode && !process.env["OPENROUTER_API_KEY"]) {
       await ctx.runMutation((internal as any)["ai/streams"].fail, {
         streamId,
         error: "OPENROUTER_API_KEY not configured",
@@ -428,6 +444,20 @@ export const runSagaAgentChatToStream = internalAction({
 
     try {
       const startTime = Date.now();
+
+      if (E2E_TEST_MODE) {
+        const scenario = resolveE2EScenario(contextHints) ?? "default";
+        const script = await ctx.runQuery((internal as any)["e2e"].getSagaScript, {
+          projectId: projectIdValue,
+          userId,
+          scenario,
+        });
+        if (!script) {
+          throw new Error(`Missing E2E saga script for scenario: ${scenario}`);
+        }
+        setSagaTestScript(script.steps as SagaTestStreamStep[]);
+      }
+
       const sagaAgent = getSagaAgent();
       let threadId = args.threadId;
       const editorDocumentId = resolveEditorDocumentId(editorContext);
@@ -497,14 +527,15 @@ export const runSagaAgentChatToStream = internalAction({
       // Track stream started
       await ServerAgentEvents.streamStarted(userId, projectId, threadId!, DEFAULT_MODEL);
 
-      const lexicalDocuments = isTemplateBuilder
+      const shouldSkipRag = testMode || isTemplateBuilder;
+      const lexicalDocuments = shouldSkipRag
         ? []
         : await ctx.runQuery((internal as any)["ai/lexical"].searchDocuments, {
             projectId: projectIdValue,
             query: prompt,
             limit: LEXICAL_LIMIT,
           });
-      const lexicalEntities = isTemplateBuilder
+      const lexicalEntities = shouldSkipRag
         ? []
         : await ctx.runQuery((internal as any)["ai/lexical"].searchEntities, {
             projectId: projectIdValue,
@@ -512,19 +543,23 @@ export const runSagaAgentChatToStream = internalAction({
             limit: LEXICAL_LIMIT,
           });
 
-      const ragContext = await retrieveRAGContext(prompt, projectId, {
-        excludeMemories: false,
-        lexical: { documents: lexicalDocuments, entities: lexicalEntities },
-        chunkContext: { before: 2, after: 1 },
-      });
+      const ragContext = shouldSkipRag
+        ? buildEmptyContext()
+        : await retrieveRAGContext(prompt, projectId, {
+            excludeMemories: false,
+            lexical: { documents: lexicalDocuments, entities: lexicalEntities },
+            chunkContext: { before: 2, after: 1 },
+          });
 
-      // Track RAG context retrieved
-      await ServerAgentEvents.ragContextRetrieved(
-        userId,
-        ragContext.documents.length,
-        ragContext.entities.length,
-        ragContext.memories.length
-      );
+      if (!shouldSkipRag) {
+        // Track RAG context retrieved
+        await ServerAgentEvents.ragContextRetrieved(
+          userId,
+          ragContext.documents.length,
+          ragContext.entities.length,
+          ragContext.memories.length
+        );
+      }
 
       await appendStreamChunk(ctx, streamId, {
         type: "context",
@@ -871,8 +906,9 @@ export const applyToolResultAndResumeToStream = internalAction({
       actorAgentId: "muse",
       actorName: "Muse",
     };
+    const testMode = TEST_MODE;
 
-    if (!process.env["OPENROUTER_API_KEY"]) {
+    if (!testMode && !process.env["OPENROUTER_API_KEY"]) {
       await ctx.runMutation((internal as any)["ai/streams"].fail, {
         streamId,
         error: "OPENROUTER_API_KEY not configured",
@@ -885,6 +921,18 @@ export const applyToolResultAndResumeToStream = internalAction({
     let lastAiPresenceAt = 0;
 
     try {
+      if (E2E_TEST_MODE) {
+        const script = await ctx.runQuery((internal as any)["e2e"].getSagaScript, {
+          projectId: projectIdValue,
+          userId,
+          scenario: "default",
+        });
+        if (!script) {
+          throw new Error("Missing E2E saga script for tool resume");
+        }
+        setSagaTestScript(script.steps as SagaTestStreamStep[]);
+      }
+
       const sagaAgent = getSagaAgent();
       if (!isTemplateBuilder) {
         const threadAccess = await ctx.runQuery((internal as any)["ai/threads"].assertThreadAccess, {

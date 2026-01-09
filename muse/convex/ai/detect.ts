@@ -10,7 +10,9 @@
  */
 
 import { v } from "convex/values";
-import { action, internalAction } from "../_generated/server";
+import { action, internalAction, type ActionCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 
 // ============================================================
 // Constants
@@ -18,6 +20,7 @@ import { action, internalAction } from "../_generated/server";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
+const E2E_TEST_MODE = process.env["E2E_TEST_MODE"] === "true";
 
 // ============================================================
 // Types
@@ -230,6 +233,26 @@ async function runDetection(args: {
   }
 }
 
+async function maybeGetFixture(
+  ctx: ActionCtx,
+  projectId: string,
+  fixtureKey?: string
+): Promise<DetectionResult | null> {
+  if (!E2E_TEST_MODE) return null;
+
+  const fixture = await ctx.runQuery((internal as any)["e2e"].getDetectionFixture, {
+    projectId: projectId as Id<"projects">,
+    key: fixtureKey,
+  });
+
+  if (!fixture) return null;
+
+  return {
+    entities: fixture.entities,
+    stats: fixture.stats,
+  };
+}
+
 // ============================================================
 // Entity Detection Action
 // ============================================================
@@ -241,8 +264,12 @@ export const detectEntities = internalAction({
     userId: v.string(),
     entityTypes: v.optional(v.array(v.string())),
     minConfidence: v.optional(v.number()),
+    fixtureKey: v.optional(v.string()),
   },
-  handler: async (_, args): Promise<DetectionResult> => {
+  handler: async (ctx, args): Promise<DetectionResult> => {
+    const fixture = await maybeGetFixture(ctx, args.projectId, args.fixtureKey);
+    if (fixture) return fixture;
+
     const { text, entityTypes, minConfidence } = args;
     return runDetection({ text, entityTypes, minConfidence });
   },
@@ -267,12 +294,16 @@ export const detectEntitiesPublic = action({
     maxEntities: v.optional(v.number()),
     includeContext: v.optional(v.boolean()),
     contextLength: v.optional(v.number()),
+    fixtureKey: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<DetectionResult> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       throw new Error("Authentication required");
     }
+
+    const fixture = await maybeGetFixture(ctx, args.projectId, args.fixtureKey);
+    if (fixture) return fixture;
 
     const { text, entityTypes, minConfidence } = args;
     return runDetection({ text, entityTypes, minConfidence });

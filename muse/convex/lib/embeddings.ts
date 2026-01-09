@@ -16,6 +16,10 @@ const DEEPINFRA_INFERENCE_URL = "https://api.deepinfra.com/v1/inference";
 const DEEPINFRA_EMBED_MODEL = "Qwen/Qwen3-Embedding-8B";
 const DEEPINFRA_DIMENSIONS = 4096;
 const DEFAULT_TIMEOUT_MS = 30000;
+const E2E_MODE =
+  process.env["E2E_TEST_MODE"] === "true" ||
+  process.env["E2E_MOCK_AI"] === "true";
+const E2E_EMBED_MODEL = "e2e-deterministic";
 
 // ============================================================
 // Types
@@ -43,6 +47,7 @@ export class EmbeddingError extends Error {
 // ============================================================
 
 export function isDeepInfraConfigured(): boolean {
+  if (E2E_MODE) return true;
   return !!process.env["DEEPINFRA_API_KEY"];
 }
 
@@ -65,6 +70,10 @@ export async function generateEmbeddings(
   texts: string[],
   options?: { signal?: AbortSignal }
 ): Promise<EmbeddingResult> {
+  if (E2E_MODE) {
+    return generateDeterministicEmbeddings(texts);
+  }
+
   const apiKey = getApiKey();
 
   const controller = new AbortController();
@@ -163,4 +172,34 @@ function anySignal(signals: AbortSignal[]): AbortSignal {
   }
 
   return controller.signal;
+}
+
+function hashStringToSeed(text: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function generateDeterministicEmbeddings(texts: string[]): EmbeddingResult {
+  const embeddings = texts.map((text) => {
+    const vector: number[] = [];
+    let seed = hashStringToSeed(text || "");
+
+    for (let i = 0; i < DEEPINFRA_DIMENSIONS; i += 1) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const value = (seed / 0xffffffff) * 2 - 1;
+      vector.push(value);
+    }
+
+    return vector;
+  });
+
+  return {
+    embeddings,
+    dimensions: DEEPINFRA_DIMENSIONS,
+    model: E2E_EMBED_MODEL,
+  };
 }

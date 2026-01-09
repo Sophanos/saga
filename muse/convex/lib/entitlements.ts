@@ -22,6 +22,9 @@ export async function getActiveSubscription(ctx: DbContext, userId: string) {
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .filter((q) =>
       q.or(
+        q.eq(q.field("status"), "active"),
+        q.eq(q.field("status"), "trialing"),
+        q.eq(q.field("status"), "grace_period"),
         q.eq(q.field("status"), "ACTIVE"),
         q.eq(q.field("status"), "TRIALING"),
         q.eq(q.field("status"), "GRACE_PERIOD")

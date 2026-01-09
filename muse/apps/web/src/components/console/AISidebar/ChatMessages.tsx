@@ -23,6 +23,8 @@ function MessageBubble({ message, sessionWriter }: { message: ChatMessage; sessi
         "flex gap-2.5 px-3 py-2",
         isUser ? "flex-row-reverse" : "flex-row"
       )}
+      data-testid={isTool ? "chat-message-tool" : isUser ? "chat-message-user" : "chat-message-assistant"}
+      data-message-id={message.id}
     >
       {/* Avatar */}
       <div
@@ -62,7 +64,10 @@ function MessageBubble({ message, sessionWriter }: { message: ChatMessage; sessi
             <div className="whitespace-pre-wrap break-words prose prose-invert prose-sm max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0">
               {message.content}
               {message.isStreaming && (
-                <span className="inline-block w-1.5 h-4 bg-mythos-accent-primary animate-pulse ml-0.5" />
+                <span
+                  className="inline-block w-1.5 h-4 bg-mythos-accent-primary animate-pulse ml-0.5"
+                  data-testid="chat-streaming-indicator"
+                />
               )}
             </div>
           )}
@@ -126,7 +131,7 @@ export function ChatMessages({
   }
 
   return (
-    <ScrollArea className={cn("flex-1", className)} ref={scrollRef}>
+    <ScrollArea className={cn("flex-1", className)} ref={scrollRef} data-testid="chat-messages">
       <div className="py-2">
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} sessionWriter={sessionWriter} />
@@ -134,7 +139,7 @@ export function ChatMessages({
 
         {/* Loading indicator */}
         {isStreaming && messages[messages.length - 1]?.role === "user" && (
-          <div className="flex gap-2.5 px-3 py-2">
+          <div className="flex gap-2.5 px-3 py-2" data-testid="chat-thinking-indicator">
             <div className="w-7 h-7 rounded-full bg-mythos-bg-tertiary flex items-center justify-center">
               <Loader2 className="w-3.5 h-3.5 text-mythos-text-secondary animate-spin" />
             </div>

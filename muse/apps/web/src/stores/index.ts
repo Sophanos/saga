@@ -109,6 +109,7 @@ export type TemplatePickerStep = "start" | "browse" | "ai-builder" | "preview" |
 
 export type ModalState =
   | { type: "settings" }
+  | { type: "billing" }
   | { type: "import" }
   | { type: "export" }
   | { type: "entityForm"; mode: FormMode; entityType?: EntityType; entityId?: string }
