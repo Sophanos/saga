@@ -33,14 +33,14 @@ export const execute = internalAction({
     projectId: v.string(),
     userId: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<unknown> => {
     const { toolName, input, projectId, userId } = args;
 
     console.log(`[tools.execute] ${toolName}`, { projectId, userId });
 
     switch (toolName) {
       case "detect_entities":
-        return ctx.runAction(internal.ai.detect.detectEntities, {
+        return ctx.runAction((internal as any)["ai/detect"].detectEntities, {
           text: input.text,
           projectId,
           userId,
@@ -52,7 +52,28 @@ export const execute = internalAction({
         return executeCheckConsistency(input);
 
       case "genesis_world":
-        return executeGenesisWorld(input);
+        return ctx.runAction((internal as any)["ai/genesis"].runGenesisLegacy, {
+          prompt: input.prompt,
+          genre: input.genre,
+          entityCount: input.entityCount,
+          detailLevel: input.detailLevel,
+        });
+
+      case "genesis_world_enhanced":
+        return ctx.runAction((internal as any)["ai/genesis"].runGenesis, {
+          prompt: input.prompt,
+          genre: input.genre,
+          entityCount: input.entityCount,
+          detailLevel: input.detailLevel,
+          includeOutline: input.includeOutline,
+        });
+
+      case "persist_genesis_world":
+        return ctx.runAction((internal as any)["ai/genesis"].persistGenesisWorld, {
+          projectId,
+          result: input.result,
+          skipEntityTypes: input.skipEntityTypes,
+        });
 
       case "generate_template":
         return executeGenerateTemplate(input);
@@ -74,7 +95,7 @@ export const execute = internalAction({
 
       default:
         throw new Error(
-          `Unknown tool: ${toolName}. Supported tools: detect_entities, check_consistency, genesis_world, generate_template, clarity_check, name_generator, commit_decision, search_images, find_similar_images`
+          `Unknown tool: ${toolName}. Supported tools: detect_entities, check_consistency, genesis_world, genesis_world_enhanced, persist_genesis_world, generate_template, clarity_check, name_generator, commit_decision, search_images, find_similar_images`
         );
     }
   },
@@ -103,7 +124,7 @@ async function executeCheckConsistency(input: {
   }>;
   stats: { total: number; bySeverity: Record<string, number> };
 }> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
   const focusAreas = input.focus?.length
@@ -170,85 +191,6 @@ Respond with JSON containing an "issues" array.`;
   return { issues, stats: { total: issues.length, bySeverity } };
 }
 
-async function executeGenesisWorld(input: {
-  prompt: string;
-  genre?: string;
-  entityCount?: number;
-  detailLevel?: "minimal" | "standard" | "detailed";
-}): Promise<{
-  world: {
-    name: string;
-    description: string;
-    genre: string;
-    themes: string[];
-  };
-  entities: Array<{
-    name: string;
-    type: string;
-    description: string;
-    properties: Record<string, unknown>;
-  }>;
-  relationships: Array<{
-    source: string;
-    target: string;
-    type: string;
-    description: string;
-  }>;
-}> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
-
-  const entityCount = input.entityCount || 10;
-  const detailLevel = input.detailLevel || "standard";
-  const genre = input.genre || "fantasy";
-
-  const systemPrompt = `You are a worldbuilding assistant. Create a story world based on the user's prompt.
-
-Genre: ${genre}
-Entity count: approximately ${entityCount}
-Detail level: ${detailLevel}
-
-Generate:
-1. World overview (name, description, themes)
-2. Key entities (characters, locations, factions, items)
-3. Relationships between entities
-
-Respond with JSON containing: world, entities, relationships arrays.`;
-
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://mythos.app",
-      "X-Title": "Saga AI",
-    },
-    body: JSON.stringify({
-      model: DEFAULT_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: input.prompt },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 8192,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error("No response from AI");
-  }
-
-  return JSON.parse(content);
-}
-
 async function executeGenerateTemplate(input: {
   storyDescription: string;
   genreHints?: string[];
@@ -270,7 +212,7 @@ async function executeGenerateTemplate(input: {
     order: number;
   }>;
 }> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
   const complexity = input.complexity || "standard";
@@ -328,7 +270,7 @@ async function executeClarityCheck(input: {
   }>;
   score: number;
 }> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
   const maxIssues = input.maxIssues || 10;
@@ -386,7 +328,7 @@ async function executeNameGenerator(input: {
     origin?: string;
   }>;
 }> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
   const count = input.count || 10;
@@ -454,7 +396,7 @@ interface CommitDecisionResult {
 async function executeCommitDecision(
   input: CommitDecisionInput,
   projectId: string,
-  userId: string
+  _userId: string
 ): Promise<CommitDecisionResult> {
   // Validate input
   const decision = input.decision?.trim();
@@ -619,13 +561,13 @@ async function executeSearchImages(
   return {
     images: results.map((r) => ({
       id: r.id,
-      url: r.payload.url as string,
-      thumbnailUrl: r.payload.thumbnail_url as string | undefined,
-      description: r.payload.description as string | undefined,
-      entityId: r.payload.entity_id as string | undefined,
-      entityName: r.payload.entity_name as string | undefined,
-      assetType: r.payload.asset_type as string | undefined,
-      style: r.payload.style as string | undefined,
+      url: r.payload["url"] as string,
+      thumbnailUrl: r.payload["thumbnail_url"] as string | undefined,
+      description: r.payload["description"] as string | undefined,
+      entityId: r.payload["entity_id"] as string | undefined,
+      entityName: r.payload["entity_name"] as string | undefined,
+      assetType: r.payload["asset_type"] as string | undefined,
+      style: r.payload["style"] as string | undefined,
       score: r.score,
     })),
     total: results.length,
@@ -719,18 +661,18 @@ async function executeFindSimilarImages(
   return {
     images: results.map((r) => ({
       id: r.id,
-      url: r.payload.url as string,
-      thumbnailUrl: r.payload.thumbnail_url as string | undefined,
-      description: r.payload.description as string | undefined,
-      entityId: r.payload.entity_id as string | undefined,
-      entityName: r.payload.entity_name as string | undefined,
-      assetType: r.payload.asset_type as string | undefined,
+      url: r.payload["url"] as string,
+      thumbnailUrl: r.payload["thumbnail_url"] as string | undefined,
+      description: r.payload["description"] as string | undefined,
+      entityId: r.payload["entity_id"] as string | undefined,
+      entityName: r.payload["entity_name"] as string | undefined,
+      assetType: r.payload["asset_type"] as string | undefined,
       similarity: r.score,
     })),
     sourceImage: {
       id: sourceImage.id,
-      url: sourceImage.payload.url as string,
-      description: sourceImage.payload.description as string | undefined,
+      url: sourceImage.payload["url"] as string,
+      description: sourceImage.payload["description"] as string | undefined,
     },
   };
 }

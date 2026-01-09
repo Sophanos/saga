@@ -5,13 +5,18 @@
  */
 
 import { v } from "convex/values";
-import { internalAction } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal, components } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { Agent } from "@convex-dev/agent";
 import { createOpenAI } from "@ai-sdk/openai";
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
+import type {
+  LanguageModelV3GenerateResult,
+  LanguageModelV3StreamPart,
+  LanguageModelV3StreamResult,
+} from "@ai-sdk/provider";
 import { buildSystemPrompt, retrieveRAGContext, type RAGContext } from "./rag";
 import { askQuestionTool, writeContentTool } from "./tools/editorTools";
 import {
@@ -21,22 +26,33 @@ import {
   searchWorldTool,
   getEntityTool,
 } from "./tools/ragTools";
+import {
+  createEntityTool,
+  updateEntityTool,
+  createRelationshipTool,
+  updateRelationshipTool,
+  createEntityNeedsApproval,
+  updateEntityNeedsApproval,
+  createRelationshipNeedsApproval,
+  updateRelationshipNeedsApproval,
+} from "./tools/worldGraphTools";
 import { createQwenEmbeddingModel } from "../lib/deepinfraEmbedding";
+import { ServerAgentEvents } from "../lib/analytics";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
 const LEXICAL_LIMIT = 20;
 
 const openrouter = createOpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
+  apiKey: process.env["OPENROUTER_API_KEY"],
   baseURL: OPENROUTER_BASE_URL,
   headers: {
-    "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "https://mythos.app",
-    "X-Title": process.env.OPENROUTER_APP_NAME ?? "Saga AI",
+    "HTTP-Referer": process.env["OPENROUTER_SITE_URL"] ?? "https://mythos.app",
+    "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
   },
 });
 
-export type SagaTestStreamChunk = Record<string, unknown> & { type: string };
+export type SagaTestStreamChunk = LanguageModelV3StreamPart;
 
 export interface SagaTestStreamStep {
   chunks: SagaTestStreamChunk[];
@@ -54,34 +70,46 @@ function normalizeTestChunks(chunks: SagaTestStreamChunk[]): SagaTestStreamChunk
     normalized.push({
       type: "finish",
       finishReason: { unified: "stop", raw: "stop" },
-      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      usage: {
+        inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 0, text: 0, reasoning: 0 },
+      },
     });
   }
   return normalized;
 }
 
 function createTestLanguageModel() {
-  return new MockLanguageModelV3({
-    doGenerate: async () =>
-      ({
-        text: "",
-        finishReason: { unified: "stop", raw: "stop" },
-        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-      }) as unknown as Record<string, unknown>,
-    doStream: async () => {
-      const step = sagaTestScript.shift();
-      if (!step) {
-        throw new Error("No saga test script step available");
-      }
-      return {
-        stream: simulateReadableStream({ chunks: normalizeTestChunks(step.chunks) }),
-      };
+  const generateResult: LanguageModelV3GenerateResult = {
+    content: [],
+    finishReason: { unified: "stop", raw: "stop" },
+    usage: {
+      inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 0, text: 0, reasoning: 0 },
     },
+    warnings: [],
+  };
+
+  const doStream = async (): Promise<LanguageModelV3StreamResult> => {
+    const step = sagaTestScript.shift();
+    if (!step) {
+      throw new Error("No saga test script step available");
+    }
+    return {
+      stream: simulateReadableStream<LanguageModelV3StreamPart>({
+        chunks: normalizeTestChunks(step.chunks),
+      }),
+    };
+  };
+
+  return new MockLanguageModelV3({
+    doGenerate: generateResult,
+    doStream,
   });
 }
 
 function createSagaAgent() {
-  const testMode = process.env.SAGA_TEST_MODE === "true";
+  const testMode = process.env["SAGA_TEST_MODE"] === "true";
   const languageModel = testMode ? createTestLanguageModel() : openrouter.chat(DEFAULT_MODEL);
 
   return new Agent(components.agent, {
@@ -120,6 +148,10 @@ function createSagaAgent() {
       search_chapters: searchChaptersTool,
       search_world: searchWorldTool,
       get_entity: getEntityTool,
+      create_entity: createEntityTool,
+      update_entity: updateEntityTool,
+      create_relationship: createRelationshipTool,
+      update_relationship: updateRelationshipTool,
     },
     maxSteps: 8,
   });
@@ -137,7 +169,7 @@ export function setSagaTestScript(steps: SagaTestStreamStep[]) {
   _agent = null;
 }
 
-const approvalTools = new Set(["ask_question", "write_content"]);
+const staticApprovalTools = new Set(["ask_question", "write_content"]);
 const autoExecuteTools = new Set([
   "search_context",
   "read_document",
@@ -145,8 +177,29 @@ const autoExecuteTools = new Set([
   "search_world",
   "get_entity",
 ]);
+const worldGraphTools = new Set([
+  "create_entity",
+  "update_entity",
+  "create_relationship",
+  "update_relationship",
+]);
 
-type ActionCtx = Parameters<Parameters<typeof internalAction>[0]>[0];
+function needsToolApproval(toolName: string, args: Record<string, unknown>): boolean {
+  if (staticApprovalTools.has(toolName)) return true;
+
+  switch (toolName) {
+    case "create_entity":
+      return createEntityNeedsApproval(args as Parameters<typeof createEntityNeedsApproval>[0]);
+    case "update_entity":
+      return updateEntityNeedsApproval(args as Parameters<typeof updateEntityNeedsApproval>[0]);
+    case "create_relationship":
+      return createRelationshipNeedsApproval(args as Parameters<typeof createRelationshipNeedsApproval>[0]);
+    case "update_relationship":
+      return updateRelationshipNeedsApproval(args as Parameters<typeof updateRelationshipNeedsApproval>[0]);
+    default:
+      return false;
+  }
+}
 
 async function executeRagTool(
   ctx: ActionCtx,
@@ -156,42 +209,75 @@ async function executeRagTool(
 ): Promise<unknown> {
   switch (toolName) {
     case "search_context":
-      return ctx.runAction(internal.ai.tools.ragHandlers.executeSearchContext, {
+      // @ts-expect-error Type instantiation deep
+      return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeSearchContext, {
         projectId,
-        query: args.query as string,
-        scope: args.scope as string | undefined,
-        limit: args.limit as number | undefined,
+        query: args["query"] as string,
+        scope: args["scope"] as string | undefined,
+        limit: args["limit"] as number | undefined,
       });
     case "read_document":
-      return ctx.runAction(internal.ai.tools.ragHandlers.executeReadDocument, {
+      return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeReadDocument, {
         projectId,
-        documentId: args.documentId as string,
+        documentId: args["documentId"] as string,
       });
     case "search_chapters":
-      return ctx.runAction(internal.ai.tools.ragHandlers.executeSearchChapters, {
+      return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeSearchChapters, {
         projectId,
-        query: args.query as string,
-        type: args.type as string | undefined,
+        query: args["query"] as string,
+        type: args["type"] as string | undefined,
       });
     case "search_world":
-      return ctx.runAction(internal.ai.tools.ragHandlers.executeSearchWorld, {
+      return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeSearchWorld, {
         projectId,
-        query: args.query as string,
-        category: args.category as string | undefined,
+        query: args["query"] as string,
+        category: args["category"] as string | undefined,
       });
     case "get_entity":
-      return ctx.runAction(internal.ai.tools.ragHandlers.executeGetEntity, {
+      return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeGetEntity, {
         projectId,
-        entityId: args.entityId as string,
-        includeRelationships: args.includeRelationships as boolean | undefined,
+        entityId: args["entityId"] as string,
+        includeRelationships: args["includeRelationships"] as boolean | undefined,
       });
     default:
       throw new Error(`Unknown RAG tool: ${toolName}`);
   }
 }
 
+async function executeWorldGraphTool(
+  ctx: ActionCtx,
+  toolName: string,
+  args: Record<string, unknown>,
+  projectId: string
+): Promise<unknown> {
+  switch (toolName) {
+    case "create_entity":
+      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeCreateEntity, {
+        projectId,
+        toolArgs: args,
+      });
+    case "update_entity":
+      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeUpdateEntity, {
+        projectId,
+        toolArgs: args,
+      });
+    case "create_relationship":
+      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeCreateRelationship, {
+        projectId,
+        toolArgs: args,
+      });
+    case "update_relationship":
+      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeUpdateRelationship, {
+        projectId,
+        toolArgs: args,
+      });
+    default:
+      throw new Error(`Unknown world graph tool: ${toolName}`);
+  }
+}
+
 async function appendStreamChunk(
-  ctx: Parameters<Parameters<typeof internalAction>[0]>[0],
+  ctx: ActionCtx,
   streamId: string,
   chunk: {
     type: string;
@@ -204,7 +290,7 @@ async function appendStreamChunk(
     promptMessageId?: string;
   }
 ) {
-  await ctx.runMutation(internal.ai.streams.appendChunk, {
+  await ctx.runMutation((internal as any)["ai/streams"].appendChunk, {
     streamId,
     chunk,
   });
@@ -230,8 +316,8 @@ export const runSagaAgentChatToStream = internalAction({
     const isTemplateBuilder = projectId === "template-builder";
     const projectIdValue = projectId as Id<"projects">;
 
-    if (!process.env.OPENROUTER_API_KEY) {
-      await ctx.runMutation(internal.ai.streams.fail, {
+    if (!process.env["OPENROUTER_API_KEY"]) {
+      await ctx.runMutation((internal as any)["ai/streams"].fail, {
         streamId,
         error: "OPENROUTER_API_KEY not configured",
       });
@@ -239,10 +325,11 @@ export const runSagaAgentChatToStream = internalAction({
     }
 
     try {
+      const startTime = Date.now();
       const sagaAgent = getSagaAgent();
       let threadId = args.threadId;
       if (threadId && !isTemplateBuilder) {
-        await ctx.runQuery(internal.ai.threads.assertThreadOwnership, {
+        await ctx.runQuery((internal as any)["ai/threads"].assertThreadOwnership, {
           threadId,
           projectId: projectIdValue,
           userId,
@@ -255,7 +342,7 @@ export const runSagaAgentChatToStream = internalAction({
       }
 
       if (!isTemplateBuilder) {
-        await ctx.runMutation(internal.ai.threads.upsertThread, {
+        await ctx.runMutation((internal as any)["ai/threads"].upsertThread, {
           threadId,
           projectId: projectIdValue,
           userId,
@@ -270,22 +357,25 @@ export const runSagaAgentChatToStream = internalAction({
           content: prompt,
         },
         metadata: {
-          projectId,
-          editorContext,
-          contextHints,
+          providerMetadata: {
+            saga: { projectId, editorContext, contextHints },
+          },
         },
       });
 
+      // Track stream started
+      await ServerAgentEvents.streamStarted(userId, projectId, threadId!, DEFAULT_MODEL);
+
       const lexicalDocuments = isTemplateBuilder
         ? []
-        : await ctx.runQuery(internal.ai.lexical.searchDocuments, {
+        : await ctx.runQuery((internal as any)["ai/lexical"].searchDocuments, {
             projectId: projectIdValue,
             query: prompt,
             limit: LEXICAL_LIMIT,
           });
       const lexicalEntities = isTemplateBuilder
         ? []
-        : await ctx.runQuery(internal.ai.lexical.searchEntities, {
+        : await ctx.runQuery((internal as any)["ai/lexical"].searchEntities, {
             projectId: projectIdValue,
             query: prompt,
             limit: LEXICAL_LIMIT,
@@ -296,6 +386,14 @@ export const runSagaAgentChatToStream = internalAction({
         lexical: { documents: lexicalDocuments, entities: lexicalEntities },
         chunkContext: { before: 2, after: 1 },
       });
+
+      // Track RAG context retrieved
+      await ServerAgentEvents.ragContextRetrieved(
+        userId,
+        ragContext.documents.length,
+        ragContext.entities.length,
+        ragContext.memories.length
+      );
 
       await appendStreamChunk(ctx, streamId, {
         type: "context",
@@ -318,7 +416,7 @@ export const runSagaAgentChatToStream = internalAction({
         {
           promptMessageId,
           system: systemPrompt,
-        }
+        } as any
       );
 
       for await (const delta of result.textStream) {
@@ -335,11 +433,15 @@ export const runSagaAgentChatToStream = internalAction({
       let currentPromptMessageId = promptMessageId;
 
       while (toolCalls.length > 0) {
-        const autoExecuteCalls = toolCalls.filter((c) => autoExecuteTools.has(c.toolName));
-        const pendingCalls = toolCalls.filter((c) => !autoExecuteTools.has(c.toolName));
+        const ragCalls = toolCalls.filter((c) => autoExecuteTools.has(c.toolName));
+        const worldGraphCalls = toolCalls.filter((c) => worldGraphTools.has(c.toolName));
+        const otherCalls = toolCalls.filter(
+          (c) => !autoExecuteTools.has(c.toolName) && !worldGraphTools.has(c.toolName)
+        );
 
-        for (const call of autoExecuteCalls) {
-          const toolResult = await executeRagTool(ctx, call.toolName, call.args, projectId);
+        // Execute RAG tools (always auto)
+        for (const call of ragCalls) {
+          const toolResult = await executeRagTool(ctx, call.toolName, call.input as Record<string, unknown>, projectId);
 
           await sagaAgent.saveMessage(ctx, {
             threadId: threadId!,
@@ -355,20 +457,71 @@ export const runSagaAgentChatToStream = internalAction({
             content: "",
             toolCallId: call.toolCallId,
             toolName: call.toolName,
-            args: call.args,
+            args: call.input,
             data: toolResult,
           });
         }
 
-        for (const call of pendingCalls) {
-          if (approvalTools.has(call.toolName)) {
+        // Process world graph tools - auto-execute or request approval based on impact
+        const autoWorldGraphCalls: typeof worldGraphCalls = [];
+        const pendingWorldGraphCalls: typeof worldGraphCalls = [];
+
+        for (const call of worldGraphCalls) {
+          const args = call.input as Record<string, unknown>;
+          if (needsToolApproval(call.toolName, args)) {
+            pendingWorldGraphCalls.push(call);
+          } else {
+            autoWorldGraphCalls.push(call);
+          }
+        }
+
+        // Auto-execute low-impact world graph tools
+        for (const call of autoWorldGraphCalls) {
+          const toolResult = await executeWorldGraphTool(ctx, call.toolName, call.input as Record<string, unknown>, projectId);
+
+          await sagaAgent.saveMessage(ctx, {
+            threadId: threadId!,
+            userId,
+            message: {
+              role: "tool",
+              content: [{ type: "tool-result", toolCallId: call.toolCallId, toolName: call.toolName, result: toolResult }],
+            },
+          });
+
+          await appendStreamChunk(ctx, streamId, {
+            type: "tool",
+            content: "",
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            args: call.input,
+            data: toolResult,
+          });
+        }
+
+        // Request approval for high-impact world graph tools
+        for (const call of pendingWorldGraphCalls) {
+          await appendStreamChunk(ctx, streamId, {
+            type: "tool-approval-request",
+            content: "",
+            approvalId: call.toolCallId,
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            args: call.input,
+            promptMessageId: currentPromptMessageId,
+          });
+        }
+
+        // Handle other tools (ask_question, write_content)
+        for (const call of otherCalls) {
+          const args = call.input as Record<string, unknown>;
+          if (needsToolApproval(call.toolName, args)) {
             await appendStreamChunk(ctx, streamId, {
               type: "tool-approval-request",
               content: "",
               approvalId: call.toolCallId,
               toolCallId: call.toolCallId,
               toolName: call.toolName,
-              args: call.args,
+              args: call.input,
               promptMessageId: currentPromptMessageId,
             });
           } else {
@@ -377,20 +530,23 @@ export const runSagaAgentChatToStream = internalAction({
               content: "",
               toolCallId: call.toolCallId,
               toolName: call.toolName,
-              args: call.args,
+              args: call.input,
               promptMessageId: currentPromptMessageId,
             });
           }
         }
 
-        if (pendingCalls.length > 0 || autoExecuteCalls.length === 0) {
+        // Stop if there are pending approvals
+        const pendingCalls = [...pendingWorldGraphCalls, ...otherCalls];
+        const autoExecutedCalls = [...ragCalls, ...autoWorldGraphCalls];
+        if (pendingCalls.length > 0 || autoExecutedCalls.length === 0) {
           break;
         }
 
         currentResult = await sagaAgent.streamText(
           ctx,
           { threadId: threadId! },
-          { promptMessageId: currentPromptMessageId, system: systemPrompt }
+          { promptMessageId: currentPromptMessageId, system: systemPrompt } as any
         );
 
         for await (const delta of currentResult.textStream) {
@@ -402,10 +558,17 @@ export const runSagaAgentChatToStream = internalAction({
         toolCalls = await currentResult.toolCalls;
       }
 
-      await ctx.runMutation(internal.ai.streams.complete, { streamId });
+      // Track stream completed
+      await ServerAgentEvents.streamCompleted(userId, Date.now() - startTime);
+
+      await ctx.runMutation((internal as any)["ai/streams"].complete, { streamId });
     } catch (error) {
       console.error("[agentRuntime.runSagaAgentChatToStream] Error:", error);
-      await ctx.runMutation(internal.ai.streams.fail, {
+
+      // Track stream failed
+      await ServerAgentEvents.streamFailed(userId, error instanceof Error ? error.message : "Unknown error");
+
+      await ctx.runMutation((internal as any)["ai/streams"].fail, {
         streamId,
         error: error instanceof Error ? error.message : "Unknown error",
       });
@@ -440,8 +603,8 @@ export const applyToolResultAndResumeToStream = internalAction({
     const isTemplateBuilder = projectId === "template-builder";
     const projectIdValue = projectId as Id<"projects">;
 
-    if (!process.env.OPENROUTER_API_KEY) {
-      await ctx.runMutation(internal.ai.streams.fail, {
+    if (!process.env["OPENROUTER_API_KEY"]) {
+      await ctx.runMutation((internal as any)["ai/streams"].fail, {
         streamId,
         error: "OPENROUTER_API_KEY not configured",
       });
@@ -451,7 +614,7 @@ export const applyToolResultAndResumeToStream = internalAction({
     try {
       const sagaAgent = getSagaAgent();
       if (!isTemplateBuilder) {
-        await ctx.runQuery(internal.ai.threads.assertThreadOwnership, {
+        await ctx.runQuery((internal as any)["ai/threads"].assertThreadOwnership, {
           threadId,
           projectId: projectIdValue,
           userId,
@@ -473,7 +636,7 @@ export const applyToolResultAndResumeToStream = internalAction({
           ],
         },
         metadata: {
-          projectId,
+          providerMetadata: { saga: { projectId } },
         },
       });
 
@@ -489,7 +652,7 @@ export const applyToolResultAndResumeToStream = internalAction({
         {
           promptMessageId,
           system: systemPrompt,
-        }
+        } as any
       );
 
       for await (const delta of resumeResult.textStream) {
@@ -503,14 +666,15 @@ export const applyToolResultAndResumeToStream = internalAction({
 
       const toolCalls = await resumeResult.toolCalls;
       for (const call of toolCalls) {
-        if (approvalTools.has(call.toolName)) {
+        const callArgs = call.input as Record<string, unknown>;
+        if (needsToolApproval(call.toolName, callArgs)) {
           await appendStreamChunk(ctx, streamId, {
             type: "tool-approval-request",
             content: "",
             approvalId: call.toolCallId,
             toolCallId: call.toolCallId,
             toolName: call.toolName,
-            args: call.args,
+            args: call.input,
             promptMessageId,
           });
         } else {
@@ -519,16 +683,16 @@ export const applyToolResultAndResumeToStream = internalAction({
             content: "",
             toolCallId: call.toolCallId,
             toolName: call.toolName,
-            args: call.args,
+            args: call.input,
             promptMessageId,
           });
         }
       }
 
-      await ctx.runMutation(internal.ai.streams.complete, { streamId });
+      await ctx.runMutation((internal as any)["ai/streams"].complete, { streamId });
     } catch (error) {
       console.error("[agentRuntime.applyToolResultAndResumeToStream] Error:", error);
-      await ctx.runMutation(internal.ai.streams.fail, {
+      await ctx.runMutation((internal as any)["ai/streams"].fail, {
         streamId,
         error: error instanceof Error ? error.message : "Unknown error",
       });
