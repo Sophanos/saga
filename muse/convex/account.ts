@@ -31,7 +31,8 @@ export const deleteMyAccount = action({
     const userId = identity.subject;
 
     // Run the deletion cascade in a mutation
-    const result = await ctx.runMutation(internal.account.deleteUserDataInternal, {
+    // @ts-ignore Convex internal API types are too deep for this callsite.
+    const result = await ctx.runMutation((internal as any).account.deleteUserDataInternal, {
       userId,
     });
 
@@ -116,7 +117,7 @@ export const deleteUserDataInternal = internalMutation({
     // Note: project-scoped threads are deleted with project cascade
     // This catches any orphaned threads
     const threads = await ctx.db.query("sagaThreads").collect();
-    const userThreads = threads.filter((t) => t.userId === userId);
+    const userThreads = threads.filter((t) => t.createdBy === userId);
 
     for (const thread of userThreads) {
       await ctx.db.delete(thread._id);

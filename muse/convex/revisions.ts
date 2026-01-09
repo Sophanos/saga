@@ -13,6 +13,8 @@ import { EditorState } from "@tiptap/pm/state";
 
 const prosemirrorSync = new ProsemirrorSync(components.prosemirrorSync);
 const AUTO_REVISION_THROTTLE_MS = 60_000;
+const apiAny = api as any;
+const internalAny = internal as any;
 
 export const listByDocument = query({
   args: {
@@ -187,23 +189,23 @@ export const restoreRevision = action({
       throw new Error("Unauthenticated");
     }
 
-    const document = (await ctx.runQuery(
-      (api as any).documents.get,
+    const document = (await (ctx.runQuery as any)(
+      apiAny.documents.get,
       { id: documentId }
     )) as any;
     if (!document) {
       throw new Error("Document not found");
     }
 
-    const isEditor = await ctx.runQuery(
-      (internal as any).collaboration.isProjectEditor,
+    const isEditor = await (ctx.runQuery as any)(
+      internalAny.collaboration.isProjectEditor,
       { projectId: document.projectId, userId: identity.subject }
     );
     if (!isEditor) {
       throw new Error("Edit access denied");
     }
 
-    const revision = await ctx.runQuery(api.revisions.getRevision, { revisionId });
+    const revision = await (ctx.runQuery as any)(apiAny.revisions.getRevision, { revisionId });
     if (!revision) {
       throw new Error("Revision not found");
     }
@@ -218,8 +220,8 @@ export const restoreRevision = action({
     });
 
     const contentHash = await hashSnapshot(revision.snapshotJson);
-    const latest = await ctx.runQuery(
-      (internal as any).revisions.getLatestByDocument,
+    const latest = await (ctx.runQuery as any)(
+      internalAny.revisions.getLatestByDocument,
       { documentId }
     );
 
