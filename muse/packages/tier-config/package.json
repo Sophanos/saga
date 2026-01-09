@@ -12,6 +12,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@mythos/typescript-config": "workspace:*",
     "typescript": "^5.3.0"
   }
 }

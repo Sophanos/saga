@@ -17,11 +17,18 @@ export {
   TIERS,
   BYOK_OVERRIDES,
   // Functions
-  getTierConfig,
+  getTierDefaults,
   getMemoryRetentionMs,
   calculateMemoryExpiry,
   isModelAvailable,
+  isAIFeatureEnabled,
   isFeatureEnabled,
   getEffectiveAIConfig,
   checkQuota,
-} from "../../convex/lib/tierConfig";
+  dbToTierConfig,
+  getTierOrder,
+  isTierHigher,
+  getNextTier,
+} from "../../../convex/lib/tierConfig";
+
+export { getTierDefaults as getTierConfig } from "../../../convex/lib/tierConfig";
