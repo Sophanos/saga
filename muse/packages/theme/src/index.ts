@@ -106,3 +106,19 @@ export {
   type CharacterRole,
   type Rarity,
 } from "./semantic";
+
+// Shadows
+export {
+  shadows,
+  getNativeShadow,
+  getWebShadow,
+  type Shadow,
+  type ShadowDefinition,
+} from "./shadows";
+
+// Theme utilities
+export {
+  getTheme,
+  type ColorScheme,
+  type Theme,
+} from "./theme";
