@@ -56,6 +56,8 @@ test-results
 test-results/
 .playwright
 .playwright/
+e2e/.compiled
+e2e/.compiled/
 
 # Logs
 logs

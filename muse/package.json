@@ -19,11 +19,12 @@
     "test": "turbo test",
     "clean": "turbo clean && rm -rf node_modules",
     "typecheck": "turbo typecheck",
-    "e2e": "PLAYWRIGHT_TARGETS=expo-web,tauri-web bunx playwright test -c e2e/playwright.config.ts --project=expo-web --project=tauri-web",
-    "e2e:expo": "PLAYWRIGHT_TARGETS=expo-web bunx playwright test -c e2e/playwright.config.ts --project=expo-web",
-    "e2e:tauri": "PLAYWRIGHT_TARGETS=tauri-web bunx playwright test -c e2e/playwright.config.ts --project=tauri-web",
-    "e2e:ui": "bunx playwright test -c e2e/playwright.config.ts --ui",
-    "e2e:install": "bunx playwright install --with-deps"
+    "e2e:build": "node --max-old-space-size=8192 ./node_modules/.bin/tsc -p e2e/tsconfig.json --pretty false || true",
+    "e2e": "bun run e2e:build && PLAYWRIGHT_TARGETS=expo-web,tauri-web node ./node_modules/.bin/playwright test -c e2e/playwright.config.cjs --project=expo-web --project=tauri-web",
+    "e2e:expo": "bun run e2e:build && PLAYWRIGHT_TARGETS=expo-web node ./node_modules/.bin/playwright test -c e2e/playwright.config.cjs --project=expo-web",
+    "e2e:tauri": "bun run e2e:build && PLAYWRIGHT_TARGETS=tauri-web node ./node_modules/.bin/playwright test -c e2e/playwright.config.cjs --project=tauri-web",
+    "e2e:ui": "bun run e2e:build && node ./node_modules/.bin/playwright test -c e2e/playwright.config.cjs --ui",
+    "e2e:install": "node ./node_modules/.bin/playwright install --with-deps"
   },
   "devDependencies": {
     "@ai-sdk/provider": "^3.0.2",
@@ -32,6 +33,7 @@
     "@types/node": "^25.0.3",
     "convex-test": "^0.0.38",
     "eslint": "^8.57.0",
+    "playwright": "^1.57.0",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2",
     "vitest": "^4.0.16"

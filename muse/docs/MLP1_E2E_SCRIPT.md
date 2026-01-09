@@ -14,18 +14,25 @@ Note: “Tauri native shell” automation is not covered by Playwright alone in 
 - Projects created by E2E must be named with a prefix: `E2E/<suite>/<timestamp>` for easy cleanup.
 - Use unique emails per run: `e2e+<runId>@example.com`.
 
-## Required Environment Variables
-- `PLAYWRIGHT_EXPO_URL` (optional) default `http://localhost:19006`
-- `PLAYWRIGHT_TAURI_URL` (optional) default `http://localhost:1420`
-- `PLAYWRIGHT_TARGETS` (optional) comma list of projects for storage setup (e.g. `expo-web,tauri-web`)
-- `CONVEX_URL` (required for backend polling/setup)
+## Environment Variables
+Required:
+- `CONVEX_URL` (dedicated E2E deployment for backend polling/setup; do not rely on the default fallback)
 - `EXPO_PUBLIC_CONVEX_URL` / `EXPO_PUBLIC_CONVEX_SITE_URL` (as required by local dev)
-- `OPENROUTER_API_KEY` (only if not using mock mode)
+- `EXPO_PUBLIC_E2E=true` (enable the Expo E2E harness route)
 - `E2E_TEST_MODE=true` (enable deterministic E2E harness paths)
 - `E2E_TEST_SECRET` / `PLAYWRIGHT_E2E_SECRET` (shared secret for Convex E2E mutations/actions)
-- `E2E_MOCK_AI=true` (recommended for CI reliability)
 - `QDRANT_URL` (required for E2E-06 RAG pipeline)
-- `EXPO_PUBLIC_E2E=true` (enable the Expo E2E harness route)
+
+Optional / recommended:
+- `PLAYWRIGHT_START_SERVERS=true` (auto-start Expo/Tauri web servers)
+- `PLAYWRIGHT_CONVEX_URL` (override Convex URL for tests)
+- `PLAYWRIGHT_EXPO_URL` (default `http://localhost:19006`)
+- `PLAYWRIGHT_TAURI_URL` (default `http://localhost:1420`)
+- `PLAYWRIGHT_TARGETS` (comma list of projects for storage setup, e.g. `expo-web,tauri-web`)
+- `PLAYWRIGHT_RUN_ID` (stable E2E user suffix)
+- `PLAYWRIGHT_E2E_PASSWORD` (override default E2E password)
+- `E2E_MOCK_AI=true` (recommended for CI reliability)
+- `OPENROUTER_API_KEY` (only if not using mock mode)
 
 ## E2E-01: Infrastructure
 ### Scope
@@ -35,7 +42,8 @@ Note: “Tauri native shell” automation is not covered by Playwright alone in 
 - Polling utilities for debounced autosave and eventual consistency
 
 ### Artifacts
-- `muse/e2e/playwright.config.mjs`
+- `muse/e2e/playwright.config.cjs`
+- `muse/e2e/tsconfig.json` (precompile config)
 - `muse/e2e/global-setup.ts`
 - `muse/e2e/fixtures/auth.ts`
 - `muse/e2e/fixtures/convex.ts`
@@ -143,6 +151,12 @@ Note: “Tauri native shell” automation is not covered by Playwright alone in 
 - Expo E2E: `bun run e2e:expo`
 - Tauri (web content) E2E: `bun run e2e:tauri`
 - Full suite: `bun run e2e`
+- Debugging helpers: `--headed`, `--ui`, `--debug`, `--last-failed`, `-g "title"`
+
+## Known Issues / Remaining Work
+- Node 25 + Playwright TS ESM loader requires a precompile step; E2E tests are compiled to `muse/e2e/.compiled`, and the runner uses `muse/e2e/playwright.config.cjs`.
+- `e2e:build` emits JS even with type errors; tighten this if we want strict TS gating for E2E.
+- Global setup can time out waiting for the Expo sign-in form; ensure the Expo server is ready (or increase web server timeouts and add explicit readiness checks).
 
 ## Output
 - HTML report: `playwright-report/`

@@ -1,13 +1,10 @@
-import { defineConfig, devices } from "@playwright/test";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const { defineConfig, devices } = require("@playwright/test");
+const path = require("path");
 
 const expoBaseURL = process.env.PLAYWRIGHT_EXPO_URL ?? "http://localhost:19006";
 const tauriBaseURL = process.env.PLAYWRIGHT_TAURI_URL ?? "http://localhost:1420";
 
+const compiledDir = path.join(__dirname, ".compiled");
 const authDir = path.join(__dirname, "..", ".playwright", ".auth");
 const expoStorageState = path.join(authDir, "expo-web.json");
 const tauriStorageState = path.join(authDir, "tauri-web.json");
@@ -45,8 +42,8 @@ const webServers = shouldStartServers
     ].filter(Boolean)
   : undefined;
 
-export default defineConfig({
-  testDir: __dirname,
+module.exports = defineConfig({
+  testDir: compiledDir,
   timeout: 60_000,
   expect: {
     timeout: 10_000,
@@ -57,7 +54,7 @@ export default defineConfig({
     ["list"],
   ],
   outputDir: "../test-results",
-  globalSetup: path.join(__dirname, "global-setup"),
+  globalSetup: path.join(compiledDir, "global-setup.js"),
   webServer: webServers,
   use: {
     trace: "on-first-retry",

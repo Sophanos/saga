@@ -1,11 +1,7 @@
 import { chromium } from "@playwright/test";
 import path from "path";
-import { fileURLToPath } from "url";
 import { mkdir } from "fs/promises";
 import { buildTestUser, signInUI, signUpUI } from "./fixtures/auth";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const expoBaseURL = process.env.PLAYWRIGHT_EXPO_URL ?? "http://localhost:19006";
 const tauriBaseURL = process.env.PLAYWRIGHT_TAURI_URL ?? "http://localhost:1420";
