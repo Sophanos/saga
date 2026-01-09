@@ -2,7 +2,10 @@ import type { NodeViewProps } from "@tiptap/react";
 import { NodeViewWrapper } from "@tiptap/react";
 import { FileText, Plus, Trash2, X } from "lucide-react";
 import { cn } from "@mythos/ui";
-import { createDocument, deleteDocument, mapDbDocumentToDocument } from "@mythos/db";
+import type { Document } from "@mythos/core";
+import { useMutation } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useCurrentProject, useMythosStore } from "../../stores";
 import { BlockHeader } from "./BlockHeader";
 
@@ -44,6 +47,10 @@ export function SceneListBlock({
   const setCanvasView = useMythosStore((state) => state.setCanvasView);
   const addDocument = useMythosStore((state) => state.addDocument);
   const setDocuments = useMythosStore((state) => state.setDocuments);
+
+  // Convex mutations
+  const createDocumentMutation = useMutation(api.documents.create);
+  const deleteDocumentMutation = useMutation(api.documents.remove);
 
   const resolvedChapterId =
     chapterId ??
@@ -107,21 +114,36 @@ export function SceneListBlock({
         : 0;
     const nextSceneNumber = siblingScenes.length + 1;
     const title = `Scene ${nextSceneNumber}`;
+    const emptyContent = { type: "doc", content: [{ type: "paragraph" }] };
 
     try {
-      const created = await createDocument({
-        project_id: currentProject.id,
-        parent_id: parentId,
+      const createdId = await createDocumentMutation({
+        projectId: currentProject.id as Id<"projects">,
+        parentId: parentId as Id<"documents">,
         type: "scene",
         title,
-        content: { type: "doc", content: [{ type: "paragraph" }] },
-        content_text: "",
-        order_index: nextOrderIndex,
-        word_count: 0,
+        content: emptyContent as Record<string, unknown>,
+        contentText: "",
+        orderIndex: nextOrderIndex,
+        wordCount: 0,
       });
-      const mapped = mapDbDocumentToDocument(created);
-      addDocument(mapped);
-      setCurrentDocument(mapped);
+
+      const newDocument: Document = {
+        id: createdId,
+        projectId: currentProject.id,
+        parentId,
+        type: "scene",
+        title,
+        content: emptyContent,
+        contentText: "",
+        orderIndex: nextOrderIndex,
+        wordCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      addDocument(newDocument);
+      setCurrentDocument(newDocument);
       setCanvasView("editor");
     } catch (err) {
       console.warn("Failed to create scene:", err);
@@ -130,7 +152,7 @@ export function SceneListBlock({
 
   const handleDeleteScene = async (sceneId: string) => {
     try {
-      await deleteDocument(sceneId);
+      await deleteDocumentMutation({ id: sceneId as Id<"documents"> });
       const { document } = useMythosStore.getState();
       const nextDocuments = document.documents.filter((doc) => doc.id !== sceneId);
       setDocuments(nextDocuments);
@@ -145,7 +167,7 @@ export function SceneListBlock({
   const handleDeleteChapter = async () => {
     if (!chapterDocument) return;
     try {
-      await deleteDocument(chapterDocument.id);
+      await deleteDocumentMutation({ id: chapterDocument.id as Id<"documents"> });
       const { document } = useMythosStore.getState();
       const nextDocuments = document.documents.filter(
         (doc) => doc.id !== chapterDocument.id && doc.parentId !== chapterDocument.id

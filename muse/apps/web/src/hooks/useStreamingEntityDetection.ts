@@ -1,61 +1,43 @@
 /**
  * useStreamingEntityDetection - Progressive Entity Detection Hook
  *
- * Consumes the ai-detect-stream SSE endpoint to receive entities one-by-one
- * as they're detected, providing immediate visual feedback in the UI.
+ * Uses Convex action for entity detection with progressive UI feedback.
+ * Entities are added one-by-one to the state for visual feedback,
+ * simulating streaming behavior.
  *
  * @example
  * ```tsx
  * const { detectEntities, entities, stats, isStreaming, error } = useStreamingEntityDetection();
  *
  * // Start detection
- * await detectEntities(text, { minConfidence: 0.7 });
+ * await detectEntities(text, projectId, { minConfidence: 0.7 });
  *
- * // Entities appear one-by-one in `entities` array
+ * // Entities appear progressively in `entities` array
  * // Stats available after completion in `stats`
  * ```
  */
 
 import { useState, useCallback, useRef } from "react";
+import { useAction } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import type {
   DetectedEntity,
   DetectionStats,
   DetectionOptions,
   EntityType,
 } from "@mythos/core";
-// Configuration from environment
-const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "";
-
-/**
- * Get API key from store or local storage
- * This mirrors the pattern used in other AI service clients
- */
-function getApiKey(): string | undefined {
-  // Try to get from localStorage (where settings are stored)
-  try {
-    const settings = localStorage.getItem("mythos-settings");
-    if (settings) {
-      const parsed = JSON.parse(settings);
-      if (parsed.state?.apiKey) {
-        return parsed.state.apiKey;
-      }
-    }
-  } catch {
-    // Ignore parse errors
-  }
-  return undefined;
-}
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface StreamingDetectionState {
-  /** Entities detected so far (grows as stream progresses) */
+  /** Entities detected so far (grows as they're added progressively) */
   entities: DetectedEntity[];
-  /** Final stats (available after stream completes) */
+  /** Final stats (available after detection completes) */
   stats: DetectionStats | null;
-  /** Whether detection is currently streaming */
+  /** Whether detection is currently in progress */
   isStreaming: boolean;
   /** Error if detection failed */
   error: string | null;
@@ -64,12 +46,14 @@ export interface StreamingDetectionState {
 }
 
 export interface StreamingDetectionOptions extends DetectionOptions {
-  /** Callback fired for each entity as it's detected */
+  /** Callback fired for each entity as it's added to state */
   onEntity?: (entity: DetectedEntity) => void;
   /** Callback fired when all detection is complete */
   onComplete?: (entities: DetectedEntity[], stats: DetectionStats) => void;
   /** Callback fired on error */
   onError?: (error: string) => void;
+  /** Delay between adding entities to state (ms) for visual effect. Default: 50 */
+  progressiveDelayMs?: number;
 }
 
 export interface ExistingEntityRef {
@@ -80,34 +64,58 @@ export interface ExistingEntityRef {
 }
 
 // ============================================================================
-// SSE Event Types
+// Helper: Convert Convex result to @mythos/core types
 // ============================================================================
 
-interface SSEEntityEvent {
-  type: "entity";
-  data: DetectedEntity;
+function toCanonicalName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
-interface SSEStatsEvent {
-  type: "stats";
-  data: DetectionStats;
+function mapToDetectedEntity(
+  entity: {
+    name: string;
+    type: string;
+    aliases: string[];
+    confidence: number;
+    properties: Record<string, unknown>;
+    textSpan?: { start: number; end: number; text: string };
+  },
+  index: number
+): DetectedEntity {
+  return {
+    tempId: `temp_${index}`,
+    name: entity.name,
+    canonicalName: toCanonicalName(entity.name),
+    type: entity.type as EntityType,
+    confidence: entity.confidence,
+    occurrences: entity.textSpan
+      ? [
+          {
+            start: entity.textSpan.start,
+            end: entity.textSpan.end,
+            text: entity.textSpan.text,
+            variant: entity.name,
+          },
+        ]
+      : [],
+    suggestedAliases: entity.aliases,
+    properties: entity.properties as Record<string, string | number | boolean>,
+  };
 }
 
-interface SSEDoneEvent {
-  type: "done";
+function mapToDetectionStats(
+  result: { totalFound: number; byType: Record<string, number> },
+  textLength: number
+): DetectionStats {
+  return {
+    charactersAnalyzed: textLength,
+    totalEntities: result.totalFound,
+    byType: result.byType as Record<EntityType, number>,
+    matchedToExisting: 0,
+    newEntities: result.totalFound,
+    processingTimeMs: 0,
+  };
 }
-
-interface SSEErrorEvent {
-  type: "error";
-  message: string;
-}
-
-interface SSEContextEvent {
-  type: "context";
-  data: SSEEvent;
-}
-
-type SSEEvent = SSEEntityEvent | SSEStatsEvent | SSEDoneEvent | SSEErrorEvent | SSEContextEvent;
 
 // ============================================================================
 // Hook Implementation
@@ -122,30 +130,29 @@ export function useStreamingEntityDetection() {
     entityCount: 0,
   });
 
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const abortRef = useRef(false);
+  const detectEntitiesAction = useAction(api.ai.detect.detectEntitiesPublic);
 
   /**
    * Cancel any in-progress detection
    */
   const cancel = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
+    abortRef.current = true;
     setState((prev) => ({ ...prev, isStreaming: false }));
   }, []);
 
   /**
-   * Start progressive entity detection
+   * Start entity detection with progressive UI feedback
    */
   const detectEntities = useCallback(
     async (
       text: string,
-      existingEntities?: ExistingEntityRef[],
+      projectId: Id<"projects">,
       options?: StreamingDetectionOptions
     ): Promise<DetectedEntity[]> => {
       // Cancel any existing detection
       cancel();
+      abortRef.current = false;
 
       // Reset state
       setState({
@@ -156,115 +163,65 @@ export function useStreamingEntityDetection() {
         entityCount: 0,
       });
 
-      const apiKey = getApiKey();
-
-      if (!apiKey || !SUPABASE_URL) {
-        const error = "API key or Supabase URL not configured";
-        setState((prev) => ({ ...prev, isStreaming: false, error }));
-        options?.onError?.(error);
-        throw new Error(error);
-      }
-
-      // Create abort controller
-      const abortController = new AbortController();
-      abortControllerRef.current = abortController;
-
-      const detectedEntities: DetectedEntity[] = [];
-
       try {
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-detect-stream`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-openrouter-key": apiKey,
-          },
-          body: JSON.stringify({
-            text,
-            existingEntities,
-            options: {
-              minConfidence: options?.minConfidence,
-              entityTypes: options?.entityTypes,
-              detectAliases: options?.detectAliases,
-              matchExisting: options?.matchExisting,
-              maxEntities: options?.maxEntities,
-              includeContext: options?.includeContext,
-              contextLength: options?.contextLength,
-            },
-          }),
-          signal: abortController.signal,
+        // Call Convex action
+        const result = await detectEntitiesAction({
+          text,
+          projectId,
+          entityTypes: options?.entityTypes,
+          minConfidence: options?.minConfidence,
+          detectAliases: options?.detectAliases,
+          matchExisting: options?.matchExisting,
+          maxEntities: options?.maxEntities,
+          includeContext: options?.includeContext,
+          contextLength: options?.contextLength,
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Detection failed: ${response.status} ${errorText}`);
+        if (abortRef.current) {
+          return [];
         }
 
-        if (!response.body) {
-          throw new Error("No response body");
-        }
+        // Map result entities to DetectedEntity type
+        const detectedEntities: DetectedEntity[] = result.entities.map((e, i) =>
+          mapToDetectedEntity(e, i)
+        );
 
-        // Read SSE stream
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let finalStats: DetectionStats | null = null;
+        // Progressive UI feedback - add entities one by one
+        const progressiveDelay = options?.progressiveDelayMs ?? 50;
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        for (let i = 0; i < detectedEntities.length; i++) {
+          if (abortRef.current) break;
 
-          buffer += decoder.decode(value, { stream: true });
+          const entity = detectedEntities[i]!;
 
-          // Process complete SSE events
-          const lines = buffer.split("\n\n");
-          buffer = lines.pop() || ""; // Keep incomplete event in buffer
+          setState((prev) => ({
+            ...prev,
+            entities: [...prev.entities, entity],
+            entityCount: prev.entityCount + 1,
+          }));
 
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
+          options?.onEntity?.(entity);
 
-            try {
-              const eventData = JSON.parse(line.slice(6)) as SSEEvent;
-
-              if (eventData.type === "context") {
-                // Handle wrapped context event (from sendContext)
-                const innerEvent = (eventData as unknown as { data: SSEEvent }).data;
-                
-                if (innerEvent.type === "entity") {
-                  const entity = innerEvent.data;
-                  detectedEntities.push(entity);
-                  
-                  setState((prev) => ({
-                    ...prev,
-                    entities: [...prev.entities, entity],
-                    entityCount: prev.entityCount + 1,
-                  }));
-
-                  options?.onEntity?.(entity);
-                } else if (innerEvent.type === "stats") {
-                  finalStats = innerEvent.data;
-                  setState((prev) => ({ ...prev, stats: finalStats }));
-                }
-              } else if (eventData.type === "done") {
-                // Stream complete
-                setState((prev) => ({ ...prev, isStreaming: false }));
-                
-                if (finalStats) {
-                  options?.onComplete?.(detectedEntities, finalStats);
-                }
-              } else if (eventData.type === "error") {
-                throw new Error(eventData.message);
-              }
-            } catch (parseError) {
-              console.warn("[useStreamingEntityDetection] Failed to parse SSE event:", parseError);
-            }
+          // Small delay for visual effect
+          if (progressiveDelay > 0 && i < detectedEntities.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, progressiveDelay));
           }
         }
 
+        // Create stats
+        const stats = mapToDetectionStats(result.stats, text.length);
+
+        setState((prev) => ({
+          ...prev,
+          stats,
+          isStreaming: false,
+        }));
+
+        options?.onComplete?.(detectedEntities, stats);
         return detectedEntities;
       } catch (error) {
-        if ((error as Error).name === "AbortError") {
-          // Detection was cancelled
-          return detectedEntities;
+        if (abortRef.current) {
+          return [];
         }
 
         const errorMessage = error instanceof Error ? error.message : "Detection failed";
@@ -275,11 +232,9 @@ export function useStreamingEntityDetection() {
         }));
         options?.onError?.(errorMessage);
         throw error;
-      } finally {
-        abortControllerRef.current = null;
       }
     },
-    [cancel]
+    [detectEntitiesAction, cancel]
   );
 
   /**
@@ -305,88 +260,36 @@ export function useStreamingEntityDetection() {
 }
 
 // ============================================================================
-// Alternative: Event-based streaming for more control
+// Alternative: Direct action call for simpler use cases
 // ============================================================================
 
 /**
- * Lower-level streaming detection that yields entities as async iterator.
- * Useful for more complex integration scenarios.
- *
- * @example
- * ```ts
- * for await (const event of streamEntityDetection(text)) {
- *   if (event.type === 'entity') {
- *     console.log('Detected:', event.data.name);
- *   }
- * }
- * ```
+ * Direct entity detection without progressive UI.
+ * Returns all entities at once.
  */
-export async function* streamEntityDetection(
+export async function detectEntitiesSimple(
+  detectAction: ReturnType<typeof useAction<typeof api.ai.detect.detectEntitiesPublic>>,
   text: string,
-  existingEntities?: ExistingEntityRef[],
-  options?: DetectionOptions,
-  signal?: AbortSignal
-): AsyncGenerator<SSEEntityEvent | SSEStatsEvent | SSEDoneEvent> {
-  const apiKey = getApiKey();
-
-  if (!apiKey || !SUPABASE_URL) {
-    throw new Error("API key or Supabase URL not configured");
-  }
-
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-detect-stream`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-openrouter-key": apiKey,
-    },
-    body: JSON.stringify({
-      text,
-      existingEntities,
-      options,
-    }),
-    signal,
+  projectId: Id<"projects">,
+  options?: DetectionOptions
+): Promise<{ entities: DetectedEntity[]; stats: DetectionStats }> {
+  const result = await detectAction({
+    text,
+    projectId,
+    entityTypes: options?.entityTypes,
+    minConfidence: options?.minConfidence,
+    detectAliases: options?.detectAliases,
+    matchExisting: options?.matchExisting,
+    maxEntities: options?.maxEntities,
+    includeContext: options?.includeContext,
+    contextLength: options?.contextLength,
   });
 
-  if (!response.ok) {
-    throw new Error(`Detection failed: ${response.status}`);
-  }
+  const entities: DetectedEntity[] = result.entities.map((e, i) =>
+    mapToDetectedEntity(e, i)
+  );
 
-  if (!response.body) {
-    throw new Error("No response body");
-  }
+  const stats = mapToDetectionStats(result.stats, text.length);
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n\n");
-    buffer = lines.pop() || "";
-
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-
-      try {
-        const eventData = JSON.parse(line.slice(6)) as SSEEvent;
-
-        if (eventData.type === "context") {
-          const innerEvent = (eventData as unknown as { data: SSEEvent }).data;
-          if (innerEvent.type === "entity" || innerEvent.type === "stats") {
-            yield innerEvent;
-          }
-        } else if (eventData.type === "done") {
-          yield eventData;
-          return;
-        } else if (eventData.type === "error") {
-          throw new Error(eventData.message);
-        }
-      } catch (parseError) {
-        console.warn("[streamEntityDetection] Parse error:", parseError);
-      }
-    }
-  }
+  return { entities, stats };
 }

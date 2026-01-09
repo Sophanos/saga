@@ -2,9 +2,12 @@
  * Settings Screen - Modal presentation
  */
 
-import { View, Text, StyleSheet, Pressable, Switch, Alert } from 'react-native';
+import { useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Switch, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMutation, useAction } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import { useTheme, spacing, typography, radii } from '@/design-system';
 import { useLayoutStore } from '@mythos/state';
 import { useSession, signOut } from '@/lib/auth';
@@ -16,12 +19,65 @@ export default function SettingsScreen() {
   const { sidebarCollapsed, toggleSidebar } = useLayoutStore();
   const { data: session } = useSession();
 
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deletionPreview, setDeletionPreview] = useState<{
+    ownedProjectCount: number;
+    sharedProjectMemberships: number;
+    documentCount: number;
+    entityCount: number;
+  } | null>(null);
+
+  const getDeletePreview = useMutation(api.account.getDeletePreview);
+  const deleteMyAccount = useAction(api.account.deleteMyAccount);
+
   const handleSignOut = async () => {
     try {
       await signOut();
       router.replace('/');
     } catch (error) {
       Alert.alert('Error', 'Failed to sign out. Please try again.');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      // Get preview of what will be deleted
+      const preview = await getDeletePreview();
+      setDeletionPreview(preview);
+
+      // Show confirmation dialog
+      const message = preview.ownedProjectCount > 0
+        ? `This will permanently delete:\n\n• ${preview.ownedProjectCount} project${preview.ownedProjectCount !== 1 ? 's' : ''}\n• ${preview.documentCount} document${preview.documentCount !== 1 ? 's' : ''}\n• ${preview.entityCount} entit${preview.entityCount !== 1 ? 'ies' : 'y'}\n\nYou will also be removed from ${preview.sharedProjectMemberships} shared project${preview.sharedProjectMemberships !== 1 ? 's' : ''}.\n\nThis action cannot be undone.`
+        : 'This will permanently delete your account. This action cannot be undone.';
+
+      Alert.alert(
+        'Delete Account',
+        message,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: confirmDelete,
+          },
+        ]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to get account information. Please try again.');
+    }
+  };
+
+  const confirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteMyAccount();
+      await signOut();
+      router.replace('/');
+      Alert.alert('Account Deleted', 'Your account has been permanently deleted.');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete account. Please try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -47,6 +103,26 @@ export default function SettingsScreen() {
               >
                 <Text style={[styles.rowLabel, { color: '#ef4444' }]}>Sign Out</Text>
                 <Text style={[styles.rowValue, { color: colors.textSecondary }]}>→</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleDeleteAccount}
+                disabled={isDeleting}
+                style={[
+                  styles.row,
+                  {
+                    backgroundColor: colors.bgSurface,
+                    borderColor: colors.border,
+                    opacity: isDeleting ? 0.5 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.rowLabel, { color: '#dc2626' }]}>Delete Account</Text>
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#dc2626" />
+                ) : (
+                  <Text style={[styles.rowValue, { color: colors.textSecondary }]}>→</Text>
+                )}
               </Pressable>
             </>
           ) : (

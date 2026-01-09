@@ -1,22 +1,18 @@
-import { useCallback } from "react";
-import {
-  getMentionsByDocument,
-  createMention as dbCreateMention,
-  deleteMention as dbDeleteMention,
-  replaceMentionsForDocument,
-} from "@mythos/db";
-import type { Database } from "@mythos/db";
-import {
-  usePersistenceState,
-  type PersistenceResult,
-  type BasePersistenceState,
-} from "./usePersistence";
+import { useCallback, useState } from "react";
+import type { PersistenceResult, BasePersistenceState } from "./usePersistence";
 
 /**
- * Database mention types
+ * Mention type (local definition until Convex schema is added)
  */
-type Mention = Database["public"]["Tables"]["mentions"]["Row"];
-type MentionInsert = Database["public"]["Tables"]["mentions"]["Insert"];
+export interface Mention {
+  id: string;
+  entity_id: string;
+  document_id: string;
+  position_start: number;
+  position_end: number;
+  context: string;
+  created_at?: string;
+}
 
 /**
  * Input type for creating mentions (without auto-generated fields)
@@ -59,11 +55,10 @@ export interface UseMentionPersistenceResult extends BasePersistenceState {
 }
 
 /**
- * Hook for entity mention persistence operations with Supabase
+ * Hook for entity mention persistence operations
  *
- * Provides CRUD operations for managing entity mentions in documents.
- * Unlike entities, mentions are managed per-document and don't require
- * global store management - they can be returned directly to the caller.
+ * TODO: Implement Convex backend for mentions
+ * Currently stubbed out - operations are no-ops that return empty results.
  *
  * @example
  * ```tsx
@@ -74,86 +69,74 @@ export interface UseMentionPersistenceResult extends BasePersistenceState {
  * if (result.data) {
  *   console.log('Found mentions:', result.data);
  * }
- *
- * // Replace all mentions after entity detection
- * const detectedMentions = [
- *   { entity_id: 'char-1', position_start: 0, position_end: 5, context: 'Alice walked...' },
- *   { entity_id: 'loc-1', position_start: 20, position_end: 28, context: '...to the forest' }
- * ];
- * await saveMentions(documentId, detectedMentions);
- *
- * // Add a single mention
- * await addMention({
- *   entity_id: 'char-2',
- *   document_id: documentId,
- *   position_start: 50,
- *   position_end: 55,
- *   context: 'Bob said...'
- * });
- *
- * // Remove a mention
- * await removeMention(mentionId);
  * ```
  */
 export function useMentionPersistence(): UseMentionPersistenceResult {
-  const { isLoading, error, clearError, wrapOperation } =
-    usePersistenceState("Mention");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const clearError = useCallback(() => setError(null), []);
 
   /**
    * Load all mentions for a specific document
+   * TODO: Implement with Convex query
    */
   const loadMentionsForDocument = useCallback(
-    (documentId: string): Promise<PersistenceResult<Mention[]>> =>
-      wrapOperation(
-        () => getMentionsByDocument(documentId),
-        "Failed to load mentions"
-      ),
-    [wrapOperation]
+    async (_documentId: string): Promise<PersistenceResult<Mention[]>> => {
+      // Stub: return empty array until Convex mentions schema is implemented
+      console.debug("[useMentionPersistence] loadMentionsForDocument not yet implemented for Convex");
+      return { data: [] };
+    },
+    []
   );
 
   /**
    * Replace all mentions for a document
-   *
-   * This is the primary method for updating mentions after entity detection.
-   * It deletes all existing mentions for the document and inserts the new ones.
+   * TODO: Implement with Convex mutation
    */
   const saveMentions = useCallback(
-    (
-      documentId: string,
+    async (
+      _documentId: string,
       mentions: MentionBatchInput[]
-    ): Promise<PersistenceResult<Mention[]>> =>
-      wrapOperation(
-        () => replaceMentionsForDocument(documentId, mentions),
-        "Failed to save mentions"
-      ),
-    [wrapOperation]
+    ): Promise<PersistenceResult<Mention[]>> => {
+      // Stub: return the input as-is with generated IDs
+      console.debug("[useMentionPersistence] saveMentions not yet implemented for Convex");
+      const savedMentions: Mention[] = mentions.map((m, i) => ({
+        ...m,
+        id: `temp_mention_${i}`,
+        document_id: _documentId,
+      }));
+      return { data: savedMentions };
+    },
+    []
   );
 
   /**
    * Create a single mention
+   * TODO: Implement with Convex mutation
    */
   const addMention = useCallback(
-    (mention: MentionInput): Promise<PersistenceResult<Mention>> =>
-      wrapOperation(async () => {
-        const insertData: MentionInsert = {
-          entity_id: mention.entity_id,
-          document_id: mention.document_id,
-          position_start: mention.position_start,
-          position_end: mention.position_end,
-          context: mention.context,
-        };
-        return dbCreateMention(insertData);
-      }, "Failed to create mention"),
-    [wrapOperation]
+    async (mention: MentionInput): Promise<PersistenceResult<Mention>> => {
+      console.debug("[useMentionPersistence] addMention not yet implemented for Convex");
+      const newMention: Mention = {
+        ...mention,
+        id: `temp_mention_${Date.now()}`,
+      };
+      return { data: newMention };
+    },
+    []
   );
 
   /**
    * Delete a single mention by ID
+   * TODO: Implement with Convex mutation
    */
   const removeMention = useCallback(
-    (id: string): Promise<PersistenceResult<void>> =>
-      wrapOperation(() => dbDeleteMention(id), "Failed to delete mention"),
-    [wrapOperation]
+    async (_id: string): Promise<PersistenceResult<void>> => {
+      console.debug("[useMentionPersistence] removeMention not yet implemented for Convex");
+      return {};
+    },
+    []
   );
 
   return {

@@ -1,19 +1,10 @@
-import { useCallback } from "react";
-import {
-  createEntity as dbCreateEntity,
-  updateEntity as dbUpdateEntity,
-  deleteEntity as dbDeleteEntity,
-  mapCoreEntityToDbInsert,
-  mapCoreEntityToDbFullUpdate,
-  mapDbEntityToEntity,
-} from "@mythos/db";
+import { useCallback, useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import type { Entity } from "@mythos/core";
-import type { Database } from "@mythos/db";
 import { useMythosStore } from "../stores";
-import {
-  createPersistenceHook,
-  type PersistenceResult,
-} from "./usePersistence";
+import type { PersistenceResult } from "./usePersistence";
 import { embedTextViaEdge, deleteVectorsViaEdge, EmbeddingApiError } from "../services/ai";
 
 /**
@@ -52,13 +43,6 @@ function formatEntityForEmbedding(entity: Entity): string {
 }
 
 /**
- * Database entity types
- */
-type DbEntityRow = Database["public"]["Tables"]["entities"]["Row"];
-type DbEntityInsert = Database["public"]["Tables"]["entities"]["Insert"];
-type DbEntityUpdate = Database["public"]["Tables"]["entities"]["Update"];
-
-/**
  * Result type for entity persistence operations
  * @deprecated Use PersistenceResult<T> from usePersistence instead
  */
@@ -89,48 +73,11 @@ export interface UseEntityPersistenceResult {
 }
 
 /**
- * Internal hook created by the persistence factory
- */
-const useEntityPersistenceBase = createPersistenceHook<
-  Entity,
-  DbEntityInsert,
-  DbEntityUpdate,
-  DbEntityRow
->(() => {
-  // These hooks must be called inside the returned function
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const entities = useMythosStore((state) => state.world.entities);
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const addEntity = useMythosStore((state) => state.addEntity);
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const updateEntity = useMythosStore((state) => state.updateEntity);
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const removeEntity = useMythosStore((state) => state.removeEntity);
-
-  return {
-    name: "Entity",
-    dbCreate: dbCreateEntity,
-    dbUpdate: dbUpdateEntity,
-    dbDelete: dbDeleteEntity,
-    storeAdd: addEntity,
-    storeUpdate: updateEntity,
-    storeRemove: removeEntity,
-    storeGet: (id: string) => entities.get(id),
-    mapToDbInsert: mapCoreEntityToDbInsert,
-    mapToDbUpdate: mapCoreEntityToDbFullUpdate,
-    mapFromDb: mapDbEntityToEntity,
-  };
-});
-
-/**
- * Hook for entity persistence operations with Supabase
+ * Hook for entity persistence operations with Convex
  *
- * Provides CRUD operations that sync between the Supabase database
+ * Provides CRUD operations that sync between the Convex database
  * and the local Zustand store. All operations handle errors gracefully
  * and return structured results.
- *
- * This hook is built on top of the generic createPersistenceHook factory
- * but maintains backward compatibility with the original API.
  *
  * @example
  * ```tsx
@@ -150,15 +97,24 @@ const useEntityPersistenceBase = createPersistenceHook<
  * ```
  */
 export function useEntityPersistence(): UseEntityPersistenceResult {
-  const { create, update, remove, isLoading, error, clearError } =
-    useEntityPersistenceBase();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Convex mutations
+  const createEntityMutation = useMutation(api.entities.create);
+  const updateEntityMutation = useMutation(api.entities.update);
+  const deleteEntityMutation = useMutation(api.entities.remove);
+
+  // Store actions
+  const addEntity = useMythosStore((state) => state.addEntity);
+  const updateEntityStore = useMythosStore((state) => state.updateEntity);
+  const removeEntity = useMythosStore((state) => state.removeEntity);
+
+  const clearError = useCallback(() => setError(null), []);
 
   /**
    * Generate entity embedding and index to Qdrant
    * Fire-and-forget: errors are logged but don't affect the main operation
-   *
-   * Qdrant-only architecture: embeddings stored in Qdrant with 4096 dimensions
-   * for best quality with Qwen3-Embedding-8B model.
    */
   const generateEntityEmbedding = useCallback(
     async (entity: Entity, projectId: string) => {
@@ -172,7 +128,6 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
       }
 
       try {
-        // Generate embedding and index to Qdrant in one call
         await embedTextViaEdge(text, {
           qdrant: {
             enabled: true,
@@ -190,7 +145,6 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
 
         console.debug("[useEntityPersistence] Entity embedding generated and indexed to Qdrant");
       } catch (error) {
-        // Log but don't propagate - embedding failures must not affect entity operations
         if (error instanceof EmbeddingApiError) {
           console.warn("[useEntityPersistence] Embedding generation failed:", error.message);
         } else {
@@ -201,50 +155,120 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
     []
   );
 
-  // Wrap to maintain backward-compatible naming and add embedding generation
   const createEntity = useCallback(
-    async (entity: Entity, projectId: string) => {
-      const result = await create(entity, projectId);
+    async (entity: Entity, projectId: string): Promise<EntityPersistenceResult<Entity>> => {
+      setIsLoading(true);
+      setError(null);
 
-      // Trigger embedding generation on success (fire-and-forget)
-      if (result.data) {
-        void generateEntityEmbedding(result.data, projectId);
+      try {
+        const result = await createEntityMutation({
+          projectId: projectId as Id<"projects">,
+          type: entity.type,
+          name: entity.name,
+          aliases: entity.aliases,
+          properties: entity.properties as Record<string, string | number | boolean>,
+          notes: (entity as unknown as Record<string, unknown>)["notes"] as string | undefined,
+        });
+
+        // Map Convex result to Entity type
+        const createdEntity: Entity = {
+          id: result,
+          type: entity.type,
+          name: entity.name,
+          aliases: entity.aliases || [],
+          properties: entity.properties || {},
+        };
+
+        // Add to store
+        addEntity(createdEntity);
+
+        // Generate embedding (fire-and-forget)
+        void generateEntityEmbedding(createdEntity, projectId);
+
+        return { data: createdEntity };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to create entity";
+        setError(message);
+        return { error: message };
+      } finally {
+        setIsLoading(false);
       }
-
-      return result;
     },
-    [create, generateEntityEmbedding]
+    [createEntityMutation, addEntity, generateEntityEmbedding]
   );
 
   const updateEntity = useCallback(
-    async (entityId: string, updates: Partial<Entity>) => {
-      const result = await update(entityId, updates);
+    async (entityId: string, updates: Partial<Entity>): Promise<EntityPersistenceResult<Entity>> => {
+      setIsLoading(true);
+      setError(null);
 
-      // Trigger embedding generation on success (fire-and-forget)
-      if (result.data) {
-        const projectId = (result.data as Entity & { projectId?: string }).projectId;
-        if (projectId) {
-          void generateEntityEmbedding(result.data, projectId);
+      try {
+        await updateEntityMutation({
+          id: entityId as Id<"entities">,
+          ...updates,
+          properties: updates.properties as Record<string, string | number | boolean> | undefined,
+        });
+
+        // Get the updated entity from store and merge with updates
+        const entities = useMythosStore.getState().world.entities;
+        const existingEntity = entities.get(entityId);
+
+        if (!existingEntity) {
+          throw new Error("Entity not found in store");
         }
-      }
 
-      return result;
+        const updatedEntity: Entity = {
+          ...existingEntity,
+          ...updates,
+        };
+
+        // Update store
+        updateEntityStore(entityId, updates);
+
+        // Generate embedding (fire-and-forget)
+        const projectId = (updatedEntity as Entity & { projectId?: string }).projectId;
+        if (projectId) {
+          void generateEntityEmbedding(updatedEntity, projectId);
+        }
+
+        return { data: updatedEntity };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to update entity";
+        setError(message);
+        return { error: message };
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [update, generateEntityEmbedding]
+    [updateEntityMutation, updateEntityStore, generateEntityEmbedding]
   );
 
   const deleteEntity = useCallback(
-    async (entityId: string) => {
-      const result = await remove(entityId);
+    async (entityId: string): Promise<EntityPersistenceResult<void>> => {
+      setIsLoading(true);
+      setError(null);
 
-      // Delete vector from Qdrant on success (fire-and-forget)
-      if (!result.error) {
+      try {
+        await deleteEntityMutation({
+          id: entityId as Id<"entities">,
+        });
+
+        // Remove from store
+        removeEntity(entityId);
+
+        // Delete vector from Qdrant (fire-and-forget)
         void deleteVectorsViaEdge([`ent_${entityId}`]);
-      }
 
-      return result;
+        return {};
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to delete entity";
+        setError(message);
+        return { error: message };
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [remove]
+    [deleteEntityMutation, removeEntity]
   );
 
   return {

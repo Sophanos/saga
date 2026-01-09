@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-09 (Supabase removal 85%) | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-09 (Supabase removal 90%) | **Target:** Web + macOS first, then iOS/iPad
 
 ## Summary
 
@@ -35,7 +35,7 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 │ 8. Observability (PostHog+Clarity) Complete         [██████████] ✅ │
 │ 9. Rate Limiting                   Complete         [██████████] ✅ │
 │10. Tier Config Migration           Complete         [██████████] ✅ │
-│11. Supabase → Convex Migration     In Progress      [████████░░] 85%│
+│11. Supabase → Convex Migration     In Progress      [█████████░] 90%│
 │12. CI/CD (GitHub Actions)          Complete         [██████████] ✅ │
 ├─────────────────────────────────────────────────────────────────────┤
 │ OVERALL MLP 1                                       [█████████░] 94%│
@@ -1188,14 +1188,40 @@ convex/
 | `process-vector-delete-jobs` | Every minute | Process pending Qdrant deletions |
 | `purge-expired-memories` | Daily 2:00 AM UTC | Delete tier-expired memories |
 
+### Completed Tasks (2026-01-09)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Delete account button (Expo settings) | ✅ Done | `apps/expo/app/settings.tsx` |
+| useStreamingEntityDetection.ts | ✅ Done | Migrated to `api.ai.detect.detectEntitiesPublic` |
+| useAutoSave.ts | ✅ Done | Uses `api.documents.update` |
+| useEntityPersistence.ts | ✅ Done | Uses `api.entities.*` mutations |
+| useMentionPersistence.ts | ✅ Done | Stubbed (mentions schema TBD) |
+| useProgressiveSync.ts (mobile) | ✅ Done | Stubbed (progressive state TBD) |
+| Canvas.tsx | ✅ Done | Uses `api.documents.create` |
+| InviteAcceptPage.tsx | ✅ Done | Uses `api.collaboration.*` |
+| SceneListBlock.tsx | ✅ Done | Uses `api.documents.*` |
+
 ### Remaining Tasks
 
 | Task | Priority | Notes |
 |------|----------|-------|
-| Delete account button (Expo settings) | P1 | UI to test `account.deleteMyAccount` |
-| useCollaboration.ts | P2 | Convex Realtime/presence (Figma model) |
-| useStreamingEntityDetection.ts | P2 | Convex actions |
-| Remove @mythos/db imports (~15 hooks) | P2 | Package deleted, hooks need rewrite |
+| ProjectCreateModal.tsx | P2 | Replace `createProject`, `createDocument`, `createEntity`, `createRelationship` |
+| CreateProjectForm.tsx | P2 | Replace `createProject`, `createDocument` |
+| ProjectPickerSidebar.tsx | P2 | Replace `createDocument`, `mapDbDocumentToDocument` |
+| sagaClient.ts | P2 | Remove `getSupabaseClient`, `isSupabaseInitialized` |
+| analysisRepository.ts | P2 | Remove Supabase references |
+| seedWorldbuilding.ts | P2 | Replace `createDocument` |
+| useCollaboration.ts | P3 | Convex Realtime/presence (Figma model) - future |
+
+### Backend Schema TODOs (Stubbed Hooks)
+
+| Schema | Priority | Notes |
+|--------|----------|-------|
+| `mentions` table | P3 | Entity mentions in documents. Hooks stubbed in `useMentionPersistence.ts` |
+| `progressiveState` table | P3 | Progressive disclosure state per project. Hooks stubbed in `useProgressiveSync.ts` |
+
+**Migration script:** `bun scripts/analyze-db-migration.ts` generates `DB_MIGRATION_REPORT.md`
 
 ### Tables to DEPRECATE
 

@@ -19,8 +19,10 @@ import {
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import { ScrollArea } from "@mythos/ui";
-import type { Entity } from "@mythos/core";
-import { createDocument, mapDbDocumentToDocument } from "@mythos/db";
+import type { Entity, Document } from "@mythos/core";
+import { useMutation } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useEntityClick } from "../../hooks/useEntityClick";
 import { useWritingAnalysis } from "../../hooks/useWritingAnalysis";
 import { useLinterFixes } from "../../hooks/useLinterFixes";
@@ -95,6 +97,7 @@ interface EditorCanvasProps {
 function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   const { handleEntityClick } = useEntityClick();
   const currentProject = useCurrentProject();
+  const createDocumentMutation = useMutation(api.documents.create);
 
   // Store actions and state
   const setEditorInstance = useMythosStore((state) => state.setEditorInstance);
@@ -183,19 +186,34 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     const title = `Scene ${nextSceneNumber}`;
 
     try {
-      const created = await createDocument({
-        project_id: currentProject.id,
-        parent_id: parentId ?? null,
+      const createdId = await createDocumentMutation({
+        projectId: currentProject.id as Id<"projects">,
+        parentId: parentId as Id<"documents"> | undefined,
+        type: "scene",
+        title,
+        content: EMPTY_TIPTAP_DOC as Record<string, unknown>,
+        contentText: "",
+        orderIndex: nextOrderIndex,
+        wordCount: 0,
+      });
+
+      // Create document object for store
+      const newDocument: Document = {
+        id: createdId,
+        projectId: currentProject.id,
+        parentId: parentId ?? undefined,
         type: "scene",
         title,
         content: EMPTY_TIPTAP_DOC,
-        content_text: "",
-        order_index: nextOrderIndex,
-        word_count: 0,
-      });
-      const mapped = mapDbDocumentToDocument(created);
-      addDocument(mapped);
-      setCurrentDocument(mapped);
+        contentText: "",
+        orderIndex: nextOrderIndex,
+        wordCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      addDocument(newDocument);
+      setCurrentDocument(newDocument);
       setCanvasView("editor");
     } catch (err) {
       console.warn("Failed to create scene:", err);
@@ -207,6 +225,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     addDocument,
     setCurrentDocument,
     setCanvasView,
+    createDocumentMutation,
   ]);
 
   const createSceneRef = useRef<() => void>(() => {});

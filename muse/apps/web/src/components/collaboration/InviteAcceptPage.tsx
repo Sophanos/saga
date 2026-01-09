@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { BookOpen, Loader2, AlertCircle, CheckCircle, LogOut, AlertTriangle } from "lucide-react";
-import { acceptInvitation, getInvitationByToken } from "@mythos/db";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
 import { Button, Card, CardContent } from "@mythos/ui";
 import { useAuthStore } from "../../stores/auth";
-import { signOut as supabaseSignOut } from "../../hooks/useSupabaseAuthSync";
+import { signOut } from "../../lib/auth";
 import { AuthScreen } from "../auth";
 import { LAST_PROJECT_KEY, PENDING_INVITE_TOKEN_KEY } from "../../constants/storageKeys";
 
@@ -36,7 +37,11 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isLoading = useAuthStore((state) => state.isLoading);
   const user = useAuthStore((state) => state.user);
-  const signOut = useAuthStore((state) => state.signOut);
+  const authStoreSignOut = useAuthStore((state) => state.signOut);
+
+  // Convex queries and mutations
+  const invitation = useQuery(api.collaboration.getInvitationByToken, { token });
+  const acceptInvitationMutation = useMutation(api.collaboration.acceptInvitation);
 
   // Persist token to sessionStorage for OAuth flows
   useEffect(() => {
@@ -45,56 +50,42 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
 
   // Check invitation validity and handle acceptance
   useEffect(() => {
-    async function checkAndAccept() {
-      // Wait for auth state to settle
-      if (isLoading) return;
+    // Wait for auth state to settle
+    if (isLoading) return;
 
-      // If not authenticated, show auth screen
-      if (!isAuthenticated) {
-        setStatus("needs_auth");
-        return;
-      }
-
-      // User is authenticated - fetch invitation info first to validate email
-      try {
-        const invitation = await getInvitationByToken(token);
-
-        if (!invitation) {
-          setError("Invitation not found. It may be expired or already used.");
-          setStatus("error");
-          return;
-        }
-
-        // Store invitation info for display
-        setInvitationInfo({
-          email: invitation.email,
-          role: invitation.role,
-        });
-
-        // Check if invitation email matches logged-in user's email
-        const userEmail = user?.email?.toLowerCase();
-        const invitationEmail = invitation.email.toLowerCase();
-
-        if (userEmail && userEmail !== invitationEmail) {
-          // Email mismatch - warn user before proceeding
-          setStatus("email_mismatch");
-          return;
-        }
-
-        // Emails match or user has no email - proceed with acceptance
-        await performAcceptance();
-      } catch (err) {
-        console.error("[Collaboration] Failed to check invitation:", err);
-        setError(
-          err instanceof Error 
-            ? err.message 
-            : "Failed to check invitation. Please try again."
-        );
-        setStatus("error");
-      }
+    // If not authenticated, show auth screen
+    if (!isAuthenticated) {
+      setStatus("needs_auth");
+      return;
     }
 
-    checkAndAccept();
+    // Wait for invitation query to load
+    if (invitation === undefined) return;
+
+    if (invitation === null) {
+      setError("Invitation not found. It may be expired or already used.");
+      setStatus("error");
+      return;
+    }
+
+    // Store invitation info for display
+    setInvitationInfo({
+      email: invitation.email,
+      role: invitation.role,
+    });
+
+    // Check if invitation email matches logged-in user's email
+    const userEmail = user?.email?.toLowerCase();
+    const invitationEmail = invitation.email.toLowerCase();
+
+    if (userEmail && userEmail !== invitationEmail) {
+      // Email mismatch - warn user before proceeding
+      setStatus("email_mismatch");
+      return;
+    }
+
+    // Emails match or user has no email - proceed with acceptance
+    void performAcceptance();
 
     // Cleanup timeout on unmount
     return () => {
@@ -102,14 +93,14 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [token, isAuthenticated, isLoading, user?.email]);
+  }, [invitation, isAuthenticated, isLoading, user?.email]);
 
   // Perform the actual invitation acceptance
   const performAcceptance = useCallback(async () => {
     setStatus("accepting");
 
     try {
-      const result = await acceptInvitation(token);
+      const result = await acceptInvitationMutation({ token });
 
       // Store the project ID so app loads it after redirect
       localStorage.setItem(LAST_PROJECT_KEY, result.projectId);
@@ -140,7 +131,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
       }
       setStatus("error");
     }
-  }, [token]);
+  }, [token, acceptInvitationMutation]);
 
   // Handle user confirming they want to accept with mismatched email
   const handleConfirmMismatch = useCallback(async () => {
@@ -148,15 +139,16 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
   }, [performAcceptance]);
 
   const handleSignOutAndRetry = useCallback(async () => {
-    const { error } = await supabaseSignOut();
-    if (error) {
-      console.warn("[Auth] Failed to sign out:", error.message);
+    try {
+      await signOut();
+    } catch (err) {
+      console.warn("[Auth] Failed to sign out:", err);
     }
-    signOut();
+    authStoreSignOut();
     // Clear the stored token so they can use a fresh link
     sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
     window.location.assign(window.location.pathname);
-  }, [signOut]);
+  }, [authStoreSignOut]);
 
   const handleReturnHome = useCallback(() => {
     sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);

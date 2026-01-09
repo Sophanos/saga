@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@mythos/editor";
-import { updateDocument } from "@mythos/db";
+import { useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import { useMythosStore } from "../stores";
 import { simpleHash } from "../utils/hash";
 import { embedTextViaEdge, EmbeddingApiError } from "../services/ai";
@@ -89,6 +91,9 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
     debounceMs = DEFAULT_DEBOUNCE_MS,
   } = options;
 
+  // Convex mutation for updating documents
+  const updateDocumentMutation = useMutation(api.documents.update);
+
   // Local state
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -105,6 +110,10 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
   const lastSavedHashRef = useRef<string>("");
   const isMountedRef = useRef(true);
   const pendingSaveRef = useRef(false);
+  const updateDocumentRef = useRef(updateDocumentMutation);
+
+  // Keep mutation ref updated
+  updateDocumentRef.current = updateDocumentMutation;
 
   // Embedding generation refs
   const embedDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -261,11 +270,12 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
       const textContent = editor.getText();
       const wordCount = textContent.split(/\s+/).filter(Boolean).length;
 
-      // Call the updateDocument API
-      await updateDocument(documentId, {
+      // Call the Convex updateDocument mutation
+      await updateDocumentMutation({
+        id: documentId as Id<"documents">,
         content: jsonContent as Record<string, unknown>,
-        content_text: textContent,
-        word_count: wordCount,
+        contentText: textContent,
+        wordCount: wordCount,
       });
 
       // Only update state if component is still mounted
@@ -300,7 +310,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
         }
       }
     }
-  }, [editor, documentId, isSaving, getContentHash, setDirty, currentProjectId, currentDocumentTitle, scheduleEmbeddingGeneration]);
+  }, [editor, documentId, isSaving, getContentHash, setDirty, currentProjectId, currentDocumentTitle, scheduleEmbeddingGeneration, updateDocumentMutation]);
 
   /**
    * Public save function - saves immediately
@@ -404,11 +414,12 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
         const wordCount = textContent.split(/\s+/).filter(Boolean).length;
 
         // Fire and forget - we can't await in cleanup
-        updateDocument(documentId, {
+        updateDocumentRef.current({
+          id: documentId as Id<"documents">,
           content: jsonContent as Record<string, unknown>,
-          content_text: textContent,
-          word_count: wordCount,
-        }).catch((err) => {
+          contentText: textContent,
+          wordCount: wordCount,
+        }).catch((err: unknown) => {
           console.error("[useAutoSave] Failed to save on unmount:", err);
         });
       }
