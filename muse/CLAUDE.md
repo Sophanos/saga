@@ -34,7 +34,8 @@ apps/
 packages/
   state/          # Zustand stores (AI, workspace, layout, command palette)
   commands/       # Command registry and definitions
-  analytics/      # Typed event definitions
+  analytics/      # Mixpanel event tracking and typed events
+  consent/        # GDPR-compliant consent management + Clarity
   theme/          # Design tokens (colors, typography, spacing, shadows)
   core/           # Domain types, World Graph, Zod schemas
   manifest/       # Project tree logic (chapters, entities, memories)
@@ -116,15 +117,40 @@ const { sidebarWidth, setSidebarWidth, aiPanelWidth, setAIPanelWidth } = useLayo
 **Single source of truth**:
 - State stores → `@mythos/state` (AI, workspace, layout, command palette)
 - Commands → `@mythos/commands` (registry and definitions)
-- Analytics → `@mythos/analytics` (typed events)
+- Analytics → `@mythos/analytics` (Mixpanel event tracking)
+- Consent → `@mythos/consent` (GDPR consent, Clarity session replay)
 - Theme → `@mythos/theme` (colors, typography, spacing, shadows)
 - Entity config → `@mythos/core/entities/config.ts`
 - AI prompts → `@mythos/prompts`
 - Tier limits → `convex/lib/tierConfig.ts` (memory retention, quotas, features)
+- Provider registry → `convex/lib/providers/` (AI model configs per tier)
 
 **File size limit**: Keep files under 800 LOC.
 
 **No AI slop**: Clean, concise code. No unnecessary comments.
+
+## AI Features (Convex)
+
+Server-side AI modules in `convex/ai/`:
+
+| Module | Purpose |
+|--------|---------|
+| `agentRuntime.ts` | Agent orchestration with tool execution |
+| `coach.ts` | Writing guidance and feedback |
+| `dynamics.ts` | Story pacing analysis |
+| `genesis.ts` | Story generation from prompts |
+| `image.ts` | Visual scene descriptions |
+| `lint.ts` | Content quality checks |
+| `style.ts` | Writing style analysis |
+| `rag.ts` | Retrieval-augmented generation |
+| `saga.ts` | Core saga agent orchestration |
+
+Tools in `convex/ai/tools/`:
+- `editorTools.ts` - Document editing operations
+- `ragTools.ts` - RAG search and retrieval
+- `worldGraphTools.ts` - Character/setting relationship queries
+
+Prompts in `convex/ai/prompts/` - System prompts for each AI module.
 
 ## Environment
 

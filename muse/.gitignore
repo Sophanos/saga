@@ -12,6 +12,8 @@ out
 
 # Tauri
 apps/tauri/src-tauri/target/
+apps/tauri/src-tauri/WixTools/
+apps/tauri/src-tauri/Cargo.lock
 *.rlib
 *.rmeta
 *.d
@@ -19,6 +21,14 @@ apps/tauri/src-tauri/target/
 *.a
 *.so
 *.dylib
+
+# Expo
+apps/expo/.expo/
+apps/expo/ios/
+apps/expo/android/
+*.ipa
+*.apk
+*.aab
 
 # Bun
 bun.lockb
