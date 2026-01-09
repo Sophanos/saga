@@ -27,7 +27,7 @@
     "@mythos/website": "workspace:*",
     "motion": "^11.15.0",
     "better-auth": "^1.2.0",
-    "@convex-dev/better-auth": "^0.2.0",
+    "@convex-dev/better-auth": "^0.10.9",
     "@tiptap/react": "^2.10.4",
     "@tippyjs/react": "^4.2.6",
     "immer": "^10.1.1",

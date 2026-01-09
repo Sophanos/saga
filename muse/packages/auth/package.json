@@ -20,19 +20,24 @@
   "dependencies": {
     "@better-auth/expo": "1.4.9",
     "@convex-dev/better-auth": "^0.10.9",
+    "@mythos/state": "workspace:*",
     "better-auth": "1.4.9",
     "convex": "^1.31.2",
     "react": "^18.3.1",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-shell": "^2.0.0",
     "@types/react": "^18.3.12",
     "typescript": "~5.7.2"
   },
   "peerDependencies": {
     "expo-constants": "*",
     "expo-secure-store": "*",
-    "react-native-purchases": "*"
+    "react-native-purchases": "*",
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-shell": "^2.0.0"
   },
   "peerDependenciesMeta": {
     "expo-constants": {
@@ -42,6 +47,12 @@
       "optional": true
     },
     "react-native-purchases": {
+      "optional": true
+    },
+    "@tauri-apps/api": {
+      "optional": true
+    },
+    "@tauri-apps/plugin-shell": {
       "optional": true
     }
   }

@@ -126,7 +126,7 @@ export async function setupDeepLinkListener(
   try {
     const { listen } = await import("@tauri-apps/api/event");
 
-    const unlisten = await listen("deep-link://new-url", async (event) => {
+    const unlisten = await listen<string>("deep-link://new-url", async (event) => {
       const url = event.payload as string;
       const handled = await handleAuthCallback(url);
 

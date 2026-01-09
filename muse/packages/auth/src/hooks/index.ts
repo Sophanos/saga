@@ -138,8 +138,7 @@ export function useRevenueCatSync() {
     const syncRevenueCat = async () => {
       setSubscriptionLoading(true);
       try {
-        const { loginRevenueCat, logoutRevenueCat, refreshCustomerInfo } =
-          await import("../revenuecat");
+        const { loginRevenueCat, logoutRevenueCat } = await import("../revenuecat");
 
         if (isAuthenticated && userId) {
           await loginRevenueCat(userId);

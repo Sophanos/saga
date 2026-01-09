@@ -11,7 +11,7 @@
 
 import { getAuthConfig, getPlatform, isNativePlatform } from "../config";
 import { useSubscriptionStore, useAuthStore } from "../store";
-import type { Subscription, SubscriptionStore } from "../types";
+import type { Subscription } from "../types";
 
 // RevenueCat SDK types (imported dynamically)
 interface CustomerInfo {
