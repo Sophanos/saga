@@ -56,7 +56,29 @@ crons.interval(
 crons.interval(
   "sync-embeddings",
   { seconds: 30 },
-  internal.ai.embeddings.processEmbeddingJobs
+  (internal as any)["ai/embeddings"].processEmbeddingJobs
+);
+
+// ============================================================
+// Invitation Cleanup
+// Runs daily at 4:00 AM UTC to expire old invitations
+// ============================================================
+
+crons.daily(
+  "expire-old-invitations",
+  { hourUTC: 4, minuteUTC: 0 },
+  internal.maintenance.expireOldInvitations
+);
+
+// ============================================================
+// Asset Cleanup
+// Runs weekly on Sunday at 5:00 AM UTC to clean up soft-deleted assets
+// ============================================================
+
+crons.weekly(
+  "cleanup-deleted-assets",
+  { dayOfWeek: "sunday", hourUTC: 5, minuteUTC: 0 },
+  internal.maintenance.cleanupDeletedAssets
 );
 
 export default crons;

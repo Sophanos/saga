@@ -67,7 +67,7 @@ export const cleanupOldStreams = internalMutation({
  */
 export const aggregateAIUsage = internalMutation({
   args: {},
-  handler: async (ctx) => {
+  handler: async (_ctx) => {
     // Future: Aggregate aiUsage records into daily/monthly summaries
     // For now, this is a placeholder that doesn't do anything
     return { aggregated: 0 };
@@ -123,5 +123,80 @@ export const syncEmbeddings = internalAction({
     // Upsert to Qdrant
     console.log("[maintenance] Embedding sync not yet implemented");
     return { synced: 0 };
+  },
+});
+
+// ============================================================
+// Invitation Cleanup
+// ============================================================
+
+/**
+ * Expire old pending invitations.
+ * Runs daily to mark invitations past their expiry date.
+ */
+export const expireOldInvitations = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const pending = await ctx.db
+      .query("projectInvitations")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .collect();
+
+    let expiredCount = 0;
+    for (const inv of pending) {
+      if (inv.expiresAt < now) {
+        await ctx.db.patch(inv._id, { status: "expired" });
+        expiredCount++;
+      }
+    }
+
+    if (expiredCount > 0) {
+      console.log(
+        `[maintenance] Expired ${expiredCount} old invitations`
+      );
+    }
+
+    return { expiredCount };
+  },
+});
+
+// ============================================================
+// Asset Cleanup
+// ============================================================
+
+/**
+ * Clean up soft-deleted assets older than 30 days.
+ * Removes both storage files and database records.
+ */
+export const cleanupDeletedAssets = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+    const deleted = await ctx.db
+      .query("projectAssets")
+      .withIndex("by_deleted")
+      .collect();
+
+    const toDelete = deleted.filter(
+      (a) => a.deletedAt && a.deletedAt < cutoff
+    );
+
+    let deletedCount = 0;
+    for (const asset of toDelete.slice(0, 100)) {
+      await ctx.storage.delete(asset.storageId);
+      if (asset.thumbnailStorageId) {
+        await ctx.storage.delete(asset.thumbnailStorageId);
+      }
+      await ctx.db.delete(asset._id);
+      deletedCount++;
+    }
+
+    if (deletedCount > 0) {
+      console.log(`[maintenance] Cleaned up ${deletedCount} deleted assets`);
+    }
+
+    return { deleted: deletedCount };
   },
 });

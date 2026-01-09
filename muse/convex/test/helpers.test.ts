@@ -4,18 +4,18 @@ import type { SagaTestStreamStep } from "../ai/agentRuntime";
 
 export function withTestEnv() {
   const previous = {
-    SAGA_TEST_MODE: process.env.SAGA_TEST_MODE,
-    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    SAGA_TEST_MODE: process.env["SAGA_TEST_MODE"],
+    OPENROUTER_API_KEY: process.env["OPENROUTER_API_KEY"],
   };
 
-  process.env.SAGA_TEST_MODE = "true";
-  if (!process.env.OPENROUTER_API_KEY) {
-    process.env.OPENROUTER_API_KEY = "test";
+  process.env["SAGA_TEST_MODE"] = "true";
+  if (!process.env["OPENROUTER_API_KEY"]) {
+    process.env["OPENROUTER_API_KEY"] = "test";
   }
 
   return () => {
-    process.env.SAGA_TEST_MODE = previous.SAGA_TEST_MODE;
-    process.env.OPENROUTER_API_KEY = previous.OPENROUTER_API_KEY;
+    process.env["SAGA_TEST_MODE"] = previous.SAGA_TEST_MODE;
+    process.env["OPENROUTER_API_KEY"] = previous.OPENROUTER_API_KEY;
   };
 }
 
@@ -54,7 +54,7 @@ export function buildToolCallStep(
 }
 
 export async function drainStream(
-  t: { query: (fn: unknown, args: Record<string, unknown>) => Promise<any> },
+  t: { query: (...args: any[]) => Promise<any> },
   streamId: string,
   options?: { pollMs?: number; maxIterations?: number }
 ): Promise<{
@@ -72,7 +72,7 @@ export async function drainStream(
   let error: string | undefined;
 
   for (let i = 0; i < maxIterations; i += 1) {
-    const response = await t.query(internal.ai.streams.getChunks, {
+    const response = await t.query((internal as any)["ai/streams"].getChunks, {
       streamId,
       afterIndex,
     });

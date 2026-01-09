@@ -1,4 +1,4 @@
-/// <reference types="vite/client" />
+/// <reference types="vitest/importMeta" />
 
 import { convexTest } from "convex-test";
 import { defineSchema, componentsGeneric } from "convex/server";
