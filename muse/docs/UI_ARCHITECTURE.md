@@ -285,7 +285,7 @@ apps/expo/
 
 | Service | Host | URL |
 |---------|------|-----|
-| Convex | Convex Cloud | api.cascada.vision |
+| Convex | Convex Cloud | convex.cascada.vision |
 | Qdrant | Hetzner VPS | qdrant.cascada.vision |
 | PostHog | Hetzner VPS | posthog.cascada.vision (planned) |
 | Web App | Vercel/Cloudflare | app.cascada.vision |

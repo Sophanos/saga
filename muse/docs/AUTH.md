@@ -20,7 +20,7 @@ Centralized authentication using **Better Auth** with **Convex** backend, unifie
 │                          CLOUDFLARE                                          │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │  DNS: cascada.vision → Hetzner IP (Proxied)                         │    │
-│  │  DNS: api.cascada.vision → Hetzner IP (Proxied)                     │    │
+│  │  DNS: convex.cascada.vision → Hetzner IP (Proxied)                     │    │
 │  │  SSL: Full (Strict) - Origin cert on Hetzner                        │    │
 │  │  WAF: Rate limiting, bot protection                                  │    │
 │  │  WebSocket: Enabled (for Convex real-time)                          │    │
@@ -79,7 +79,7 @@ ssh -i ~/.ssh/hetzner_orchestrator root@78.47.165.136
 
 | Service | Location | Ports | Domain |
 |---------|----------|-------|--------|
-| Convex Backend (Cascada) | `/opt/convex-cascada/` | 3220, 3221 | api.cascada.vision |
+| Convex Backend (Cascada) | `/opt/convex-cascada/` | 3220, 3221 | convex.cascada.vision |
 | Convex Dashboard (Cascada) | `/opt/convex-cascada/` | 6792 | dashboard.cascada.vision |
 | Convex Backend (Kora) | `/opt/convex/` | 3210, 3211 | convex.kora.vision |
 | Qdrant | `/opt/qdrant/` | 6333 | qdrant.cascada.vision |
@@ -102,7 +102,7 @@ services:
     env_file:
       - .env
     environment:
-      - CONVEX_CLOUD_ORIGIN=${CONVEX_CLOUD_ORIGIN:-https://api.cascada.vision}
+      - CONVEX_CLOUD_ORIGIN=${CONVEX_CLOUD_ORIGIN:-https://convex.cascada.vision}
       - CONVEX_SITE_ORIGIN=${CONVEX_SITE_ORIGIN:-https://cascada.vision}
       - ACTIONS_USER_TIMEOUT_SECS=300
       - HTTP_SERVER_TIMEOUT_SECONDS=360
@@ -120,7 +120,7 @@ services:
       - .env
     environment:
       - PORT=6791
-      - NEXT_PUBLIC_DEPLOYMENT_URL=${NEXT_PUBLIC_DEPLOYMENT_URL:-https://api.cascada.vision}
+      - NEXT_PUBLIC_DEPLOYMENT_URL=${NEXT_PUBLIC_DEPLOYMENT_URL:-https://convex.cascada.vision}
     depends_on:
       backend:
         condition: service_healthy
@@ -131,9 +131,9 @@ services:
 Located at `/opt/convex-cascada/.env`:
 
 ```env
-CONVEX_CLOUD_ORIGIN=https://api.cascada.vision
+CONVEX_CLOUD_ORIGIN=https://convex.cascada.vision
 CONVEX_SITE_ORIGIN=https://cascada.vision
-NEXT_PUBLIC_DEPLOYMENT_URL=https://api.cascada.vision
+NEXT_PUBLIC_DEPLOYMENT_URL=https://convex.cascada.vision
 INSTANCE_NAME=cascada-convex
 INSTANCE_SECRET=<generated>
 PORT=3220
@@ -158,7 +158,7 @@ map $http_upgrade $cascada_connection_upgrade {
 # API Backend (Convex API, WebSocket sync, deploy)
 server {
     listen 443 ssl http2;
-    server_name api.cascada.vision;
+    server_name convex.cascada.vision;
 
     include snippets/cloudflare_real_ip.conf;
 
@@ -225,7 +225,7 @@ server {
 # HTTP redirects
 server {
     listen 80;
-    server_name cascada.vision api.cascada.vision dashboard.cascada.vision;
+    server_name cascada.vision convex.cascada.vision dashboard.cascada.vision;
     return 301 https://$host$request_uri;
 }
 ```
@@ -258,7 +258,7 @@ cd muse
 
 # Set environment variables
 export NODE_TLS_REJECT_UNAUTHORIZED=0  # For Cloudflare origin cert
-export CONVEX_SELF_HOSTED_URL=https://api.cascada.vision
+export CONVEX_SELF_HOSTED_URL=https://convex.cascada.vision
 export CONVEX_SELF_HOSTED_ADMIN_KEY=cascada-convex|<your-admin-key>
 
 # Deploy
@@ -597,7 +597,7 @@ Client            App Store         RevenueCat          Convex
 
 ```bash
 # Check Convex health
-curl https://api.cascada.vision/health
+curl https://convex.cascada.vision/health
 
 # Check auth endpoint
 curl https://cascada.vision/api/auth/session

@@ -81,7 +81,7 @@ Single Hetzner VPS hosting two Convex instances:
 ### Endpoints
 | Service | Domain |
 |---------|--------|
-| Convex API + HTTP Actions | `api.cascada.vision` |
+| Convex API + HTTP Actions | `convex.cascada.vision` |
 | Qdrant | `qdrant.cascada.vision` |
 | Cert/Auth | `cascada.kora.vision` |
 
@@ -101,16 +101,16 @@ Single Hetzner VPS hosting two Convex instances:
 
 ### Cloudflare Tunnel Ingress (Zero Trust)
 ```
-api.cascada.vision        -> http://localhost:3221  # Convex site proxy (HTTP actions)
+convex.cascada.vision        -> http://localhost:3221  # Convex site proxy (HTTP actions)
 qdrant.cascada.vision     -> http://localhost:6333
 ```
 
 ### Cascada Convex Environment Variables
 ```env
 # Convex public endpoints
-CONVEX_CLOUD_ORIGIN=https://api.cascada.vision
-CONVEX_SITE_ORIGIN=https://api.cascada.vision
-NEXT_PUBLIC_DEPLOYMENT_URL=https://api.cascada.vision
+CONVEX_CLOUD_ORIGIN=https://convex.cascada.vision
+CONVEX_SITE_ORIGIN=https://convex.cascada.vision
+NEXT_PUBLIC_DEPLOYMENT_URL=https://convex.cascada.vision
 PORT=3220
 SITE_PROXY_PORT=3221
 DASHBOARD_PORT=6792
@@ -145,7 +145,7 @@ docker compose up -d
 docker compose logs -f backend
 
 # Convex CLI (local dev)
-bunx convex dev --url https://api.cascada.vision
+bunx convex dev --url https://convex.cascada.vision
 ```
 
 ---
@@ -171,7 +171,7 @@ bunx convex dev --url https://api.cascada.vision
 ## Phase 3: Deployment & Migration
 
 - [x] Set up cascada Convex in `/opt/convex-cascada` (ports 3220/3221, dashboard 6792)
-- [x] Configure Cloudflare Tunnel for `api.cascada.vision` → `http://localhost:3221`
+- [x] Configure Cloudflare Tunnel for `convex.cascada.vision` → `http://localhost:3221`
 - [ ] Get API token from `cascada.kora.vision`
 - [ ] Generate types: `bunx convex dev`
 - [ ] Migration script: Supabase → Convex (one-time)

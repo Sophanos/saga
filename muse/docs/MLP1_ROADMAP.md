@@ -22,7 +22,8 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 ├─────────────────────────────────────────────────────────────────────┤
 │ 1. Editor WebView Bundle           Complete         [██████████] ✅ │
 │ 2. Convex Agent Integration        Complete         [██████████] ✅ │
-│ 3. Platform Integration            In Progress      [██████░░░░] 60%│
+│ 3. Platform Integration            In Progress      [████████░░] 80%│
+│    └─ Shared Packages              Complete         [██████████] ✅ │
 │    └─ Web                          Complete         [██████████] ✅ │
 │    └─ macOS (Tauri)                Scaffold Done    [████████░░] ✅ │
 │    └─ Expo (iOS/iPad)              Partial          [██████░░░░]    │
@@ -31,9 +32,12 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 ├─────────────────────────────────────────────────────────────────────┤
 │ 6. Auth (Better Auth)              Complete         [██████████] ✅ │
 │ 7. Billing (RevenueCat)            Complete         [██████████] ✅ │
-│ 8. Observability (PostHog + Logs)  Not Started      [░░░░░░░░░░]    │
+│ 8. Observability (PostHog+Clarity) Complete         [██████████] ✅ │
+│ 9. Rate Limiting                   Complete         [██████████] ✅ │
+│10. Tier Config Migration           Complete         [██████████] ✅ │
+│11. Supabase → Convex Migration     In Progress      [██████░░░░] 60%│
 ├─────────────────────────────────────────────────────────────────────┤
-│ OVERALL MLP 1                                       [████████░░] 80%│
+│ OVERALL MLP 1                                       [█████████░] 93%│
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -46,7 +50,7 @@ Mythos transforms from a writing tool into an **AI co-author** with:
                                              │
                         ┌────────────────────┤
                         ▼                    ▼
-                   ✅ P6 (Auth)         🔲 P8 (Observability)
+                   ✅ P6 (Auth)         ✅ P8 (Observability)
                         │
                    ✅ P7 (Billing)
 ```
@@ -59,14 +63,14 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 
 | Layer | Tech | Endpoint |
 |-------|------|----------|
-| **Database** | Convex (self-hosted) | `api.cascada.vision:3220` |
+| **Database** | Convex (self-hosted) | `convex.cascada.vision:3220` |
 | **Vectors** | Qdrant (self-hosted) | `qdrant.cascada.vision:6333` |
 | **Auth** | Better Auth (Convex local) | `convex/betterAuth/` |
 | **Billing** | RevenueCat | Webhook → Convex |
 | **Agent** | @convex-dev/agent | `convex/ai/` |
 | **Embeddings** | DeepInfra Qwen3-8B | $0.01/1M tokens |
 | **Reranker** | DeepInfra Qwen3-4B | HTTP API |
-| **Analytics** | PostHog (self-hosted) | Hetzner |
+| **Analytics** | PostHog + Clarity | Self-hosted or Cloud |
 
 ### Data Flow
 
@@ -143,50 +147,52 @@ packages/editor-webview/
 convex/
 ├── convex.config.ts                 # Agent component
 ├── ai/
-│   ├── agentRuntime.ts              # Agent loop + auto-execute
+│   ├── agentRuntime.ts              # Agent loop + dynamic approval
 │   ├── threads.ts                   # Thread persistence
 │   ├── streams.ts                   # SSE streaming
 │   ├── rag.ts                       # Hybrid + RRF + rerank
 │   ├── lexical.ts                   # Full-text search
 │   ├── embeddings.ts                # Outbox + cron
+│   ├── detect.ts                    # Entity detection
+│   ├── lint.ts                      # Consistency linting ✅ NEW
+│   ├── coach.ts                     # Writing coach ✅ NEW
+│   ├── dynamics.ts                  # Character interactions ✅ NEW
+│   ├── style.ts                     # Style learning ✅ NEW
+│   ├── image.ts                     # Image generation ✅ NEW
+│   ├── prompts/                     # AI system prompts ✅ NEW
+│   │   ├── linter.ts                # Consistency analysis
+│   │   ├── coach.ts                 # Writing feedback
+│   │   └── dynamics.ts              # Interaction extraction
 │   └── tools/
 │       ├── editorTools.ts           # ask_question, write_content
 │       ├── ragTools.ts              # search_context, get_entity
-│       └── ragHandlers.ts           # Server handlers
+│       ├── ragHandlers.ts           # RAG server handlers
+│       ├── worldGraphTools.ts       # Entity/relationship CRUD ✅ NEW
+│       ├── worldGraphHandlers.ts    # World graph handlers ✅ NEW
+│       └── index.ts                 # Tool exports
 ├── lib/
 │   ├── qdrant.ts                    # REST client
 │   ├── rerank.ts                    # Qwen3-Reranker
-│   └── deepinfraEmbedding.ts        # Embedding model
+│   ├── deepinfraEmbedding.ts        # Embedding model
+│   ├── tierConfig.ts                # Tier limits + features
+│   ├── aiModels.ts                  # Tier-aware model selection ✅ NEW
+│   ├── approvalConfig.ts            # Dynamic approval rules
+│   └── imageProviders.ts            # Image tier config ✅ NEW
 └── crons.ts                         # 30s embedding sync
 ```
 
-### Phase 3: Platform Integration (40%)
+### Phase 3: Platform Integration (60%)
 
-```
-apps/web/                            # ✅ COMPLETE
-├── src/providers/ConvexProvider.tsx
-├── src/services/ai/sagaClient.ts
-└── src/hooks/useSagaAgent.ts
+**Shared Packages** (✅ Centralized):
+- `@mythos/state` - Zustand stores (AI, workspace, layout, command palette)
+- `@mythos/commands` - Command registry and definitions
+- `@mythos/analytics` - Typed event definitions
+- `@mythos/theme` - Design tokens (colors, typography, spacing, shadows)
+- `@mythos/manifest` - Project tree logic (chapters, entities, memories)
 
-apps/tauri/                          # 🔲 NOT STARTED
-├── src/App.tsx
-├── src/components/editor/
-│   └── EditorWebView.tsx            # Load editor.bundle.js
-├── src/hooks/useEditorBridge.ts
-└── src-tauri/
-    └── src/lib.rs                   # Rust bridge commands
-
-apps/expo/                           # ⏳ PARTIAL
-├── src/components/ai/
-│   ├── AIPanel.tsx                  # ✅ 3-mode panel
-│   ├── AskQuestionCard.tsx          # ✅ Question UI
-│   └── ToolCallCard.tsx             # ✅ Tool display
-├── src/components/editor/
-│   └── MythosEditor.tsx             # 🔲 WebView wrapper
-├── src/hooks/
-│   └── useEditorBridge.ts           # 🔲 Bridge hook
-└── src/design-system/               # ✅ Complete
-```
+**Apps:**
+- `apps/expo/` - Universal app (web, iOS, macOS) - imports from shared packages
+- `apps/tauri/` - macOS desktop - scaffold complete, ready for shared packages
 
 ### Phase 4: RAG Pipeline ✅ COMPLETE
 
@@ -231,19 +237,19 @@ convex/ai/skills/                    # 🔲 ALL PENDING
 
 ### AI Endpoints Migration
 
-| Current Endpoint | Target | Priority |
-|------------------|--------|----------|
-| `ai-chat` | `convex/ai/chat.ts` action | P0 - Core |
-| `ai-agent` | Replaced by `@convex-dev/agent` | P0 - Core |
-| `ai-detect` | `convex/ai/detect.ts` action | P1 |
-| `ai-embed` | `convex/ai/embed.ts` action | P1 |
-| `ai-search` | `convex/ai/search.ts` action | P1 |
-| `ai-lint` | `convex/ai/lint.ts` action | P1 |
-| `ai-coach` | `convex/ai/coach.ts` action | P2 |
-| `ai-dynamics` | `convex/ai/dynamics.ts` action | P2 |
-| `ai-genesis` | `convex/ai/genesis.ts` action | P2 |
-| `ai-learn-style` | `convex/ai/style.ts` action | P3 |
-| `ai-image*` | `convex/ai/image.ts` action | P3 |
+| Current Endpoint | Target | Status |
+|------------------|--------|--------|
+| `ai-chat` | `convex/ai/agentRuntime.ts` | ✅ Done |
+| `ai-agent` | `@convex-dev/agent` | ✅ Done |
+| `ai-detect` | `convex/ai/detect.ts` | ✅ Done |
+| `ai-embed` | `convex/ai/embeddings.ts` | ✅ Done |
+| `ai-search` | `convex/ai/rag.ts` | ✅ Done |
+| `ai-lint` | `convex/ai/lint.ts` | ✅ Done |
+| `ai-coach` | `convex/ai/coach.ts` | ✅ Done |
+| `ai-dynamics` | `convex/ai/dynamics.ts` | ✅ Done |
+| `ai-genesis` | `convex/ai/genesis.ts` | 🔲 P2 |
+| `ai-learn-style` | `convex/ai/style.ts` | ✅ Done |
+| `ai-image*` | `convex/ai/image.ts` | ✅ Done |
 
 ### Billing Logic Migration
 
@@ -681,6 +687,27 @@ embeddingJobs: defineTable({
 | Touch keyboard handling | 🔲 |
 | Offline queue sync | 🔲 |
 
+#### Web → Shared Packages Refactor (Post-MLP1)
+
+After Expo-web is finalized, migrate remaining `apps/web/` code to shared packages for Tauri reuse.
+
+**Candidates:**
+
+| File | Target | Notes |
+|------|--------|-------|
+| `stores/navigation.ts` | `@mythos/state` | Navigation state |
+| `stores/projectSelection.ts` | `@mythos/state` | Selected project |
+| `stores/chatSessionStorage.ts` | `@mythos/state` | Chat persistence |
+| `tools/executors/*` | `@mythos/tools` | Client-side tool executors |
+
+**Keep platform-specific:**
+
+| File | Reason |
+|------|--------|
+| `stores/memory.ts` | Already uses `@mythos/memory`, just needs storage adapter |
+| `stores/undo.ts` | Editor UX - needs client-side speed |
+| `stores/history.ts` | Session stats - sync aggregates to Convex, not every change |
+
 ### Phase 5: Skills + Polish
 
 | Skill | Purpose | Effort |
@@ -787,195 +814,379 @@ docs/
 
 ---
 
-## Phase 8: Observability (PostHog + Error Logging)
+## Phase 8: Observability (PostHog + Clarity) ✅ COMPLETE
 
-> **Status:** Planning | **Priority:** P1
+> **Status:** Complete | **Priority:** P1
 
-### PostHog Self-Hosting on Hetzner
-
-**Deployment:** Hobby (single-machine Docker Compose)
-
-```bash
-# Deploy on Hetzner VPS
-ssh -i ~/.ssh/hetzner_orchestrator root@78.47.165.136
-mkdir -p /opt/posthog && cd /opt/posthog
-
-# Run official deploy script
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/posthog/posthog/HEAD/bin/deploy-hobby)"
-
-# Follow prompts:
-# - Domain: posthog.cascada.vision
-# - Email: your@email.com
-```
-
-**Nginx Configuration** (`/etc/nginx/sites-available/posthog`):
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name posthog.cascada.vision;
-
-    include snippets/cloudflare_real_ip.conf;
-    ssl_certificate /etc/ssl/certs/cascada-origin.pem;
-    ssl_certificate_key /etc/ssl/private/cascada-origin.key;
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-### Convex <> PostHog Integration
-
-**Architecture:**
+### Files Created
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    CLIENTS                                       │
-├─────────────────┬─────────────────┬─────────────────────────────┤
-│ Expo (RN)       │ Web (React)     │ Tauri (WebView)             │
-│ posthog-react-  │ posthog-js      │ posthog-js                  │
-│ native          │                 │                              │
-└────────┬────────┴────────┬────────┴────────┬────────────────────┘
-         │                 │                 │
-         └─────────────────┴─────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ PostHog Self-Hosted (posthog.cascada.vision)                    │
-│ • Product Analytics                                              │
-│ • Session Replays (web only)                                    │
-│ • Feature Flags                                                  │
-│ • A/B Experiments                                                │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Convex Server-Side Events (posthog-node)                        │
-│ • AI tool execution metrics                                      │
-│ • Billing events                                                 │
-│ • Error logging                                                  │
-└─────────────────────────────────────────────────────────────────┘
+packages/consent/                # @mythos/consent - Shared GDPR consent
+├── src/
+│   ├── index.ts                 # Main exports
+│   ├── types.ts                 # ConsentState, ConsentCategories
+│   ├── storage.ts               # LocalStorage/Memory adapters
+│   ├── manager.ts               # ConsentManager class
+│   ├── hooks.tsx                # React hooks + ConsentProvider
+│   └── adapters/
+│       ├── posthog.ts           # PostHog consent adapter
+│       └── clarity.ts           # Clarity consent adapter
+
+apps/tauri/src/lib/
+├── analytics.ts                 # PostHog client SDK + typed events
+├── clarity.ts                   # Microsoft Clarity integration
+└── consent.ts                   # Uses @mythos/consent
+
+apps/expo/src/lib/
+├── analytics.ts                 # PostHog client SDK (web only)
+├── clarity.ts                   # Microsoft Clarity (web only)
+└── consent.ts                   # Uses @mythos/consent
+
+convex/lib/
+└── analytics.ts                 # Server-side PostHog (fetch-based)
 ```
 
-**Expo Setup:**
-
-```bash
-npx expo install posthog-react-native expo-file-system expo-application expo-device expo-localization
-```
+### Client-Side (Tauri) ✅
 
 ```typescript
-// apps/expo/app/_layout.tsx
-import { PostHogProvider } from 'posthog-react-native';
+// apps/tauri/src/lib/analytics.ts
+import posthog from 'posthog-js';
 
-export default function RootLayout() {
-  return (
-    <PostHogProvider
-      apiKey={process.env.EXPO_PUBLIC_POSTHOG_API_KEY}
-      options={{ host: process.env.EXPO_PUBLIC_POSTHOG_HOST }}
-    >
-      <ConvexAuthProvider>
-        <Slot />
-      </ConvexAuthProvider>
-    </PostHogProvider>
-  );
-}
+export function initAnalytics() { /* ... */ }
+export function identify(userId: string, properties?: Record<string, unknown>) { /* ... */ }
+export function track(event: string, properties?: Record<string, unknown>) { /* ... */ }
+
+// Typed event helpers
+export const OnboardingEvents = { signUpStarted, signUpCompleted, projectCreated, ... };
+export const AgentEvents = { chatStarted, toolApproval, chatCompleted };
+export const WritingEvents = { sessionStarted, entityMentioned, aiAssist, exported };
 ```
 
-**Convex Server-Side:**
+### Server-Side (Convex) ✅
 
 ```typescript
-// convex/lib/analytics.ts
-"use node";
+// convex/lib/analytics.ts - fetch-based (Convex-compatible)
+export async function trackServerEvent(distinctId: string, event: string, properties?: Record<string, unknown>);
 
-import { PostHog } from "posthog-node";
-
-const posthog = new PostHog(process.env.POSTHOG_API_KEY!, {
-  host: process.env.POSTHOG_HOST,
-});
-
-export async function trackServerEvent(
-  distinctId: string,
-  event: string,
-  properties?: Record<string, any>
-) {
-  posthog.capture({ distinctId, event, properties });
-  await posthog.flush();
-}
+export const ServerAgentEvents = {
+  streamStarted,      // AI stream begins
+  ragContextRetrieved, // RAG results count
+  streamCompleted,    // Duration + tokens
+  streamFailed,       // Error tracking
+};
 ```
 
-### Events Schema (Metadata Only)
+### Microsoft Clarity ✅
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ POSTHOG EVENTS (Metadata Only - No Content)                     │
-├─────────────────────────────────────────────────────────────────┤
-│ Event                  │ Properties                              │
-├────────────────────────┼─────────────────────────────────────────┤
-│ ai_content_decision    │ decision, timeToDecisionMs, tool, model │
-│ retrieval_quality      │ totalTokens, ragChunkCount, latencyMs   │
-│ onboarding_step        │ step, source, goal                      │
-│ feature_used           │ feature, count                          │
-│ error_occurred         │ errorCode, component, stack (truncated) │
-│ session_start          │ platform, tier, isAnonymous             │
-│ subscription_changed   │ productId, action, store                │
-└─────────────────────────────────────────────────────────────────┘
+Session replays for desktop (Tauri). Linked to PostHog user IDs.
+
+```typescript
+// apps/tauri/src/lib/clarity.ts
+export function initClarity();
+export function identifyClarity(userId: string);
+export function setClarityTag(key: string, value: string);
 ```
 
 ### Tasks
 
-| Task | File | Effort | Status |
-|------|------|--------|--------|
-| Deploy PostHog on Hetzner | `/opt/posthog/` | 2h | 🔲 |
-| Nginx + Cloudflare DNS | `/etc/nginx/sites-available/posthog` | 30m | 🔲 |
-| @mythos/analytics package | `packages/analytics/` | 2h | 🔲 |
-| Expo PostHog integration | `apps/expo/app/_layout.tsx` | 1h | 🔲 |
-| Web PostHog integration | `apps/web/src/providers/` | 1h | 🔲 |
-| Convex server-side events | `convex/lib/analytics.ts` | 2h | 🔲 |
-| AI quality dashboard | PostHog dashboards | 2h | 🔲 |
-| Onboarding funnel | PostHog funnels | 1h | 🔲 |
+| Task | Status |
+|------|--------|
+| PostHog client SDK (Tauri) | ✅ |
+| PostHog client SDK (Expo web) | ✅ |
+| Microsoft Clarity integration | ✅ |
+| Centralized consent (`@mythos/consent`) | ✅ |
+| Server-side analytics (Convex) | ✅ |
+| Agent runtime tracking | ✅ |
+| PostHog deployment (Hetzner) | ✅ |
+| Convex env vars configured | ✅ |
 
-### Design Journey Tracking
+### PostHog Self-Hosted Deployment
+
+**Server:** `78.47.165.136` (Hetzner VPS)
+**URL:** https://posthog.cascada.vision/
+**Stack:** Docker Compose (hobby deployment)
+
+| Component | Status |
+|-----------|--------|
+| PostHog containers | ✅ Running |
+| ClickHouse database | ✅ Configured |
+| Redis | ✅ Running |
+| Celery workers | ✅ Running |
+| Nginx reverse proxy | ✅ Cloudflare SSL |
+| API key configured | ✅ `phc_9O9...` |
+
+### Environment Variables
+
+```env
+# Tauri/Vite client
+VITE_POSTHOG_API_KEY=phc_...
+VITE_POSTHOG_HOST=https://posthog.cascada.vision
+VITE_CLARITY_PROJECT_ID=...
+
+# Expo client (web only)
+EXPO_PUBLIC_POSTHOG_API_KEY=phc_...
+EXPO_PUBLIC_POSTHOG_HOST=https://posthog.cascada.vision
+EXPO_PUBLIC_CLARITY_PROJECT_ID=...
+
+# Convex server
+POSTHOG_API_KEY=phc_...
+POSTHOG_HOST=https://posthog.cascada.vision
+```
+
+---
+
+## Phase 9: Rate Limiting ✅ COMPLETE
+
+### Files Created
+
+```
+convex/lib/
+├── rateLimiting.ts              # @convex-dev/rate-limiter config
+│   ├── rateLimiter              # RateLimiter instance
+│   ├── createUsageHandler()     # Agent UsageHandler with DB tracking
+│   ├── checkAiRateLimits()      # Pre-flight checks for AI requests
+│   ├── MODEL_PRICING            # Cost calculation table
+│   └── calculateCostMicros()    # Cost estimation
+
+convex/
+├── convex.config.ts             # Added rate-limiter component
+├── aiUsage.ts                   # Usage tracking mutations/queries
+│   ├── trackUsage               # Internal mutation
+│   ├── getUserUsage             # User billing period usage
+│   ├── getThreadUsage           # Per-thread usage
+│   └── getProjectUsage          # Project-level summary
+```
+
+### Rate Limits Configured
+
+| Limit | Algorithm | Rate | Period | Shards |
+|-------|-----------|------|--------|--------|
+| `login` | token bucket | 5/min | 1 min | - |
+| `failedLogin` | token bucket | 3/15min | 15 min | - |
+| `signup` | fixed window | 3/hr | 1 hour | - |
+| `aiRequest` | token bucket | 20/min | 1 min | - |
+| `aiTokenUsage` | token bucket | 50k/min | 1 min | 10 |
+| `globalAiTokenUsage` | token bucket | 500k/min | 1 min | 50 |
+| `sendMessage` | token bucket | 30/min | 1 min | - |
+| `webhook` | token bucket | 1000/min | 1 min | 10 |
+| `embedding` | token bucket | 100/min | 1 min | - |
+
+### Best Practices Applied
+
+- **Reserve pattern**: `check()` before with estimate, `limit()` after with actual
+- **Dual limits**: Per-user AND global for token usage
+- **Sharding**: High-throughput limits use shards (QPS/2 formula)
+- **UsageHandler**: Integrated with @convex-dev/agent for automatic tracking
+- **Cost tracking**: Microdollars per request stored in DB
+
+---
+
+## Phase 10: Tier Configuration ✅ COMPLETE
+
+### Files Created
+
+```
+convex/
+├── schema.ts                    # Added tierConfigs table
+├── tiers.ts                     # CRUD queries/mutations
+│   ├── listActive               # Get active tiers
+│   ├── getByTier                # Get specific tier
+│   ├── create/update            # Manage tiers
+│   ├── seedDefaults             # Populate initial data
+│   └── resetToDefaults          # Reset to hardcoded values
+
+convex/lib/
+├── tierConfig.ts                # Types, defaults, helpers
+│   ├── TierConfig               # Full tier type
+│   ├── TIER_DEFAULTS            # Hardcoded fallback
+│   ├── getTierDefaults()        # Get without DB
+│   ├── dbToTierConfig()         # Convert DB → typed
+│   ├── isAIFeatureEnabled()     # Check AI feature
+│   ├── isFeatureEnabled()       # Check general feature
+│   └── checkQuota()             # Validate limits
+```
+
+### Tier Schema
 
 ```typescript
-// Onboarding funnel
-posthog.capture('onboarding_step', {
-  step: 'landing_submit',
-  source: 'paste' | 'file' | 'empty',
-  goal: 'import_organize' | 'proofread' | 'consistency',
-});
-
-posthog.capture('onboarding_step', {
-  step: 'trial_first_ai_call',
-  callsRemaining: 4,
-});
-
-posthog.capture('onboarding_step', {
-  step: 'signup_completed',
-  migrated: true,
-});
+tierConfigs: {
+  tier: string,                    // "free" | "pro" | "team" | "enterprise"
+  name: string,
+  description?: string,
+  priceMonthlyCents: number,
+  priceYearlyCents: number,
+  ai: { tokensPerMonth, callsPerDay, concurrentRequests, models[] },
+  aiFeatures: { chat, lint, coach, detect, search, webSearch, imageGeneration, styleAdaptation },
+  memory: { retentionDays, maxPerProject, maxPinned },
+  embeddings: { operationsPerDay, maxVectorsPerProject, queuePriority },
+  projects: { maxProjects, maxDocumentsPerProject, maxEntitiesPerProject, maxWordsPerMonth, storageMB },
+  collaboration: { enabled, maxCollaboratorsPerProject },
+  features: { prioritySupport, customModels, apiAccess, exportEnabled },
+  metadata: any,
+  isActive: boolean,
+}
 ```
 
-### Error Flow
+### Supabase → Convex Mapping
+
+| Supabase Field | Convex Location |
+|----------------|-----------------|
+| `tier` | `tier` |
+| `tokens_included` | `ai.tokensPerMonth` |
+| `ai_chat_enabled` | `aiFeatures.chat` |
+| `ai_lint_enabled` | `aiFeatures.lint` |
+| `max_projects` | `projects.maxProjects` |
+| `max_collaborators_per_project` | `collaboration.maxCollaboratorsPerProject` |
+| `priority_support` | `features.prioritySupport` |
+| `custom_models` | `features.customModels` |
+
+### AI Provider System (`convex/lib/providers/`) ✅ NEW
+
+Database-driven AI provider and task configuration with Vercel AI SDK integration.
 
 ```
-Error occurs ──▶ ErrorBoundary catches
-                      │
-                      ├──▶ Convex mutation (errorLogs.create)
-                      │
-                      └──▶ PostHog event (error_occurred)
-                                │
-                                ▼
-                         User sees friendly UI
-                         "Something went wrong. Retry?"
+convex/lib/providers/
+├── types.ts           # Modalities, tasks, adapters
+├── imageContexts.ts   # Image generation contexts
+├── registry.ts        # Provider factory + Vercel AI SDK
+├── taskConfig.ts      # Task → model routing
+├── seed.ts            # Default data seeding
+└── index.ts           # Re-exports
 ```
+
+#### AI Modalities & Tasks
+
+| Modality | Tasks |
+|----------|-------|
+| **text** | chat, lint, coach, detect, dynamics, style, thinking, creative, summarize |
+| **image** | image_generate, image_edit, image_analyze, image_upscale |
+| **audio** | tts, stt, voice_clone (future) |
+| **video** | video_generate, video_edit (future) |
+| **world** | world_generate, world_simulate (future) |
+
+#### Provider Adapters
+
+| Adapter | SDK | Use Case |
+|---------|-----|----------|
+| `vercel-openai` | `@ai-sdk/openai` | OpenAI direct |
+| `vercel-anthropic` | `@ai-sdk/anthropic` | Anthropic direct |
+| `vercel-google` | `@ai-sdk/google` | Google AI direct |
+| `vercel-deepinfra` | `@ai-sdk/deepinfra` | DeepInfra (SDK) |
+| `openrouter` | `@ai-sdk/openai` (baseURL) | OpenRouter gateway |
+| `deepinfra-openai` | `@ai-sdk/openai` (baseURL) | DeepInfra (OpenAI-compat) |
+| `custom-fetch` | Raw fetch | Reranker, embeddings |
+
+#### Task Configuration
+
+```typescript
+// Task → Model mapping with fallbacks
+getModelForTaskSync("lint", "pro")   // → "anthropic/claude-sonnet-4"
+getModelForTaskSync("lint", "free")  // → "google/gemini-2.0-flash-001"
+
+// Feature access checking
+checkTaskAccess("lint", "free")  // → { allowed: false, upgradeRequired: true }
+checkTaskAccess("lint", "pro")   // → { allowed: true }
+```
+
+#### Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `llmProviders` | Provider configs (slug, baseUrl, adapterType, priority) |
+| `llmTaskConfigs` | Task routing (model chain, limits, pricing, tier gating) |
+| `projectImages` | AI-generated images with context awareness |
+
+#### AI Feature Matrix by Tier
+
+| Feature | Free | Pro | Team | Enterprise |
+|---------|------|-----|------|------------|
+| `chat` | ✅ | ✅ | ✅ | ✅ |
+| `detect` | ✅ | ✅ | ✅ | ✅ |
+| `search` | ✅ | ✅ | ✅ | ✅ |
+| `lint` | ❌ | ✅ | ✅ | ✅ |
+| `coach` | ❌ | ✅ | ✅ | ✅ |
+| `dynamics` | ✅ | ✅ | ✅ | ✅ |
+| `thinking` | ❌ | ✅ | ✅ | ✅ |
+| `creative` | ❌ | ✅ | ✅ | ✅ |
+| `imageGeneration` | ❌ | ✅ | ✅ | ✅ |
+| `styleAdaptation` | ❌ | ✅ | ✅ | ✅ |
+
+#### Image Generation Contexts
+
+| Context | Aspect | Style | Tier | Storage |
+|---------|--------|-------|------|---------|
+| `inline` | 16:9 | concept_art | inline | document |
+| `character_portrait` | 3:4 | portrait_photo | standard | entity |
+| `character_full` | 2:3 | fantasy_art | premium | entity |
+| `location_scene` | 16:9 | concept_art | standard | entity |
+| `location_map` | 1:1 | concept_art | premium | entity |
+| `item` | 1:1 | concept_art | fast | entity |
+| `faction_emblem` | 1:1 | concept_art | standard | entity |
+| `cover` | 2:3 | fantasy_art | ultra | project |
+| `world_map` | 4:3 | concept_art | ultra | project |
+
+#### Image Quality Tiers
+
+| Tier | Model | Price/Image | Use Case |
+|------|-------|-------------|----------|
+| `inline` | `gemini-2.0-flash-preview-image-generation` | $0.003 | Chat inline |
+| `fast` | `FLUX-1-schnell` | $0.003 | Quick drafts |
+| `standard` | `FLUX-1-dev` | $0.01 | Default |
+| `premium` | `gemini-2.0-flash-preview-image-generation` | $0.02 | High quality |
+| `ultra` | `FLUX-1.1-pro` | $0.04 | Maximum quality |
+
+---
+
+## Phase 11: Supabase → Convex Migration (60%)
+
+### Migration Architecture
+
+```
+convex/
+├── migrations/
+│   ├── index.ts                 # Migration runner + status
+│   └── types.ts                 # Migration types
+├── collaboration.ts             # ✅ Project members + invitations
+├── projectAssets.ts             # ✅ File storage management
+├── maintenance.ts               # ✅ Cleanup jobs (invitations, assets)
+└── crons.ts                     # ✅ Daily/weekly cleanup crons
+```
+
+### Schema Status
+
+| Table | Status | Notes |
+|-------|--------|-------|
+| `projectMembers` | ✅ Done | Roles: owner/editor/viewer, indexes |
+| `projectInvitations` | ✅ Done | Token-based, 7-day expiry |
+| `projectAssets` | ✅ Done | File storage, soft delete |
+| `tierConfigs` | ✅ Done | Seed from TIER_DEFAULTS |
+
+### Collaboration Features
+
+| Feature | Status |
+|---------|--------|
+| Permission helpers (isProjectMember, isEditor, isOwner) | ✅ |
+| Project member CRUD | ✅ |
+| Invitation flow (create, accept, revoke, expire) | ✅ |
+| Projects list shows member projects | ✅ |
+| Editor access for updates | ✅ |
+| Cascade delete (members, invitations, assets) | ✅ |
+
+### Cleanup Crons
+
+| Cron | Schedule | Action |
+|------|----------|--------|
+| `expire-old-invitations` | Daily 4:00 AM UTC | Mark expired invitations |
+| `cleanup-deleted-assets` | Weekly Sunday 5:00 AM UTC | Hard delete soft-deleted assets (30+ days) |
+
+### Tables to DEPRECATE
+
+| Table | Reason | Migration Plan |
+|-------|--------|----------------|
+| `activity_log` | High-volume append-only | PostHog events |
+| `ai_request_logs` | Analytics | `aiUsage` table |
+| `chat_sessions` | Start fresh | Agent threads |
+| `profiles` | Better Auth | Already handled |
 
 ---
 
@@ -987,7 +1198,15 @@ Error occurs ──▶ ErrorBoundary catches
 | `sessions` | (Better Auth generates) | ✅ P6 |
 | `subscriptions` | userId, status, productId, expiresAt | ✅ P7 |
 | `subscriptionEvents` | eventType, store, transactionId | ✅ P7 |
-| `errorLogs` | level, message, stack, context | P8 |
+| `@mythos/consent` | ConsentManager, adapters, hooks | ✅ P8 |
+| `tierConfigs` | tier, ai, aiFeatures, memory, projects | ✅ P10 |
+| `aiUsage` | userId, threadId, model, tokens, costMicros | ✅ P9 |
+| `llmProviders` | slug, baseUrl, adapterType, priority | ✅ P10 |
+| `llmTaskConfigs` | taskSlug, modality, directModel, minTier | ✅ P10 |
+| `projectImages` | projectId, context, targetType, status | ✅ P10 |
+| `projectMembers` | projectId, userId, role, isOwner | ✅ P11 |
+| `projectInvitations` | projectId, email, token, status, expiresAt | ✅ P11 |
+| `projectAssets` | projectId, type, storageId, deletedAt | ✅ P11 |
 | `memories` | projectId, category, scope, content | ✅ Done |
 | `embeddingJobs` | docId, status, attempts | ✅ Done |
 
@@ -995,29 +1214,40 @@ Error occurs ──▶ ErrorBoundary catches
 
 ## Tools Status
 
-### Convex Tools ✅ (Migrated)
+### Agent Tools ✅ (All Migrated)
 
-| Tool | Auto-Approve | Location |
-|------|--------------|----------|
-| `ask_question` | Yes | `convex/ai/tools/editorTools.ts` |
-| `write_content` | **No** | `convex/ai/tools/editorTools.ts` |
-| `search_context` | Yes | `convex/ai/tools/ragTools.ts` |
-| `read_document` | Yes | `convex/ai/tools/ragTools.ts` |
-| `search_chapters` | Yes | `convex/ai/tools/ragTools.ts` |
-| `search_world` | Yes | `convex/ai/tools/ragTools.ts` |
-| `get_entity` | Yes | `convex/ai/tools/ragTools.ts` |
+| Tool | Approval | Location |
+|------|----------|----------|
+| `ask_question` | Always | `convex/ai/tools/editorTools.ts` |
+| `write_content` | Always | `convex/ai/tools/editorTools.ts` |
+| `search_context` | Auto | `convex/ai/tools/ragTools.ts` |
+| `read_document` | Auto | `convex/ai/tools/ragTools.ts` |
+| `search_chapters` | Auto | `convex/ai/tools/ragTools.ts` |
+| `search_world` | Auto | `convex/ai/tools/ragTools.ts` |
+| `get_entity` | Auto | `convex/ai/tools/ragTools.ts` |
+| `create_entity` | **Dynamic** | `convex/ai/tools/worldGraphTools.ts` |
+| `update_entity` | **Dynamic** | `convex/ai/tools/worldGraphTools.ts` |
+| `create_relationship` | **Dynamic** | `convex/ai/tools/worldGraphTools.ts` |
+| `update_relationship` | **Dynamic** | `convex/ai/tools/worldGraphTools.ts` |
 
-### Supabase Tools 🔲 (Need Migration)
+### Dynamic Approval Logic (`convex/lib/approvalConfig.ts`)
+
+| Entity Type | Auto-Execute | Requires Approval |
+|-------------|--------------|-------------------|
+| `item`, `location`, `event`, `concept` | ✅ Low impact | |
+| `character`, `faction`, `magic_system` | | ✅ High impact |
+
+| Relationship Type | Auto-Execute | Requires Approval |
+|-------------------|--------------|-------------------|
+| `knows`, `located_in`, `contains` | ✅ Low impact | |
+| `parent_of`, `child_of`, `allied_with`, `enemy_of`, `owns`, `serves` | | ✅ High impact |
+
+### Remaining Tools 🔲
 
 | Tool | Location | Priority |
 |------|----------|----------|
-| `create_entity` | `supabase/functions/_shared/tools/` | P1 |
-| `update_entity` | `supabase/functions/_shared/tools/` | P1 |
-| `create_relationship` | `supabase/functions/_shared/tools/` | P1 |
-| `detect_entities` | `supabase/functions/ai-detect/` | P2 |
-| `check_consistency` | `supabase/functions/_shared/tools/` | P2 |
-| `genesis_world` | `supabase/functions/_shared/tools/` | P3 |
-| `create_entity_from_image` | `supabase/functions/_shared/tools/` | P3 |
+| `genesis_world` | `convex/ai/genesis.ts` | P2 |
+| `detect_entities` (streaming) | `convex/ai/detect.ts` | ✅ Done |
 
 ---
 
@@ -1053,15 +1283,15 @@ Error occurs ──▶ ErrorBoundary catches
 # =============================================================
 # Convex (Self-Hosted on Hetzner - Cascada)
 # =============================================================
-CONVEX_SELF_HOSTED_URL=https://api.cascada.vision
+CONVEX_SELF_HOSTED_URL=https://convex.cascada.vision
 CONVEX_SELF_HOSTED_ADMIN_KEY=cascada-convex|<your-admin-key>
 
 # Public URLs (used by clients)
-VITE_CONVEX_URL=https://api.cascada.vision
+VITE_CONVEX_URL=https://convex.cascada.vision
 VITE_CONVEX_SITE_URL=https://cascada.vision
 
 # Expo
-EXPO_PUBLIC_CONVEX_URL=https://api.cascada.vision
+EXPO_PUBLIC_CONVEX_URL=https://convex.cascada.vision
 EXPO_PUBLIC_CONVEX_SITE_URL=https://cascada.vision
 
 # =============================================================
@@ -1093,12 +1323,21 @@ QDRANT_URL=http://127.0.0.1:6333  # Internal, or https://qdrant.cascada.vision
 QDRANT_API_KEY=kora-secure-key-2024
 
 # =============================================================
-# PostHog (Self-Hosted on Hetzner)
+# Analytics (PostHog + Clarity)
 # =============================================================
-POSTHOG_API_KEY=
+# PostHog (self-hosted or cloud)
+POSTHOG_API_KEY=phc_...
 POSTHOG_HOST=https://posthog.cascada.vision
-EXPO_PUBLIC_POSTHOG_API_KEY=
+
+# Tauri/Vite client
+VITE_POSTHOG_API_KEY=phc_...
+VITE_POSTHOG_HOST=https://posthog.cascada.vision
+VITE_CLARITY_PROJECT_ID=...
+
+# Expo client
+EXPO_PUBLIC_POSTHOG_API_KEY=phc_...
 EXPO_PUBLIC_POSTHOG_HOST=https://posthog.cascada.vision
+EXPO_PUBLIC_CLARITY_PROJECT_ID=...
 ```
 
 ---
@@ -1119,6 +1358,18 @@ EXPO_PUBLIC_POSTHOG_HOST=https://posthog.cascada.vision
 | Error rate | >5% | Discord alert |
 | Embedding queue | >100 pending | Discord alert |
 | AI latency p95 | >5s | Investigate |
+
+---
+
+## Phase 12: Real-Time Collaboration (Future)
+
+> **Status:** Planned | **Priority:** P2
+
+Figma-level multiplayer editing via Yjs CRDT + Convex persistence:
+- **Yjs**: CRDT document sync, conflict-free merging
+- **Awareness Protocol**: Cursor positions, selections, typing indicators
+- **Convex Provider**: Persist Y.Doc state to Convex tables, sync via WebSocket
+- **Reference**: [y-convex](https://github.com/get-convex/y-convex) or custom `LiveblocksYjsProvider` pattern
 
 ---
 

@@ -30,12 +30,14 @@ See `docs/UI_ARCHITECTURE.md` for full details.
 ```
 apps/
   expo/           # Universal app (web, iOS, macOS)
-  web/            # Legacy React SPA (deprecated)
+  tauri/          # macOS desktop app
 packages/
+  state/          # Zustand stores (AI, workspace, layout, command palette)
+  commands/       # Command registry and definitions
+  analytics/      # Typed event definitions
+  theme/          # Design tokens (colors, typography, spacing, shadows)
   core/           # Domain types, World Graph, Zod schemas
-  theme/          # Design tokens (colors, typography, spacing)
-  ui/             # Shared components
-  db/             # Supabase client (legacy)
+  manifest/       # Project tree logic (chapters, entities, memories)
   prompts/        # AI prompts
 ```
 
@@ -43,16 +45,13 @@ packages/
 ```
 app/              # Expo Router (file-based)
 src/
-  design-system/  # Tokens, theme hook, layout store
+  design-system/  # Local tokens + re-exports from @mythos/state
     colors.ts     # Light/dark palette
     tokens.ts     # Spacing, sizing, radii, typography
     theme.ts      # useTheme() hook
-    layout.ts     # Sidebar/AI panel state (Zustand)
   components/
     layout/       # AppShell, Sidebar (resizable)
     ai/           # AIPanel, MuseAvatar, dropdowns
-  stores/
-    ai.ts         # Chat threads, model selection, context scope
 ```
 
 ## Design System
@@ -90,8 +89,10 @@ Notion-inspired AI chat in `src/components/ai/`:
 | `QuickActions` | Writer-focused action cards |
 | `AIPanelInput` | Rich input with @ mentions |
 
-### AI Store (`stores/ai.ts`)
+### AI Store (`@mythos/state`)
 ```typescript
+import { useAIStore, useLayoutStore, useCommandPaletteStore } from '@mythos/state';
+
 const { selectedModel, enabledScopes, sendMessage } = useAIStore();
 // Models: auto, claude-sonnet, claude-opus, gemini-flash, gpt-4o
 // Scopes: scene, chapter, project, entities, world, notes
@@ -105,13 +106,18 @@ Resizable panels in `AppShell`:
 - Breakpoints: mobile (<768), tablet (768-1024), desktop (>1024)
 
 ```typescript
+import { useLayoutStore, LAYOUT_SIZING } from '@mythos/state';
+
 const { sidebarWidth, setSidebarWidth, aiPanelWidth, setAIPanelWidth } = useLayoutStore();
 ```
 
 ## Key Patterns
 
 **Single source of truth**:
-- Colors/tokens → `@/design-system`
+- State stores → `@mythos/state` (AI, workspace, layout, command palette)
+- Commands → `@mythos/commands` (registry and definitions)
+- Analytics → `@mythos/analytics` (typed events)
+- Theme → `@mythos/theme` (colors, typography, spacing, shadows)
 - Entity config → `@mythos/core/entities/config.ts`
 - AI prompts → `@mythos/prompts`
 - Tier limits → `convex/lib/tierConfig.ts` (memory retention, quotas, features)
@@ -133,7 +139,14 @@ QDRANT_API_KEY=
 
 ## Infrastructure
 
-- Qdrant: `qdrant.cascada.vision` (Hetzner VPS)
+**Dashboards:**
+- Convex: https://dashboard.cascada.vision/
+- PostHog: https://posthog.cascada.vision/
+
+**Services (Hetzner VPS 78.47.165.136):**
+- Qdrant: `qdrant.cascada.vision`
+- PostHog: `posthog.cascada.vision`
+- Convex API: `convex.cascada.vision`
 - Collection: `saga_vectors` (4096 dims)
 
 ## Current Phase
