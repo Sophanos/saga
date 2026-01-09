@@ -12,6 +12,7 @@ import {
   generateCollaboratorColor,
   type ProjectMember,
   type CollaboratorPresence,
+  type ActivityLogEntry,
 } from "@mythos/state";
 import { useAuthStore } from "../stores/auth";
 import { useMythosStore } from "../stores";
@@ -37,6 +38,20 @@ interface PresenceEntry {
   data?: unknown;
   name?: string;
   image?: string;
+}
+
+interface ActivityRecord {
+  _id: string;
+  projectId: string;
+  documentId?: string;
+  actorType?: string;
+  actorUserId?: string;
+  actorAgentId?: string;
+  actorName?: string;
+  action: string;
+  summary?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: number;
 }
 
 /**
@@ -114,6 +129,24 @@ function mapPresenceToCollaboratorPresence(
   };
 }
 
+function mapActivityToEntry(activity: ActivityRecord): ActivityLogEntry {
+  return {
+    id: activity._id,
+    type: activity.action as ActivityLogEntry["type"],
+    projectId: activity.projectId,
+    documentId: activity.documentId,
+    actorType: activity.actorType as ActivityLogEntry["actorType"],
+    actorUserId: activity.actorUserId,
+    actorAgentId: activity.actorAgentId,
+    actorName: activity.actorName,
+    userId: activity.actorUserId,
+    userName: activity.actorName,
+    summary: activity.summary,
+    details: activity.metadata,
+    createdAt: new Date(activity.createdAt).toISOString(),
+  };
+}
+
 /**
  * Hook to manage real-time collaboration for a project
  */
@@ -140,6 +173,7 @@ export function useCollaboration(projectId: string): UseCollaborationResult {
   const [connectionStatus, setConnectionStatus] = useState<CollaborationConnectionStatus>("disconnected");
 
   const members = useQuery(api.collaboration.listProjectMembersWithProfiles, { projectId });
+  const activity = useQuery(api.activity.listByProject, { projectId, limit: 50 });
   const presenceState = usePresence(api.presence, `project:${projectId}`, currentUser?.id ?? "", PRESENCE_INTERVAL_MS);
   const updatePresenceMutation = useMutation(api.presence.update);
 
@@ -158,8 +192,13 @@ export function useCollaboration(projectId: string): UseCollaborationResult {
   }, [convex, projectId, currentUser, setMembers, setMyRole]);
 
   const refreshActivity = useCallback(async () => {
-    setActivity([]);
-  }, [setActivity]);
+    try {
+      const entries = await convex.query(api.activity.listByProject, { projectId, limit: 50 });
+      setActivity(entries.map(mapActivityToEntry));
+    } catch (error) {
+      console.error("[Collaboration] Failed to fetch activity:", error);
+    }
+  }, [convex, projectId, setActivity]);
 
   // Sync members from query
   useEffect(() => {
@@ -170,6 +209,12 @@ export function useCollaboration(projectId: string): UseCollaborationResult {
     const myMembership = members.find((m) => m.userId === currentUser.id);
     setMyRole(myMembership?.role ?? null);
   }, [members, currentUser, setMembers, setMyRole]);
+
+  // Sync activity from query
+  useEffect(() => {
+    if (!activity) return;
+    setActivity(activity.map(mapActivityToEntry));
+  }, [activity, setActivity]);
 
   // Update presence data for current user
   useEffect(() => {

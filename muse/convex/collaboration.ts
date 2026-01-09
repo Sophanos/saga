@@ -12,6 +12,7 @@ import {
   internalQuery,
   internalMutation,
 } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { getAuthUserId, verifyProjectAccess, verifyProjectEditor } from "./lib/auth";
 
 // ============================================================
@@ -203,6 +204,7 @@ export const addProjectMember = mutation({
     invitedBy: v.optional(v.string()),
   },
   handler: async (ctx, { projectId, userId, role, invitedBy }) => {
+    const actorUserId = await verifyProjectEditor(ctx, projectId);
     const existing = await ctx.db
       .query("projectMembers")
       .withIndex("by_project_user", (q) =>
@@ -215,7 +217,7 @@ export const addProjectMember = mutation({
     }
 
     const now = Date.now();
-    return ctx.db.insert("projectMembers", {
+    const memberId = await ctx.db.insert("projectMembers", {
       projectId,
       userId,
       role,
@@ -226,6 +228,21 @@ export const addProjectMember = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId,
+      actorType: "user",
+      actorUserId,
+      action: "member_joined",
+      summary: `Added member ${userId}`,
+      metadata: {
+        memberId,
+        userId,
+        role,
+      },
+    });
+
+    return memberId;
   },
 });
 
@@ -270,6 +287,7 @@ export const updateMemberRole = mutation({
     role: v.union(v.literal("editor"), v.literal("viewer")),
   },
   handler: async (ctx, { projectId, userId, role }) => {
+    const actorUserId = await verifyProjectEditor(ctx, projectId);
     const member = await ctx.db
       .query("projectMembers")
       .withIndex("by_project_user", (q) =>
@@ -289,6 +307,19 @@ export const updateMemberRole = mutation({
       role,
       updatedAt: Date.now(),
     });
+
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId,
+      actorType: "user",
+      actorUserId,
+      action: "member_role_changed",
+      summary: `Updated member role to ${role}`,
+      metadata: {
+        memberId: member._id,
+        userId,
+        role,
+      },
+    });
   },
 });
 
@@ -298,6 +329,7 @@ export const removeProjectMember = mutation({
     userId: v.string(),
   },
   handler: async (ctx, { projectId, userId }) => {
+    const actorUserId = await verifyProjectEditor(ctx, projectId);
     const member = await ctx.db
       .query("projectMembers")
       .withIndex("by_project_user", (q) =>
@@ -314,6 +346,18 @@ export const removeProjectMember = mutation({
     }
 
     await ctx.db.delete(member._id);
+
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId,
+      actorType: "user",
+      actorUserId,
+      action: "member_left",
+      summary: `Removed member ${userId}`,
+      metadata: {
+        memberId: member._id,
+        userId,
+      },
+    });
   },
 });
 
@@ -388,7 +432,7 @@ export const acceptInvitation = mutation({
       acceptedBy: userId,
     });
 
-    await ctx.db.insert("projectMembers", {
+    const memberId = await ctx.db.insert("projectMembers", {
       projectId: invitation.projectId,
       userId,
       role: invitation.role,
@@ -398,6 +442,19 @@ export const acceptInvitation = mutation({
       acceptedAt: now,
       createdAt: now,
       updatedAt: now,
+    });
+
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId: invitation.projectId,
+      actorType: "user",
+      actorUserId: userId,
+      action: "member_joined",
+      summary: `Joined project via invitation`,
+      metadata: {
+        memberId,
+        userId,
+        role: invitation.role,
+      },
     });
 
     return invitation.projectId;

@@ -9,6 +9,7 @@
  */
 
 import type * as account from "../account.js";
+import type * as activity from "../activity.js";
 import type * as ai_agentRuntime from "../ai/agentRuntime.js";
 import type * as ai_coach from "../ai/coach.js";
 import type * as ai_detect from "../ai/detect.js";
@@ -46,7 +47,9 @@ import type * as http from "../http.js";
 import type * as lib_analytics from "../lib/analytics.js";
 import type * as lib_approvalConfig from "../lib/approvalConfig.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_contentHash from "../lib/contentHash.js";
 import type * as lib_deepinfraEmbedding from "../lib/deepinfraEmbedding.js";
+import type * as lib_editorSchema from "../lib/editorSchema.js";
 import type * as lib_embeddings from "../lib/embeddings.js";
 import type * as lib_entitlements from "../lib/entitlements.js";
 import type * as lib_httpAuth from "../lib/httpAuth.js";
@@ -64,12 +67,17 @@ import type * as lib_tierConfig from "../lib/tierConfig.js";
 import type * as lib_webhookSecurity from "../lib/webhookSecurity.js";
 import type * as maintenance from "../maintenance.js";
 import type * as memories from "../memories.js";
+import type * as migrations_backfillBlockIds from "../migrations/backfillBlockIds.js";
 import type * as migrations_index from "../migrations/index.js";
 import type * as migrations_types from "../migrations/types.js";
+import type * as presence from "../presence.js";
 import type * as projectAssets from "../projectAssets.js";
 import type * as projects from "../projects.js";
+import type * as prosemirrorSync from "../prosemirrorSync.js";
 import type * as relationships from "../relationships.js";
+import type * as revisions from "../revisions.js";
 import type * as subscriptions from "../subscriptions.js";
+import type * as suggestions from "../suggestions.js";
 import type * as tiers from "../tiers.js";
 
 import type {
@@ -80,6 +88,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   account: typeof account;
+  activity: typeof activity;
   "ai/agentRuntime": typeof ai_agentRuntime;
   "ai/coach": typeof ai_coach;
   "ai/detect": typeof ai_detect;
@@ -117,7 +126,9 @@ declare const fullApi: ApiFromModules<{
   "lib/analytics": typeof lib_analytics;
   "lib/approvalConfig": typeof lib_approvalConfig;
   "lib/auth": typeof lib_auth;
+  "lib/contentHash": typeof lib_contentHash;
   "lib/deepinfraEmbedding": typeof lib_deepinfraEmbedding;
+  "lib/editorSchema": typeof lib_editorSchema;
   "lib/embeddings": typeof lib_embeddings;
   "lib/entitlements": typeof lib_entitlements;
   "lib/httpAuth": typeof lib_httpAuth;
@@ -135,12 +146,17 @@ declare const fullApi: ApiFromModules<{
   "lib/webhookSecurity": typeof lib_webhookSecurity;
   maintenance: typeof maintenance;
   memories: typeof memories;
+  "migrations/backfillBlockIds": typeof migrations_backfillBlockIds;
   "migrations/index": typeof migrations_index;
   "migrations/types": typeof migrations_types;
+  presence: typeof presence;
   projectAssets: typeof projectAssets;
   projects: typeof projects;
+  prosemirrorSync: typeof prosemirrorSync;
   relationships: typeof relationships;
+  revisions: typeof revisions;
   subscriptions: typeof subscriptions;
+  suggestions: typeof suggestions;
   tiers: typeof tiers;
 }>;
 
@@ -4997,6 +5013,144 @@ export declare const components: {
     adapterTest: {
       runCustomTests: FunctionReference<"action", "internal", any, any>;
       runTests: FunctionReference<"action", "internal", any, any>;
+    };
+  };
+  prosemirrorSync: {
+    lib: {
+      deleteDocument: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string },
+        null
+      >;
+      deleteSnapshots: FunctionReference<
+        "mutation",
+        "internal",
+        { afterVersion?: number; beforeVersion?: number; id: string },
+        null
+      >;
+      deleteSteps: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          afterVersion?: number;
+          beforeTs: number;
+          deleteNewerThanLatestSnapshot?: boolean;
+          id: string;
+        },
+        null
+      >;
+      getSnapshot: FunctionReference<
+        "query",
+        "internal",
+        { id: string; version?: number },
+        { content: null } | { content: string; version: number }
+      >;
+      getSteps: FunctionReference<
+        "query",
+        "internal",
+        { id: string; version: number },
+        {
+          clientIds: Array<string | number>;
+          steps: Array<string>;
+          version: number;
+        }
+      >;
+      latestVersion: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        null | number
+      >;
+      submitSnapshot: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          content: string;
+          id: string;
+          pruneSnapshots?: boolean;
+          version: number;
+        },
+        null
+      >;
+      submitSteps: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          clientId: string | number;
+          id: string;
+          steps: Array<string>;
+          version: number;
+        },
+        | {
+            clientIds: Array<string | number>;
+            status: "needs-rebase";
+            steps: Array<string>;
+          }
+        | { status: "synced" }
+      >;
+    };
+  };
+  presence: {
+    public: {
+      disconnect: FunctionReference<
+        "mutation",
+        "internal",
+        { sessionToken: string },
+        null
+      >;
+      heartbeat: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          interval?: number;
+          roomId: string;
+          sessionId: string;
+          userId: string;
+        },
+        { roomToken: string; sessionToken: string }
+      >;
+      list: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; roomToken: string },
+        Array<{
+          data?: any;
+          lastDisconnected: number;
+          online: boolean;
+          userId: string;
+        }>
+      >;
+      listRoom: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; onlineOnly?: boolean; roomId: string },
+        Array<{ lastDisconnected: number; online: boolean; userId: string }>
+      >;
+      listUser: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; onlineOnly?: boolean; userId: string },
+        Array<{ lastDisconnected: number; online: boolean; roomId: string }>
+      >;
+      removeRoom: FunctionReference<
+        "mutation",
+        "internal",
+        { roomId: string },
+        null
+      >;
+      removeRoomUser: FunctionReference<
+        "mutation",
+        "internal",
+        { roomId: string; userId: string },
+        null
+      >;
+      updateRoomUser: FunctionReference<
+        "mutation",
+        "internal",
+        { data?: any; roomId: string; userId: string },
+        null
+      >;
     };
   };
   rateLimiter: {

@@ -243,6 +243,20 @@ const worldGraphTools = new Set([
   "update_relationship",
 ]);
 
+type ToolActorContext = {
+  actorType: "ai" | "user" | "system";
+  actorUserId?: string;
+  actorAgentId?: string;
+  actorName?: string;
+};
+
+type ToolSourceContext = {
+  streamId?: string;
+  threadId?: string;
+  toolCallId?: string;
+  promptMessageId?: string;
+};
+
 function needsToolApproval(toolName: string, args: Record<string, unknown>): boolean {
   if (staticApprovalTools.has(toolName)) return true;
 
@@ -268,7 +282,6 @@ async function executeRagTool(
 ): Promise<unknown> {
   switch (toolName) {
     case "search_context":
-      // @ts-expect-error Type instantiation deep
       return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeSearchContext, {
         projectId,
         query: args["query"] as string,
@@ -307,28 +320,38 @@ async function executeWorldGraphTool(
   ctx: ActionCtx,
   toolName: string,
   args: Record<string, unknown>,
-  projectId: string
+  projectId: string,
+  actor?: ToolActorContext,
+  source?: ToolSourceContext
 ): Promise<unknown> {
   switch (toolName) {
     case "create_entity":
       return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeCreateEntity, {
         projectId,
         toolArgs: args,
+        actor,
+        source,
       });
     case "update_entity":
       return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeUpdateEntity, {
         projectId,
         toolArgs: args,
+        actor,
+        source,
       });
     case "create_relationship":
       return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeCreateRelationship, {
         projectId,
         toolArgs: args,
+        actor,
+        source,
       });
     case "update_relationship":
       return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeUpdateRelationship, {
         projectId,
         toolArgs: args,
+        actor,
+        source,
       });
     default:
       throw new Error(`Unknown world graph tool: ${toolName}`);
@@ -353,6 +376,23 @@ async function appendStreamChunk(
     streamId,
     chunk,
   });
+}
+
+async function emitActivity(
+  ctx: ActionCtx,
+  payload: {
+    projectId: Id<"projects">;
+    documentId?: Id<"documents">;
+    actorType: "ai" | "user" | "system";
+    actorUserId?: string;
+    actorAgentId?: string;
+    actorName?: string;
+    action: string;
+    summary?: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  await ctx.runMutation((internal as any)["activity"].emit, payload);
 }
 
 function buildEmptyContext(): RAGContext {
@@ -410,6 +450,14 @@ export const runSagaAgentChatToStream = internalAction({
           title: "Saga Conversation",
         })).threadId;
       }
+
+      const aiActor: ToolActorContext = {
+        actorType: "ai",
+        actorUserId: userId,
+        actorAgentId: "muse",
+        actorName: "Muse",
+      };
+      const activityDocumentId = threadDocumentId ?? undefined;
 
       if (!isTemplateBuilder) {
         await ctx.runMutation((internal as any)["ai/threads"].upsertThread, {
@@ -550,6 +598,24 @@ export const runSagaAgentChatToStream = internalAction({
             args: call.input,
             data: toolResult,
           });
+
+          if (!isTemplateBuilder) {
+            await emitActivity(ctx, {
+              projectId: projectIdValue,
+              documentId: activityDocumentId,
+              ...aiActor,
+              action: "ai_tool_executed",
+              summary: `Executed ${call.toolName}`,
+              metadata: {
+                toolName: call.toolName,
+                toolCallId: call.toolCallId,
+                streamId,
+                threadId,
+                promptMessageId: currentPromptMessageId,
+                args: call.input,
+              },
+            });
+          }
         }
 
         // Process world graph tools - auto-execute or request approval based on impact
@@ -567,7 +633,19 @@ export const runSagaAgentChatToStream = internalAction({
 
         // Auto-execute low-impact world graph tools
         for (const call of autoWorldGraphCalls) {
-          const toolResult = await executeWorldGraphTool(ctx, call.toolName, call.input as Record<string, unknown>, projectId);
+          const toolResult = await executeWorldGraphTool(
+            ctx,
+            call.toolName,
+            call.input as Record<string, unknown>,
+            projectId,
+            aiActor,
+            {
+              streamId,
+              threadId,
+              toolCallId: call.toolCallId,
+              promptMessageId: currentPromptMessageId,
+            }
+          );
 
           await sagaAgent.saveMessage(ctx, {
             threadId: threadId!,
@@ -586,6 +664,24 @@ export const runSagaAgentChatToStream = internalAction({
             args: call.input,
             data: toolResult,
           });
+
+          if (!isTemplateBuilder) {
+            await emitActivity(ctx, {
+              projectId: projectIdValue,
+              documentId: activityDocumentId,
+              ...aiActor,
+              action: "ai_tool_executed",
+              summary: `Executed ${call.toolName}`,
+              metadata: {
+                toolName: call.toolName,
+                toolCallId: call.toolCallId,
+                streamId,
+                threadId,
+                promptMessageId: currentPromptMessageId,
+                args: call.input,
+              },
+            });
+          }
         }
 
         // Request approval for high-impact world graph tools
@@ -599,6 +695,24 @@ export const runSagaAgentChatToStream = internalAction({
             args: call.input,
             promptMessageId: currentPromptMessageId,
           });
+
+          if (!isTemplateBuilder) {
+            await emitActivity(ctx, {
+              projectId: projectIdValue,
+              documentId: activityDocumentId,
+              ...aiActor,
+              action: "ai_tool_approval_requested",
+              summary: `Approval requested for ${call.toolName}`,
+              metadata: {
+                toolName: call.toolName,
+                toolCallId: call.toolCallId,
+                streamId,
+                threadId,
+                promptMessageId: currentPromptMessageId,
+                args: call.input,
+              },
+            });
+          }
         }
 
         // Handle other tools (ask_question, write_content)
@@ -614,6 +728,24 @@ export const runSagaAgentChatToStream = internalAction({
               args: call.input,
               promptMessageId: currentPromptMessageId,
             });
+
+            if (!isTemplateBuilder) {
+              await emitActivity(ctx, {
+                projectId: projectIdValue,
+                documentId: activityDocumentId,
+                ...aiActor,
+                action: "ai_tool_approval_requested",
+                summary: `Approval requested for ${call.toolName}`,
+                metadata: {
+                  toolName: call.toolName,
+                  toolCallId: call.toolCallId,
+                  streamId,
+                  threadId,
+                  promptMessageId: currentPromptMessageId,
+                  args: call.input,
+                },
+              });
+            }
           } else {
             await appendStreamChunk(ctx, streamId, {
               type: "tool",
@@ -623,6 +755,24 @@ export const runSagaAgentChatToStream = internalAction({
               args: call.input,
               promptMessageId: currentPromptMessageId,
             });
+
+            if (!isTemplateBuilder) {
+              await emitActivity(ctx, {
+                projectId: projectIdValue,
+                documentId: activityDocumentId,
+                ...aiActor,
+                action: "ai_tool_executed",
+                summary: `Executed ${call.toolName}`,
+                metadata: {
+                  toolName: call.toolName,
+                  toolCallId: call.toolCallId,
+                  streamId,
+                  threadId,
+                  promptMessageId: currentPromptMessageId,
+                  args: call.input,
+                },
+              });
+            }
           }
         }
 
@@ -715,6 +865,12 @@ export const applyToolResultAndResumeToStream = internalAction({
     } = args;
     const isTemplateBuilder = projectId === "template-builder";
     const projectIdValue = projectId as Id<"projects">;
+    const aiActor: ToolActorContext = {
+      actorType: "ai",
+      actorUserId: userId,
+      actorAgentId: "muse",
+      actorName: "Muse",
+    };
 
     if (!process.env["OPENROUTER_API_KEY"]) {
       await ctx.runMutation((internal as any)["ai/streams"].fail, {
@@ -725,6 +881,7 @@ export const applyToolResultAndResumeToStream = internalAction({
     }
 
     let presenceDocumentId: string | undefined;
+    let activityDocumentId: Id<"documents"> | undefined;
     let lastAiPresenceAt = 0;
 
     try {
@@ -738,6 +895,8 @@ export const applyToolResultAndResumeToStream = internalAction({
         presenceDocumentId =
           resolveEditorDocumentId(editorContext) ??
           (threadAccess.documentId ? String(threadAccess.documentId) : undefined);
+        activityDocumentId = threadAccess.documentId ??
+          (resolveEditorDocumentId(editorContext) as Id<"documents"> | undefined);
 
         if (presenceDocumentId) {
           const now = Date.now();
@@ -768,6 +927,23 @@ export const applyToolResultAndResumeToStream = internalAction({
           providerMetadata: { saga: { projectId } },
         },
       });
+
+      if (!isTemplateBuilder) {
+        await emitActivity(ctx, {
+          projectId: projectIdValue,
+          documentId: activityDocumentId,
+          ...aiActor,
+          action: "ai_tool_executed",
+          summary: `Executed ${toolName}`,
+          metadata: {
+            toolName,
+            toolCallId,
+            streamId,
+            threadId,
+            promptMessageId,
+          },
+        });
+      }
 
       const systemPrompt = buildSystemPrompt({
         mode: "editing",
@@ -813,6 +989,24 @@ export const applyToolResultAndResumeToStream = internalAction({
             args: call.input,
             promptMessageId,
           });
+
+          if (!isTemplateBuilder) {
+            await emitActivity(ctx, {
+              projectId: projectIdValue,
+              documentId: activityDocumentId,
+              ...aiActor,
+              action: "ai_tool_approval_requested",
+              summary: `Approval requested for ${call.toolName}`,
+              metadata: {
+                toolName: call.toolName,
+                toolCallId: call.toolCallId,
+                streamId,
+                threadId,
+                promptMessageId,
+                args: call.input,
+              },
+            });
+          }
         } else {
           await appendStreamChunk(ctx, streamId, {
             type: "tool",
@@ -822,6 +1016,24 @@ export const applyToolResultAndResumeToStream = internalAction({
             args: call.input,
             promptMessageId,
           });
+
+          if (!isTemplateBuilder) {
+            await emitActivity(ctx, {
+              projectId: projectIdValue,
+              documentId: activityDocumentId,
+              ...aiActor,
+              action: "ai_tool_executed",
+              summary: `Executed ${call.toolName}`,
+              metadata: {
+                toolName: call.toolName,
+                toolCallId: call.toolCallId,
+                streamId,
+                threadId,
+                promptMessageId,
+                args: call.input,
+              },
+            });
+          }
         }
       }
 

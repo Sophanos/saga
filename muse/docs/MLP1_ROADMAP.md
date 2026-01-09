@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-09 (P1 performance stabilization: cursor throttle, AI keepalive, embedding dedupe) | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-09 (Writer tools: Focus Mode, Grammar/Style, Logic Validation) | **Target:** Web + macOS first, then iOS/iPad
 
 ## Summary
 
@@ -11,11 +11,162 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 - Tool-based workspace manipulation
 - Thread persistence with full context
 - Offline-first + real-time sync (Figma model)
+- **Focus Mode** — distraction-free writing, AI silent unless invoked
+- **Sortiermaschine** — auto-organize entities, relationships, world (World Graph)
 
-### P1 Performance Stabilization (2026-01-09)
-- Cursor presence throttling + focus gating to reduce write amplification.
-- AI presence keepalive during long-running streaming responses.
-- Embedding job deduplication to prevent redundant queue churn.
+### Recent Updates (2026-01-09)
+
+**P1 Performance Stabilization:**
+- Cursor presence throttling + focus gating to reduce write amplification
+- AI presence keepalive during long-running streaming responses
+- Embedding job deduplication to prevent redundant queue churn
+
+**Writer Tools (from user feedback):**
+- Focus Mode with Zen UI, timers, word goals, brainstorm prompts
+- Grammar/Style via DeepL API (German) + LLM fallback
+- Name generator with culture/style matching
+- Logic validation (optional, background, configurable)
+- Exa web search for research/fact-checking
+
+---
+
+## Writer Feedback Insights
+
+> Source: German writing Discord (2026-01-09)
+
+### What Writers Want
+
+| Need | Mythos Feature | Status |
+|------|----------------|--------|
+| "Sortiermaschine" (auto-organize) | World Graph + entity detection | ✅ Have |
+| Grammar without changing meaning | DeepL API + approval-based | 🔲 P2 |
+| Name lists | Name generator tool | 🔲 P2 |
+| Logic checks (biology, math) | Validation tool (optional) | 🔲 P2 |
+| Master document / artbook | Project = book, entities = artbook | ✅ Have |
+| Idea collection WITHOUT judgment | Focus Mode (AI silent) | 🔲 P1 |
+| Physical notebook feel | Simple UI, offline-first | ✅ Have |
+
+### What Writers DON'T Want
+
+| Anti-pattern | Our Approach |
+|--------------|--------------|
+| AI plotting without permission | Approval-based suggestions only |
+| AI evaluating/judging ideas | Focus Mode = no AI unless asked |
+| Changing meaning of text | DeepL preserves intent; approval required |
+| Constant interruptions | Proactive features are opt-in, background |
+
+### Onboarding Questions to Add
+
+1. **AI involvement level:**
+   - "Help me actively" (suggestions on)
+   - "Only when I ask" (manual trigger)
+   - "Stay quiet" (Focus Mode default)
+
+2. **Logic checking:**
+   - "Check in background" (subtle highlights)
+   - "Only when I ask"
+   - "Skip logic checking"
+
+3. **Grammar/spelling:**
+   - "Check as I write" (DeepL/LLM)
+   - "Only on demand"
+   - "I use other tools"
+
+### Export/Import System (Centralize to `@mythos/io`)
+
+> **Status:** Built in `apps/web/src/services/`, needs centralization for Tauri/Expo reuse
+
+#### Current Implementation
+
+```
+apps/web/src/services/
+├── export/
+│   ├── index.ts              # exportStory() orchestrator
+│   ├── types.ts              # ExportOptions, ExportFormat
+│   ├── ir.ts                 # Intermediate representation
+│   ├── storyTree.ts          # Document tree ordering
+│   ├── formats/              # docx, epub, markdown, pdf renderers
+│   ├── tiptap/               # TipTap JSON → IR conversion
+│   └── glossary/             # Entity glossary generation
+├── import/
+│   ├── index.ts              # importStory() orchestrator
+│   ├── types.ts              # ImportOptions, ImportFormat
+│   ├── parsers/              # docx, epub, markdown, plaintext
+│   └── tiptap/               # IR → TipTap JSON conversion
+```
+
+#### Supported Formats
+
+| Format | Export | Import |
+|--------|--------|--------|
+| Markdown | ✅ | ✅ |
+| DOCX | ✅ | ✅ |
+| PDF | ✅ | ❌ |
+| EPUB | ✅ | ✅ |
+| Plain text | ❌ | ✅ |
+
+#### Migration Plan: `@mythos/io` Package
+
+| Step | Task | Priority |
+|------|------|----------|
+| 1 | Create `packages/io/` with package.json | P2 |
+| 2 | Move export/ and import/ from apps/web | P2 |
+| 3 | Platform-aware `download.ts` (web vs Tauri dialog) | P2 |
+| 4 | Platform-aware `fileReader.ts` (web vs Tauri fs) | P2 |
+| 5 | Update apps/web imports to `@mythos/io` | P2 |
+| 6 | Wire up in Tauri + Expo | P2 |
+
+#### Platform Adaptation
+
+```typescript
+// packages/io/src/utils/download.ts
+import { platform } from '@mythos/platform';
+
+export async function downloadBlob(blob: Blob, fileName: string) {
+  if (platform.is('tauri')) {
+    const { save } = await import('@tauri-apps/plugin-dialog');
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    const path = await save({ defaultPath: fileName });
+    if (path) await writeFile(path, new Uint8Array(await blob.arrayBuffer()));
+  } else {
+    // Web browser download
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+}
+```
+
+### Gaps & Considerations
+
+| Gap | Risk | Mitigation |
+|-----|------|------------|
+| **Export formats** | ✅ Have DOCX, PDF, ePub, Markdown | Centralize to @mythos/io |
+| **Print formatting** | Manuscript formatting matters | P3: Page layout options |
+| **Backup/sync visibility** | "Is my work saved?" anxiety | Show sync status clearly |
+| **Mobile writing** | iPad is popular with writers | Expo iOS after web stable |
+| **Dictation/voice** | Some writers dictate | P3: Whisper integration |
+| **Reading mode** | Review without editing | Simple toggle, hide toolbars |
+| **Dark mode** | Essential for long sessions | ✅ Have (theme system) |
+| **Font choices** | Writers have preferences | P2: Custom fonts in editor |
+| **Word count goals** | Daily/weekly/project targets | Part of Focus Mode |
+| **Distraction sounds** | Typewriter clicks, ambient | P3: Optional audio feedback |
+
+### Not Considered Yet
+
+| Feature | Why It Might Matter |
+|---------|---------------------|
+| **Beta readers integration** | Share drafts, collect feedback |
+| **Submission tracking** | Query letters, agent responses |
+| **Writing group features** | Beyond collaboration — critique circles |
+| **Dictation transcription** | Voice → text workflow |
+| **Research clipping** | Web clipper for sources |
+| **Outline/beat sheet views** | Visual story structure |
+| **Character relationship map** | Visual World Graph |
+| **Timeline visualization** | Visual chapter/event ordering |
 
 ---
 
@@ -33,7 +184,7 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 │    └─ macOS (Tauri)                Scaffold Done    [████████░░] ✅ │
 │    └─ Expo (iOS/iPad)              Partial          [██████░░░░]    │
 │ 4. RAG Pipeline                    Complete         [██████████] ✅ │
-│ 5. Skills + Polish                 Started          [█░░░░░░░░░] 10%│
+│ 5. Skills + Writer Tools           Planned          [██░░░░░░░░] 20%│
 ├─────────────────────────────────────────────────────────────────────┤
 │ 6. Auth (Better Auth)              Complete         [██████████] ✅ │
 │ 7. Billing (RevenueCat)            Complete         [██████████] ✅ │
@@ -219,7 +370,7 @@ convex/
 - Diff-based embedding updates (content hash)
 - Graceful degradation on Qdrant failure
 
-### Phase 5: Skills (10%)
+### Phase 5: Skills + Writer Tools (10%)
 
 ```
 convex/ai/skills/                    # 🔲 ALL PENDING
@@ -229,7 +380,101 @@ convex/ai/skills/                    # 🔲 ALL PENDING
 ├── character.ts                     # develop_character
 ├── research.ts                      # research_facts (Exa)
 └── analyze.ts                       # analyze_writing
+
+convex/ai/tools/
+├── creativeTools.ts                 # 🔲 Name generator, brainstorm prompts
+├── validationTools.ts               # 🔲 Logic checker, timeline validator
+└── researchTools.ts                 # 🔲 Exa web search integration
 ```
+
+#### Focus Mode (Distraction-Free Writing) 🔲 P1
+
+> *"Ideen sammeln ohne das ein Computer diese bewertet"* — Writer feedback
+
+| Component | Description | Platform |
+|-----------|-------------|----------|
+| **Zen UI** | Hide sidebar, AI panel, just editor + word count | Expo web → Tauri |
+| **Timer modes** | Pomodoro (25/5), Sprint (15min), Custom goals | Expo web → Tauri |
+| **Word goals** | "Write 500 words" with progress bar, streak tracking | Expo web → Tauri |
+| **"What If" cards** | Random prompts: "What if the villain is right?", "What if they fail?" | Expo web → Tauri |
+| **Technique prompts** | "Describe using only sounds", "Write the opposite emotion" | Expo web → Tauri |
+| **Session stats** | Words written, time focused, streak, export to PostHog | Expo web → Tauri |
+
+**Key principle:** AI stays completely silent unless explicitly invoked. No suggestions, no analysis, no interruptions.
+
+#### Grammar & Style Polish 🔲 P2
+
+| Option | Pros | Decision |
+|--------|------|----------|
+| **DeepL Write API** | Excellent German, 500k chars/month free | ✅ Primary for German users |
+| **LLM (existing)** | Multi-language, context-aware, style suggestions | ✅ Fallback + advanced style |
+| **Harper** | Fast local, Apache-2.0 | ⚠️ Reference for highlight UX only (English-only, German too hard) |
+
+**Highlight UX (Harper-style):**
+- Underline squiggles for issues (red = error, yellow = suggestion)
+- Hover tooltip with explanation + fix options
+- Right-click context menu: "Fix", "Ignore", "Add to dictionary"
+- Batch "Fix all" for repeated issues
+
+**Integration:**
+```
+User writes → Idle 2s → DeepL/LLM check (background)
+                              ↓
+                    Highlight issues in editor
+                              ↓
+                    User clicks → Apply fix or dismiss
+```
+
+#### Name Generator Tool 🔲 P2
+
+```typescript
+// convex/ai/tools/creativeTools.ts
+generateNames({
+  type: "character" | "location" | "item" | "faction",
+  culture: "Germanic" | "Japanese" | "Fantasy" | "Sci-Fi" | ...,
+  count: 10,
+  constraints: "starts with K" | "two syllables" | ...
+}) → string[]
+```
+
+Uses project's existing entities + world style for consistency.
+
+#### Logic Validation Tool 🔲 P2
+
+| Feature | Description | Configurable |
+|---------|-------------|--------------|
+| **Timeline checker** | "Day 3 can't be before Day 1" | ✅ On/off in settings |
+| **Math execution** | LLM writes Python → sandboxed eval → result | ✅ On/off |
+| **Biology/physics** | "Humans can't survive 30 days without water" | ✅ On/off |
+| **World rules** | Validate against user-defined magic system rules | ✅ On/off |
+
+**Proactive validation behavior:**
+- **NOT blocking** — runs in background after idle
+- **NOT immediate** — batched every few minutes or on document save
+- **User controls** — configurable in onboarding + settings:
+  - "Check my logic as I write" (background, non-blocking)
+  - "Only check when I ask" (manual trigger)
+  - "Never check logic" (full creative freedom)
+
+**Onboarding question:**
+> "Some writers want logic checking (timeline, physics, world rules). Others prefer full creative freedom. What works for you?"
+> - [ ] Check in background (subtle highlights)
+> - [ ] Only when I ask
+> - [ ] Skip logic checking
+
+#### Exa Web Search 🔲 P2
+
+```typescript
+// convex/ai/tools/researchTools.ts
+webSearch({
+  query: "Victorian era clothing for nobility",
+  type: "historical" | "scientific" | "general"
+}) → { title, url, excerpt }[]
+```
+
+- Cost: ~$0.001/search
+- Use cases: historical accuracy, research, fact-checking
+- Integrated as agent tool: "Is this historically accurate?" → triggers search
 
 ---
 
@@ -1381,10 +1626,10 @@ convex/
 
 | Task | Files | Notes |
 |------|-------|-------|
-| **Collaborative suggestions** | New `convex/suggestions.ts` | Persist suggestions in Convex, subscribe in editor, map through transactions |
-| **Version history + restore** | New `convex/revisions.ts` | Track actor (user/collaborator/AI), reason, tool name; enables "undo AI change" UX |
-| **Block identity layer** | New `extensions/block-id.ts` | Stable UUIDs on block nodes for comments, deep links, AI targeting |
-| **Activity log** | New `convex/activity.ts` | Human + AI operations audit trail for project/document |
+| **Collaborative suggestions** | New `convex/suggestions.ts` | ✅ Done — persisted suggestions + editor hydration |
+| **Version history + restore** | New `convex/revisions.ts` | ✅ Done — revision log + server-side restore |
+| **Block identity layer** | New `extensions/block-id.ts` | ✅ Done — stable UUIDs on block nodes |
+| **Activity log** | New `convex/activity.ts` | ✅ Done — audit trail for AI + human ops |
 
 > **Note:** Version history must track full actor context (which user, which collaborator, which AI agent/tool) to enable proper rollback UX and audit. UI for history/restore is a major focus area.
 

@@ -1,16 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ConvexProvider, ConvexReactClient, useMutation } from 'convex/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ConvexProvider, ConvexReactClient, useMutation, useQuery } from 'convex/react';
 import usePresence from '@convex-dev/presence/react';
 import { useTiptapSync } from '@convex-dev/prosemirror-sync/tiptap';
 import { generateCollaboratorColor } from '@mythos/state';
 import { api } from '../../../../convex/_generated/api';
 import { Editor, type EditorProps } from './Editor';
+import type { Editor as TiptapEditor } from '@tiptap/core';
 import type { RemoteCursorUser } from '../extensions/remote-cursor';
+import type { Suggestion } from '../extensions/suggestion-plugin';
+import { rangeFromAnchors } from '../lib/anchors';
 
 const DEFAULT_INITIAL_CONTENT = {
   type: 'doc',
   content: [{ type: 'paragraph' }],
 };
+
+// Convex API types are too deep for this package; treat as untyped here.
+// @ts-ignore
+const apiAny: any = api;
 
 export interface CollaborationUser {
   id: string;
@@ -45,7 +52,7 @@ function CollaborativeEditorInner({
   presenceIntervalMs = 10_000,
   ...editorProps
 }: CollaborativeEditorProps) {
-  const sync = useTiptapSync(api.prosemirrorSync, documentId, {
+  const sync = useTiptapSync(apiAny.prosemirrorSync as any, documentId, {
     onSyncError: (error) => {
       console.error('[CollaborativeEditor] Sync error:', error);
     },
@@ -54,9 +61,15 @@ function CollaborativeEditorInner({
   const roomId = `document:${documentId}`;
   const colorRef = useRef<string>(generateCollaboratorColor());
   const createRequestedRef = useRef(false);
-  const updatePresence = useMutation(api.presence.update);
+  const updatePresence = useMutation(apiAny.presence?.update as any);
+  const updateSuggestionStatus = useMutation(apiAny.suggestions?.setSuggestionStatus as any);
+  const suggestions = useQuery(apiAny.suggestions?.listByDocument as any, {
+    documentId,
+    status: 'proposed',
+    limit: 200,
+  });
   const presenceState = usePresence(
-    api.presence,
+    apiAny.presence as any,
     roomId,
     user.id,
     presenceIntervalMs,
@@ -85,6 +98,7 @@ function CollaborativeEditorInner({
 
   const pendingCursorRef = useRef<{ from: number; to: number } | null>(null);
   const cursorTimerRef = useRef<number | null>(null);
+  const [editorInstance, setEditorInstance] = useState<TiptapEditor | null>(null);
   const lastSentCursorRef = useRef<{ from: number; to: number } | null>(null);
   const isFocusedRef = useRef(false);
 
@@ -164,14 +178,80 @@ function CollaborativeEditorInner({
         const data = (entry.data as Record<string, unknown> | undefined) ?? {};
         return {
           id: entry.userId,
-          name: (data.name as string | undefined) ?? entry.name ?? 'Collaborator',
-          color: (data.color as string | undefined) ?? '#22d3ee',
-          cursor: data.cursor as { from: number; to: number } | undefined,
-          status: data.status as string | undefined,
-          isAi: data.isAi as boolean | undefined,
+          name: (data['name'] as string | undefined) ?? entry.name ?? 'Collaborator',
+          color: (data['color'] as string | undefined) ?? '#22d3ee',
+          cursor: data['cursor'] as { from: number; to: number } | undefined,
+          status: data['status'] as string | undefined,
+          isAi: data['isAi'] as boolean | undefined,
         };
       });
   }, [presenceState, user.id]);
+
+  const handleEditorReady = useCallback((editor: TiptapEditor | null) => {
+    setEditorInstance(editor);
+  }, []);
+
+  const handleSuggestionAccepted = useCallback(
+    (suggestion: Suggestion) => {
+      updateSuggestionStatus({ suggestionId: suggestion.id, status: 'accepted' }).catch((error) => {
+        console.error('[CollaborativeEditor] Failed to accept suggestion:', error);
+      });
+    },
+    [updateSuggestionStatus]
+  );
+
+  const handleSuggestionRejected = useCallback(
+    (suggestion: Suggestion) => {
+      updateSuggestionStatus({ suggestionId: suggestion.id, status: 'rejected' }).catch((error) => {
+        console.error('[CollaborativeEditor] Failed to reject suggestion:', error);
+      });
+    },
+    [updateSuggestionStatus]
+  );
+
+  useEffect(() => {
+    if (!editorInstance) return;
+    if (!suggestions) {
+      editorInstance.commands.loadSuggestions?.([]);
+      return;
+    }
+
+    const resolvedSuggestions = suggestions
+      .map((suggestion: any) => {
+        let range = null as { from: number; to: number } | null;
+
+        if (suggestion.anchorStart && suggestion.anchorEnd) {
+          range = rangeFromAnchors(
+            editorInstance.state.doc,
+            suggestion.anchorStart,
+            suggestion.anchorEnd
+          );
+        }
+
+        if (!range && typeof suggestion.from === 'number' && typeof suggestion.to === 'number') {
+          range = { from: suggestion.from, to: suggestion.to };
+        }
+
+        if (!range) return null;
+
+        return {
+          id: suggestion.suggestionId,
+          from: range.from,
+          to: range.to,
+          type: suggestion.type,
+          content: suggestion.content,
+          originalContent: suggestion.originalContent ?? undefined,
+          model: suggestion.model ?? undefined,
+          createdAt: new Date(suggestion.createdAt).toISOString(),
+          agentId: suggestion.agentId ?? 'muse',
+          anchorStart: suggestion.anchorStart ?? undefined,
+          anchorEnd: suggestion.anchorEnd ?? undefined,
+        } as Suggestion;
+      })
+      .filter(Boolean) as Suggestion[];
+
+    editorInstance.commands.loadSuggestions?.(resolvedSuggestions);
+  }, [editorInstance, suggestions]);
 
   if (sync.isLoading || !sync.extension || sync.initialContent === null) {
     return (
@@ -200,6 +280,9 @@ function CollaborativeEditorInner({
       currentUserId={user.id}
       onCursorChange={handleCursorChange}
       onFocusChange={handleFocusChange}
+      onEditorReady={handleEditorReady}
+      onSuggestionAccepted={handleSuggestionAccepted}
+      onSuggestionRejected={handleSuggestionRejected}
       syncContentFromProps={false}
     />
   );

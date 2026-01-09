@@ -17,10 +17,19 @@ export type ActivityType =
   | "entity_updated"
   | "entity_deleted"
   | "relationship_created"
+  | "relationship_updated"
   | "relationship_deleted"
   | "member_joined"
   | "member_left"
   | "member_role_changed"
+  | "suggestion_created"
+  | "suggestion_accepted"
+  | "suggestion_rejected"
+  | "suggestion_resolved"
+  | "revision_created"
+  | "revision_restored"
+  | "ai_tool_executed"
+  | "ai_tool_approval_requested"
   | "comment_added"
   | "analysis_run";
 
@@ -33,12 +42,18 @@ export interface ActivityLogEntry {
   id: string;
   type: ActivityType;
   projectId: string;
-  userId: string;
+  documentId?: string;
+  actorType?: "user" | "ai" | "system";
+  actorUserId?: string;
+  actorAgentId?: string;
+  actorName?: string;
+  userId?: string;
   userName?: string;
   userAvatarUrl?: string;
   targetId?: string;
   targetType?: string;
   targetName?: string;
+  summary?: string;
   details?: Record<string, unknown>;
   createdAt: string;
 }

@@ -5,6 +5,10 @@ export type { AIGeneratedMarkAttributes, SuggestionStatus } from './ai-generated
 export { SuggestionPlugin, suggestionPluginKey, getSuggestionState } from './suggestion-plugin';
 export type { Suggestion, SuggestionType, SuggestionPluginState, SuggestionPluginOptions } from './suggestion-plugin';
 
+// Block identity
+export { BlockIdExtension } from './block-id';
+export type { BlockAnchor } from './block-id';
+
 // AI Toolkit (Tiptap-inspired central hub)
 export {
   AiToolkitExtension,

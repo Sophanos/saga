@@ -9,6 +9,7 @@ import { AICommandPalette, type AIQuickAction, type SelectionVirtualElement } fr
 import { AIResponseBlock } from './AIResponseBlock';
 import { BatchApprovalBar } from './BatchApprovalBar';
 import { AIGeneratedMark } from '../extensions/ai-generated-mark';
+import { BlockIdExtension } from '../extensions/block-id';
 import { SuggestionPlugin, type Suggestion } from '../extensions/suggestion-plugin';
 import {
   RemoteCursorExtension,
@@ -60,6 +61,7 @@ interface EditorProps {
   onBridgeMessage?: (message: NativeToEditorMessage) => void;
   onCursorChange?: (selection: { from: number; to: number }) => void;
   onFocusChange?: (focused: boolean) => void;
+  onEditorReady?: (editor: ReturnType<typeof useEditor>) => void;
   placeholder?: string;
   fontStyle?: FontStyle;
   isSmallText?: boolean;
@@ -92,6 +94,7 @@ export function Editor({
   onBridgeMessage,
   onCursorChange,
   onFocusChange,
+  onEditorReady,
   placeholder = "Press '/' for commands, or start writing...",
   fontStyle = 'default',
   isSmallText = false,
@@ -154,6 +157,7 @@ export function Editor({
 
   const editorExtensions = useMemo(() => {
     return [
+      BlockIdExtension,
       WriterKit,
       Placeholder.configure({
         placeholder,
@@ -215,6 +219,11 @@ export function Editor({
       }
     },
   });
+
+  useEffect(() => {
+    if (!editor) return;
+    onEditorReady?.(editor);
+  }, [editor, onEditorReady]);
 
   // Bridge for WebView communication (Tauri/React Native)
   const { send: sendBridgeMessage } = useEditorBridge(

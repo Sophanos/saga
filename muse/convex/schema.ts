@@ -84,6 +84,74 @@ export default defineSchema({
     }),
 
   // ============================================================
+  // DOCUMENT SUGGESTIONS (AI + collaborator review)
+  // ============================================================
+  documentSuggestions: defineTable({
+    projectId: v.id("projects"),
+    documentId: v.id("documents"),
+    suggestionId: v.string(),
+    type: v.string(), // "insert" | "replace" | "delete"
+    content: v.string(),
+    originalContent: v.optional(v.string()),
+    status: v.string(), // "proposed" | "accepted" | "rejected" | "resolved"
+    anchorStart: v.optional(
+      v.object({
+        blockId: v.string(),
+        offset: v.number(),
+      })
+    ),
+    anchorEnd: v.optional(
+      v.object({
+        blockId: v.string(),
+        offset: v.number(),
+      })
+    ),
+    from: v.optional(v.number()),
+    to: v.optional(v.number()),
+    agentId: v.optional(v.string()),
+    model: v.optional(v.string()),
+    format: v.optional(v.string()),
+    createdByUserId: v.optional(v.string()),
+    resolvedByUserId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_document_status_createdAt", ["documentId", "status", "createdAt"])
+    .index("by_document_createdAt", ["documentId", "createdAt"])
+    .index("by_suggestion_id", ["suggestionId"])
+    .index("by_project", ["projectId"]),
+
+  // ============================================================
+  // DOCUMENT REVISIONS (version history)
+  // ============================================================
+  documentRevisions: defineTable({
+    projectId: v.id("projects"),
+    documentId: v.id("documents"),
+    snapshotJson: v.string(),
+    contentHash: v.string(),
+    prosemirrorVersion: v.optional(v.number()),
+    reason: v.string(),
+    actorType: v.string(), // "user" | "ai" | "system"
+    actorUserId: v.optional(v.string()),
+    actorAgentId: v.optional(v.string()),
+    actorName: v.optional(v.string()),
+    toolName: v.optional(v.string()),
+    summary: v.optional(v.string()),
+    sourceSuggestionId: v.optional(v.string()),
+    sourceStreamId: v.optional(v.string()),
+    sourceRevisionId: v.optional(v.id("documentRevisions")),
+    wordCount: v.optional(v.number()),
+    deltaWordCount: v.optional(v.number()),
+    createdAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_document_createdAt", ["documentId", "createdAt"])
+    .index("by_document_actor_createdAt", ["documentId", "actorType", "createdAt"])
+    .index("by_project", ["projectId"]),
+
+  // ============================================================
   // ENTITIES (characters, locations, items, etc.)
   // ============================================================
   entities: defineTable({
@@ -203,6 +271,25 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_document", ["projectId", "documentId"])
     .index("by_user", ["userId"]),
+
+  // ============================================================
+  // ACTIVITY LOG (audit trail)
+  // ============================================================
+  activityLog: defineTable({
+    projectId: v.id("projects"),
+    documentId: v.optional(v.id("documents")),
+    actorType: v.string(), // "user" | "ai" | "system"
+    actorUserId: v.optional(v.string()),
+    actorAgentId: v.optional(v.string()),
+    actorName: v.optional(v.string()),
+    action: v.string(),
+    summary: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_project_createdAt", ["projectId", "createdAt"])
+    .index("by_document_createdAt", ["documentId", "createdAt"])
+    .index("by_actor", ["projectId", "actorType", "createdAt"]),
 
   // ============================================================
   // AI THREAD MAPPINGS

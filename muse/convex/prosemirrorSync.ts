@@ -9,6 +9,7 @@ import { ProsemirrorSync } from "@convex-dev/prosemirror-sync";
 import { components, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { verifyDocumentAccess, verifyProjectEditor } from "./lib/auth";
+import { hashSnapshot } from "./lib/contentHash";
 
 const prosemirrorSync = new ProsemirrorSync(components.prosemirrorSync);
 
@@ -68,11 +69,11 @@ export const {
   submitSteps,
 } = prosemirrorSync.syncApi({
   checkRead: async (ctx, id) => {
-    await verifyDocumentAccess(ctx, id as Id<"documents">);
+    await verifyDocumentAccess(ctx as any, id as Id<"documents">);
   },
   checkWrite: async (ctx, id) => {
-    const { projectId } = await verifyDocumentAccess(ctx, id as Id<"documents">);
-    await verifyProjectEditor(ctx, projectId);
+    const { projectId } = await verifyDocumentAccess(ctx as any, id as Id<"documents">);
+    await verifyProjectEditor(ctx as any, projectId);
   },
   onSnapshot: async (ctx, id, snapshot) => {
     const documentId = id as Id<"documents">;
@@ -83,16 +84,27 @@ export const {
       const parsed = JSON.parse(snapshot) as Record<string, unknown>;
       const contentText = extractTextFromProseMirror(parsed);
       const wordCount = contentText ? contentText.split(/\s+/).filter(Boolean).length : 0;
+      const contentHash = await hashSnapshot(snapshot);
 
       await ctx.db.patch(documentId, {
-        content: parsed,
+        content: parsed as any,
         contentText,
         wordCount,
         updatedAt: Date.now(),
       });
 
+      await ctx.runMutation((internal as any)["revisions"].createRevisionInternal, {
+        projectId: document["projectId"] as Id<"projects">,
+        documentId,
+        snapshotJson: snapshot,
+        contentHash,
+        wordCount,
+        reason: "auto",
+        actorType: "system",
+      });
+
       await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
-        projectId: document.projectId,
+        projectId: document["projectId"] as Id<"projects">,
         targetType: "document",
         targetId: documentId,
       });

@@ -4,6 +4,7 @@
 
 import { v } from "convex/values";
 import { internalAction, internalQuery, internalMutation } from "../../_generated/server";
+import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import type {
   CreateEntityArgs,
@@ -145,6 +146,22 @@ export const updateRelationshipMutation = internalMutation({
 // Tool Execution Actions
 // =============================================================================
 
+type ToolActorContext = {
+  actorType: "ai" | "user" | "system";
+  actorUserId?: string;
+  actorAgentId?: string;
+  actorName?: string;
+};
+
+function resolveActor(actor?: ToolActorContext) {
+  return {
+    actorType: actor?.actorType ?? "system",
+    actorUserId: actor?.actorUserId,
+    actorAgentId: actor?.actorAgentId,
+    actorName: actor?.actorName,
+  };
+}
+
 function buildEntityProperties(args: CreateEntityArgs): Record<string, unknown> {
   const props: Record<string, unknown> = {};
   if (args.archetype) props["archetype"] = args.archetype;
@@ -167,10 +184,27 @@ export const executeCreateEntity = internalAction({
   args: {
     projectId: v.string(),
     toolArgs: v.any(),
+    actor: v.optional(
+      v.object({
+        actorType: v.string(),
+        actorUserId: v.optional(v.string()),
+        actorAgentId: v.optional(v.string()),
+        actorName: v.optional(v.string()),
+      })
+    ),
+    source: v.optional(
+      v.object({
+        streamId: v.optional(v.string()),
+        threadId: v.optional(v.string()),
+        toolCallId: v.optional(v.string()),
+        promptMessageId: v.optional(v.string()),
+      })
+    ),
   },
-  handler: async (ctx, { projectId, toolArgs }): Promise<{ success: boolean; entityId?: string; message: string }> => {
+  handler: async (ctx, { projectId, toolArgs, actor, source: sourceContext }): Promise<{ success: boolean; entityId?: string; message: string }> => {
     const args = toolArgs as CreateEntityArgs;
     const projectIdVal = projectId as Id<"projects">;
+    const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
     const existing = await ctx.runQuery(
       // @ts-expect-error Deep types
@@ -200,6 +234,19 @@ export const executeCreateEntity = internalAction({
       }
     );
 
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId: projectIdVal,
+      ...actorInfo,
+      action: "entity_created",
+      summary: `Created ${args.type} "${args.name}"`,
+      metadata: {
+        entityId,
+        type: args.type,
+        name: args.name,
+        source: sourceContext,
+      },
+    });
+
     return {
       success: true,
       entityId: entityId as string,
@@ -212,10 +259,27 @@ export const executeUpdateEntity = internalAction({
   args: {
     projectId: v.string(),
     toolArgs: v.any(),
+    actor: v.optional(
+      v.object({
+        actorType: v.string(),
+        actorUserId: v.optional(v.string()),
+        actorAgentId: v.optional(v.string()),
+        actorName: v.optional(v.string()),
+      })
+    ),
+    source: v.optional(
+      v.object({
+        streamId: v.optional(v.string()),
+        threadId: v.optional(v.string()),
+        toolCallId: v.optional(v.string()),
+        promptMessageId: v.optional(v.string()),
+      })
+    ),
   },
-  handler: async (ctx, { projectId, toolArgs }): Promise<{ success: boolean; entityId?: string; message: string }> => {
+  handler: async (ctx, { projectId, toolArgs, actor, source: sourceContext }): Promise<{ success: boolean; entityId?: string; message: string }> => {
     const args = toolArgs as UpdateEntityArgs;
     const projectIdVal = projectId as Id<"projects">;
+    const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
     const entity = await ctx.runQuery(
       // @ts-expect-error Deep types
@@ -256,6 +320,18 @@ export const executeUpdateEntity = internalAction({
       (k) => args.updates[k as keyof typeof args.updates] !== undefined
     );
 
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId: projectIdVal,
+      ...actorInfo,
+      action: "entity_updated",
+      summary: `Updated ${entity.type} "${entity.name}"`,
+      metadata: {
+        entityId: entity._id,
+        updatedFields,
+        source: sourceContext,
+      },
+    });
+
     return {
       success: true,
       entityId: entity._id as string,
@@ -268,10 +344,27 @@ export const executeCreateRelationship = internalAction({
   args: {
     projectId: v.string(),
     toolArgs: v.any(),
+    actor: v.optional(
+      v.object({
+        actorType: v.string(),
+        actorUserId: v.optional(v.string()),
+        actorAgentId: v.optional(v.string()),
+        actorName: v.optional(v.string()),
+      })
+    ),
+    source: v.optional(
+      v.object({
+        streamId: v.optional(v.string()),
+        threadId: v.optional(v.string()),
+        toolCallId: v.optional(v.string()),
+        promptMessageId: v.optional(v.string()),
+      })
+    ),
   },
-  handler: async (ctx, { projectId, toolArgs }): Promise<{ success: boolean; relationshipId?: string; message: string }> => {
+  handler: async (ctx, { projectId, toolArgs, actor, source: sourceContext }): Promise<{ success: boolean; relationshipId?: string; message: string }> => {
     const args = toolArgs as CreateRelationshipArgs;
     const projectIdVal = projectId as Id<"projects">;
+    const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
     const source = await ctx.runQuery(
       // @ts-expect-error Deep types
@@ -325,6 +418,20 @@ export const executeCreateRelationship = internalAction({
       }
     );
 
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId: projectIdVal,
+      ...actorInfo,
+      action: "relationship_created",
+      summary: `Created relationship ${args.sourceName} → ${args.type} → ${args.targetName}`,
+      metadata: {
+        relationshipId: relId,
+        sourceId: source._id,
+        targetId: target._id,
+        type: args.type,
+        source: sourceContext,
+      },
+    });
+
     const direction = args.bidirectional ? "↔" : "→";
     return {
       success: true,
@@ -338,10 +445,27 @@ export const executeUpdateRelationship = internalAction({
   args: {
     projectId: v.string(),
     toolArgs: v.any(),
+    actor: v.optional(
+      v.object({
+        actorType: v.string(),
+        actorUserId: v.optional(v.string()),
+        actorAgentId: v.optional(v.string()),
+        actorName: v.optional(v.string()),
+      })
+    ),
+    source: v.optional(
+      v.object({
+        streamId: v.optional(v.string()),
+        threadId: v.optional(v.string()),
+        toolCallId: v.optional(v.string()),
+        promptMessageId: v.optional(v.string()),
+      })
+    ),
   },
-  handler: async (ctx, { projectId, toolArgs }): Promise<{ success: boolean; relationshipId?: string; message: string }> => {
+  handler: async (ctx, { projectId, toolArgs, actor, source: sourceContext }): Promise<{ success: boolean; relationshipId?: string; message: string }> => {
     const args = toolArgs as UpdateRelationshipArgs;
     const projectIdVal = projectId as Id<"projects">;
+    const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
     const source = await ctx.runQuery(
       // @ts-expect-error Deep types
@@ -390,6 +514,18 @@ export const executeUpdateRelationship = internalAction({
     const updatedFields = Object.keys(args.updates).filter(
       (k) => args.updates[k as keyof typeof args.updates] !== undefined
     );
+
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId: projectIdVal,
+      ...actorInfo,
+      action: "relationship_updated",
+      summary: `Updated relationship ${args.sourceName} → ${args.type} → ${args.targetName}`,
+      metadata: {
+        relationshipId: rel._id,
+        updatedFields,
+        source: sourceContext,
+      },
+    });
 
     return {
       success: true,

@@ -25,6 +25,9 @@ export interface Suggestion {
   createdAt: string;
   /** Agent that generated the suggestion */
   agentId: string;
+  /** Stable anchors (optional) */
+  anchorStart?: { blockId: string; offset: number };
+  anchorEnd?: { blockId: string; offset: number };
 }
 
 export interface SuggestionPluginState {
@@ -42,6 +45,7 @@ type SuggestionMeta =
   | { type: 'remove'; id: string }
   | { type: 'select'; id: string | null }
   | { type: 'clear' }
+  | { type: 'hydrate'; suggestions: Suggestion[] }
   | { type: 'updatePositions'; mapping: (pos: number) => number };
 
 /**
@@ -218,6 +222,17 @@ function createSuggestionPlugin(): Plugin<SuggestionPluginState> {
             };
           }
 
+          case 'hydrate': {
+            const newSuggestions = new Map<string, Suggestion>();
+            for (const suggestion of meta.suggestions) {
+              newSuggestions.set(suggestion.id, suggestion);
+            }
+            return {
+              suggestions: newSuggestions,
+              selectedId: null,
+            };
+          }
+
           default:
             return value;
         }
@@ -294,6 +309,10 @@ declare module '@tiptap/core' {
        * Clear all suggestions
        */
       clearSuggestions: () => ReturnType;
+      /**
+       * Hydrate suggestions from server
+       */
+      loadSuggestions: (suggestions: Suggestion[]) => ReturnType;
     };
   }
 }
@@ -519,6 +538,24 @@ export const SuggestionPlugin = Extension.create<SuggestionPluginOptions>({
 
           tr.setMeta(suggestionPluginKey, { type: 'clear' });
           dispatch(tr);
+
+          return true;
+        },
+
+      loadSuggestions:
+        (suggestions: Suggestion[]) =>
+        ({ state, tr, dispatch }) => {
+          if (!dispatch) return false;
+
+          tr.setMeta(suggestionPluginKey, { type: 'hydrate', suggestions });
+          dispatch(tr);
+
+          const newState = state.apply(tr);
+          this.options.onSuggestionsChange?.(
+            Array.from(
+              (suggestionPluginKey.getState(newState)?.suggestions ?? new Map()).values()
+            )
+          );
 
           return true;
         },
