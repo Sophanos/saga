@@ -34,3 +34,21 @@ jobs:
         env:
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+  e2e:
+    if: ${{ vars.RUN_E2E == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bun run e2e:install
+      - name: Run Playwright E2E (Expo Web)
+        run: bun run e2e:expo
+        env:
+          PLAYWRIGHT_START_SERVERS: "true"
+          PLAYWRIGHT_TARGETS: "expo-web"
+          EXPO_PUBLIC_E2E: "true"
+          E2E_MOCK_AI: "true"
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          EXPO_PUBLIC_CONVEX_URL: ${{ secrets.CONVEX_URL }}

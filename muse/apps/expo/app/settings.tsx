@@ -27,8 +27,11 @@ export default function SettingsScreen() {
     entityCount: number;
   } | null>(null);
 
-  const getDeletePreview = useMutation(api.account.getDeletePreview);
-  const deleteMyAccount = useAction(api.account.deleteMyAccount);
+  // Convex API types are too deep for expo typecheck; treat as untyped.
+  // @ts-ignore
+  const apiAny: any = api;
+  const getDeletePreview = useMutation(apiAny.account.getDeletePreview as any);
+  const deleteMyAccount = useAction(apiAny.account.deleteMyAccount as any);
 
   const handleSignOut = async () => {
     try {
@@ -99,6 +102,8 @@ export default function SettingsScreen() {
 
               <Pressable
                 onPress={handleSignOut}
+                testID="auth-sign-out"
+                accessibilityLabel="Sign Out"
                 style={[styles.row, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}
               >
                 <Text style={[styles.rowLabel, { color: '#ef4444' }]}>Sign Out</Text>

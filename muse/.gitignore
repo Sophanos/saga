@@ -50,6 +50,12 @@ bun.lockb
 # Testing
 coverage
 .nyc_output
+playwright-report
+playwright-report/
+test-results
+test-results/
+.playwright
+.playwright/
 
 # Logs
 logs

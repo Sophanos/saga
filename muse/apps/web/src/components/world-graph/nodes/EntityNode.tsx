@@ -47,6 +47,8 @@ function EntityNodeComponent({ data, selected }: NodeProps<EntityNodeType>) {
             : "hover:shadow-xl"
         )}
         style={{ borderColor }}
+        data-testid={`wg-node-${nodeData.entityId}`}
+        data-entity-type={nodeData.type}
       >
         <div className="flex items-center gap-2">
           <div

@@ -587,7 +587,11 @@ export function Editor({
             disabled={!editable}
           />
         )}
-        <EditorContent editor={editor} className="editor-content" />
+        <EditorContent
+          editor={editor}
+          className="editor-content"
+          data-testid="editor-surface"
+        />
       </div>
       {editor && <BubbleMenu editor={editor} onAskAI={handleBubbleMenuAI} />}
 

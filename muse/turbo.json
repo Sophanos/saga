@@ -24,6 +24,11 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "e2e": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "outputs": ["playwright-report/**", "test-results/**", ".playwright/**"]
+    },
     "clean": {
       "cache": false
     },

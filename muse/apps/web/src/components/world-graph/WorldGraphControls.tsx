@@ -50,9 +50,21 @@ export function WorldGraphControls({
       {/* Stats and actions */}
       <div className="flex items-center gap-3 pointer-events-auto">
         <div className="text-xs text-mythos-text-muted bg-mythos-bg-secondary/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-mythos-border-default">
-          <span className="text-mythos-text-secondary font-medium">{entityCount}</span> entities
+          <span
+            className="text-mythos-text-secondary font-medium"
+            data-testid="wg-entity-count"
+          >
+            {entityCount}
+          </span>{" "}
+          entities
           <span className="mx-2">·</span>
-          <span className="text-mythos-text-secondary font-medium">{relationshipCount}</span> relationships
+          <span
+            className="text-mythos-text-secondary font-medium"
+            data-testid="wg-relationship-count"
+          >
+            {relationshipCount}
+          </span>{" "}
+          relationships
         </div>
         <Button
           variant="outline"

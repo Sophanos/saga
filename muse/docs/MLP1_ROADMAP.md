@@ -907,6 +907,14 @@ embeddingJobs: defineTable({
 
 ## Remaining Work
 
+### P2: Collaboration UI (Expo Web)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Expo-web UI for revision history or activity feed | 🔲 | Add to EditorShell layout for web-only experience |
+| Revision history/restore UI | 🔲 | Subtle, integrated panel (no modal spam) |
+| Activity feed UI | 🔲 | Designed as a low-noise, contextual feed |
+
 ### Phase 3: Platform Integration
 
 #### Tauri macOS (Scaffold Complete)
@@ -1844,6 +1852,13 @@ EXPO_PUBLIC_CLARITY_PROJECT_ID=...
 | `typecheck` | `bun run typecheck` | PR + push to main |
 | `lint` | `bun run lint` | PR + push to main |
 | `test` | `bunx vitest convex/ai/__tests__ --run` | PR + push to main |
+
+### E2E (Playwright)
+
+- Status: Infra + initial suites in place (Expo web primary; Tauri web content validation).
+- Coverage: Auth, project/document create + editor persistence, detect+persist (mockable).
+- Entry points: `bun run e2e:expo`, `bun run e2e:tauri`, `E2E_MOCK_AI=true`, `EXPO_PUBLIC_E2E=true`.
+- Note: World Graph UI tests target `@mythos/web` (optional `e2e:web`).
 
 ### Convex Deploy Workflow (`deploy-convex.yml`)
 
