@@ -56,7 +56,7 @@ export default function SignInScreen() {
     try {
       const result = await signInWithEmail(email, password);
       if (result.error) {
-        setError(result.error.message);
+        setError(result.error.message ?? "Sign in failed");
         setIsLoading(false);
       } else {
         // Mark sign-in as successful - navigation will happen in useEffect

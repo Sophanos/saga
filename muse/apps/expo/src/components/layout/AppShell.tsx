@@ -45,9 +45,9 @@ export function AppShell({ children }: AppShellProps) {
 
   const [showTooltip, setShowTooltip] = useState(false);
   const [showSidebarOverlay, setShowSidebarOverlay] = useState(false);
-  const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const sidebarTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const tooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sidebarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isTablet = width >= TABLET_BREAKPOINT;
   const isDesktop = width >= DESKTOP_BREAKPOINT;

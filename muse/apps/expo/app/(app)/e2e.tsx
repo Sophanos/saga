@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+import { api } from "../../../../convex/_generated/api";
 import { useTheme, spacing, typography, radii } from "@/design-system";
 import { useProjectStore } from "@mythos/state";
 import type { Project } from "@mythos/core";

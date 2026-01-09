@@ -62,7 +62,7 @@ export default function SignUpScreen() {
     try {
       const result = await signUpWithEmail(email, password, name);
       if (result.error) {
-        setError(result.error.message);
+        setError(result.error.message ?? "Sign up failed");
         setIsLoading(false);
       } else {
         // Mark sign-up as successful - navigation will happen in useEffect

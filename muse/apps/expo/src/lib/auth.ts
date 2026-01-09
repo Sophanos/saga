@@ -27,7 +27,8 @@ const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://convex.cascada
 const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
 
 // Get app scheme from Expo config
-const scheme = Constants.expoConfig?.scheme || "mythos";
+const schemeValue = Constants.expoConfig?.scheme;
+const scheme = Array.isArray(schemeValue) ? schemeValue[0] : schemeValue ?? "mythos";
 
 /**
  * Better Auth client for Expo
