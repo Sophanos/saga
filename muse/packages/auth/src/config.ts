@@ -17,9 +17,10 @@ export interface AuthConfig {
 
 /**
  * Default configuration (override per-platform)
+ * Note: BetterAuth runs on Convex HTTP routes, so convexSiteUrl = convexUrl
  */
 export const defaultConfig: AuthConfig = {
-  convexSiteUrl: "https://cascada.vision",
+  convexSiteUrl: "https://convex.cascada.vision",
   convexUrl: "https://convex.cascada.vision",
   scheme: "mythos",
   environment: "production",
