@@ -267,7 +267,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_status", ["status"])
-    .index("by_project_target", ["projectId", "targetType", "targetId"]),
+    .index("by_project_target", ["projectId", "targetType", "targetId"])
+    .index("by_target_status", ["targetType", "targetId", "status"]),
 
   // ============================================================
   // AI MEMORIES

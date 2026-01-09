@@ -91,6 +91,18 @@ export const enqueueEmbeddingJob = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const activeStatuses = ["pending", "processing"] as const;
+
+    for (const status of activeStatuses) {
+      const activeJob = await ctx.db
+        .query("embeddingJobs")
+        .withIndex("by_target_status", (q) =>
+          q.eq("targetType", args.targetType).eq("targetId", args.targetId).eq("status", status)
+        )
+        .first();
+      if (activeJob) return activeJob._id;
+    }
+
     const existing = await ctx.db
       .query("embeddingJobs")
       .withIndex("by_project_target", (q) =>
@@ -102,13 +114,14 @@ export const enqueueEmbeddingJob = internalMutation({
       .first();
 
     if (existing) {
-      const nextStatus = existing.status === "failed" ? "pending" : existing.status;
-      await ctx.db.patch(existing._id, {
-        status: nextStatus,
-        attempts: nextStatus === "pending" ? 0 : existing.attempts,
-        lastError: undefined,
-        updatedAt: now,
-      });
+      if (existing.status === "failed") {
+        await ctx.db.patch(existing._id, {
+          status: "pending",
+          attempts: 0,
+          lastError: undefined,
+          updatedAt: now,
+        });
+      }
       return existing._id;
     }
 

@@ -74,6 +74,30 @@ async function setAiPresence(
   );
 }
 
+const AI_KEEPALIVE_INTERVAL_MS = 8_000;
+
+async function maybeKeepAiTypingAlive(opts: {
+  ctx: ActionCtx;
+  projectId: string;
+  presenceDocumentId?: string;
+  isTemplateBuilder: boolean;
+  lastAiPresenceAt: number;
+}): Promise<number> {
+  const { ctx, projectId, presenceDocumentId, isTemplateBuilder, lastAiPresenceAt } = opts;
+  if (isTemplateBuilder || !presenceDocumentId) return lastAiPresenceAt;
+
+  const now = Date.now();
+  if (now - lastAiPresenceAt < AI_KEEPALIVE_INTERVAL_MS) return lastAiPresenceAt;
+
+  try {
+    await setAiPresence(ctx, projectId, presenceDocumentId, true);
+  } catch (error) {
+    console.warn("[agentRuntime] Failed to keep AI presence alive:", error);
+  }
+
+  return now;
+}
+
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
 const LEXICAL_LIMIT = 20;
@@ -360,6 +384,7 @@ export const runSagaAgentChatToStream = internalAction({
     }
 
     let presenceDocumentId: string | undefined;
+    let lastAiPresenceAt = 0;
 
     try {
       const startTime = Date.now();
@@ -398,11 +423,13 @@ export const runSagaAgentChatToStream = internalAction({
 
       presenceDocumentId = editorDocumentId ?? (threadDocumentId ? String(threadDocumentId) : undefined);
       if (!isTemplateBuilder && presenceDocumentId) {
+        const now = Date.now();
         try {
           await setAiPresence(ctx, projectId, presenceDocumentId, true);
         } catch (error) {
           console.warn("[agentRuntime] Failed to set AI presence:", error);
         }
+        lastAiPresenceAt = now;
       }
 
       const { messageId: promptMessageId } = await sagaAgent.saveMessage(ctx, {
@@ -482,6 +509,13 @@ export const runSagaAgentChatToStream = internalAction({
             content: delta,
           });
         }
+        lastAiPresenceAt = await maybeKeepAiTypingAlive({
+          ctx,
+          projectId,
+          presenceDocumentId,
+          isTemplateBuilder,
+          lastAiPresenceAt,
+        });
       }
 
       let toolCalls = await result.toolCalls;
@@ -609,6 +643,13 @@ export const runSagaAgentChatToStream = internalAction({
           if (delta) {
             await appendStreamChunk(ctx, streamId, { type: "delta", content: delta });
           }
+          lastAiPresenceAt = await maybeKeepAiTypingAlive({
+            ctx,
+            projectId,
+            presenceDocumentId,
+            isTemplateBuilder,
+            lastAiPresenceAt,
+          });
         }
 
         toolCalls = await currentResult.toolCalls;
@@ -684,6 +725,7 @@ export const applyToolResultAndResumeToStream = internalAction({
     }
 
     let presenceDocumentId: string | undefined;
+    let lastAiPresenceAt = 0;
 
     try {
       const sagaAgent = getSagaAgent();
@@ -698,11 +740,13 @@ export const applyToolResultAndResumeToStream = internalAction({
           (threadAccess.documentId ? String(threadAccess.documentId) : undefined);
 
         if (presenceDocumentId) {
+          const now = Date.now();
           try {
             await setAiPresence(ctx, projectId, presenceDocumentId, true);
           } catch (error) {
             console.warn("[agentRuntime] Failed to set AI presence:", error);
           }
+          lastAiPresenceAt = now;
         }
       }
 
@@ -747,6 +791,13 @@ export const applyToolResultAndResumeToStream = internalAction({
             content: delta,
           });
         }
+        lastAiPresenceAt = await maybeKeepAiTypingAlive({
+          ctx,
+          projectId,
+          presenceDocumentId,
+          isTemplateBuilder,
+          lastAiPresenceAt,
+        });
       }
 
       const toolCalls = await resumeResult.toolCalls;

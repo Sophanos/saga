@@ -59,6 +59,7 @@ interface EditorProps {
   onSuggestionsChange?: (suggestions: Suggestion[]) => void;
   onBridgeMessage?: (message: NativeToEditorMessage) => void;
   onCursorChange?: (selection: { from: number; to: number }) => void;
+  onFocusChange?: (focused: boolean) => void;
   placeholder?: string;
   fontStyle?: FontStyle;
   isSmallText?: boolean;
@@ -90,6 +91,7 @@ export function Editor({
   onSuggestionsChange: _onSuggestionsChange,
   onBridgeMessage,
   onCursorChange,
+  onFocusChange,
   placeholder = "Press '/' for commands, or start writing...",
   fontStyle = 'default',
   isSmallText = false,
@@ -225,12 +227,18 @@ export function Editor({
   }, [sendBridgeMessage]);
 
   useEffect(() => {
-    if (!editor || !_enableBridge) return;
+    if (!editor) return;
     const handleFocus = () => {
-      bridgeSendRef.current?.({ type: 'editorFocused' });
+      onFocusChange?.(true);
+      if (_enableBridge) {
+        bridgeSendRef.current?.({ type: 'editorFocused' });
+      }
     };
     const handleBlur = () => {
-      bridgeSendRef.current?.({ type: 'editorBlurred' });
+      onFocusChange?.(false);
+      if (_enableBridge) {
+        bridgeSendRef.current?.({ type: 'editorBlurred' });
+      }
     };
     editor.on('focus', handleFocus);
     editor.on('blur', handleBlur);
@@ -238,7 +246,7 @@ export function Editor({
       editor.off('focus', handleFocus);
       editor.off('blur', handleBlur);
     };
-  }, [editor, _enableBridge]);
+  }, [editor, onFocusChange, _enableBridge]);
 
   useEffect(() => {
     if (!editor || !remoteCursors) return;

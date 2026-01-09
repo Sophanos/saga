@@ -85,17 +85,53 @@ function CollaborativeEditorInner({
 
   const pendingCursorRef = useRef<{ from: number; to: number } | null>(null);
   const cursorTimerRef = useRef<number | null>(null);
+  const lastSentCursorRef = useRef<{ from: number; to: number } | null>(null);
+  const isFocusedRef = useRef(false);
+
+  const handleFocusChange = useCallback(
+    (focused: boolean) => {
+      isFocusedRef.current = focused;
+      if (!focused) {
+        pendingCursorRef.current = null;
+        if (cursorTimerRef.current !== null) {
+          window.clearTimeout(cursorTimerRef.current);
+          cursorTimerRef.current = null;
+        }
+        lastSentCursorRef.current = null;
+        updatePresenceData(undefined);
+      }
+    },
+    [updatePresenceData]
+  );
 
   const handleCursorChange = useCallback(
     (selection: { from: number; to: number }) => {
+      if (!isFocusedRef.current) return;
+      if (
+        lastSentCursorRef.current?.from === selection.from &&
+        lastSentCursorRef.current?.to === selection.to
+      ) {
+        return;
+      }
       pendingCursorRef.current = selection;
       if (cursorTimerRef.current !== null) return;
       cursorTimerRef.current = window.setTimeout(() => {
         const cursor = pendingCursorRef.current ?? undefined;
         pendingCursorRef.current = null;
         cursorTimerRef.current = null;
+        if (!cursor) {
+          updatePresenceData(undefined);
+          return;
+        }
+        if (
+          lastSentCursorRef.current?.from === cursor.from &&
+          lastSentCursorRef.current?.to === cursor.to
+        ) {
+          return;
+        }
+        lastSentCursorRef.current = cursor;
         updatePresenceData(cursor);
-      }, 120);
+      }, 350);
     },
     [updatePresenceData]
   );
@@ -163,6 +199,7 @@ function CollaborativeEditorInner({
       remoteCursors={remoteCursors}
       currentUserId={user.id}
       onCursorChange={handleCursorChange}
+      onFocusChange={handleFocusChange}
       syncContentFromProps={false}
     />
   );

@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-09 (P0 bridge + collaboration auth hardening) | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-09 (P1 performance stabilization: cursor throttle, AI keepalive, embedding dedupe) | **Target:** Web + macOS first, then iOS/iPad
 
 ## Summary
 
@@ -11,6 +11,11 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 - Tool-based workspace manipulation
 - Thread persistence with full context
 - Offline-first + real-time sync (Figma model)
+
+### P1 Performance Stabilization (2026-01-09)
+- Cursor presence throttling + focus gating to reduce write amplification.
+- AI presence keepalive during long-running streaming responses.
+- Embedding job deduplication to prevent redundant queue churn.
 
 ---
 
@@ -1353,7 +1358,7 @@ convex/
 | Bridge messaging hardening (nonce + origin checks) | ✅ Done | Editor WebView + Tauri hook |
 | Collaboration auth binding (project-scoped checks) | ✅ Done | Added verifyProjectAccess + listMyProjects |
 
-### Remaining Tasks
+### Remaining Tasks (Supabase Migration)
 
 | Task | Priority | Notes |
 |------|----------|-------|
@@ -1363,7 +1368,25 @@ convex/
 | sagaClient.ts | P2 | Remove `getSupabaseClient`, `isSupabaseInitialized` |
 | analysisRepository.ts | P2 | Remove Supabase references |
 | seedWorldbuilding.ts | P2 | Replace `createDocument` |
-| useCollaboration.ts | P3 | Convex Realtime/presence (Figma model) - future |
+
+### P1: Performance Stabilization
+
+| Task | Files | Notes |
+|------|-------|-------|
+| Cursor write rate reduction | `CollaborativeEditor.tsx` | 120ms → 350ms throttle, skip if unchanged, focus-gated |
+| AI presence keepalive | `agentRuntime.ts` | Tick presence every ~5-10s during long streams |
+| Embedding job deduplication | `embeddings.ts`, `schema.ts` | Skip if pending job exists for same target |
+
+### P2: Notion+Cursor Product Gaps
+
+| Task | Files | Notes |
+|------|-------|-------|
+| **Collaborative suggestions** | New `convex/suggestions.ts` | Persist suggestions in Convex, subscribe in editor, map through transactions |
+| **Version history + restore** | New `convex/revisions.ts` | Track actor (user/collaborator/AI), reason, tool name; enables "undo AI change" UX |
+| **Block identity layer** | New `extensions/block-id.ts` | Stable UUIDs on block nodes for comments, deep links, AI targeting |
+| **Activity log** | New `convex/activity.ts` | Human + AI operations audit trail for project/document |
+
+> **Note:** Version history must track full actor context (which user, which collaborator, which AI agent/tool) to enable proper rollback UX and audit. UI for history/restore is a major focus area.
 
 ### Backend Schema TODOs (Stubbed Hooks)
 
@@ -1404,6 +1427,9 @@ convex/
 | `projectAssets` | projectId, type, storageId, deletedAt | ✅ P11 |
 | `memories` | projectId, category, scope, content | ✅ Done |
 | `embeddingJobs` | docId, status, attempts | ✅ Done |
+| `documentRevisions` | documentId, snapshotJson, actorType, actorUserId, reason | 🔲 P2 |
+| `documentSuggestions` | documentId, from, to, type, content, status, agentId | 🔲 P2 |
+| `activityLog` | projectId, documentId, actorType, action, summary | 🔲 P2 |
 
 ---
 
