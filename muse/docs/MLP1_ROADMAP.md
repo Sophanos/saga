@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-09 (Collab Track A complete) | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-09 (P0 bridge + collaboration auth hardening) | **Target:** Web + macOS first, then iOS/iPad
 
 ## Summary
 
@@ -1350,6 +1350,8 @@ convex/
 | Canvas.tsx | ✅ Done | Uses `api.documents.create` |
 | InviteAcceptPage.tsx | ✅ Done | Uses `api.collaboration.*` |
 | SceneListBlock.tsx | ✅ Done | Uses `api.documents.*` |
+| Bridge messaging hardening (nonce + origin checks) | ✅ Done | Editor WebView + Tauri hook |
+| Collaboration auth binding (project-scoped checks) | ✅ Done | Added verifyProjectAccess + listMyProjects |
 
 ### Remaining Tasks
 

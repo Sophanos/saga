@@ -12,7 +12,7 @@ import {
   internalQuery,
   internalMutation,
 } from "./_generated/server";
-import { verifyProjectAccess } from "./lib/auth";
+import { getAuthUserId, verifyProjectAccess, verifyProjectEditor } from "./lib/auth";
 
 // ============================================================
 // INTERNAL PERMISSION HELPERS
@@ -77,6 +77,8 @@ export const getMemberRole = internalQuery({
 export const listProjectMembers = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, { projectId }) => {
+    await verifyProjectAccess(ctx, projectId);
+
     return ctx.db
       .query("projectMembers")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
@@ -131,6 +133,8 @@ export const listProjectMembersWithProfiles = query({
 export const getProjectMember = query({
   args: { projectId: v.id("projects"), userId: v.string() },
   handler: async (ctx, { projectId, userId }) => {
+    await verifyProjectAccess(ctx, projectId);
+
     return ctx.db
       .query("projectMembers")
       .withIndex("by_project_user", (q) =>
@@ -140,9 +144,11 @@ export const getProjectMember = query({
   },
 });
 
-export const listUserProjects = query({
-  args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
+export const listMyProjects = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+
     return ctx.db
       .query("projectMembers")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -153,6 +159,8 @@ export const listUserProjects = query({
 export const listProjectInvitations = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, { projectId }) => {
+    await verifyProjectAccess(ctx, projectId);
+
     return ctx.db
       .query("projectInvitations")
       .withIndex("by_project_status", (q) =>
@@ -399,6 +407,13 @@ export const acceptInvitation = mutation({
 export const revokeInvitation = mutation({
   args: { invitationId: v.id("projectInvitations") },
   handler: async (ctx, { invitationId }) => {
+    const invitation = await ctx.db.get(invitationId);
+
+    if (!invitation) {
+      throw new Error("Invitation not found");
+    }
+
+    await verifyProjectEditor(ctx, invitation.projectId);
     await ctx.db.patch(invitationId, { status: "revoked" });
   },
 });

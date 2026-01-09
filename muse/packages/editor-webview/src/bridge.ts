@@ -86,6 +86,9 @@ export interface EditorBridgeOptions {
   placeholder?: string;
   editable?: boolean;
   fontStyle?: 'default' | 'serif' | 'mono';
+  bridgeNonce?: string;
+  allowedOrigins?: string[];
+  nativeVersion?: string;
 }
 
 export interface CollaborationUser {
@@ -156,10 +159,23 @@ export interface EditorInstance {
 // Bridge Implementation
 // =============================================================================
 
+type BridgeEnvelope<T> = {
+  type: 'editor-bridge' | 'editor-bridge-response';
+  payload: T;
+  nonce: string;
+  version: string;
+};
+
 const BRIDGE_VERSION = '1.0.0';
 
 let registeredEditor: EditorInstance | null = null;
 let messageQueue: NativeToEditorMessage[] = [];
+let outboundQueue: EditorToNativeMessage[] = [];
+let bridgeNonce: string | null = null;
+let bridgeConfigured = false;
+let bridgeDisabled = false;
+let allowedParentOrigins: Set<string> | null = null;
+let pendingReady = false;
 
 /**
  * Native handler interface (injected by Tauri/React Native)
@@ -177,10 +193,130 @@ declare global {
   }
 }
 
+function isIframeContext(): boolean {
+  return typeof window !== 'undefined' && window.parent !== window;
+}
+
+function deriveReferrerOrigins(): string[] | null {
+  if (typeof document === 'undefined') return null;
+  if (!document.referrer) return null;
+  try {
+    const origin = new URL(document.referrer).origin;
+    return origin ? [origin] : null;
+  } catch {
+    return null;
+  }
+}
+
+function setAllowedParentOrigins(origins?: string[]): void {
+  if (!origins || origins.length === 0) return;
+  const filtered = origins.filter((origin) => !!origin);
+  if (filtered.length === 0) return;
+  allowedParentOrigins = new Set(filtered);
+}
+
+function isParentOriginAllowed(origin: string): boolean {
+  if (!allowedParentOrigins || allowedParentOrigins.size === 0) return false;
+  return allowedParentOrigins.has(origin);
+}
+
+function getParentTargetOrigin(): string {
+  if (allowedParentOrigins && allowedParentOrigins.size > 0) {
+    const first = allowedParentOrigins.values().next().value;
+    if (first) return first;
+  }
+  return '*';
+}
+
+function disableBridge(reason: string): void {
+  bridgeDisabled = true;
+  console.error(`[EditorBridge] ${reason}`);
+}
+
+function flushOutboundQueue(): void {
+  if (!bridgeConfigured || !bridgeNonce || bridgeDisabled) return;
+  const queue = outboundQueue;
+  outboundQueue = [];
+  for (const message of queue) {
+    sendToNative(message, { force: true });
+  }
+}
+
+function configureBridge(
+  options: EditorBridgeOptions,
+  envelope?: BridgeEnvelope<NativeToEditorMessage>
+): void {
+  if (bridgeDisabled) return;
+
+  const incomingNonce = envelope?.nonce ?? options.bridgeNonce;
+  if (!incomingNonce) {
+    disableBridge('Missing bridge nonce in configure');
+    return;
+  }
+
+  if (options.bridgeNonce && envelope?.nonce && options.bridgeNonce !== envelope.nonce) {
+    disableBridge('Bridge nonce mismatch in configure');
+    return;
+  }
+
+  if (bridgeNonce && bridgeNonce !== incomingNonce) {
+    disableBridge('Bridge nonce changed after configure');
+    return;
+  }
+
+  const incomingVersion = envelope?.version ?? options.nativeVersion;
+  if (!incomingVersion) {
+    disableBridge('Missing bridge version in configure');
+    return;
+  }
+
+  if (options.nativeVersion && envelope?.version && options.nativeVersion !== envelope.version) {
+    disableBridge('Bridge version mismatch in configure');
+    return;
+  }
+
+  if (incomingVersion !== BRIDGE_VERSION) {
+    bridgeNonce = incomingNonce;
+    sendToNative(
+      {
+        type: 'error',
+        code: 'bridge_version_mismatch',
+        message: `Bridge version mismatch (native ${incomingVersion}, editor ${BRIDGE_VERSION})`,
+      },
+      { force: true }
+    );
+    disableBridge(`Bridge version mismatch (native ${incomingVersion}, editor ${BRIDGE_VERSION})`);
+    return;
+  }
+
+  bridgeNonce = incomingNonce;
+  bridgeConfigured = true;
+
+  if (options.allowedOrigins?.length) {
+    setAllowedParentOrigins(options.allowedOrigins);
+  }
+
+  if (!allowedParentOrigins) {
+    const referrerOrigins = deriveReferrerOrigins();
+    if (referrerOrigins) {
+      setAllowedParentOrigins(referrerOrigins);
+    }
+  }
+
+  flushOutboundQueue();
+
+  if (pendingReady) {
+    pendingReady = false;
+    sendToNative({ type: 'editorReady', version: BRIDGE_VERSION }, { force: true });
+  }
+}
+
 /**
  * Send message to native handler
  */
-function sendToNative(message: EditorToNativeMessage): void {
+function sendToNative(message: EditorToNativeMessage, options?: { force?: boolean }): void {
+  if (bridgeDisabled && !options?.force) return;
+
   const messageStr = JSON.stringify(message);
 
   // Try different native handlers
@@ -193,9 +329,25 @@ function sendToNative(message: EditorToNativeMessage): void {
   } else if (window.editor?.postMessage) {
     // Android WebView or fallback
     window.editor.postMessage(messageStr);
-  } else if (window.parent !== window) {
-    // Running in iframe - postMessage to parent
-    window.parent.postMessage({ type: 'editor-bridge-response', payload: message }, '*');
+  } else if (isIframeContext()) {
+    if (!bridgeConfigured && !options?.force) {
+      outboundQueue.push(message);
+      return;
+    }
+
+    if (!bridgeNonce) {
+      console.warn('[EditorBridge] Missing bridge nonce; dropping message');
+      return;
+    }
+
+    const envelope: BridgeEnvelope<EditorToNativeMessage> = {
+      type: 'editor-bridge-response',
+      payload: message,
+      nonce: bridgeNonce,
+      version: BRIDGE_VERSION,
+    };
+
+    window.parent.postMessage(envelope, getParentTargetOrigin());
   } else {
     // Development fallback - log to console
     console.log('[EditorBridge →]', message);
@@ -210,7 +362,10 @@ function dispatchBridgeMessage(message: NativeToEditorMessage): void {
   window.dispatchEvent(new CustomEvent('editor-bridge-message', { detail: message }));
 }
 
-function handleNativeMessage(message: NativeToEditorMessage): void {
+function handleNativeMessage(
+  message: NativeToEditorMessage,
+  envelope?: BridgeEnvelope<NativeToEditorMessage>
+): void {
   dispatchBridgeMessage(message);
 
   if (!registeredEditor) {
@@ -290,8 +445,7 @@ function handleNativeMessage(message: NativeToEditorMessage): void {
       break;
 
     case 'configure':
-      // Handle configuration updates
-      console.log('[EditorBridge] Configure:', message.options);
+      configureBridge(message.options, envelope);
       break;
 
     default:
@@ -322,7 +476,11 @@ export function createEditorBridge(): EditorBridge {
       }
 
       // Notify native that editor is ready
-      sendToNative({ type: 'editorReady', version: BRIDGE_VERSION });
+      if (isIframeContext() && !bridgeConfigured) {
+        pendingReady = true;
+      } else {
+        sendToNative({ type: 'editorReady', version: BRIDGE_VERSION });
+      }
     },
 
     isConnected: () => {
@@ -450,11 +608,33 @@ export default createEditorBridge;
 // Listen for postMessage from parent window (iframe mode)
 if (typeof window !== 'undefined') {
   window.addEventListener('message', (event) => {
-    if (event.data?.type === 'editor-bridge' && event.data?.payload) {
-      const bridge = window.editorBridge;
-      if (bridge) {
-        bridge.receive(event.data.payload);
+    if (!isIframeContext()) return;
+    if (event.source !== window.parent) return;
+
+    const data = event.data as BridgeEnvelope<NativeToEditorMessage> | undefined;
+    if (!data || data.type !== 'editor-bridge' || !data.payload) return;
+    if (!data.nonce || !data.version) return;
+    if (bridgeDisabled) return;
+
+    const isConfigure = data.payload.type === 'configure';
+
+    if (allowedParentOrigins && !isParentOriginAllowed(event.origin)) {
+      return;
+    }
+
+    if (!allowedParentOrigins && !isConfigure) {
+      return;
+    }
+
+    if (!isConfigure) {
+      if (!bridgeNonce || data.nonce !== bridgeNonce) return;
+      if (data.version !== BRIDGE_VERSION) {
+        disableBridge(`Bridge version mismatch (native ${data.version}, editor ${BRIDGE_VERSION})`);
+        return;
       }
     }
+
+    handleNativeMessage(data.payload, data);
   });
 }
+

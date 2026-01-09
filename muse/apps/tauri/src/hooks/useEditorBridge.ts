@@ -1,6 +1,24 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
+const BRIDGE_VERSION = '1.0.0';
+
+type BridgeEnvelope<T> = {
+  type: 'editor-bridge' | 'editor-bridge-response';
+  payload: T;
+  nonce: string;
+  version: string;
+};
+
+export type BridgeConfigureOptions = {
+  placeholder?: string;
+  editable?: boolean;
+  fontStyle?: 'default' | 'serif' | 'mono';
+  bridgeNonce?: string;
+  allowedOrigins?: string[];
+  nativeVersion?: string;
+};
+
 // Message types matching packages/editor-webview/src/bridge.ts
 
 export type EditorToNativeMessage =
@@ -42,7 +60,7 @@ export type NativeToEditorMessage =
   | { type: 'setEditable'; editable: boolean }
   | { type: 'undo' }
   | { type: 'redo' }
-  | { type: 'configure'; options: Record<string, unknown> };
+  | { type: 'configure'; options: BridgeConfigureOptions };
 
 export interface EditorState {
   ready: boolean;
@@ -58,6 +76,10 @@ export interface UseEditorBridgeOptions {
   onContentChange?: (content: string, html: string) => void;
   onSelectionChange?: (selection: EditorState['selection']) => void;
   onAIRequest?: (selectedText: string, prompt?: string, action?: string) => void;
+  bridgeNonce?: string;
+  editorOrigin?: string;
+  hostOrigin?: string;
+  expectedVersion?: string;
 }
 
 export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
@@ -69,6 +91,29 @@ export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
     selection: null,
     focused: false,
   });
+
+  const bridgeNonceRef = useRef<string | null>(options.bridgeNonce ?? null);
+  const editorOriginRef = useRef<string | null>(options.editorOrigin ?? null);
+  const hostOriginRef = useRef<string | null>(options.hostOrigin ?? null);
+  const expectedVersionRef = useRef<string>(options.expectedVersion ?? BRIDGE_VERSION);
+  const bridgeDisabledRef = useRef(false);
+  const configuredRef = useRef(false);
+
+  useEffect(() => {
+    bridgeNonceRef.current = options.bridgeNonce ?? null;
+  }, [options.bridgeNonce]);
+
+  useEffect(() => {
+    editorOriginRef.current = options.editorOrigin ?? null;
+  }, [options.editorOrigin]);
+
+  useEffect(() => {
+    hostOriginRef.current = options.hostOrigin ?? null;
+  }, [options.hostOrigin]);
+
+  useEffect(() => {
+    expectedVersionRef.current = options.expectedVersion ?? BRIDGE_VERSION;
+  }, [options.expectedVersion]);
 
   // Memoize callbacks to avoid effect re-runs
   const callbacks = useMemo(
@@ -82,14 +127,89 @@ export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
     [options.onMessage, options.onReady, options.onContentChange, options.onSelectionChange, options.onAIRequest]
   );
 
-  const sendToEditor = useCallback((message: NativeToEditorMessage) => {
-    const iframe = iframeRef.current;
-    if (!iframe?.contentWindow) {
-      console.warn('[useEditorBridge] iframe not ready');
+  const resolveEditorOrigin = useCallback(() => {
+    if (editorOriginRef.current) return editorOriginRef.current;
+    const src = iframeRef.current?.src;
+    if (!src) return null;
+    try {
+      return new URL(src).origin;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const isOriginAllowed = useCallback(
+    (origin: string) => {
+      const expected = resolveEditorOrigin();
+      if (!expected) return false;
+      return origin === expected;
+    },
+    [resolveEditorOrigin]
+  );
+
+  const postToEditor = useCallback(
+    (message: NativeToEditorMessage) => {
+      if (bridgeDisabledRef.current) return;
+
+      const iframe = iframeRef.current;
+      if (!iframe?.contentWindow) {
+        console.warn('[useEditorBridge] iframe not ready');
+        return;
+      }
+
+      if (message.type !== 'configure' && !configuredRef.current) {
+        console.warn('[useEditorBridge] Bridge not configured; dropping message');
+        return;
+      }
+
+      const nonce = bridgeNonceRef.current;
+      if (!nonce) {
+        console.warn('[useEditorBridge] Missing bridge nonce; dropping message');
+        return;
+      }
+
+      const targetOrigin = resolveEditorOrigin();
+      if (!targetOrigin) {
+        console.error('[useEditorBridge] Unable to resolve editor origin; dropping message');
+        return;
+      }
+
+      const envelope: BridgeEnvelope<NativeToEditorMessage> = {
+        type: 'editor-bridge',
+        payload: message,
+        nonce,
+        version: expectedVersionRef.current,
+      };
+
+      iframe.contentWindow.postMessage(envelope, targetOrigin);
+    },
+    [resolveEditorOrigin]
+  );
+
+  const configure = useCallback(() => {
+    const nonce = bridgeNonceRef.current;
+    if (!nonce) {
+      console.warn('[useEditorBridge] Missing bridge nonce; cannot configure');
       return;
     }
-    iframe.contentWindow.postMessage({ type: 'editor-bridge', payload: message }, '*');
-  }, []);
+
+    const hostOrigin = hostOriginRef.current ?? window.location.origin;
+    const optionsPayload: BridgeConfigureOptions = {
+      bridgeNonce: nonce,
+      allowedOrigins: hostOrigin ? [hostOrigin] : undefined,
+      nativeVersion: expectedVersionRef.current,
+    };
+
+    configuredRef.current = true;
+    postToEditor({ type: 'configure', options: optionsPayload });
+  }, [postToEditor]);
+
+  const sendToEditor = useCallback(
+    (message: NativeToEditorMessage) => {
+      postToEditor(message);
+    },
+    [postToEditor]
+  );
 
   // Convenience methods
   const setContent = useCallback(
@@ -124,10 +244,34 @@ export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
   // Listen for messages from iframe via postMessage
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      const data = event.data;
-      if (data?.type !== 'editor-bridge-response') return;
+      if (bridgeDisabledRef.current) return;
+      const iframeWindow = iframeRef.current?.contentWindow;
+      if (!iframeWindow || event.source !== iframeWindow) return;
+      if (!isOriginAllowed(event.origin)) return;
 
-      const message = data.payload as EditorToNativeMessage;
+      const data = event.data as BridgeEnvelope<EditorToNativeMessage> | undefined;
+      if (!data || data.type !== 'editor-bridge-response' || !data.payload) return;
+
+      const nonce = bridgeNonceRef.current;
+      if (!nonce || data.nonce !== nonce) return;
+
+      if (data.version !== expectedVersionRef.current) {
+        bridgeDisabledRef.current = true;
+        console.error(
+          `[useEditorBridge] Bridge version mismatch (editor ${data.version}, native ${expectedVersionRef.current})`
+        );
+        return;
+      }
+
+      const message = data.payload;
+
+      if (message.type === 'editorReady' && message.version !== expectedVersionRef.current) {
+        bridgeDisabledRef.current = true;
+        console.error(
+          `[useEditorBridge] Editor ready version mismatch (editor ${message.version}, native ${expectedVersionRef.current})`
+        );
+        return;
+      }
 
       switch (message.type) {
         case 'editorReady':
@@ -158,7 +302,7 @@ export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [callbacks]);
+  }, [callbacks, isOriginAllowed]);
 
   // Listen for Tauri events from Rust backend (fallback path when using __TAURI__.invoke)
   useEffect(() => {
@@ -167,6 +311,13 @@ export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
     listen<string>('editor-message', (event) => {
       try {
         const message = JSON.parse(event.payload) as EditorToNativeMessage;
+        if (message.type === 'editorReady' && message.version !== expectedVersionRef.current) {
+          bridgeDisabledRef.current = true;
+          console.error(
+            `[useEditorBridge] Editor ready version mismatch (editor ${message.version}, native ${expectedVersionRef.current})`
+          );
+          return;
+        }
         callbacks.onMessage?.(message);
       } catch (e) {
         console.error('[useEditorBridge] Failed to parse Tauri event:', e);
@@ -184,6 +335,7 @@ export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
     iframeRef,
     editorState,
     sendToEditor,
+    configure,
     setContent,
     insertContent,
     focus,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { resolveResource } from '@tauri-apps/api/path';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import {
@@ -39,14 +39,43 @@ export function EditorWebView({
 }: EditorWebViewProps) {
   const [prodUrl, setProdUrl] = useState<string | null>(null);
 
+  const editorUrl = isDev ? EDITOR_DEV_URL : prodUrl;
+
+  const bridgeNonce = useMemo(() => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }, []);
+
+  const editorOrigin = useMemo(() => {
+    if (!editorUrl) return undefined;
+    try {
+      return new URL(editorUrl).origin;
+    } catch {
+      return undefined;
+    }
+  }, [editorUrl]);
+
+  const hostOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
+
   const bridgeOptions: UseEditorBridgeOptions = useMemo(
-    () => ({ onContentChange, onSelectionChange, onAIRequest, onReady }),
-    [onContentChange, onSelectionChange, onAIRequest, onReady]
+    () => ({
+      onContentChange,
+      onSelectionChange,
+      onAIRequest,
+      onReady,
+      bridgeNonce,
+      editorOrigin,
+      hostOrigin,
+    }),
+    [onContentChange, onSelectionChange, onAIRequest, onReady, bridgeNonce, editorOrigin, hostOrigin]
   );
 
   const {
     iframeRef,
     editorState,
+    configure,
     setContent,
     connectCollaboration,
     disconnectCollaboration,
@@ -100,7 +129,9 @@ export function EditorWebView({
       });
   }, []);
 
-  const editorUrl = isDev ? EDITOR_DEV_URL : prodUrl;
+  const handleIframeLoad = useCallback(() => {
+    configure();
+  }, [configure]);
 
   if (!editorUrl) {
     return (
@@ -117,6 +148,7 @@ export function EditorWebView({
         src={editorUrl}
         title="Mythos Editor"
         sandbox="allow-scripts allow-same-origin"
+        onLoad={handleIframeLoad}
         style={{
           width: '100%',
           height: '100%',
