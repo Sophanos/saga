@@ -1587,15 +1587,62 @@ Auto-deploys Convex when files in `convex/` change on main branch.
 
 ---
 
-## Phase 13: Real-Time Collaboration (Future)
+## Phase 13: Real-Time Collaboration
 
-> **Status:** Planned | **Priority:** P2
+> **Status:** In Progress | **Priority:** P1
 
-Figma-level multiplayer editing via Yjs CRDT + Convex persistence:
-- **Yjs**: CRDT document sync, conflict-free merging
-- **Awareness Protocol**: Cursor positions, selections, typing indicators
-- **Convex Provider**: Persist Y.Doc state to Convex tables, sync via WebSocket
-- **Reference**: [y-convex](https://github.com/get-convex/y-convex) or custom `LiveblocksYjsProvider` pattern
+Figma-level multiplayer editing with AI as first-class participant.
+
+### Strategy
+
+**Track A (Ship Now):** `@convex-dev/prosemirror-sync` + `@convex-dev/presence` — OT-based, built for TipTap, supports server-side AI transforms.
+
+**Track B (Future):** Yjs CRDT + custom Convex provider — swap later if needed, API boundaries designed to allow it.
+
+### Implementation Tasks
+
+#### 13.1 Backend (Convex)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| Add prosemirror-sync component | Register in `convex.config.ts`, handles OT merging | 🔲 |
+| Add presence component | Project + document scoped presence rooms | 🔲 |
+| Thread scope migration | Replace `userId` ownership with `scope: project\|document\|private` | 🔲 |
+| `assertThreadAccess` | New access check for shared document threads | 🔲 |
+| AI presence state | Publish "Muse is typing" while streaming | 🔲 |
+
+#### 13.2 Editor Integration
+
+| Task | Description | Status |
+|------|-------------|--------|
+| Collaboration props | Add `projectId`, `documentId`, `user` to Editor.tsx | 🔲 |
+| Sync hook | `useConvexProsemirrorSync()` returns extensions + status | 🔲 |
+| Cursor broadcast | Publish selection to presence on `onSelectionUpdate` | 🔲 |
+| Bridge messages | Add `connectCollaboration` / `disconnectCollaboration` | 🔲 |
+
+#### 13.3 UI Components
+
+| Task | Description | Status |
+|------|-------------|--------|
+| Remote cursors | TipTap decoration plugin, colored cursor + name label | 🔲 |
+| Remote selections | Semi-transparent highlight for other users' selections | 🔲 |
+| Collaborator avatars | Toolbar showing online users + AI with status dots | 🔲 |
+| AI activity indicator | "Muse is writing..." with cancel button | 🔲 |
+| Conflict resolution | Modal for AI vs human edit conflicts | 🔲 |
+
+#### 13.4 Migration
+
+| Task | Description | Status |
+|------|-------------|--------|
+| Replace `useCollaboration.ts` | Swap Supabase presence/postgres_changes → Convex | 🔲 |
+| Replace `CollaborationClient` | New `ConvexCollaborationClient` in `@mythos/sync` | 🔲 |
+| Tauri iframe auth | Pass auth token via bridge, editor connects to Convex directly | 🔲 |
+
+### Done Criteria
+
+- Two users (Expo web + Tauri) see live text sync + remote cursors
+- AI edits appear as collaborative operations visible to all
+- Supabase no longer needed for presence/sync
 
 ---
 
