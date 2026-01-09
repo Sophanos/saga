@@ -7,12 +7,10 @@
 
 import { v } from "convex/values";
 import {
-  mutation,
   query,
   internalMutation,
   internalQuery,
 } from "./_generated/server";
-import { subscriptionStatus, subscriptionStore } from "./schema";
 
 // ============================================================
 // Types

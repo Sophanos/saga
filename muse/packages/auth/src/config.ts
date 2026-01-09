@@ -20,7 +20,7 @@ export interface AuthConfig {
  */
 export const defaultConfig: AuthConfig = {
   convexSiteUrl: "https://cascada.vision",
-  convexUrl: "https://api.cascada.vision",
+  convexUrl: "https://convex.cascada.vision",
   scheme: "mythos",
   environment: "production",
 };
@@ -43,7 +43,19 @@ export function getAuthConfig(): AuthConfig {
 }
 
 /**
- * Platform detection
+ * Platform detection - set by native entry points
+ */
+let _detectedPlatform: "ios" | "android" | "macos" | "windows" | "web" = "web";
+
+/**
+ * Set the platform (call from native entry point)
+ */
+export function setPlatform(platform: "ios" | "android" | "macos" | "windows" | "web"): void {
+  _detectedPlatform = platform;
+}
+
+/**
+ * Get current platform
  */
 export function getPlatform(): "ios" | "android" | "macos" | "windows" | "web" {
   if (typeof window === "undefined") {
@@ -52,23 +64,13 @@ export function getPlatform(): "ios" | "android" | "macos" | "windows" | "web" {
 
   // Check for Tauri
   if ("__TAURI__" in window) {
-    // Tauri platform detection
     const platform = (window as any).__TAURI__?.os?.platform;
     if (platform === "darwin") return "macos";
     if (platform === "win32") return "windows";
     return "macos"; // Default for Tauri
   }
 
-  // Check for React Native
-  if (typeof navigator !== "undefined" && navigator.product === "ReactNative") {
-    // React Native platform detection
-    const Platform = require("react-native").Platform;
-    if (Platform.OS === "ios") return "ios";
-    if (Platform.OS === "android") return "android";
-    if (Platform.OS === "macos") return "macos";
-  }
-
-  return "web";
+  return _detectedPlatform;
 }
 
 /**

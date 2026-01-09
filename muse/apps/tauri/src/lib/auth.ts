@@ -13,7 +13,7 @@ import { initAuthConfig } from "@mythos/auth";
 
 // Environment variables (from Vite)
 const CONVEX_SITE_URL = import.meta.env.VITE_CONVEX_SITE_URL || "https://cascada.vision";
-const CONVEX_URL = import.meta.env.VITE_CONVEX_URL || "https://api.cascada.vision";
+const CONVEX_URL = import.meta.env.VITE_CONVEX_URL || "https://convex.cascada.vision";
 const SCHEME = "mythos";
 
 /**

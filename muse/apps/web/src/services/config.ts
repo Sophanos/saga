@@ -98,7 +98,7 @@ export type RetryConfigKey = keyof typeof RETRY_CONFIG;
 export const USE_CONVEX_AI = import.meta.env['VITE_USE_CONVEX_AI'] === 'true';
 
 /** Convex deployment URL for HTTP Actions */
-export const CONVEX_URL = import.meta.env['VITE_CONVEX_URL'] || 'https://api.cascada.vision';
+export const CONVEX_URL = import.meta.env['VITE_CONVEX_URL'] || 'https://convex.cascada.vision';
 
 /** Supabase URL for Edge Functions */
 export const SUPABASE_URL = import.meta.env['VITE_SUPABASE_URL'] || '';

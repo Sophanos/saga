@@ -29,7 +29,6 @@ export async function validateAuth(
   ctx: ActionCtx,
   request: Request
 ): Promise<AuthResult> {
-  const authHeader = request.headers.get("Authorization");
   const anonDeviceId = request.headers.get("x-anon-device-id");
   const customApiKey = request.headers.get("x-openrouter-key");
 
@@ -41,7 +40,7 @@ export async function validateAuth(
       return {
         isValid: true,
         userId: identity.subject,
-        apiKey: customApiKey ?? process.env.OPENROUTER_API_KEY,
+        apiKey: customApiKey ?? process.env["OPENROUTER_API_KEY"],
       };
     }
   } catch (error) {
@@ -54,7 +53,7 @@ export async function validateAuth(
     return {
       isValid: true,
       anonDeviceId,
-      apiKey: process.env.OPENROUTER_API_KEY, // Use managed key for anonymous
+      apiKey: process.env["OPENROUTER_API_KEY"], // Use managed key for anonymous
     };
   }
 

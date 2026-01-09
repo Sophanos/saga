@@ -13,8 +13,8 @@ import { getSupabaseClient } from "@mythos/db";
 
 // Convex client singleton
 // Using self-hosted URL:
-// - API + HTTP Actions: api.cascada.vision
-const convexUrl = import.meta.env["VITE_CONVEX_URL"] || "https://api.cascada.vision";
+// - API + HTTP Actions: convex.cascada.vision
+const convexUrl = import.meta.env["VITE_CONVEX_URL"] || "https://convex.cascada.vision";
 
 let convexClient: ConvexReactClient | null = null;
 

@@ -29,11 +29,7 @@ export const authComponent = createClient<DataModel>(components.betterAuth);
  * Site URLs for different environments
  */
 const getSiteUrl = () => {
-  return process.env.SITE_URL || "https://cascada.vision";
-};
-
-const getConvexSiteUrl = () => {
-  return process.env.CONVEX_SITE_URL || "https://api.cascada.vision";
+  return process.env["SITE_URL"] || "https://cascada.vision";
 };
 
 /**
@@ -45,7 +41,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 
   return betterAuth({
     // Secret for signing tokens
-    secret: process.env.BETTER_AUTH_SECRET,
+    secret: process.env["BETTER_AUTH_SECRET"],
 
     // Trusted origins for CORS and redirects
     trustedOrigins: [
@@ -76,12 +72,12 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     // Social providers (configure in environment)
     socialProviders: {
       apple: {
-        clientId: process.env.APPLE_CLIENT_ID!,
-        clientSecret: process.env.APPLE_CLIENT_SECRET!,
+        clientId: process.env["APPLE_CLIENT_ID"]!,
+        clientSecret: process.env["APPLE_CLIENT_SECRET"]!,
       },
       google: {
-        clientId: process.env.GOOGLE_CLIENT_ID!,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        clientId: process.env["GOOGLE_CLIENT_ID"]!,
+        clientSecret: process.env["GOOGLE_CLIENT_SECRET"]!,
       },
     },
 
@@ -112,16 +108,6 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       crossDomain({ siteUrl }),
     ],
 
-    // Hooks for custom logic
-    hooks: {
-      after: {
-        signUp: async ({ user }) => {
-          console.log(`[auth] New user signed up: ${user.id}`);
-          // You can add post-signup logic here
-          // e.g., create default project, send welcome email
-        },
-      },
-    },
   });
 };
 
@@ -164,7 +150,7 @@ export const getUserSubscription = query({
     const subscription = await ctx.db
       .query("subscriptions")
       .withIndex("by_user_status", (q) =>
-        q.eq("userId", user.id).eq("status", "active")
+        q.eq("userId", user._id).eq("status", "active")
       )
       .first();
 
@@ -186,7 +172,7 @@ export const hasEntitlement = query({
     const subscription = await ctx.db
       .query("subscriptions")
       .withIndex("by_user_status", (q) =>
-        q.eq("userId", user.id).eq("status", "active")
+        q.eq("userId", user._id).eq("status", "active")
       )
       .first();
 

@@ -2,7 +2,7 @@
  * Convex HTTP Router
  *
  * Exposes HTTP endpoints for AI streaming and webhooks.
- * Endpoints are accessible at https://api.cascada.vision/*
+ * Endpoints are accessible at https://convex.cascada.vision/*
  *
  * Routes:
  * - POST /ai/saga - Main Saga agent (SSE streaming)
@@ -86,16 +86,17 @@ http.route({
 
 // Register all Better Auth HTTP routes
 authComponent.registerRoutes(http, createAuth, {
-  cors: true,
-  allowedOrigins: [
-    "https://cascada.vision",
-    "https://api.cascada.vision",
-    "mythos://",
-    "tauri://localhost",
-    "http://localhost:3000",
-    "http://localhost:1420",
-    "http://localhost:8082",
-  ],
+  cors: {
+    allowedOrigins: [
+      "https://cascada.vision",
+      "https://convex.cascada.vision",
+      "mythos://",
+      "tauri://localhost",
+      "http://localhost:3000",
+      "http://localhost:1420",
+      "http://localhost:8082",
+    ],
+  },
 });
 
 // ============================================================
@@ -106,8 +107,6 @@ http.route({
   path: "/webhooks/revenuecat",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const origin = request.headers.get("Origin");
-
     try {
       // Verify webhook authenticity
       const authHeader = request.headers.get("Authorization");
@@ -144,7 +143,7 @@ http.route({
         event,
       });
 
-      return new Response(JSON.stringify({ success: true, ...result }), {
+      return new Response(JSON.stringify(result), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -245,7 +244,7 @@ http.route({
       }
 
       if (threadId && !isTemplateBuilder) {
-        await ctx.runQuery(internal.ai.threads.assertThreadOwnership, {
+        await ctx.runQuery((internal as any)["ai/threads"].assertThreadOwnership, {
           threadId,
           projectId: projectIdValue,
           userId: auth.userId,
@@ -373,7 +372,7 @@ http.route({
       });
 
       // Call internal action for entity detection
-      const result = await ctx.runAction(internal.ai.detect.detectEntities, {
+      const result = await ctx.runAction((internal as any)["ai/detect"].detectEntities, {
         text,
         projectId,
         entityTypes,
@@ -418,10 +417,10 @@ async function handleSagaChat(
   ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
   params: SagaChatParams
 ): Promise<Response> {
-  const { projectId, prompt, threadId, mentions, mode, editorContext, contextHints, auth, origin } = params;
+  const { projectId, prompt, threadId, mode, editorContext, contextHints, auth, origin } = params;
 
   // Create generation stream for persistence
-  const streamId = await ctx.runMutation(internal.ai.streams.create, {
+  const streamId = await ctx.runMutation((internal as any)["ai/streams"].create, {
     projectId,
     userId: auth.userId!,
     type: "saga",
@@ -431,7 +430,7 @@ async function handleSagaChat(
   const stream = createSSEStream(async (sse: SSEStreamController) => {
     try {
       // Run the streaming action
-      await ctx.runAction(internal.ai.agentRuntime.runSagaAgentChatToStream, {
+      await ctx.runAction((internal as any)["ai/agentRuntime"].runSagaAgentChatToStream, {
         streamId,
         projectId,
         userId: auth.userId!,
@@ -468,7 +467,7 @@ async function streamDeltasToSSE(
 
   while (!isDone) {
     // Poll for new chunks
-    const streamState = await ctx.runQuery(internal.ai.streams.getChunks, {
+    const streamState = await ctx.runQuery((internal as any)["ai/streams"].getChunks, {
       streamId,
       afterIndex: lastIndex,
     });
@@ -536,7 +535,7 @@ async function handleToolExecution(
   const { toolName, input, projectId, auth, origin } = params;
 
   try {
-    const result = await ctx.runAction(internal.ai.tools.execute, {
+    const result = await ctx.runAction((internal as any)["ai/tools"].execute, {
       toolName,
       input,
       projectId,
@@ -584,7 +583,7 @@ async function handleToolResult(
     });
   }
 
-  const streamId = await ctx.runMutation(internal.ai.streams.create, {
+  const streamId = await ctx.runMutation((internal as any)["ai/streams"].create, {
     projectId,
     userId: auth.userId!,
     type: "saga-tool-result",
@@ -592,7 +591,7 @@ async function handleToolResult(
 
   const stream = createSSEStream(async (sse: SSEStreamController) => {
     try {
-      await ctx.runAction(internal.ai.agentRuntime.applyToolResultAndResumeToStream, {
+      await ctx.runAction((internal as any)["ai/agentRuntime"].applyToolResultAndResumeToStream, {
         streamId,
         projectId,
         userId: auth.userId!,

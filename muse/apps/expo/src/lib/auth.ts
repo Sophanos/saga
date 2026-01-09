@@ -9,12 +9,19 @@ import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { expoClient } from "@better-auth/expo/client";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
-import { initAuthConfig } from "@mythos/auth";
+import { initAuthConfig, setPlatform } from "@mythos/auth";
 import { initRevenueCat as initRC } from "@mythos/auth/revenuecat";
+
+// Set platform for auth package using expo-constants (web-safe)
+const expoOS = Constants.platform?.ios ? "ios"
+  : Constants.platform?.android ? "android"
+  : typeof window !== "undefined" && typeof document !== "undefined" ? "web"
+  : "web";
+setPlatform(expoOS as "ios" | "android" | "web");
 
 // Environment variables
 const CONVEX_SITE_URL = process.env.EXPO_PUBLIC_CONVEX_SITE_URL || "https://cascada.vision";
-const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://api.cascada.vision";
+const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://convex.cascada.vision";
 const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
 
 // Get app scheme from Expo config
