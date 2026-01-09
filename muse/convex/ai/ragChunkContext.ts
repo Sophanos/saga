@@ -19,8 +19,8 @@ export interface ExpandedChunkContext {
 }
 
 function getChunkText(payload: Record<string, unknown>): string {
-  if (typeof payload.text === "string" && payload.text) return payload.text;
-  if (typeof payload.preview === "string" && payload.preview) return payload.preview;
+  if (typeof payload["text"] === "string" && payload["text"]) return payload["text"];
+  if (typeof payload["preview"] === "string" && payload["preview"]) return payload["preview"];
   return "";
 }
 
@@ -53,8 +53,8 @@ export async function fetchDocumentChunkContext(
   const chunks = points
     .slice()
     .sort((a, b) => {
-      const aIndex = typeof a.payload.chunk_index === "number" ? a.payload.chunk_index : 0;
-      const bIndex = typeof b.payload.chunk_index === "number" ? b.payload.chunk_index : 0;
+      const aIndex = typeof a.payload["chunk_index"] === "number" ? a.payload["chunk_index"] : 0;
+      const bIndex = typeof b.payload["chunk_index"] === "number" ? b.payload["chunk_index"] : 0;
       return aIndex - bIndex;
     })
     .map((point) => getChunkText(point.payload));

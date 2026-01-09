@@ -79,28 +79,28 @@ interface RetryConfig {
 
 function getRetryConfig(): RetryConfig {
   return {
-    timeoutMs: parseInt(process.env.QDRANT_TIMEOUT_MS ?? "", 10) || DEFAULT_TIMEOUT_MS,
-    maxRetries: parseInt(process.env.QDRANT_MAX_RETRIES ?? "", 10) || DEFAULT_MAX_RETRIES,
-    baseDelayMs: parseInt(process.env.QDRANT_RETRY_BASE_DELAY_MS ?? "", 10) || DEFAULT_RETRY_BASE_DELAY_MS,
+    timeoutMs: parseInt(process.env["QDRANT_TIMEOUT_MS"] ?? "", 10) || DEFAULT_TIMEOUT_MS,
+    maxRetries: parseInt(process.env["QDRANT_MAX_RETRIES"] ?? "", 10) || DEFAULT_MAX_RETRIES,
+    baseDelayMs: parseInt(process.env["QDRANT_RETRY_BASE_DELAY_MS"] ?? "", 10) || DEFAULT_RETRY_BASE_DELAY_MS,
     maxDelayMs: DEFAULT_RETRY_MAX_DELAY_MS,
   };
 }
 
 export function getQdrantConfig(): QdrantConfig {
-  const url = process.env.QDRANT_URL;
+  const url = process.env["QDRANT_URL"];
   if (!url) {
     throw new QdrantError("QDRANT_URL environment variable not set");
   }
 
   return {
     url: url.replace(/\/$/, ""),
-    apiKey: process.env.QDRANT_API_KEY,
-    collection: process.env.QDRANT_COLLECTION || DEFAULT_COLLECTION,
+    apiKey: process.env["QDRANT_API_KEY"],
+    collection: process.env["QDRANT_COLLECTION"] || DEFAULT_COLLECTION,
   };
 }
 
 export function isQdrantConfigured(): boolean {
-  return !!process.env.QDRANT_URL;
+  return !!process.env["QDRANT_URL"];
 }
 
 // ============================================================
@@ -232,7 +232,7 @@ export async function searchPoints(
   };
 
   if (filter) {
-    body.filter = filter;
+    body["filter"] = filter;
   }
 
   const response = await qdrantRequest<{ result: QdrantSearchResult[] }>(
@@ -324,7 +324,7 @@ export async function scrollPoints(
   };
 
   if (options?.orderBy?.key) {
-    body.order_by = {
+    body["order_by"] = {
       key: options.orderBy.key,
       direction: options.orderBy.direction ?? "desc",
     };
@@ -366,9 +366,9 @@ export async function healthCheck(
 
     return {
       healthy: true,
-      status: response.result.status as string,
-      vectorsCount: response.result.vectors_count as number,
-      pointsCount: response.result.points_count as number,
+      status: response.result["status"] as string,
+      vectorsCount: response.result["vectors_count"] as number,
+      pointsCount: response.result["points_count"] as number,
     };
   } catch (error) {
     return {

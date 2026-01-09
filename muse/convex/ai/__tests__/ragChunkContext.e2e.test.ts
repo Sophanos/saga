@@ -5,8 +5,8 @@ const originalFetch = globalThis.fetch;
 
 describe("RAG chunk context", () => {
   beforeEach(() => {
-    process.env.QDRANT_URL = "https://qdrant.test";
-    process.env.DEEPINFRA_API_KEY = "test";
+    process.env["QDRANT_URL"] = "https://qdrant.test";
+    process.env["DEEPINFRA_API_KEY"] = "test";
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -70,8 +70,8 @@ describe("RAG chunk context", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    delete process.env.QDRANT_URL;
-    delete process.env.DEEPINFRA_API_KEY;
+    delete process.env["QDRANT_URL"];
+    delete process.env["DEEPINFRA_API_KEY"];
   });
 
   test("expands preview with matched chunk first", async () => {

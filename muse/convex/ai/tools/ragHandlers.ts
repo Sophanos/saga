@@ -34,7 +34,7 @@ export const executeSearchContext = internalAction({
     scope: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<SearchResult[]> => {
+  handler: async (_ctx, args): Promise<SearchResult[]> => {
     const { projectId, query, limit = DEFAULT_LIMIT } = args;
     const scope = (args.scope ?? "all") as Scope;
 
@@ -100,8 +100,8 @@ export const executeReadDocument = internalAction({
     projectId: v.string(),
     documentId: v.string(),
   },
-  handler: async (ctx, args) => {
-    const doc = await ctx.runQuery(internal.ai.tools.ragHandlers.getDocumentById, {
+  handler: async (ctx, args): Promise<unknown> => {
+    const doc: Awaited<ReturnType<typeof ctx.runQuery>> = await ctx.runQuery((internal as any)["ai/tools/ragHandlers"].getDocumentById, {
       documentId: args.documentId as Id<"documents">,
     });
 
@@ -129,7 +129,7 @@ export const executeSearchChapters = internalAction({
     query: v.string(),
     type: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (_ctx, args) => {
     const { projectId, query, type } = args;
 
     if (!isDeepInfraConfigured()) {
@@ -152,10 +152,10 @@ export const executeSearchChapters = internalAction({
     const results = await searchPoints(embedding, 10, filter);
 
     return results.map((r) => ({
-      id: r.payload.document_id as string,
-      type: r.payload.document_type as string,
-      title: r.payload.title as string,
-      preview: (r.payload.preview as string) ?? (r.payload.text as string)?.slice(0, 200),
+      id: r.payload["document_id"] as string,
+      type: r.payload["document_type"] as string,
+      title: r.payload["title"] as string,
+      preview: (r.payload["preview"] as string) ?? (r.payload["text"] as string)?.slice(0, 200),
       score: r.score,
     }));
   },
@@ -167,7 +167,7 @@ export const executeSearchWorld = internalAction({
     query: v.string(),
     category: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (_ctx, args) => {
     const { projectId, query, category } = args;
 
     if (!isDeepInfraConfigured()) {
@@ -193,10 +193,10 @@ export const executeSearchWorld = internalAction({
     const results = await searchPoints(embedding, 10, filter);
 
     return results.map((r) => ({
-      id: r.payload.entity_id as string,
-      type: r.payload.entity_type as string,
-      name: r.payload.title as string,
-      preview: (r.payload.preview as string) ?? (r.payload.text as string)?.slice(0, 200),
+      id: r.payload["entity_id"] as string,
+      type: r.payload["entity_type"] as string,
+      name: r.payload["title"] as string,
+      preview: (r.payload["preview"] as string) ?? (r.payload["text"] as string)?.slice(0, 200),
       score: r.score,
     }));
   },
@@ -240,7 +240,7 @@ export const executeGetEntity = internalAction({
     includeRelationships: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const entity = await ctx.runQuery(internal.ai.tools.ragHandlers.getEntityById, {
+    const entity = await ctx.runQuery((internal as any)["ai/tools/ragHandlers"].getEntityById, {
       entityId: args.entityId as Id<"entities">,
     });
 
@@ -263,10 +263,10 @@ export const executeGetEntity = internalAction({
 
     if (args.includeRelationships) {
       const relationships = await ctx.runQuery(
-        internal.ai.tools.ragHandlers.getEntityRelationships,
+        (internal as any)["ai/tools/ragHandlers"].getEntityRelationships,
         { entityId: entity._id }
       );
-      result.relationships = relationships;
+      result["relationships"] = relationships;
     }
 
     return result;
@@ -282,14 +282,14 @@ export async function expandChunkContext(
 
   const expanded = await Promise.all(
     results.map(async (result) => {
-      const docId = result.payload.document_id as string | undefined;
-      const chunkIndex = result.payload.chunk_index as number | undefined;
-      const projectId = options.projectId ?? (result.payload.project_id as string | undefined);
+      const docId = result.payload["document_id"] as string | undefined;
+      const chunkIndex = result.payload["chunk_index"] as number | undefined;
+      const projectId = options.projectId ?? (result.payload["project_id"] as string | undefined);
 
       if (!docId || chunkIndex === undefined || !projectId) {
         return {
           id: result.id,
-          chunks: [result.payload.text as string],
+          chunks: [result.payload["text"] as string],
           score: result.score,
         };
       }

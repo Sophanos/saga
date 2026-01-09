@@ -58,10 +58,10 @@ interface RAGCandidate {
 
 function getPreview(payload: Record<string, unknown>): string {
   const preview =
-    (typeof payload.preview === "string" && payload.preview) ||
-    (typeof payload.text === "string" && payload.text) ||
-    (typeof payload.content_preview === "string" && payload.content_preview) ||
-    (typeof payload.content === "string" && payload.content) ||
+    (typeof payload["preview"] === "string" && payload["preview"]) ||
+    (typeof payload["text"] === "string" && payload["text"]) ||
+    (typeof payload["content_preview"] === "string" && payload["content_preview"]) ||
+    (typeof payload["content"] === "string" && payload["content"]) ||
     "";
   return preview;
 }
@@ -91,17 +91,19 @@ function formatChunkContextPreview(context: {
 }
 
 function buildCandidatesFromQdrant(results: QdrantSearchResult[]): RAGCandidate[] {
-  return results.flatMap((result) => {
+  const candidates: RAGCandidate[] = [];
+
+  for (const result of results) {
     const payload = result.payload;
-    const type = payload.type as string;
+    const type = payload["type"] as string;
     const preview = getPreview(payload);
 
     if (type === "document") {
       const id =
-        (payload.document_id as string | undefined) ??
-        (payload.id as string | undefined) ??
+        (payload["document_id"] as string | undefined) ??
+        (payload["id"] as string | undefined) ??
         result.id;
-      const rawChunkIndex = payload.chunk_index;
+      const rawChunkIndex = payload["chunk_index"];
       const parsedChunkIndex =
         typeof rawChunkIndex === "number"
           ? rawChunkIndex
@@ -109,56 +111,52 @@ function buildCandidatesFromQdrant(results: QdrantSearchResult[]): RAGCandidate[
             ? Number(rawChunkIndex)
             : undefined;
       const chunkIndex = Number.isFinite(parsedChunkIndex) ? parsedChunkIndex : undefined;
-      return [{
+      candidates.push({
         key: `document:${id}`,
         id,
         kind: "document",
-        type: (payload.document_type as string | undefined) ?? "document",
-        title: (payload.title as string | undefined) ?? undefined,
+        type: (payload["document_type"] as string | undefined) ?? "document",
+        title: (payload["title"] as string | undefined) ?? undefined,
         preview,
         source: "qdrant",
         pointId: result.id,
         chunkIndex,
         vectorScore: result.score,
-      }];
-    }
-
-    if (type === "entity") {
+      });
+    } else if (type === "entity") {
       const id =
-        (payload.entity_id as string | undefined) ??
-        (payload.id as string | undefined) ??
+        (payload["entity_id"] as string | undefined) ??
+        (payload["id"] as string | undefined) ??
         result.id;
-      return [{
+      candidates.push({
         key: `entity:${id}`,
         id,
         kind: "entity",
-        type: (payload.entity_type as string | undefined) ?? "entity",
-        name: (payload.name as string | undefined) ?? (payload.title as string | undefined),
+        type: (payload["entity_type"] as string | undefined) ?? "entity",
+        name: (payload["name"] as string | undefined) ?? (payload["title"] as string | undefined),
         preview,
         source: "qdrant",
         vectorScore: result.score,
-      }];
-    }
-
-    if (type === "memory") {
+      });
+    } else if (type === "memory") {
       const id =
-        (payload.memory_id as string | undefined) ??
-        (payload.id as string | undefined) ??
+        (payload["memory_id"] as string | undefined) ??
+        (payload["id"] as string | undefined) ??
         result.id;
-      return [{
+      candidates.push({
         key: `memory:${id}`,
         id,
         kind: "memory",
         type: "memory",
-        category: (payload.category as string | undefined) ?? undefined,
+        category: (payload["category"] as string | undefined) ?? undefined,
         preview,
         source: "memory",
         vectorScore: result.score,
-      }];
+      });
     }
+  }
 
-    return [];
-  });
+  return candidates;
 }
 
 function buildCandidatesFromLexical(
@@ -393,12 +391,12 @@ export function buildSystemPrompt(options: {
     }
   }
 
-  if (editorContext?.documentTitle) {
-    prompt += `\n## Current Document: ${editorContext.documentTitle}\n`;
+  if (editorContext?.["documentTitle"]) {
+    prompt += `\n## Current Document: ${editorContext["documentTitle"]}\n`;
   }
 
-  if (editorContext?.selectionText) {
-    prompt += `\n## Selected Text\n\`\`\`\n${editorContext.selectionText}\n\`\`\`\n`;
+  if (editorContext?.["selectionText"]) {
+    prompt += `\n## Selected Text\n\`\`\`\n${editorContext["selectionText"]}\n\`\`\`\n`;
   }
 
   return prompt;

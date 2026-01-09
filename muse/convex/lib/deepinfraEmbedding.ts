@@ -57,7 +57,7 @@ export function createQwenEmbeddingModel(): EmbeddingModelV1<string> {
     supportsParallelCalls: true,
 
     async doEmbed({ values, abortSignal }) {
-      const apiKey = process.env.DEEPINFRA_API_KEY;
+      const apiKey = process.env["DEEPINFRA_API_KEY"];
       if (!apiKey) {
         throw new Error("DEEPINFRA_API_KEY not configured");
       }

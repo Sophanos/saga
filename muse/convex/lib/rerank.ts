@@ -14,11 +14,11 @@ export class RerankError extends Error {
 }
 
 export function isRerankConfigured(): boolean {
-  return !!process.env.DEEPINFRA_API_KEY;
+  return !!process.env["DEEPINFRA_API_KEY"];
 }
 
 function getApiKey(): string {
-  const apiKey = process.env.DEEPINFRA_API_KEY;
+  const apiKey = process.env["DEEPINFRA_API_KEY"];
   if (!apiKey) {
     throw new RerankError("DEEPINFRA_API_KEY environment variable not set");
   }
@@ -33,7 +33,7 @@ export async function rerank(
   if (documents.length === 0) return [];
 
   const apiKey = getApiKey();
-  const modelId = process.env.DEEPINFRA_RERANK_MODEL ?? DEFAULT_RERANK_MODEL;
+  const modelId = process.env["DEEPINFRA_RERANK_MODEL"] ?? DEFAULT_RERANK_MODEL;
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const controller = new AbortController();

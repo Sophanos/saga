@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import schema from "../../schema";
-import { initConvexTest } from "../../test/setup";
+import { initConvexTest } from "../../test/setup.test";
 import {
   buildTextStep,
   buildToolCallStep,
   drainStream,
   withTestEnv,
-} from "../../test/helpers";
+} from "../../test/helpers.test";
 import { setSagaTestScript } from "../agentRuntime";
 import { api, internal } from "../../_generated/api";
 
@@ -29,7 +29,7 @@ describe("Saga agent runtime", () => {
 
   test("Agent streams deltas and completes (no tools)", async () => {
     const t = initConvexTest(schema);
-    const streamId = await t.mutation(internal.ai.streams.create, {
+    const streamId = await t.mutation((internal as any)["ai/streams"].create, {
       projectId,
       userId,
       type: "saga",
@@ -37,7 +37,7 @@ describe("Saga agent runtime", () => {
 
     setSagaTestScript([buildTextStep("Hello from Saga")]);
 
-    await t.action(internal.ai.agentRuntime.runSagaAgentChatToStream, {
+    await t.action((internal as any)["ai/agentRuntime"].runSagaAgentChatToStream, {
       streamId,
       projectId,
       userId,
@@ -51,7 +51,7 @@ describe("Saga agent runtime", () => {
 
   test("Agent auto-executes search tool and continues", async () => {
     const t = initConvexTest(schema);
-    const streamId = await t.mutation(internal.ai.streams.create, {
+    const streamId = await t.mutation((internal as any)["ai/streams"].create, {
       projectId,
       userId,
       type: "saga",
@@ -66,7 +66,7 @@ describe("Saga agent runtime", () => {
       buildTextStep("Done.", "text-2"),
     ]);
 
-    await t.action(internal.ai.agentRuntime.runSagaAgentChatToStream, {
+    await t.action((internal as any)["ai/agentRuntime"].runSagaAgentChatToStream, {
       streamId,
       projectId,
       userId,
@@ -83,7 +83,7 @@ describe("Saga agent runtime", () => {
 
   test("Agent emits approval request and halts", async () => {
     const t = initConvexTest(schema);
-    const streamId = await t.mutation(internal.ai.streams.create, {
+    const streamId = await t.mutation((internal as any)["ai/streams"].create, {
       projectId,
       userId,
       type: "saga",
@@ -96,7 +96,7 @@ describe("Saga agent runtime", () => {
       }),
     ]);
 
-    await t.action(internal.ai.agentRuntime.runSagaAgentChatToStream, {
+    await t.action((internal as any)["ai/agentRuntime"].runSagaAgentChatToStream, {
       streamId,
       projectId,
       userId,
@@ -120,7 +120,7 @@ describe("Saga agent runtime", () => {
 
   test("Tool-result continuation resumes generation", async () => {
     const t = initConvexTest(schema);
-    const streamId = await t.mutation(internal.ai.streams.create, {
+    const streamId = await t.mutation((internal as any)["ai/streams"].create, {
       projectId,
       userId,
       type: "saga",
@@ -132,7 +132,7 @@ describe("Saga agent runtime", () => {
       }),
     ]);
 
-    await t.action(internal.ai.agentRuntime.runSagaAgentChatToStream, {
+    await t.action((internal as any)["ai/agentRuntime"].runSagaAgentChatToStream, {
       streamId,
       projectId,
       userId,
@@ -151,13 +151,13 @@ describe("Saga agent runtime", () => {
 
     setSagaTestScript([buildTextStep("Continuing after approval", "text-3")]);
 
-    const resumeStreamId = await t.mutation(internal.ai.streams.create, {
+    const resumeStreamId = await t.mutation((internal as any)["ai/streams"].create, {
       projectId,
       userId,
       type: "saga-tool-result",
     });
 
-    await t.action(internal.ai.agentRuntime.applyToolResultAndResumeToStream, {
+    await t.action((internal as any)["ai/agentRuntime"].applyToolResultAndResumeToStream, {
       streamId: resumeStreamId,
       projectId,
       userId,
@@ -175,7 +175,7 @@ describe("Saga agent runtime", () => {
 
   test("Stream replay returns missed chunks", async () => {
     const t = initConvexTest(schema);
-    const streamId = await t.mutation(internal.ai.streams.create, {
+    const streamId = await t.mutation((internal as any)["ai/streams"].create, {
       projectId,
       userId,
       type: "saga",
@@ -183,7 +183,7 @@ describe("Saga agent runtime", () => {
 
     setSagaTestScript([buildTextStep("Replay test", "text-4")]);
 
-    await t.action(internal.ai.agentRuntime.runSagaAgentChatToStream, {
+    await t.action((internal as any)["ai/agentRuntime"].runSagaAgentChatToStream, {
       streamId,
       projectId,
       userId,
@@ -191,6 +191,7 @@ describe("Saga agent runtime", () => {
     });
 
     const { chunks } = await drainStream(t, streamId);
+    // @ts-expect-error Type instantiation deep - generated API types are complex
     const replay = await t.query(api.ai.streams.replay, {
       streamId,
       afterIndex: chunks[1]?.index ?? 0,

@@ -4,6 +4,7 @@
 
 import { v } from "convex/values";
 import { internalAction, internalMutation, internalQuery } from "../_generated/server";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateEmbeddings, isDeepInfraConfigured } from "../lib/embeddings";
 import { upsertPoints, isQdrantConfigured, type QdrantPoint } from "../lib/qdrant";
@@ -105,7 +106,7 @@ export const enqueueEmbeddingJob = internalMutation({
       await ctx.db.patch(existing._id, {
         status: nextStatus,
         attempts: nextStatus === "pending" ? 0 : existing.attempts,
-        lastError: null,
+        lastError: undefined,
         updatedAt: now,
       });
       return existing._id;
@@ -117,7 +118,7 @@ export const enqueueEmbeddingJob = internalMutation({
       targetId: args.targetId,
       status: "pending",
       attempts: 0,
-      lastError: null,
+      lastError: undefined,
       chunksProcessed: 0,
       createdAt: now,
       updatedAt: now,
@@ -149,7 +150,7 @@ export const markProcessing = internalMutation({
     await ctx.db.patch(jobId, {
       status: "processing",
       attempts: (job.attempts ?? 0) + 1,
-      lastError: null,
+      lastError: undefined,
       updatedAt: Date.now(),
     });
   },
@@ -196,7 +197,7 @@ export const markFailed = internalMutation({
   },
 });
 
-const getDocument = internalQuery({
+export const getDocument = internalQuery({
   args: {
     id: v.id("documents"),
   },
@@ -205,7 +206,7 @@ const getDocument = internalQuery({
   },
 });
 
-const getEntity = internalQuery({
+export const getEntity = internalQuery({
   args: {
     id: v.id("entities"),
   },
@@ -229,14 +230,14 @@ export const processEmbeddingJobs = internalAction({
       return;
     }
 
-    const jobs = await ctx.runQuery(getPendingJobs, { limit: batchSize });
+    const jobs = await ctx.runQuery(internal.ai.embeddings.getPendingJobs, { limit: batchSize });
 
     for (const job of jobs as EmbeddingJobRecord[]) {
-      await ctx.runMutation(markProcessing, { jobId: job._id });
+      await ctx.runMutation(internal.ai.embeddings.markProcessing, { jobId: job._id });
 
       try {
         if (job.targetType === "document") {
-          const doc = await ctx.runQuery(getDocument, {
+          const doc = await ctx.runQuery(internal.ai.embeddings.getDocument, {
             id: job.targetId as Id<"documents">,
           });
 
@@ -282,18 +283,18 @@ export const processEmbeddingJobs = internalAction({
             }
 
             processed += slice.length;
-            await ctx.runMutation(updateProgress, {
+            await ctx.runMutation(internal.ai.embeddings.updateProgress, {
               jobId: job._id,
               chunksProcessed: processed,
             });
           }
 
-          await ctx.runMutation(markSynced, {
+          await ctx.runMutation(internal.ai.embeddings.markSynced, {
             jobId: job._id,
             chunksProcessed: processed,
           });
         } else if (job.targetType === "entity") {
-          const entity = await ctx.runQuery(getEntity, {
+          const entity = await ctx.runQuery(internal.ai.embeddings.getEntity, {
             id: job.targetId as Id<"entities">,
           });
 
@@ -344,13 +345,13 @@ export const processEmbeddingJobs = internalAction({
             }
 
             processed += slice.length;
-            await ctx.runMutation(updateProgress, {
+            await ctx.runMutation(internal.ai.embeddings.updateProgress, {
               jobId: job._id,
               chunksProcessed: processed,
             });
           }
 
-          await ctx.runMutation(markSynced, {
+          await ctx.runMutation(internal.ai.embeddings.markSynced, {
             jobId: job._id,
             chunksProcessed: processed,
           });
@@ -358,7 +359,7 @@ export const processEmbeddingJobs = internalAction({
           throw new Error(`Unsupported embedding target type: ${job.targetType}`);
         }
       } catch (error) {
-        await ctx.runMutation(markFailed, {
+        await ctx.runMutation(internal.ai.embeddings.markFailed, {
           jobId: job._id,
           error: error instanceof Error ? error.message : "Embedding job failed",
         });

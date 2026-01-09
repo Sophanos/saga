@@ -32,7 +32,7 @@ export const streamChat = internalAction({
     const lastUserMessage = [...args.messages].reverse().find((m) => m.role === "user");
     const prompt = lastUserMessage?.content ?? "";
 
-    await ctx.runAction(internal.ai.agentRuntime.runSagaAgentChatToStream, {
+    await ctx.runAction((internal as any)["ai/agentRuntime"].runSagaAgentChatToStream, {
       streamId: args.streamId,
       projectId: args.projectId,
       userId: args.userId,
@@ -57,7 +57,7 @@ export const continueWithApproval = internalAction({
     })),
   },
   handler: async (ctx, args) => {
-    await ctx.runMutation(internal.ai.streams.fail, {
+    await ctx.runMutation((internal as any)["ai/streams"].fail, {
       streamId: args.streamId,
       error: "tool-approval is deprecated; use tool-result continuation",
     });

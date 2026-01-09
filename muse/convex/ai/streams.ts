@@ -11,7 +11,6 @@
 import { v } from "convex/values";
 import {
   query,
-  mutation,
   internalMutation,
   internalQuery,
 } from "../_generated/server";

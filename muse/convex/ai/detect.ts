@@ -55,7 +55,7 @@ export const detectEntities = internalAction({
   handler: async (_, args): Promise<DetectionResult> => {
     const { text, entityTypes, minConfidence = 0.7 } = args;
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const apiKey = process.env["OPENROUTER_API_KEY"];
     if (!apiKey) {
       throw new Error("OPENROUTER_API_KEY not configured");
     }

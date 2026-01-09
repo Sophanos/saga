@@ -43,11 +43,11 @@ export class EmbeddingError extends Error {
 // ============================================================
 
 export function isDeepInfraConfigured(): boolean {
-  return !!process.env.DEEPINFRA_API_KEY;
+  return !!process.env["DEEPINFRA_API_KEY"];
 }
 
 function getApiKey(): string {
-  const apiKey = process.env.DEEPINFRA_API_KEY;
+  const apiKey = process.env["DEEPINFRA_API_KEY"];
   if (!apiKey) {
     throw new EmbeddingError("DEEPINFRA_API_KEY environment variable not set");
   }

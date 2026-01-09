@@ -10,7 +10,7 @@ import { z } from "zod";
 
 export const askQuestionTool = tool({
   description: "Ask the user a specific question to continue the task.",
-  parameters: z.object({
+  inputSchema: z.object({
     question: z.string().describe("The question to ask the user"),
     detail: z.string().optional().describe("Optional context or reason"),
     responseType: z.enum(["text", "choice"]).optional(),
@@ -20,7 +20,7 @@ export const askQuestionTool = tool({
 
 export const writeContentTool = tool({
   description: "Propose a content change that requires user approval.",
-  parameters: z.object({
+  inputSchema: z.object({
     operation: z.enum(["replace_selection", "insert_at_cursor", "append_document"]),
     content: z.string().describe("The proposed content to insert"),
     format: z.enum(["plain", "markdown"]).optional(),
