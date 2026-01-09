@@ -1858,7 +1858,7 @@ EXPO_PUBLIC_CLARITY_PROJECT_ID=...
 - Status: Infra + initial suites in place (Expo web primary; Tauri web content validation).
 - Coverage: Auth, project/document create + editor persistence, detect+persist (mockable).
 - Entry points: `bun run e2e:expo`, `bun run e2e:tauri`, `E2E_MOCK_AI=true`, `EXPO_PUBLIC_E2E=true`.
-- Note: World Graph UI tests target `@mythos/web` (optional `e2e:web`).
+- Note: World Graph UI tests are deferred until graph exists in Expo/Tauri.
 
 ### Convex Deploy Workflow (`deploy-convex.yml`)
 

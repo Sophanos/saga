@@ -22,7 +22,6 @@
     "e2e": "PLAYWRIGHT_TARGETS=expo-web,tauri-web bunx playwright test -c e2e/playwright.config.ts --project=expo-web --project=tauri-web",
     "e2e:expo": "PLAYWRIGHT_TARGETS=expo-web bunx playwright test -c e2e/playwright.config.ts --project=expo-web",
     "e2e:tauri": "PLAYWRIGHT_TARGETS=tauri-web bunx playwright test -c e2e/playwright.config.ts --project=tauri-web",
-    "e2e:web": "PLAYWRIGHT_TARGETS=web-spa PLAYWRIGHT_WEB_URL=http://localhost:5173 bunx playwright test -c e2e/playwright.config.ts --project=web-spa",
     "e2e:ui": "bunx playwright test -c e2e/playwright.config.ts --ui",
     "e2e:install": "bunx playwright install --with-deps"
   },

@@ -9,12 +9,10 @@ const __dirname = path.dirname(__filename);
 
 const expoBaseURL = process.env.PLAYWRIGHT_EXPO_URL ?? "http://localhost:19006";
 const tauriBaseURL = process.env.PLAYWRIGHT_TAURI_URL ?? "http://localhost:1420";
-const webBaseURL = process.env.PLAYWRIGHT_WEB_URL;
 
 const authDir = path.join(__dirname, "..", ".playwright", ".auth");
 const expoStorageState = path.join(authDir, "expo-web.json");
 const tauriStorageState = path.join(authDir, "tauri-web.json");
-const webStorageState = path.join(authDir, "web-spa.json");
 
 async function createStorageState(args: {
   baseURL: string;
@@ -51,7 +49,7 @@ export default async function globalSetup() {
   const targets = new Set(
     targetEnv
       ? targetEnv.split(",").map((target) => target.trim()).filter(Boolean)
-      : ["expo-web", "tauri-web", ...(webBaseURL ? ["web-spa"] : [])]
+      : ["expo-web", "tauri-web"]
   );
 
   await mkdir(authDir, { recursive: true });
@@ -74,12 +72,4 @@ export default async function globalSetup() {
     });
   }
 
-  if (targets.has("web-spa") && webBaseURL) {
-    await createStorageState({
-      baseURL: webBaseURL,
-      storagePath: webStorageState,
-      mode: "signup",
-      user,
-    });
-  }
 }

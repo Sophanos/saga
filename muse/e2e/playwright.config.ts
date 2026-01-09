@@ -7,13 +7,10 @@ const __dirname = path.dirname(__filename);
 
 const expoBaseURL = process.env.PLAYWRIGHT_EXPO_URL ?? "http://localhost:19006";
 const tauriBaseURL = process.env.PLAYWRIGHT_TAURI_URL ?? "http://localhost:1420";
-const webBaseURL = process.env.PLAYWRIGHT_WEB_URL;
-const includeWeb = Boolean(webBaseURL);
 
 const authDir = path.join(__dirname, "..", ".playwright", ".auth");
 const expoStorageState = path.join(authDir, "expo-web.json");
 const tauriStorageState = path.join(authDir, "tauri-web.json");
-const webStorageState = path.join(authDir, "web-spa.json");
 
 const shouldStartServers =
   process.env.PLAYWRIGHT_START_SERVERS === "true" || process.env.CI === "true";
@@ -22,7 +19,7 @@ const targetEnv = process.env.PLAYWRIGHT_TARGETS;
 const targets = new Set(
   targetEnv
     ? targetEnv.split(",").map((target) => target.trim()).filter(Boolean)
-    : ["expo-web", "tauri-web", ...(includeWeb ? ["web-spa"] : [])]
+    : ["expo-web", "tauri-web"]
 );
 
 const webServers = shouldStartServers
@@ -85,17 +82,5 @@ export default defineConfig({
         storageState: tauriStorageState,
       },
     },
-    ...(includeWeb
-      ? [
-          {
-            name: "web-spa",
-            use: {
-              ...devices["Desktop Chrome"],
-              baseURL: webBaseURL,
-              storageState: webStorageState,
-            },
-          },
-        ]
-      : []),
   ],
 });

@@ -17,7 +17,6 @@ Note: “Tauri native shell” automation is not covered by Playwright alone in 
 ## Required Environment Variables
 - `PLAYWRIGHT_EXPO_URL` (optional) default `http://localhost:19006`
 - `PLAYWRIGHT_TAURI_URL` (optional) default `http://localhost:1420`
-- `PLAYWRIGHT_WEB_URL` (optional) default `http://localhost:5173` (only for web-spa project)
 - `PLAYWRIGHT_TARGETS` (optional) comma list of projects for storage setup (e.g. `expo-web,tauri-web`)
 - `CONVEX_URL` (required for backend polling/setup)
 - `EXPO_PUBLIC_CONVEX_URL` / `EXPO_PUBLIC_CONVEX_SITE_URL` (as required by local dev)
@@ -27,7 +26,7 @@ Note: “Tauri native shell” automation is not covered by Playwright alone in 
 
 ## E2E-01: Infrastructure
 ### Scope
-- Playwright multi-project config (`expo-web`, `tauri-web`, optional `web-spa`)
+- Playwright multi-project config (`expo-web`, `tauri-web`)
 - Global setup to create storageState per origin
 - Auth + Convex fixtures
 - Polling utilities for debounced autosave and eventual consistency
@@ -72,12 +71,11 @@ Note: “Tauri native shell” automation is not covered by Playwright alone in 
 2. Trigger detection via the detect-and-persist action
 3. Persist detected entities into Convex `entities`
 4. Verify entities exist
-5. Optionally open World Graph view and verify nodes + counts
 
 ### Dependencies / Notes
 - Detection must have a deterministic mock mode for CI (`E2E_MOCK_AI=true`).
 - A single backend entrypoint should exist for “detect + persist” to avoid duplicating logic in UIs.
-- World Graph UI tests are best run against the `@mythos/web` app (optional `web-spa` project).
+- World Graph UI tests are deferred until the graph is exposed in Expo/Tauri.
 
 ---
 
@@ -148,7 +146,6 @@ Validate feature gating and usage limits (free/pro entitlements).
 - Install browsers: `bun run e2e:install`
 - Expo E2E: `bun run e2e:expo`
 - Tauri (web content) E2E: `bun run e2e:tauri`
-- Web SPA (World Graph): `bun run e2e:web` (start `@mythos/web` dev server separately)
 - Full suite: `bun run e2e`
 
 ## Output
