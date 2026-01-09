@@ -1,0 +1,20 @@
+name: Deploy Convex
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'convex/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+
+      - name: Deploy to Convex
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: bunx convex deploy --cmd "bun run build"
