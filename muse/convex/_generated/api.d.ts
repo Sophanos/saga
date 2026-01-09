@@ -22,11 +22,14 @@ import type * as ai_tools_editorTools from "../ai/tools/editorTools.js";
 import type * as ai_tools_index from "../ai/tools/index.js";
 import type * as ai_tools_ragHandlers from "../ai/tools/ragHandlers.js";
 import type * as ai_tools_ragTools from "../ai/tools/ragTools.js";
+import type * as aiUsage from "../aiUsage.js";
 import type * as betterAuth from "../betterAuth.js";
+import type * as collaboration from "../collaboration.js";
 import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
 import type * as entities from "../entities.js";
 import type * as http from "../http.js";
+import type * as lib_analytics from "../lib/analytics.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_deepinfraEmbedding from "../lib/deepinfraEmbedding.js";
 import type * as lib_embeddings from "../lib/embeddings.js";
@@ -38,9 +41,13 @@ import type * as lib_streaming from "../lib/streaming.js";
 import type * as lib_tierConfig from "../lib/tierConfig.js";
 import type * as lib_webhookSecurity from "../lib/webhookSecurity.js";
 import type * as maintenance from "../maintenance.js";
+import type * as migrations_index from "../migrations/index.js";
+import type * as migrations_types from "../migrations/types.js";
+import type * as projectAssets from "../projectAssets.js";
 import type * as projects from "../projects.js";
 import type * as relationships from "../relationships.js";
 import type * as subscriptions from "../subscriptions.js";
+import type * as tiers from "../tiers.js";
 
 import type {
   ApiFromModules,
@@ -63,11 +70,14 @@ declare const fullApi: ApiFromModules<{
   "ai/tools/index": typeof ai_tools_index;
   "ai/tools/ragHandlers": typeof ai_tools_ragHandlers;
   "ai/tools/ragTools": typeof ai_tools_ragTools;
+  aiUsage: typeof aiUsage;
   betterAuth: typeof betterAuth;
+  collaboration: typeof collaboration;
   crons: typeof crons;
   documents: typeof documents;
   entities: typeof entities;
   http: typeof http;
+  "lib/analytics": typeof lib_analytics;
   "lib/auth": typeof lib_auth;
   "lib/deepinfraEmbedding": typeof lib_deepinfraEmbedding;
   "lib/embeddings": typeof lib_embeddings;
@@ -79,9 +89,13 @@ declare const fullApi: ApiFromModules<{
   "lib/tierConfig": typeof lib_tierConfig;
   "lib/webhookSecurity": typeof lib_webhookSecurity;
   maintenance: typeof maintenance;
+  "migrations/index": typeof migrations_index;
+  "migrations/types": typeof migrations_types;
+  projectAssets: typeof projectAssets;
   projects: typeof projects;
   relationships: typeof relationships;
   subscriptions: typeof subscriptions;
+  tiers: typeof tiers;
 }>;
 
 /**
@@ -4937,6 +4951,140 @@ export declare const components: {
     adapterTest: {
       runCustomTests: FunctionReference<"action", "internal", any, any>;
       runTests: FunctionReference<"action", "internal", any, any>;
+    };
+  };
+  rateLimiter: {
+    lib: {
+      checkRateLimit: FunctionReference<
+        "query",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          count?: number;
+          key?: string;
+          name: string;
+          reserve?: boolean;
+          throws?: boolean;
+        },
+        { ok: true; retryAfter?: number } | { ok: false; retryAfter: number }
+      >;
+      clearAll: FunctionReference<
+        "mutation",
+        "internal",
+        { before?: number },
+        null
+      >;
+      getServerTime: FunctionReference<"mutation", "internal", {}, number>;
+      getValue: FunctionReference<
+        "query",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          key?: string;
+          name: string;
+          sampleShards?: number;
+        },
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          shard: number;
+          ts: number;
+          value: number;
+        }
+      >;
+      rateLimit: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          count?: number;
+          key?: string;
+          name: string;
+          reserve?: boolean;
+          throws?: boolean;
+        },
+        { ok: true; retryAfter?: number } | { ok: false; retryAfter: number }
+      >;
+      resetRateLimit: FunctionReference<
+        "mutation",
+        "internal",
+        { key?: string; name: string },
+        null
+      >;
+    };
+    time: {
+      getServerTime: FunctionReference<"mutation", "internal", {}, number>;
     };
   };
 };
