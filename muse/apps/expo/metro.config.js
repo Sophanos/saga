@@ -27,7 +27,7 @@ config.resolver.extraNodeModules = {
 
 // Dedupe React across the monorepo (but NOT react-native - it needs special Flow handling)
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName === 'react' || moduleName === 'react-dom') {
+  if (moduleName === 'react' || moduleName === 'react-dom' || moduleName.startsWith('react-dom/')) {
     return {
       filePath: require.resolve(moduleName, { paths: [__dirname] }),
       type: 'sourceFile',
