@@ -1,7 +1,8 @@
 {
-  "extends": "@mythos/typescript-config/base",
+  "extends": "../tooling/typescript/tsconfig.base.json",
   "compilerOptions": {
-    "types": ["convex/server", "convex/env"]
+    "types": ["convex/server", "node", "vitest"],
+    "skipLibCheck": true
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["_generated", "node_modules"]

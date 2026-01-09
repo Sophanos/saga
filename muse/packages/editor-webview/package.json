@@ -20,8 +20,6 @@
     "@tiptap/react": "^2.10.0",
     "@tiptap/starter-kit": "^2.10.0",
     "@tiptap/suggestion": "^2.10.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "tippy.js": "^6.3.7"
   },
   "devDependencies": {
@@ -35,6 +33,8 @@
     "vite": "^5.4.10"
   },
   "peerDependencies": {
-    "@mythos/editor": "workspace:*"
+    "@mythos/editor": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   }
 }
