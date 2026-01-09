@@ -20,7 +20,8 @@ const expoOS = Constants.platform?.ios ? "ios"
 setPlatform(expoOS as "ios" | "android" | "web");
 
 // Environment variables
-const CONVEX_SITE_URL = process.env.EXPO_PUBLIC_CONVEX_SITE_URL || "https://cascada.vision";
+// BetterAuth runs on Convex HTTP routes, so baseURL must point to Convex
+const CONVEX_SITE_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://convex.cascada.vision";
 const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://convex.cascada.vision";
 const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
 

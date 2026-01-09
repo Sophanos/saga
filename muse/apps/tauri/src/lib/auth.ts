@@ -12,7 +12,8 @@ import { open } from "@tauri-apps/plugin-shell";
 import { initAuthConfig } from "@mythos/auth";
 
 // Environment variables (from Vite)
-const CONVEX_SITE_URL = import.meta.env.VITE_CONVEX_SITE_URL || "https://cascada.vision";
+// BetterAuth runs on Convex HTTP routes, so baseURL must point to Convex
+const CONVEX_SITE_URL = import.meta.env.VITE_CONVEX_URL || "https://convex.cascada.vision";
 const CONVEX_URL = import.meta.env.VITE_CONVEX_URL || "https://convex.cascada.vision";
 const SCHEME = "mythos";
 
