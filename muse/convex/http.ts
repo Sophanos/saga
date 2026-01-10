@@ -632,6 +632,8 @@ async function streamDeltasToSSE(
             chunk.approvalId ?? "",
             chunk.toolName ?? "",
             chunk.args,
+            chunk.approvalType ?? "execution",
+            chunk.danger,
             chunk.toolCallId,
             chunk.promptMessageId
           );

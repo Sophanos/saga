@@ -45,21 +45,3 @@ export const streamChat = internalAction({
   },
 });
 
-export const continueWithApproval = internalAction({
-  args: {
-    streamId: v.string(),
-    approvalId: v.string(),
-    projectId: v.string(),
-    userId: v.string(),
-    messages: v.array(v.object({
-      role: v.string(),
-      content: v.string(),
-    })),
-  },
-  handler: async (ctx, args) => {
-    await ctx.runMutation((internal as any)["ai/streams"].fail, {
-      streamId: args.streamId,
-      error: "tool-approval is deprecated; use tool-result continuation",
-    });
-  },
-});

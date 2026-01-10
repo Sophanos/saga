@@ -23,6 +23,8 @@ import type {
   ToolProgress,
   WriteContentArgs,
   WriteContentOperation,
+  ToolApprovalType,
+  ToolApprovalDanger,
 } from "@mythos/agent-protocol";
 
 // Re-export for backwards compatibility
@@ -200,6 +202,10 @@ export interface ChatToolInvocation {
   args: unknown;
   /** Current status in the lifecycle */
   status: ToolInvocationStatus;
+  /** Approval flow type when user action is required */
+  approvalType?: ToolApprovalType;
+  /** Optional UI risk/impact hint */
+  danger?: ToolApprovalDanger;
   /** Execution result (tool-specific) */
   result?: unknown;
   /** Artifacts produced by the tool */
@@ -215,9 +221,8 @@ export interface ChatToolInvocation {
   /** Workflow grouping (for multi-tool operations) */
   workflowId?: string;
   /**
-   * AI SDK 6: Indicates this tool requires SDK-level approval.
-   * When true, the tool came from a tool-approval-request event
-   * and approval must be sent back to continue the AI conversation.
+   * AI SDK 6: Indicates this tool requires user action before continuation.
+   * (Input, apply, or execution approval depending on approvalType.)
    */
   needsApproval?: boolean;
   /** Number of retry attempts for this tool invocation */

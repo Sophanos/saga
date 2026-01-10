@@ -36,6 +36,9 @@ import type {
   AskQuestionResult,
   WriteContentOperation,
   WriteContentResult,
+  ToolApprovalType,
+  ToolApprovalDanger,
+  ToolName,
 } from "@mythos/agent-protocol";
 import type { SagaSessionWriter } from "../../../hooks/useSessionHistory";
 
@@ -109,6 +112,25 @@ function getCardStyles(
   return "border-mythos-border-default bg-mythos-bg-tertiary/50";
 }
 
+function resolveDefaultApprovalType(toolName: ToolName): ToolApprovalType | undefined {
+  if (toolName === "ask_question") return "input";
+  if (toolName === "write_content") return "apply";
+  return undefined;
+}
+
+function getApprovalBadgeLabel(approvalType?: ToolApprovalType): string | null {
+  switch (approvalType) {
+    case "input":
+      return "Input Required";
+    case "apply":
+      return "Apply Suggestion";
+    case "execution":
+      return "Approval Required";
+    default:
+      return null;
+  }
+}
+
 export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCardProps) {
   const { acceptTool, rejectTool, retryTool, cancelTool } = useToolRuntime();
   const { key: apiKey } = useApiKey();
@@ -139,10 +161,15 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
   const isAskQuestion = tool.toolName === "ask_question";
   const isWriteContent = tool.toolName === "write_content";
 
-  const danger = getToolDanger(tool.toolName);
+  const approvalType =
+    tool.approvalType ??
+    resolveDefaultApprovalType(tool.toolName) ??
+    (tool.needsApproval ? "execution" : undefined);
+  const danger = (tool.danger ?? getToolDanger(tool.toolName)) as ToolApprovalDanger;
   const label = getToolLabel(tool.toolName);
   const summary = renderToolSummary(tool.toolName, tool.args);
-  const needsApproval = tool.needsApproval;
+  const needsApproval = tool.needsApproval ?? approvalType !== undefined;
+  const approvalBadgeLabel = getApprovalBadgeLabel(approvalType);
 
   // Handle accepting the tool proposal
   const handleAccept = useCallback(async () => {
@@ -198,11 +225,18 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
   }, []);
 
   const handleIncomingTool = useCallback(
-    (incoming: ToolCallResult, needsApprovalOverride?: boolean, approvalId?: string) => {
-      const needsApproval =
-        needsApprovalOverride ??
-        (incoming.toolName === "ask_question" ||
-        incoming.toolName === "write_content");
+    (
+      incoming: ToolCallResult,
+      options?: {
+        needsApproval?: boolean;
+        approvalId?: string;
+        approvalType?: ToolApprovalType;
+        danger?: ToolApprovalDanger;
+      }
+    ) => {
+      const resolvedApprovalType =
+        options?.approvalType ?? resolveDefaultApprovalType(incoming.toolName as ToolName);
+      const needsApproval = options?.needsApproval ?? resolvedApprovalType !== undefined;
       const selectionRange =
         incoming.toolName === "write_content" ? getSelectionRange() : undefined;
       const toolMessage: ChatMessage = {
@@ -213,13 +247,15 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
         kind: "tool",
         tool: {
           toolCallId: incoming.toolCallId,
-          approvalId,
+          approvalId: options?.approvalId,
           toolName: incoming.toolName as ChatToolInvocation["toolName"],
           args: incoming.args,
           promptMessageId: incoming.promptMessageId,
           selectionRange,
           status: "proposed",
           needsApproval,
+          approvalType: resolvedApprovalType,
+          danger: options?.danger,
         },
       };
       addChatMessage(toolMessage);
@@ -286,8 +322,12 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
                   args: request.args,
                   promptMessageId: request.promptMessageId,
                 },
-                true,
-                request.approvalId
+                {
+                  needsApproval: true,
+                  approvalId: request.approvalId,
+                  approvalType: request.approvalType,
+                  danger: request.danger,
+                }
               );
             },
             onDone: () => {
@@ -502,9 +542,9 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
             <span className="text-xs font-medium text-mythos-text-primary truncate">
               {label}
             </span>
-            {needsApproval && isProposed && (
+            {needsApproval && isProposed && approvalBadgeLabel && (
               <span className="text-[9px] px-1 py-0.5 rounded bg-mythos-accent-yellow/20 text-mythos-accent-yellow font-medium">
-                Approval Required
+                {approvalBadgeLabel}
               </span>
             )}
           </div>
@@ -713,7 +753,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
             data-testid="tool-approval-accept"
           >
             <Check className="w-3 h-3" />
-            {needsApproval ? "Approve" : getActionLabel()}
+            {needsApproval ? "Approve Execution" : getActionLabel()}
           </Button>
           <Button
             variant="outline"

@@ -130,6 +130,15 @@ export const deleteUserDataInternal = internalMutation({
       .collect();
 
     for (const stream of streams) {
+      const streamChunks = await ctx.db
+        .query("generationStreamChunks")
+        .withIndex("by_stream", (q) => q.eq("streamId", stream._id))
+        .collect();
+
+      for (const chunk of streamChunks) {
+        await ctx.db.delete(chunk._id);
+      }
+
       await ctx.db.delete(stream._id);
     }
 

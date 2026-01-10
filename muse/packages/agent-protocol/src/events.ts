@@ -85,17 +85,27 @@ export interface ToolEvent {
 }
 
 /**
+ * Classification for approval flows.
+ */
+export type ToolApprovalType = "execution" | "input" | "apply";
+
+export type ToolApprovalDanger = "safe" | "costly" | "destructive";
+
+/**
  * SSE event payload for tool approval request (AI SDK 6 needsApproval).
- * Sent when a tool with needsApproval=true needs user consent before execution.
+ * Sent when a tool needs user consent or input before continuation.
  */
 export interface ToolApprovalRequestEvent {
   type: "tool-approval-request";
-  /** Unique approval ID required for tool-approval-response */
+  /** Unique approval ID required for tool-result continuation */
   approvalId: string;
   /** Tool call ID (if provided by the model) */
   toolCallId?: string;
   toolName: ToolName;
   args: unknown;
+  approvalType: ToolApprovalType;
+  /** Optional UI hint for risk/impact. */
+  danger?: ToolApprovalDanger;
   promptMessageId?: string;
 }
 

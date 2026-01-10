@@ -23,8 +23,8 @@ export const API_TIMEOUTS = {
   /** Initial SSE connection timeout - how long to wait for connection to establish (30 seconds) */
   SSE_CONNECTION_MS: 30_000,
 
-  /** SSE read timeout between chunks - how long to wait for next chunk (60 seconds) */
-  SSE_READ_MS: 60_000,
+  /** SSE read timeout between chunks - how long to wait for next chunk (120 seconds) */
+  SSE_READ_MS: 120_000,
 
   /** Extended timeout for tool execution which may involve complex operations (2 minutes) */
   TOOL_EXECUTION_MS: 120_000,

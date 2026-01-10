@@ -200,6 +200,7 @@ export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
                 ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
                 : "text-mythos-text-muted hover:text-mythos-text-secondary"
             }`}
+            data-testid="chat-open"
           >
             Chat
           </button>

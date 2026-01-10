@@ -108,6 +108,8 @@ describe("Saga agent runtime", () => {
       (chunk) => chunk.type === "tool-approval-request"
     );
     expect(approvalChunk?.approvalId).toBe("call-approval");
+    expect(approvalChunk?.approvalType).toBe("input");
+    expect(approvalChunk?.danger).toBe("safe");
 
     const approvalIndex = chunks.findIndex(
       (chunk) => chunk.type === "tool-approval-request"

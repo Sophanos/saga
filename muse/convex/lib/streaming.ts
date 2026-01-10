@@ -27,12 +27,18 @@ export interface SSEToolEvent {
   promptMessageId?: string;
 }
 
+export type ToolApprovalType = "execution" | "input" | "apply";
+
+export type ToolApprovalDanger = "safe" | "costly" | "destructive";
+
 export interface SSEToolApprovalRequestEvent {
   type: "tool-approval-request";
   approvalId: string;
   toolCallId?: string;
   toolName: string;
   args: unknown;
+  approvalType: ToolApprovalType;
+  danger?: ToolApprovalDanger;
   promptMessageId?: string;
 }
 
@@ -84,6 +90,8 @@ export function createToolApprovalRequestEvent(
   approvalId: string,
   toolName: string,
   args: unknown,
+  approvalType: ToolApprovalType,
+  danger?: ToolApprovalDanger,
   toolCallId?: string,
   promptMessageId?: string
 ): Uint8Array {
@@ -93,8 +101,14 @@ export function createToolApprovalRequestEvent(
     toolCallId,
     toolName,
     args,
+    approvalType,
+    danger,
     promptMessageId,
   });
+}
+
+export function createCommentEvent(comment: string): Uint8Array {
+  return encoder.encode(`: ${comment}\n\n`);
 }
 
 export function createErrorEvent(error: unknown): Uint8Array {
@@ -137,13 +151,28 @@ export class SSEStreamController {
     approvalId: string,
     toolName: string,
     args: unknown,
+    approvalType: ToolApprovalType,
+    danger?: ToolApprovalDanger,
     toolCallId?: string,
     promptMessageId?: string
   ): void {
     if (this.closed) return;
     this.controller.enqueue(
-      createToolApprovalRequestEvent(approvalId, toolName, args, toolCallId, promptMessageId)
+      createToolApprovalRequestEvent(
+        approvalId,
+        toolName,
+        args,
+        approvalType,
+        danger,
+        toolCallId,
+        promptMessageId
+      )
     );
+  }
+
+  sendComment(comment: string): void {
+    if (this.closed) return;
+    this.controller.enqueue(createCommentEvent(comment));
   }
 
   sendError(error: unknown): void {
@@ -174,17 +203,37 @@ export class SSEStreamController {
 // Stream Factory
 // ============================================================
 
+const KEEPALIVE_INTERVAL_MS = 15_000;
+
 export function createSSEStream(
   handler: (sse: SSEStreamController) => Promise<void>
 ): ReadableStream<Uint8Array> {
+  let keepalive: ReturnType<typeof setInterval> | null = null;
+
   return new ReadableStream({
     async start(controller) {
       const sse = new SSEStreamController(controller);
+      keepalive = setInterval(() => {
+        if (sse.isClosed) return;
+        sse.sendComment("keep-alive");
+      }, KEEPALIVE_INTERVAL_MS);
+
       try {
         await handler(sse);
       } catch (error) {
         console.error("[SSE] Stream error:", error);
         sse.fail(error);
+      } finally {
+        if (keepalive) {
+          clearInterval(keepalive);
+          keepalive = null;
+        }
+      }
+    },
+    cancel() {
+      if (keepalive) {
+        clearInterval(keepalive);
+        keepalive = null;
       }
     },
   });
@@ -197,8 +246,9 @@ export function createSSEStream(
 export function getStreamingHeaders(origin: string | null): HeadersInit {
   return {
     "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
+    "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
     "Access-Control-Allow-Origin": origin || "*",
     "Access-Control-Allow-Headers":
       "Content-Type, Authorization, apikey, x-openrouter-key",

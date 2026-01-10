@@ -35,7 +35,7 @@ import {
 } from "../services/ai/sagaClient";
 import { useEditorChatContext } from "./useEditorChatContext";
 import { useApiKey } from "./useApiKey";
-import type { ToolName } from "@mythos/agent-protocol";
+import type { ToolName, ToolApprovalType } from "@mythos/agent-protocol";
 import {
   buildContextHints as buildUnifiedContextHints,
   buildProjectPersonalizationContext,
@@ -92,6 +92,12 @@ const getErrorMessage = createGetErrorMessage({
     TOOL_EXECUTION_ERROR: "Execution failed.",
   },
 });
+
+function resolveDefaultApprovalType(toolName: ToolName): ToolApprovalType | undefined {
+  if (toolName === "ask_question") return "input";
+  if (toolName === "write_content") return "apply";
+  return undefined;
+}
 
 /**
  * Hook for Saga AI agent functionality with tool proposals.
@@ -331,8 +337,8 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
             appendToChatMessage(assistantMessageId, delta);
           },
           onTool: (tool: ToolCallResult) => {
-            const needsApproval =
-              tool.toolName === "ask_question" || tool.toolName === "write_content";
+            const approvalType = resolveDefaultApprovalType(tool.toolName as ToolName);
+            const needsApproval = approvalType !== undefined;
             const selectionRange =
               tool.toolName === "write_content" ? getSelectionRange() : undefined;
 
@@ -350,6 +356,7 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
                 selectionRange,
                 status: "proposed",
                 needsApproval,
+                approvalType,
               },
             };
             addChatMessage(toolMessage);
@@ -375,6 +382,8 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
                 approvalId: request.approvalId,
                 toolName: request.toolName as ToolName,
                 args: request.args,
+                approvalType: request.approvalType,
+                danger: request.danger,
                 promptMessageId: request.promptMessageId,
                 selectionRange,
                 status: "proposed",

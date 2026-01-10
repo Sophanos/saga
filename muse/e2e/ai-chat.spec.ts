@@ -47,8 +47,9 @@ async function openProject(page: Page, projectId: string): Promise<void> {
 }
 
 async function openChat(page: Page): Promise<void> {
-  await page.keyboard.press("Meta+/");
-  await page.keyboard.press("Control+/");
+  const openButton = page.getByTestId("chat-open");
+  await expect(openButton).toBeVisible();
+  await openButton.click();
   await expect(page.getByTestId("chat-input")).toBeVisible();
 }
 
@@ -112,6 +113,7 @@ test.describe("E2E-05 AI Agent Chat + Streaming", () => {
         buildToolCallStep("call-approval", "ask_question", {
           question: "Which path should Elena take?",
           detail: "Awaiting direction",
+          responseType: "text",
         }),
       ],
     });
@@ -125,5 +127,54 @@ test.describe("E2E-05 AI Agent Chat + Streaming", () => {
 
     await expect(page.getByTestId("tool-approval-request")).toBeVisible();
     await expect(page.getByTestId("tool-approval-request")).toContainText("Which path should Elena take?");
+  });
+
+  test("resumes after tool response", async ({ page }, testInfo) => {
+    const runId = getRunId(testInfo, "chat-resume");
+    const convex = await getConvexHelpers(page);
+
+    const projectId = await convex.createProject({
+      name: `E2E/ChatResume/${runId}`,
+    });
+
+    await convex.createDocument({
+      projectId,
+      type: "chapter",
+      title: `Chat Resume Doc ${runId}`,
+      contentText: "Chat seed",
+    });
+
+    await convex.setSagaScript({
+      projectId,
+      userId: convex.userId,
+      steps: [
+        buildToolCallStep("call-resume", "ask_question", {
+          question: "Choose Elena's route.",
+          detail: "We will continue after you answer.",
+          responseType: "text",
+        }),
+      ],
+    });
+
+    await openProject(page, projectId as string);
+    await expect(page.getByTestId("editor-surface")).toBeVisible();
+
+    await openChat(page);
+    await page.getByTestId("chat-input").fill("Let's continue");
+    await page.getByTestId("chat-send").click();
+
+    await expect(page.getByTestId("tool-approval-request")).toBeVisible();
+
+    await convex.setSagaScript({
+      projectId,
+      userId: convex.userId,
+      steps: [buildTextStep("Continuing after approval")],
+    });
+
+    await page.getByTestId("tool-approval-input").fill("She takes the forest path.");
+    await page.getByTestId("tool-approval-accept").click();
+
+    const assistantMessage = page.getByTestId("chat-message-assistant").last();
+    await expect(assistantMessage).toContainText("Continuing after approval");
   });
 });

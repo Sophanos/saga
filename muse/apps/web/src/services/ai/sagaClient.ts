@@ -37,6 +37,8 @@ import type {
   SagaMode,
   EditorContext,
   AgentStreamEventType,
+  ToolApprovalType,
+  ToolApprovalDanger,
 } from "@mythos/agent-protocol";
 import type { UnifiedContextHints } from "@mythos/context";
 
@@ -158,6 +160,8 @@ export interface SagaStreamEvent {
   approvalId?: string;
   toolName?: string;
   args?: unknown;
+  approvalType?: ToolApprovalType;
+  danger?: ToolApprovalDanger;
   promptMessageId?: string;
   message?: string;
   progress?: { pct?: number; stage?: string };
@@ -171,6 +175,8 @@ export interface ToolApprovalRequest {
   toolCallId?: string;
   toolName: ToolName;
   args: unknown;
+  approvalType: ToolApprovalType;
+  danger?: ToolApprovalDanger;
   promptMessageId?: string;
 }
 
@@ -214,33 +220,38 @@ function createTimeoutSignal(timeoutMs: number, userSignal?: AbortSignal): Abort
   // Combine signals - abort when either fires
   const controller = new AbortController();
   const onAbort = () => controller.abort();
-  timeoutSignal.addEventListener('abort', onAbort);
-  userSignal.addEventListener('abort', onAbort);
+  timeoutSignal.addEventListener("abort", onAbort);
+  userSignal.addEventListener("abort", onAbort);
   return controller.signal;
 }
 
-async function readWithTimeout<T>(
-  reader: ReadableStreamDefaultReader<T>,
-  timeoutMs: number = API_TIMEOUTS.SSE_READ_MS
-) {
-  return Promise.race([
-    reader.read(),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("SSE read timeout")), timeoutMs)
-    ),
-  ]);
+function waitWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number = API_TIMEOUTS.SSE_READ_MS,
+  timeoutMessage: string = "SSE read timeout"
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((result) => {
+        clearTimeout(timeoutId);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
 }
 
 // =============================================================================
 // SSE Parsing
 // =============================================================================
 
-function parseSSELine(line: string): SagaStreamEvent | null {
-  if (!line.startsWith("data: ")) {
-    return null;
-  }
+const MAX_CONSECUTIVE_SSE_TIMEOUTS = 2;
 
-  const jsonStr = line.slice(6).trim();
+function parseSSEPayload(payload: string): SagaStreamEvent | null {
+  const jsonStr = payload.trim();
   if (!jsonStr || jsonStr === "[DONE]") {
     return null;
   }
@@ -253,13 +264,45 @@ function parseSSELine(line: string): SagaStreamEvent | null {
   }
 }
 
+function handleSSELine(line: string, dataLines: string[]): SagaStreamEvent | null {
+  const normalized = line.replace(/\r$/, "");
+
+  if (!normalized) {
+    if (dataLines.length === 0) return null;
+    const payload = dataLines.join("\n");
+    dataLines.length = 0;
+    return parseSSEPayload(payload);
+  }
+
+  if (normalized.startsWith(":")) {
+    return null;
+  }
+
+  if (normalized.startsWith("data:")) {
+    const data = normalized.slice(5);
+    dataLines.push(data.startsWith(" ") ? data.slice(1) : data);
+  }
+
+  return null;
+}
+
+function flushSSEDataLines(dataLines: string[]): SagaStreamEvent | null {
+  if (dataLines.length === 0) return null;
+  const payload = dataLines.join("\n");
+  dataLines.length = 0;
+  return parseSSEPayload(payload);
+}
+
 /**
  * Handle a single SSE event by dispatching to the appropriate callback.
- * Shared between sendSagaChatStreaming and sendToolApprovalResponse.
+ * Shared between sendSagaChatStreaming and sendToolResultStreaming.
  */
 function handleSSEEvent(
   event: SagaStreamEvent,
-  callbacks: Pick<SagaStreamOptions, 'onContext' | 'onDelta' | 'onTool' | 'onToolApprovalRequest' | 'onProgress' | 'onDone' | 'onError'>
+  callbacks: Pick<
+    SagaStreamOptions,
+    "onContext" | "onDelta" | "onTool" | "onToolApprovalRequest" | "onProgress" | "onDone" | "onError"
+  >
 ): boolean {
   const { onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError } = callbacks;
 
@@ -293,6 +336,8 @@ function handleSSEEvent(
           toolCallId: event.toolCallId,
           toolName: event.toolName as ToolName,
           args: event.args,
+          approvalType: event.approvalType ?? "execution",
+          danger: event.danger,
           promptMessageId: event.promptMessageId,
         });
       }
@@ -319,19 +364,43 @@ function handleSSEEvent(
 
 /**
  * Process an SSE stream, dispatching events to callbacks.
- * Shared between sendSagaChatStreaming and sendToolApprovalResponse.
+ * Shared between sendSagaChatStreaming and sendToolResultStreaming.
  */
 async function processSSEStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
-  callbacks: Pick<SagaStreamOptions, 'onContext' | 'onDelta' | 'onTool' | 'onToolApprovalRequest' | 'onProgress' | 'onDone' | 'onError'>
+  callbacks: Pick<
+    SagaStreamOptions,
+    "onContext" | "onDelta" | "onTool" | "onToolApprovalRequest" | "onProgress" | "onDone" | "onError"
+  >
 ): Promise<void> {
   const decoder = new TextDecoder();
   const chunks: string[] = [];
+  const dataLines: string[] = [];
   let doneReceived = false;
+  let consecutiveTimeouts = 0;
+  let pendingRead: Promise<ReadableStreamReadResult<Uint8Array>> | null = null;
 
   try {
     while (true) {
-      const { done, value } = await readWithTimeout(reader);
+      const readPromise = pendingRead ?? reader.read();
+      pendingRead = readPromise;
+
+      let readResult: ReadableStreamReadResult<Uint8Array>;
+      try {
+        readResult = await waitWithTimeout(readPromise);
+        pendingRead = null;
+        consecutiveTimeouts = 0;
+      } catch (error) {
+        if (error instanceof Error && error.message === "SSE read timeout") {
+          consecutiveTimeouts += 1;
+          if (consecutiveTimeouts < MAX_CONSECUTIVE_SSE_TIMEOUTS) {
+            continue;
+          }
+        }
+        throw error;
+      }
+
+      const { done, value } = readResult;
       if (done) break;
 
       chunks.push(decoder.decode(value, { stream: true }));
@@ -342,7 +411,7 @@ async function processSSEStream(
       if (remainder) chunks.push(remainder);
 
       for (const line of lines) {
-        const event = parseSSELine(line);
+        const event = handleSSELine(line, dataLines);
         if (!event) continue;
         if (handleSSEEvent(event, callbacks)) {
           doneReceived = true;
@@ -352,12 +421,21 @@ async function processSSEStream(
 
     // Process remaining buffer
     const remainingBuffer = chunks.join("");
-    if (remainingBuffer.trim()) {
-      const event = parseSSELine(remainingBuffer);
-      if (event) {
+    if (remainingBuffer) {
+      const lines = remainingBuffer.split("\n");
+      for (const line of lines) {
+        const event = handleSSELine(line, dataLines);
+        if (!event) continue;
         if (handleSSEEvent(event, callbacks)) {
           doneReceived = true;
         }
+      }
+    }
+
+    const finalEvent = flushSSEDataLines(dataLines);
+    if (finalEvent) {
+      if (handleSSEEvent(finalEvent, callbacks)) {
+        doneReceived = true;
       }
     }
 
@@ -385,7 +463,7 @@ export async function sendSagaChatStreaming(
   const { signal, apiKey, authToken, onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError } =
     opts ?? {};
 
-  const url = getAIEndpoint('/ai/saga');
+  const url = getAIEndpoint("/ai/saga");
 
   const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
@@ -473,7 +551,7 @@ async function executeSagaTool<T>(
     throw new SagaApiError("projectId is required for tool execution", 400, "TOOL_EXECUTION_ERROR");
   }
 
-  const url = getAIEndpoint('/ai/saga');
+  const url = getAIEndpoint("/ai/saga");
 
   const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
@@ -630,7 +708,7 @@ export async function sendToolResultStreaming(
   const { signal, apiKey, authToken, onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError } =
     opts ?? {};
 
-  const url = getAIEndpoint('/ai/saga');
+  const url = getAIEndpoint("/ai/saga");
 
   const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
@@ -693,119 +771,3 @@ export async function sendToolResultStreaming(
   }
 }
 
-// =============================================================================
-// Tool Approval API (AI SDK 6 needsApproval flow)
-// =============================================================================
-
-/**
- * Payload for responding to a tool approval request
- */
-export interface ToolApprovalPayload {
-  projectId: string;
-  approvalId: string;
-  toolCallId?: string;
-  approved: boolean;
-  messages: SagaMessagePayload[];
-  mentions?: ChatMention[];
-  editorContext?: EditorContext;
-  contextHints?: UnifiedContextHints;
-  mode?: SagaMode;
-  conversationId?: string;
-}
-
-/**
- * Response when user denies a tool
- */
-export interface ToolApprovalDeniedResponse {
-  approvalId?: string;
-  toolCallId?: string;
-  approved: false;
-  message: string;
-}
-
-/**
- * Send a tool approval response (AI SDK 6 needsApproval flow).
- *
- * If approved=true, this triggers continuation of the AI conversation
- * with the tool now allowed to execute. The response is streamed.
- *
- * If approved=false, returns a simple confirmation that the tool was denied.
- */
-export async function sendToolApprovalResponse(
-  payload: ToolApprovalPayload,
-  opts?: SagaStreamOptions
-): Promise<void> {
-  const { signal, apiKey, authToken, onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError } =
-    opts ?? {};
-
-  const url = getAIEndpoint('/ai/saga');
-
-  const resolvedAuthHeader = await resolveAuthHeader(authToken);
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    // Only include Supabase apikey when using Supabase Edge Functions
-    ...(!USE_CONVEX_AI && SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
-    ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
-    ...getAnonHeaders(),
-  };
-
-  if (apiKey) {
-    headers["x-openrouter-key"] = apiKey;
-  }
-
-  if (authToken) {
-    headers["Authorization"] = `Bearer ${authToken}`;
-  }
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ kind: "tool-approval", ...payload }),
-      signal: createTimeoutSignal(API_TIMEOUTS.SSE_CONNECTION_MS, signal),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `Tool approval failed: ${response.status}`;
-      let errorCode: SagaApiErrorCode = "UNKNOWN_ERROR";
-
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.message || errorMessage;
-        errorCode = errorJson.code || errorCode;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
-
-      throw new SagaApiError(errorMessage, response.status, errorCode);
-    }
-
-    // If denied, the response is JSON, not a stream
-    if (!payload.approved) {
-      await response.json(); // Consume JSON response body
-      onDone?.();
-      return;
-    }
-
-    // If approved, we get a streaming response (same as chat)
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new SagaApiError("No response body", 500);
-    }
-
-    // Process the SSE stream using shared helper
-    await processSSEStream(reader, { onContext, onDelta, onTool, onToolApprovalRequest, onProgress, onDone, onError });
-  } catch (error) {
-    if (error instanceof SagaApiError) {
-      onError?.(error);
-    } else if (error instanceof Error) {
-      if (error.name === "AbortError") {
-        return;
-      }
-      onError?.(new SagaApiError(error.message));
-    } else {
-      onError?.(new SagaApiError("Unknown error occurred"));
-    }
-  }
-}
