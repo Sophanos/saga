@@ -9,6 +9,7 @@
  * - POST /ai/chat - Simple chat (SSE streaming)
  * - POST /ai/detect - Entity detection (JSON response)
  * - POST /ai/lint - Consistency linting (JSON response)
+ * - POST /billing-subscription - Subscription + usage snapshot (JSON response)
  * - GET /health - Health check
  */
 
@@ -16,6 +17,7 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { BillingSubscriptionSnapshot } from "./billing";
 import {
   createSSEStream,
   getStreamingHeaders,
@@ -24,6 +26,7 @@ import {
 } from "./lib/streaming";
 import { validateAuth, type AuthResult } from "./lib/httpAuth";
 import { authComponent, createAuth } from "./betterAuth";
+import { countPoints, isQdrantConfigured, type QdrantFilter } from "./lib/qdrant";
 import { verifyRevenueCatWebhook } from "./lib/webhookSecurity";
 
 const http = httpRouter();
@@ -56,6 +59,17 @@ http.route({
 
 http.route({
   path: "/ai/detect",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/billing-subscription",
   method: "OPTIONS",
   handler: httpAction(async (_, request) => {
     return new Response(null, {
@@ -401,8 +415,127 @@ http.route({
 });
 
 // ============================================================
+// Billing Snapshot (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/billing-subscription",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    const auth = await validateAuth(ctx, request);
+
+    if (!auth.isValid || !auth.userId) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: auth.error ?? "Unauthorized",
+            code: "UNAUTHORIZED",
+          },
+        }),
+        {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    try {
+      const body = await request.json().catch(() => ({}));
+      const projectId =
+        typeof body?.projectId === "string" ? body.projectId : undefined;
+
+      const snapshot = await ctx.runQuery(
+        (internal as any).billing.getBillingSubscriptionSnapshot,
+        {
+          userId: auth.userId,
+          projectId,
+        }
+      );
+
+      const responseBody = projectId
+        ? await attachVectorUsage(snapshot, projectId)
+        : snapshot;
+
+      return new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[http/billing-subscription] Error:", error);
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: error instanceof Error ? error.message : "Billing snapshot failed",
+            code: "BILLING_ERROR",
+          },
+        }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
 // Handlers
 // ============================================================
+
+async function attachVectorUsage(
+  snapshot: BillingSubscriptionSnapshot,
+  projectId: string
+): Promise<BillingSubscriptionSnapshot> {
+  const vectorLimit = snapshot.limits?.embeddings.maxVectorsPerProject ?? 0;
+  const usageDetail = snapshot.usageDetail ?? {};
+
+  if (!isQdrantConfigured()) {
+    return {
+      ...snapshot,
+      usageDetail: {
+        ...usageDetail,
+        vectors: {
+          used: 0,
+          limit: vectorLimit,
+          unavailable: true,
+        },
+      },
+    };
+  }
+
+  // Requires payload.projectId on Qdrant points for accurate counts.
+  const filter: QdrantFilter = {
+    must: [{ key: "projectId", match: { value: projectId } }],
+  };
+
+  try {
+    const used = await countPoints(filter, { exact: false });
+    return {
+      ...snapshot,
+      usageDetail: {
+        ...usageDetail,
+        vectors: {
+          used,
+          limit: vectorLimit,
+        },
+      },
+    };
+  } catch (error) {
+    console.warn("[http/billing-subscription] Qdrant count failed:", error);
+    return {
+      ...snapshot,
+      usageDetail: {
+        ...usageDetail,
+        vectors: {
+          used: 0,
+          limit: vectorLimit,
+          unavailable: true,
+        },
+      },
+    };
+  }
+}
 
 interface SagaChatParams {
   projectId: string;

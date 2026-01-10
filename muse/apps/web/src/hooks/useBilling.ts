@@ -26,9 +26,48 @@ interface PortalResponse {
   url: string;
 }
 
+interface BillingPeriod {
+  start: string;
+  end: string;
+}
+
+interface BillingLimits {
+  ai: {
+    tokensPerMonth: number | null;
+    callsPerDay: number;
+    concurrentRequests: number;
+  };
+  memory: {
+    retentionDays: number | null;
+    maxPerProject: number;
+    maxPinned: number;
+  };
+  embeddings: {
+    operationsPerDay: number;
+    maxVectorsPerProject: number;
+  };
+}
+
+interface BillingUsageDetail {
+  memories?: {
+    used: number;
+    limit: number;
+    pinnedUsed: number;
+    pinnedLimit: number;
+  };
+  vectors?: {
+    used: number;
+    limit: number;
+    unavailable?: boolean;
+  };
+}
+
 interface SubscriptionResponse {
   subscription: Subscription;
   usage: Usage;
+  period?: BillingPeriod;
+  limits?: BillingLimits;
+  usageDetail?: BillingUsageDetail;
 }
 
 interface BillingModeResponse {
@@ -36,7 +75,20 @@ interface BillingModeResponse {
   billingMode: BillingMode;
 }
 
-export function useBilling() {
+interface UseBillingResult {
+  subscription: Subscription;
+  usage: Usage;
+  billingMode: BillingMode;
+  isLoading: boolean;
+  error: string | null;
+  openCheckout: (tier: BillingTier, billingInterval?: "monthly" | "annual") => Promise<void>;
+  openPortal: () => Promise<void>;
+  switchBillingMode: (mode: BillingMode, byokKey?: string) => Promise<boolean>;
+  refresh: () => Promise<void>;
+  clearError: () => void;
+}
+
+export function useBilling(): UseBillingResult {
   const store = useBillingStore();
   const subscription = useSubscription();
   const usage = useUsage();
@@ -70,7 +122,7 @@ export function useBilling() {
 
   /**
    * Open Stripe Checkout for a specific tier
-   * @param tier - The subscription tier to checkout: 'pro', 'pro_plus', or 'team'
+   * @param tier - The subscription tier to checkout: 'pro' or 'team' (enterprise is custom)
    * @param billingInterval - The billing frequency: 'monthly' or 'annual' (defaults to 'monthly')
    */
   const openCheckout = useCallback(

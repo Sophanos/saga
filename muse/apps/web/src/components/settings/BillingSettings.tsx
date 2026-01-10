@@ -66,35 +66,35 @@ const TIER_CONFIG: Record<
     priceByok: "$10",
     features: [
       "500K AI tokens/month",
-      "10 projects",
+      "20 projects",
       "All AI features",
-      "$0.10/1K overage",
-    ],
-  },
-  pro_plus: {
-    name: "Pro+",
-    description: "For power users",
-    tokens: "2M",
-    priceIncluded: "$40",
-    priceByok: "$20",
-    features: [
-      "2M AI tokens/month",
-      "Unlimited projects",
-      "5 collaborators",
-      "$0.08/1K overage",
+      "Custom models",
     ],
   },
   team: {
     name: "Team",
     description: "For writing teams",
-    tokens: "10M",
-    priceIncluded: "$99",
-    priceByok: "$49",
+    tokens: "2M",
+    priceIncluded: "$50",
+    priceByok: "$25",
     features: [
-      "10M AI tokens/month",
-      "Unlimited everything",
-      "Unlimited collaborators",
-      "$0.05/1K overage",
+      "2M AI tokens/month",
+      "Team collaboration (10 seats)",
+      "Priority support",
+      "API access",
+    ],
+  },
+  enterprise: {
+    name: "Enterprise",
+    description: "Custom plans for large organizations",
+    tokens: "Unlimited",
+    priceIncluded: "Custom",
+    priceByok: "Custom",
+    features: [
+      "Unlimited AI tokens",
+      "Custom limits + SLAs",
+      "Dedicated support",
+      "Security + compliance",
     ],
   },
 };
@@ -117,6 +117,8 @@ const TierCard = React.memo(function TierCard({
   const config = TIER_CONFIG[tier];
   const price =
     billingMode === "byok" ? config.priceByok : config.priceIncluded;
+  const isSelectable = isTierSelectable(tier);
+  const actionLabel = getTierActionLabel(tier, isCurrent, isLoading);
 
   return (
     <Card
@@ -169,18 +171,10 @@ const TierCard = React.memo(function TierCard({
         <Button
           className="w-full"
           variant={isCurrent ? "outline" : "default"}
-          disabled={isCurrent || isLoading || tier === "free"}
+          disabled={isCurrent || isLoading || !isSelectable}
           onClick={() => onSelect(tier)}
         >
-          {isCurrent ? (
-            "Current Plan"
-          ) : tier === "free" ? (
-            "Included"
-          ) : isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            "Upgrade"
-          )}
+          {actionLabel}
         </Button>
       </CardContent>
     </Card>
@@ -188,45 +182,61 @@ const TierCard = React.memo(function TierCard({
 });
 
 // Pure helper functions - moved outside component to avoid recreation on each render
-const getTierBadgeColor = (tier: BillingTier) => {
+function getTierBadgeColor(tier: BillingTier): string {
   switch (tier) {
     case "free":
       return "bg-mythos-bg-tertiary text-mythos-text-muted";
     case "pro":
       return "bg-mythos-accent-primary/20 text-mythos-accent-primary";
-    case "pro_plus":
-      return "bg-mythos-accent-yellow/20 text-mythos-accent-yellow";
     case "team":
       return "bg-mythos-accent-purple/20 text-mythos-accent-purple";
+    case "enterprise":
+      return "bg-mythos-accent-yellow/20 text-mythos-accent-yellow";
   }
-};
+}
 
-const getModeIcon = (mode: BillingMode) => {
+function getModeIcon(mode: BillingMode): React.ReactNode {
   switch (mode) {
     case "managed":
       return <CreditCard className="w-4 h-4 text-mythos-accent-primary" />;
     case "byok":
       return <Key className="w-4 h-4 text-mythos-accent-primary" />;
   }
-};
+}
 
-const getModeLabel = (mode: BillingMode) => {
+function getModeLabel(mode: BillingMode): string {
   switch (mode) {
     case "managed":
       return "Managed";
     case "byok":
       return "BYOK";
   }
-};
+}
 
-const getModeDescription = (mode: BillingMode) => {
+function getModeDescription(mode: BillingMode): string {
   switch (mode) {
     case "managed":
       return "AI tokens included in your plan.";
     case "byok":
       return "Bring your own API key. 50% off subscription.";
   }
-};
+}
+
+function getTierActionLabel(
+  tier: BillingTier,
+  isCurrent: boolean,
+  isLoading: boolean
+): React.ReactNode {
+  if (isCurrent) return "Current Plan";
+  if (tier === "free") return "Included";
+  if (tier === "enterprise") return "Contact Sales";
+  if (isLoading) return <Loader2 className="w-4 h-4 animate-spin" />;
+  return "Upgrade";
+}
+
+function isTierSelectable(tier: BillingTier): boolean {
+  return tier !== "free" && tier !== "enterprise";
+}
 
 export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
   const {
@@ -528,7 +538,7 @@ export function BillingSettings({ isOpen, onClose }: BillingSettingsProps) {
             </div>
           ) : (
             <div role="tabpanel" id="plans-panel" aria-labelledby="plans-tab" className="grid grid-cols-2 gap-4">
-              {(["free", "pro", "pro_plus", "team"] as BillingTier[]).map(
+              {(["free", "pro", "team", "enterprise"] as BillingTier[]).map(
                 (tier) => (
                   <TierCard
                     key={tier}

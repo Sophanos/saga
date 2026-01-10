@@ -10,7 +10,7 @@ import type { StorageAdapter } from "@mythos/storage";
 /**
  * Subscription tiers
  */
-export type BillingTier = "free" | "pro" | "pro_plus" | "team";
+export type BillingTier = "free" | "pro" | "team" | "enterprise";
 
 /**
  * Billing modes for AI usage

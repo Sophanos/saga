@@ -24,6 +24,7 @@ This plan implements:
 | API key extraction | Exists | `supabase/functions/_shared/api-key.ts` |
 | Pricing tiers UI | Exists (landing only) | `apps/website/src/pages/LandingPage.tsx` |
 | Settings components | Exists | `apps/web/src/components/settings/` |
+| Billing snapshot endpoint | Exists (Convex HTTP) | `convex/billing.ts`, `convex/http.ts` |
 
 ### What's Missing
 
@@ -46,8 +47,10 @@ This plan implements:
 |------|-------------------|----------------|-----------------|---------|
 | Free | $0 | $0 | 10,000 | None |
 | Pro | $20 | $10 | 500,000 | $0.10/1K |
-| Pro+ | $40 | $20 | 2,000,000 | $0.08/1K |
-| Team | $99 | $49.50 | 10,000,000 | $0.05/1K |
+| Team | $50 | $25 | 2,000,000 | $0.08/1K |
+| Enterprise | Custom | Custom | Unlimited | Custom |
+
+Note: For Convex-backed tiers, the source of truth for limits is `muse/convex/lib/tierConfig.ts`.
 
 ---
 
@@ -60,7 +63,7 @@ This plan implements:
 ```sql
 -- Billing Mode and Tier Enums
 CREATE TYPE billing_mode AS ENUM ('managed', 'byok');
-CREATE TYPE subscription_tier AS ENUM ('free', 'pro', 'pro_plus', 'team');
+CREATE TYPE subscription_tier AS ENUM ('free', 'pro', 'team', 'enterprise');
 
 -- Subscriptions Table
 CREATE TABLE subscriptions (
@@ -129,10 +132,10 @@ CREATE TABLE tier_config (
 );
 
 INSERT INTO tier_config VALUES
-  ('free', 10000, 0, 0, 0, 1, 0),
-  ('pro', 500000, 2000, 1000, 10, -1, 0),
-  ('pro_plus', 2000000, 4000, 2000, 8, -1, 5),
-  ('team', 10000000, 9900, 4950, 5, -1, -1);
+  ('free', 10000, 0, 0, 0, 3, 0),
+  ('pro', 500000, 2000, 1000, 10, 20, 0),
+  ('team', 2000000, 5000, 2500, 8, 100, 10),
+  ('enterprise', 0, 0, 0, 0, 1000, 100);
 
 -- Indexes
 CREATE INDEX idx_subscriptions_user ON subscriptions(user_id);
@@ -250,7 +253,7 @@ $$;
 import { getSupabaseClient } from "../client";
 
 export type BillingMode = "managed" | "byok";
-export type SubscriptionTier = "free" | "pro" | "pro_plus" | "team";
+export type SubscriptionTier = "free" | "pro" | "team" | "enterprise";
 
 export interface BillingContext {
   tier: SubscriptionTier;

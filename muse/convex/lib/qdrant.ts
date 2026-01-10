@@ -245,6 +245,32 @@ export async function searchPoints(
   return response.result;
 }
 
+export async function countPoints(
+  filter?: QdrantFilter,
+  options?: { exact?: boolean },
+  config?: Partial<QdrantConfig>
+): Promise<number> {
+  const envConfig = getQdrantConfig();
+  const finalConfig: QdrantConfig = { ...envConfig, ...config };
+
+  const body: Record<string, unknown> = {
+    exact: options?.exact ?? true,
+  };
+
+  if (filter) {
+    body["filter"] = filter;
+  }
+
+  const response = await qdrantRequest<{ result: { count: number } }>(
+    finalConfig,
+    "POST",
+    `/collections/${finalConfig.collection}/points/count`,
+    body
+  );
+
+  return response.result.count;
+}
+
 export async function upsertPoints(
   points: QdrantPoint[],
   config?: Partial<QdrantConfig>
