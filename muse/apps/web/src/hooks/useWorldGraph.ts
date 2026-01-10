@@ -36,7 +36,6 @@ export function useWorldGraph(options?: UseWorldGraphOptions): UseWorldGraphResu
   const relationships = useMythosStore(
     useShallow((s) => s.world.relationships)
   );
-  const selectedEntityId = useMythosStore((s) => s.world.selectedEntityId);
 
   // Memoize total counts (from raw store data)
   const entityCount = useMemo(() => entities.length, [entities]);
@@ -72,7 +71,6 @@ export function useWorldGraph(options?: UseWorldGraphOptions): UseWorldGraphResu
         entityId: entity.id,
         name: entity.name,
         type: entity.type,
-        selected: entity.id === selectedEntityId,
       },
     }));
 
@@ -98,7 +96,7 @@ export function useWorldGraph(options?: UseWorldGraphOptions): UseWorldGraphResu
       }));
 
     return { nodes, edges };
-  }, [entities, relationships, selectedEntityId, visibleTypes, visibleTypesKey]);
+  }, [entities, relationships, visibleTypes, visibleTypesKey]);
 
   // Memoize visible counts derived from nodes/edges
   const visibleEntityCount = useMemo(() => nodes.length, [nodes]);

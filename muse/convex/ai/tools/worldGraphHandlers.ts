@@ -3,9 +3,11 @@
  */
 
 import { v } from "convex/values";
-import { internalAction, internalQuery, internalMutation } from "../../_generated/server";
+import { internalAction, internalQuery, internalMutation, type ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import { ENTITY_TYPES } from "../../lib/approvalConfig";
+import { canonicalizeName } from "../../lib/canonicalize";
 import type {
   CreateEntityArgs,
   UpdateEntityArgs,
@@ -14,31 +16,103 @@ import type {
 } from "./worldGraphTools";
 
 // =============================================================================
-// Internal Queries - Entity/Relationship Lookups
+// Internal Queries - Access + Lookups
 // =============================================================================
 
-export const findEntityByName = internalQuery({
+export const getProjectMemberRole = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.string(),
+  },
+  handler: async (ctx, { projectId, userId }) => {
+    const project = await ctx.db.get(projectId);
+    if (!project) {
+      return { projectExists: false, role: null };
+    }
+
+    const member = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_user", (q) =>
+        q.eq("projectId", projectId).eq("userId", userId)
+      )
+      .unique();
+
+    return { projectExists: true, role: member?.role ?? null };
+  },
+});
+
+export const findEntityByCanonical = internalQuery({
   args: {
     projectId: v.id("projects"),
     name: v.string(),
     type: v.optional(v.string()),
   },
   handler: async (ctx, { projectId, name, type }) => {
-    const lowerName = name.toLowerCase();
+    const canonicalName = canonicalizeName(name);
 
-    const entities = await ctx.db
+    if (type) {
+      const matches = await ctx.db
+        .query("entities")
+        .withIndex("by_project_type_canonical", (q) =>
+          q
+            .eq("projectId", projectId)
+            .eq("type", type)
+            .eq("canonicalName", canonicalName)
+        )
+        .collect();
+
+      if (matches.length > 0) {
+        return matches;
+      }
+
+      const fallback = await ctx.db
+        .query("entities")
+        .withIndex("by_project_type", (q) =>
+          q.eq("projectId", projectId).eq("type", type)
+        )
+        .collect();
+
+      return fallback.filter((entity) => {
+        if (canonicalizeName(entity.name) === canonicalName) return true;
+        return entity.aliases.some(
+          (alias) => canonicalizeName(alias) === canonicalName
+        );
+      });
+    }
+
+    const matches: Array<Doc<"entities">> = [];
+
+    for (const entityType of ENTITY_TYPES) {
+      const match = await ctx.db
+        .query("entities")
+        .withIndex("by_project_type_canonical", (q) =>
+          q
+            .eq("projectId", projectId)
+            .eq("type", entityType)
+            .eq("canonicalName", canonicalName)
+        )
+        .first();
+
+      if (match) {
+        matches.push(match);
+      }
+    }
+
+    if (matches.length > 0) {
+      return matches;
+    }
+
+    const fallback = await ctx.db
       .query("entities")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
       .collect();
 
-    const matches = entities.filter((e) => {
-      const nameMatch = e.name.toLowerCase() === lowerName;
-      const aliasMatch = e.aliases.some((a) => a.toLowerCase() === lowerName);
-      const typeMatch = !type || e.type === type;
-      return (nameMatch || aliasMatch) && typeMatch;
+    return fallback.filter((entity) => {
+      if (canonicalizeName(entity.name) === canonicalName) return true;
+      return entity.aliases.some(
+        (alias) => canonicalizeName(alias) === canonicalName
+      );
     });
-
-    return matches[0] ?? null;
   },
 });
 
@@ -77,11 +151,13 @@ export const createEntityMutation = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const canonicalName = canonicalizeName(args.name);
     return await ctx.db.insert("entities", {
       projectId: args.projectId,
       type: args.type,
       name: args.name,
-      aliases: args.aliases ?? [],
+      canonicalName,
+      aliases: normalizeAliases(args.aliases ?? []),
       properties: args.properties ?? {},
       notes: args.notes,
       createdAt: now,
@@ -162,6 +238,79 @@ function resolveActor(actor?: ToolActorContext) {
   };
 }
 
+function normalizeAliases(aliases: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const alias of aliases) {
+    const trimmed = alias.trim();
+    if (!trimmed) continue;
+    const key = canonicalizeName(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
+async function getProjectAccessError(
+  ctx: ActionCtx,
+  projectId: Id<"projects">,
+  actorUserId?: string
+): Promise<string | null> {
+  if (!actorUserId) {
+    return "Actor user id is required";
+  }
+
+  const access = await ctx.runQuery(
+    // @ts-expect-error Deep types
+    internal["ai/tools/worldGraphHandlers"].getProjectMemberRole,
+    { projectId, userId: actorUserId }
+  );
+
+  if (!access?.projectExists) {
+    return "Project not found";
+  }
+
+  if (!access.role) {
+    return "Access denied";
+  }
+
+  if (access.role === "viewer") {
+    return "Edit access denied";
+  }
+
+  return null;
+}
+
+async function resolveEntityByName(
+  ctx: ActionCtx,
+  projectId: Id<"projects">,
+  name: string,
+  type?: string
+): Promise<{ entity: Doc<"entities"> | null; error?: string }> {
+  const matches = await ctx.runQuery(
+    // @ts-expect-error Deep types
+    internal["ai/tools/worldGraphHandlers"].findEntityByCanonical,
+    { projectId, name, type }
+  );
+
+  if (!matches || matches.length === 0) {
+    return { entity: null };
+  }
+
+  if (matches.length > 1) {
+    const types = Array.from(new Set(matches.map((match) => match.type)));
+    return {
+      entity: null,
+      error: `Multiple entities named "${name}" found (${types.join(", ")})`,
+    };
+  }
+
+  return { entity: matches[0] };
+}
+
 function buildEntityProperties(args: CreateEntityArgs): Record<string, unknown> {
   const props: Record<string, unknown> = {};
   if (args.archetype) props["archetype"] = args.archetype;
@@ -206,16 +355,28 @@ export const executeCreateEntity = internalAction({
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
-    const existing = await ctx.runQuery(
-      // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].findEntityByName,
-      { projectId: projectIdVal, name: args.name, type: args.type }
+    const accessError = await getProjectAccessError(
+      ctx,
+      projectIdVal,
+      actorInfo.actorUserId
     );
+    if (accessError) {
+      return { success: false, message: accessError };
+    }
 
-    if (existing) {
+    const resolved = await resolveEntityByName(
+      ctx,
+      projectIdVal,
+      args.name,
+      args.type
+    );
+    if (resolved.error) {
+      return { success: false, message: resolved.error };
+    }
+    if (resolved.entity) {
       return {
         success: false,
-        message: `Entity "${args.name}" already exists as ${existing.type}`,
+        message: `Entity "${args.name}" already exists as ${resolved.entity.type}`,
       };
     }
 
@@ -233,6 +394,12 @@ export const executeCreateEntity = internalAction({
         notes: args.notes,
       }
     );
+
+    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+      projectId: projectIdVal,
+      targetType: "entity",
+      targetId: entityId,
+    });
 
     await ctx.runMutation((internal as any).activity.emit, {
       projectId: projectIdVal,
@@ -281,24 +448,40 @@ export const executeUpdateEntity = internalAction({
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
-    const entity = await ctx.runQuery(
-      // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].findEntityByName,
-      { projectId: projectIdVal, name: args.entityName, type: args.entityType }
+    const accessError = await getProjectAccessError(
+      ctx,
+      projectIdVal,
+      actorInfo.actorUserId
     );
+    if (accessError) {
+      return { success: false, message: accessError };
+    }
 
-    if (!entity) {
+    const resolved = await resolveEntityByName(
+      ctx,
+      projectIdVal,
+      args.entityName,
+      args.entityType
+    );
+    if (resolved.error) {
+      return { success: false, message: resolved.error };
+    }
+    if (!resolved.entity) {
       return {
         success: false,
         message: `Entity "${args.entityName}" not found`,
       };
     }
 
+    const entity = resolved.entity;
     const { name, aliases, notes, ...propertyUpdates } = args.updates;
 
     const dbUpdates: Record<string, unknown> = {};
-    if (name !== undefined) dbUpdates["name"] = name;
-    if (aliases !== undefined) dbUpdates["aliases"] = aliases;
+    if (name !== undefined) {
+      dbUpdates["name"] = name;
+      dbUpdates["canonicalName"] = canonicalizeName(name);
+    }
+    if (aliases !== undefined) dbUpdates["aliases"] = normalizeAliases(aliases);
     if (notes !== undefined) dbUpdates["notes"] = notes;
 
     const existingProps = (entity.properties ?? {}) as Record<string, unknown>;
@@ -315,6 +498,12 @@ export const executeUpdateEntity = internalAction({
       internal["ai/tools/worldGraphHandlers"].updateEntityMutation,
       { id: entity._id, updates: dbUpdates }
     );
+
+    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+      projectId: entity.projectId,
+      targetType: "entity",
+      targetId: entity._id,
+    });
 
     const updatedFields = Object.keys(args.updates).filter(
       (k) => args.updates[k as keyof typeof args.updates] !== undefined
@@ -366,25 +555,33 @@ export const executeCreateRelationship = internalAction({
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
-    const source = await ctx.runQuery(
-      // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].findEntityByName,
-      { projectId: projectIdVal, name: args.sourceName }
+    const accessError = await getProjectAccessError(
+      ctx,
+      projectIdVal,
+      actorInfo.actorUserId
     );
+    if (accessError) {
+      return { success: false, message: accessError };
+    }
 
-    if (!source) {
+    const sourceResult = await resolveEntityByName(ctx, projectIdVal, args.sourceName);
+    if (sourceResult.error) {
+      return { success: false, message: sourceResult.error };
+    }
+    if (!sourceResult.entity) {
       return { success: false, message: `Source entity "${args.sourceName}" not found` };
     }
 
-    const target = await ctx.runQuery(
-      // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].findEntityByName,
-      { projectId: projectIdVal, name: args.targetName }
-    );
-
-    if (!target) {
+    const targetResult = await resolveEntityByName(ctx, projectIdVal, args.targetName);
+    if (targetResult.error) {
+      return { success: false, message: targetResult.error };
+    }
+    if (!targetResult.entity) {
       return { success: false, message: `Target entity "${args.targetName}" not found` };
     }
+
+    const source = sourceResult.entity;
+    const target = targetResult.entity;
 
     const existing = await ctx.runQuery(
       // @ts-expect-error Deep types
@@ -467,25 +664,33 @@ export const executeUpdateRelationship = internalAction({
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
-    const source = await ctx.runQuery(
-      // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].findEntityByName,
-      { projectId: projectIdVal, name: args.sourceName }
+    const accessError = await getProjectAccessError(
+      ctx,
+      projectIdVal,
+      actorInfo.actorUserId
     );
+    if (accessError) {
+      return { success: false, message: accessError };
+    }
 
-    if (!source) {
+    const sourceResult = await resolveEntityByName(ctx, projectIdVal, args.sourceName);
+    if (sourceResult.error) {
+      return { success: false, message: sourceResult.error };
+    }
+    if (!sourceResult.entity) {
       return { success: false, message: `Source entity "${args.sourceName}" not found` };
     }
 
-    const target = await ctx.runQuery(
-      // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].findEntityByName,
-      { projectId: projectIdVal, name: args.targetName }
-    );
-
-    if (!target) {
+    const targetResult = await resolveEntityByName(ctx, projectIdVal, args.targetName);
+    if (targetResult.error) {
+      return { success: false, message: targetResult.error };
+    }
+    if (!targetResult.entity) {
       return { success: false, message: `Target entity "${args.targetName}" not found` };
     }
+
+    const source = sourceResult.entity;
+    const target = targetResult.entity;
 
     const rel = await ctx.runQuery(
       // @ts-expect-error Deep types

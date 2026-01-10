@@ -31,13 +31,10 @@ import {
   updateEntityTool,
   createRelationshipTool,
   updateRelationshipTool,
-  createEntityNeedsApproval,
-  updateEntityNeedsApproval,
-  createRelationshipNeedsApproval,
-  updateRelationshipNeedsApproval,
 } from "./tools/worldGraphTools";
 import { createQwenEmbeddingModel } from "../lib/deepinfraEmbedding";
 import { ServerAgentEvents } from "../lib/analytics";
+import { needsToolApproval } from "../lib/approvalConfig";
 
 const AI_PRESENCE_ROOM_PREFIXES = {
   project: "project",
@@ -231,7 +228,6 @@ export function setSagaTestScript(steps: SagaTestStreamStep[]) {
   _agent = null;
 }
 
-const staticApprovalTools = new Set(["ask_question", "write_content"]);
 const autoExecuteTools = new Set([
   "search_context",
   "read_document",
@@ -260,21 +256,27 @@ type ToolSourceContext = {
   promptMessageId?: string;
 };
 
-function needsToolApproval(toolName: string, args: Record<string, unknown>): boolean {
-  if (staticApprovalTools.has(toolName)) return true;
+type ToolApprovalType = "execution" | "input" | "apply";
 
-  switch (toolName) {
-    case "create_entity":
-      return createEntityNeedsApproval(args as Parameters<typeof createEntityNeedsApproval>[0]);
-    case "update_entity":
-      return updateEntityNeedsApproval(args as Parameters<typeof updateEntityNeedsApproval>[0]);
-    case "create_relationship":
-      return createRelationshipNeedsApproval(args as Parameters<typeof createRelationshipNeedsApproval>[0]);
-    case "update_relationship":
-      return updateRelationshipNeedsApproval(args as Parameters<typeof updateRelationshipNeedsApproval>[0]);
-    default:
-      return false;
+type ToolApprovalDanger = "safe" | "costly" | "destructive";
+
+function resolveApprovalType(toolName: string): ToolApprovalType {
+  if (toolName === "ask_question") return "input";
+  if (toolName === "write_content") return "apply";
+  return "execution";
+}
+
+function resolveApprovalDanger(toolName: string, args: Record<string, unknown>): ToolApprovalDanger {
+  if (toolName === "write_content") {
+    const content = typeof args.content === "string" ? args.content : "";
+    const operation = typeof args.operation === "string" ? args.operation : undefined;
+    if (operation === "append_document" || content.length > 800) {
+      return "costly";
+    }
+    return "safe";
   }
+  if (worldGraphTools.has(toolName)) return "destructive";
+  return "safe";
 }
 
 async function executeRagTool(
@@ -370,6 +372,8 @@ async function appendStreamChunk(
     toolCallId?: string;
     toolName?: string;
     approvalId?: string;
+    approvalType?: ToolApprovalType;
+    danger?: ToolApprovalDanger;
     args?: unknown;
     data?: unknown;
     promptMessageId?: string;
@@ -721,12 +725,15 @@ export const runSagaAgentChatToStream = internalAction({
 
         // Request approval for high-impact world graph tools
         for (const call of pendingWorldGraphCalls) {
+          const approvalArgs = call.input as Record<string, unknown>;
           await appendStreamChunk(ctx, streamId, {
             type: "tool-approval-request",
             content: "",
             approvalId: call.toolCallId,
             toolCallId: call.toolCallId,
             toolName: call.toolName,
+            approvalType: resolveApprovalType(call.toolName),
+            danger: resolveApprovalDanger(call.toolName, approvalArgs),
             args: call.input,
             promptMessageId: currentPromptMessageId,
           });
@@ -760,6 +767,8 @@ export const runSagaAgentChatToStream = internalAction({
               approvalId: call.toolCallId,
               toolCallId: call.toolCallId,
               toolName: call.toolName,
+              approvalType: resolveApprovalType(call.toolName),
+              danger: resolveApprovalDanger(call.toolName, args),
               args: call.input,
               promptMessageId: currentPromptMessageId,
             });
@@ -1034,6 +1043,8 @@ export const applyToolResultAndResumeToStream = internalAction({
             approvalId: call.toolCallId,
             toolCallId: call.toolCallId,
             toolName: call.toolName,
+            approvalType: resolveApprovalType(call.toolName),
+            danger: resolveApprovalDanger(call.toolName, callArgs),
             args: call.input,
             promptMessageId,
           });

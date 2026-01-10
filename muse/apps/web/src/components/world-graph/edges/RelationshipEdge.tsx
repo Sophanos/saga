@@ -75,6 +75,7 @@ function RelationshipEdgeComponent({
               color: color,
               border: `1px solid ${color}40`,
             }}
+            data-testid={`wg-edge-${id}`}
           >
             {label}
           </div>

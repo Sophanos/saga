@@ -211,17 +211,27 @@ export function needsToolApproval(
       return isHighImpactEntityType(args["type"] as string);
 
     case "update_entity":
-      // Always require approval for entity updates (safety first)
-      return true;
+      return (
+        isSensitiveEntityType(args["entityType"] as string | undefined) ||
+        hasIdentityChange(args["updates"] as Record<string, unknown>)
+      );
 
     case "create_relationship":
       return isHighImpactRelationshipType(args["type"] as string);
 
     case "update_relationship":
-      // Require approval if updating core relationships or significant strength change
-      return (
-        isCoreRelationshipType(args["type"] as string) ||
-        isSignificantStrengthChange(args["strength"] as number | undefined)
+      if (isCoreRelationshipType(args["type"] as string)) return true;
+      if (
+        (args["updates"] as Record<string, unknown> | undefined)?.[
+          "bidirectional"
+        ] !== undefined
+      ) {
+        return true;
+      }
+      return isSignificantStrengthChange(
+        (args["updates"] as Record<string, unknown> | undefined)?.[
+          "strength"
+        ] as number | undefined
       );
 
     // These always require approval (write operations)

@@ -159,6 +159,7 @@ export default defineSchema({
     supabaseId: v.optional(v.string()), // Legacy migration field (deprecated)
     type: v.string(), // "character", "location", "item", "magic_system", "faction", "event", "concept"
     name: v.string(),
+    canonicalName: v.string(),
     aliases: v.array(v.string()),
     properties: v.any(), // Type-specific properties (archetype, traits, status, etc.)
     notes: v.optional(v.string()),
@@ -174,6 +175,7 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_project_type", ["projectId", "type"])
+    .index("by_project_type_canonical", ["projectId", "type", "canonicalName"])
     .index("by_project_name", ["projectId", "name"])
     .index("by_supabase_id", ["supabaseId"])
     .searchIndex("search_entities", {
@@ -317,18 +319,24 @@ export default defineSchema({
     userId: v.string(),
     type: v.string(), // "chat", "detect", "lint", "coach", "genesis", "saga", "saga-approval"
     status: v.string(), // "pending", "streaming", "done", "error"
-    chunks: v.array(
-      v.object({
-        index: v.number(),
-        content: v.string(),
-        type: v.string(), // "delta", "tool", "tool-approval-request", "context", "error"
-        // Tool-related fields (optional)
-        toolCallId: v.optional(v.string()),
-        toolName: v.optional(v.string()),
-        approvalId: v.optional(v.string()),
-        args: v.optional(v.any()),
-        data: v.optional(v.any()),
-      })
+    chunkCount: v.number(),
+    // Legacy storage (deprecated); kept for compatibility with older streams.
+    chunks: v.optional(
+      v.array(
+        v.object({
+          index: v.number(),
+          content: v.string(),
+          type: v.string(), // "delta", "tool", "tool-approval-request", "context", "error"
+          // Tool-related fields (optional)
+          toolCallId: v.optional(v.string()),
+          toolName: v.optional(v.string()),
+          approvalId: v.optional(v.string()),
+          approvalType: v.optional(v.string()),
+          danger: v.optional(v.string()),
+          args: v.optional(v.any()),
+          data: v.optional(v.any()),
+        })
+      )
     ),
     result: v.optional(v.any()),
     error: v.optional(v.string()),
@@ -338,6 +346,24 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_user_status", ["userId", "status"])
     .index("by_user_created", ["userId", "createdAt"]),
+
+  generationStreamChunks: defineTable({
+    streamId: v.id("generationStreams"),
+    index: v.number(),
+    type: v.string(),
+    content: v.string(),
+    toolCallId: v.optional(v.string()),
+    toolName: v.optional(v.string()),
+    approvalId: v.optional(v.string()),
+    approvalType: v.optional(v.string()),
+    danger: v.optional(v.string()),
+    args: v.optional(v.any()),
+    data: v.optional(v.any()),
+    promptMessageId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_stream", ["streamId"])
+    .index("by_stream_index", ["streamId", "index"]),
 
   // ============================================================
   // EMBEDDING OUTBOX
@@ -350,10 +376,15 @@ export default defineSchema({
     attempts: v.number(),
     lastError: v.optional(v.string()),
     chunksProcessed: v.optional(v.number()),
+    desiredContentHash: v.optional(v.string()),
+    processedContentHash: v.optional(v.string()),
+    dirty: v.optional(v.boolean()),
+    queuedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_status", ["status"])
+    .index("by_status_queued", ["status", "queuedAt"])
     .index("by_project_target", ["projectId", "targetType", "targetId"])
     .index("by_target_status", ["targetType", "targetId", "status"]),
 

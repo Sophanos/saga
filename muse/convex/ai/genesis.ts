@@ -436,10 +436,17 @@ export const persistGenesisWorld = internalAction({
 
       try {
         // Check if entity already exists
-        const existing = await ctx.runQuery(
-          (internal as any)["ai/tools/worldGraphHandlers"].findEntityByName,
+        const matches = await ctx.runQuery(
+          (internal as any)["ai/tools/worldGraphHandlers"].findEntityByCanonical,
           { projectId, name: entity.name, type: entity.type }
         );
+        const existing = matches?.[0] ?? null;
+
+        if (matches?.length > 1) {
+          console.warn(
+            `[genesis.persist] Multiple entities found for ${entity.name}; using first match`
+          );
+        }
 
         if (existing) {
           entityIdMap[entity.name] = existing._id;

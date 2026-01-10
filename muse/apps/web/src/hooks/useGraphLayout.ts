@@ -2,6 +2,8 @@ import { useCallback, useRef } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import ELK, { type ElkNode, type ElkExtendedEdge } from "elkjs/lib/elk.bundled.js";
 
+const ELK_WORKER_URL = new URL("elkjs/lib/elk.worker.min.js", import.meta.url);
+
 export type LayoutAlgorithm = "layered" | "force" | "stress" | "mrtree";
 export type LayoutDirection = "RIGHT" | "DOWN" | "LEFT" | "UP";
 
@@ -54,7 +56,7 @@ export function useGraphLayout(options?: UseGraphLayoutOptions): UseGraphLayoutR
   // Lazy initialize ELK
   const getElk = useCallback(() => {
     if (!elkRef.current) {
-      elkRef.current = new ELK();
+      elkRef.current = new ELK({ workerUrl: ELK_WORKER_URL.toString() });
     }
     return elkRef.current;
   }, []);

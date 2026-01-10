@@ -31,7 +31,7 @@ export function WorldGraphView() {
   const [layoutKey, setLayoutKey] = useState(0);
 
   // Get counts
-  const { entityCount, relationshipCount, visibleEntityCount } = useWorldGraph({ visibleTypes });
+  const { visibleEntityCount, visibleRelationshipCount } = useWorldGraph({ visibleTypes });
 
   const handleToggleType = useCallback((type: EntityType) => {
     setVisibleTypes((prev) => {
@@ -92,8 +92,8 @@ export function WorldGraphView() {
           visibleTypes={visibleTypes}
           onToggleType={handleToggleType}
           onResetLayout={handleResetLayout}
-          entityCount={entityCount}
-          relationshipCount={relationshipCount}
+          entityCount={visibleEntityCount}
+          relationshipCount={visibleRelationshipCount}
         />
       </div>
 

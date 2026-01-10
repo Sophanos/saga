@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import { query, mutation, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { canonicalizeName } from "./lib/canonicalize";
 
 // ============================================================
 // AUTH HELPERS
@@ -329,6 +330,15 @@ export const removeInternal = internalMutation({
       .collect();
 
     for (const stream of streams) {
+      const streamChunks = await ctx.db
+        .query("generationStreamChunks")
+        .withIndex("by_stream", (q) => q.eq("streamId", stream._id))
+        .collect();
+
+      for (const chunk of streamChunks) {
+        await ctx.db.delete(chunk._id);
+      }
+
       await ctx.db.delete(stream._id);
     }
 
@@ -455,10 +465,12 @@ export const duplicate = mutation({
       .collect();
 
     for (const entity of entities) {
+      const canonicalName = entity.canonicalName ?? canonicalizeName(entity.name);
       const newEntityId = await ctx.db.insert("entities", {
         projectId: newProjectId,
         type: entity.type,
         name: entity.name,
+        canonicalName,
         aliases: entity.aliases,
         properties: entity.properties,
         notes: entity.notes,

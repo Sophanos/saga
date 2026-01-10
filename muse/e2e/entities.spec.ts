@@ -47,22 +47,50 @@ test.describe("E2E-04 Entity Detection + World Graph", () => {
       ],
     });
 
-    const detection = await convex.detectAndPersist({
+    const firstDetection = await convex.detectAndPersist({
       projectId,
       text: "Elena met the Ashen Guard at the Citadel.",
     });
 
-    expect(detection.entities.length).toBeGreaterThanOrEqual(3);
+    expect(firstDetection.entities.length).toBeGreaterThanOrEqual(3);
 
-    if (detection.entities.length >= 2) {
-      await convex.createRelationship({
-        projectId,
-        sourceId: detection.entities[0].id as any,
-        targetId: detection.entities[1].id as any,
-        type: "knows",
-        bidirectional: true,
-      });
-    }
+    const entitiesAfterFirst = await convex.listEntities(projectId);
+    const initialCount = entitiesAfterFirst.length;
+    expect(initialCount).toBeGreaterThanOrEqual(3);
+
+    await convex.setDetectionFixture({
+      projectId,
+      entities: [
+        { name: "Elena", type: "character", aliases: ["Lena"] },
+        { name: "Citadel", type: "location" },
+        { name: "Ashen Guard", type: "faction" },
+      ],
+    });
+
+    await convex.detectAndPersist({
+      projectId,
+      text: "Lena met the Ashen Guard at the Citadel.",
+    });
+
+    const entitiesAfterSecond = await convex.listEntities(projectId);
+    expect(entitiesAfterSecond.length).toBe(initialCount);
+
+    const elena = entitiesAfterSecond.find((entity) => entity.name === "Elena");
+    const citadel = entitiesAfterSecond.find((entity) => entity.name === "Citadel");
+    const faction = entitiesAfterSecond.find((entity) => entity.name === "Ashen Guard");
+
+    expect(elena).toBeTruthy();
+    expect(citadel).toBeTruthy();
+    expect(faction).toBeTruthy();
+    expect(elena?.aliases ?? []).toContain("Lena");
+
+    const relationshipId = await convex.createRelationship({
+      projectId,
+      sourceId: elena?._id as any,
+      targetId: citadel?._id as any,
+      type: "knows",
+      bidirectional: true,
+    });
 
     await openProject(page, projectId as string);
     await expect(page.getByTestId("editor-surface")).toBeVisible();
@@ -72,12 +100,18 @@ test.describe("E2E-04 Entity Detection + World Graph", () => {
 
     await expect(page.getByTestId("world-graph-view")).toBeVisible();
 
-    for (const entity of detection.entities) {
-      await expect(page.getByTestId(`wg-node-${entity.id}`)).toBeVisible();
-    }
+    await expect(page.getByTestId(`wg-node-${elena?._id}`)).toBeVisible();
+    await expect(page.getByTestId(`wg-node-${citadel?._id}`)).toBeVisible();
+    await expect(page.getByTestId(`wg-node-${faction?._id}`)).toBeVisible();
 
-    await expect(page.getByTestId("wg-entity-count")).toHaveText(
-      String(detection.entities.length)
-    );
+    await expect(page.getByTestId(`wg-edge-${relationshipId}`)).toBeVisible();
+
+    await expect(page.getByTestId("wg-entity-count")).toHaveText("3");
+    await expect(page.getByTestId("wg-relationship-count")).toHaveText("1");
+
+    await page.getByTestId("world-graph-toggle-location").click();
+    await expect(page.getByTestId("wg-entity-count")).toHaveText("2");
+    await expect(page.getByTestId("wg-relationship-count")).toHaveText("0");
+    await expect(page.getByTestId(`wg-node-${citadel?._id}`)).toHaveCount(0);
   });
 });

@@ -28,6 +28,7 @@ Optional / recommended:
 - `PLAYWRIGHT_CONVEX_URL` (override Convex URL for tests)
 - `PLAYWRIGHT_EXPO_URL` (default `http://localhost:19006`)
 - `PLAYWRIGHT_TAURI_URL` (default `http://localhost:1420`)
+- `VITE_E2E=true` (disable autosave unload prompts + embeddings for web/tauri E2E)
 - `PLAYWRIGHT_TARGETS` (comma list of projects for storage setup, e.g. `expo-web,tauri-web`)
 - `PLAYWRIGHT_RUN_ID` (stable E2E user suffix)
 - `PLAYWRIGHT_E2E_PASSWORD` (override default E2E password)
@@ -82,15 +83,20 @@ Notes from local runs:
 - If the Sidebar is still using mocks, either:
   - wire it to Convex queries/mutations, or
   - use the E2E-only harness screen to create/select projects and documents.
-- Editor must expose a stable locator for typing (e.g., `data-testid="editor-surface"`).
-- Prefer verifying persistence by polling Convex (`api.documents.get`) rather than relying on timeouts.
+- E2E harness IDs: `e2e-project-id-value`, `e2e-document-id-value`.
+- Editor selectors: `editor-view`, `editor-surface`, `editor-title`, `editor-document-id`.
+- Autosave selectors: `autosave-status` (text + `data-status`), `autosave-error`.
+- Prefer verifying persistence by polling Convex (`e2e.getDocumentForE2E`) rather than relying on timeouts.
 
 ## E2E-04: Entity Detection + World Graph
 ### Scenarios
 1. Provide text containing entities (“Elena walked to the Citadel.”)
 2. Trigger detection via the detect-and-persist action
 3. Persist detected entities into Convex `entities`
-4. Open World Graph and verify entity nodes + counts
+4. Run detection again with an alias variant; assert idempotency + alias merge
+5. Open World Graph and verify entity nodes + counts
+6. Toggle a type filter and verify counts + visibility update
+7. Verify at least one relationship edge label renders
 
 ### Artifacts
 - `muse/e2e/entities.spec.ts`
@@ -99,7 +105,7 @@ Notes from local runs:
 
 ### Dependencies / Notes
 - Detection uses deterministic fixtures in E2E mode (`E2E_TEST_MODE=true`).
-- World Graph selectors: `world-graph-view`, `wg-node-<entityId>`, `wg-entity-count`.
+- World Graph selectors: `world-graph-view`, `wg-node-<entityId>`, `wg-edge-<relationshipId>`, `wg-entity-count`, `wg-relationship-count`, `world-graph-toggle-<type>`.
 - Run on `tauri-web` (web app); Expo does not include World Graph yet.
 
 ---
@@ -110,11 +116,12 @@ Notes from local runs:
 ### Scenarios
 1. Start a new thread; send a message; verify streamed tokens appear in UI
 2. Verify tool-approval request rendering (ask_question)
+3. Answer a tool approval and confirm the agent resumes streaming
 
 ### Artifacts
 - `muse/e2e/ai-chat.spec.ts`
 - `muse/convex/e2e.ts` (saga scripts)
-- Chat selectors: `chat-input`, `chat-send`, `chat-message-assistant`, `tool-approval-request`
+- Chat selectors: `chat-open`, `chat-input`, `chat-send`, `chat-message-assistant`, `tool-approval-request`, `tool-approval-input`, `tool-approval-accept`
 
 ### Notes
 - Deterministic streaming enabled in `E2E_TEST_MODE` via saga scripts.

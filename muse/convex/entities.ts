@@ -10,6 +10,31 @@ import { query, mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { verifyProjectAccess, verifyEntityAccess } from "./lib/auth";
+import { canonicalizeName } from "./lib/canonicalize";
+
+// ============================================================
+// Helpers
+// ============================================================
+
+function normalizeAliases(aliases: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const alias of aliases) {
+    const trimmed = alias.trim();
+    if (!trimmed) continue;
+    const key = canonicalizeName(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
+function mergeAliases(existing: string[], incoming: string[], primary: string): string[] {
+  return normalizeAliases([primary, ...existing, ...incoming]);
+}
 
 // ============================================================
 // QUERIES
@@ -99,6 +124,32 @@ export const searchByName = query({
 });
 
 /**
+ * Get a single entity by canonical name and type.
+ */
+export const getByCanonical = query({
+  args: {
+    projectId: v.id("projects"),
+    type: v.string(),
+    canonicalName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await verifyProjectAccess(ctx, args.projectId);
+
+    const canonicalName = canonicalizeName(args.canonicalName);
+
+    return await ctx.db
+      .query("entities")
+      .withIndex("by_project_type_canonical", (q) =>
+        q
+          .eq("projectId", args.projectId)
+          .eq("type", args.type)
+          .eq("canonicalName", canonicalName)
+      )
+      .first();
+  },
+});
+
+/**
  * Get entities with their relationships (for World Graph)
  */
 export const listWithRelationships = query({
@@ -155,12 +206,15 @@ export const create = mutation({
     await verifyProjectAccess(ctx, args.projectId);
 
     const now = Date.now();
+    const canonicalName = canonicalizeName(args.name);
+    const aliases = normalizeAliases(args.aliases ?? []);
 
     const id = await ctx.db.insert("entities", {
       projectId: args.projectId,
       type: args.type,
       name: args.name,
-      aliases: args.aliases ?? [],
+      canonicalName,
+      aliases,
       properties: args.properties ?? {},
       notes: args.notes,
       portraitUrl: args.portraitUrl,
@@ -202,9 +256,17 @@ export const update = mutation({
     // Verify user has access via entity's project
     await verifyEntityAccess(ctx, id);
 
+    const normalizedUpdates: Record<string, unknown> = { ...updates };
+    if (updates.aliases) {
+      normalizedUpdates["aliases"] = normalizeAliases(updates.aliases);
+    }
+    if (updates.name) {
+      normalizedUpdates["canonicalName"] = canonicalizeName(updates.name);
+    }
+
     // Filter out undefined values
     const cleanUpdates = Object.fromEntries(
-      Object.entries(updates).filter(([_, v]) => v !== undefined)
+      Object.entries(normalizedUpdates).filter(([_, v]) => v !== undefined)
     );
 
     await ctx.db.patch(id, {
@@ -222,6 +284,194 @@ export const update = mutation({
     }
 
     return id;
+  },
+});
+
+/**
+ * Upsert entities detected from text, merging aliases and properties.
+ */
+export const upsertDetectedEntities = mutation({
+  args: {
+    projectId: v.id("projects"),
+    detected: v.array(
+      v.object({
+        name: v.string(),
+        type: v.string(),
+        aliases: v.optional(v.array(v.string())),
+        properties: v.optional(v.any()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    await verifyProjectAccess(ctx, args.projectId);
+
+    const deduped = new Map<
+      string,
+      {
+        name: string;
+        type: string;
+        canonicalName: string;
+        aliases: string[];
+        properties: Record<string, unknown>;
+      }
+    >();
+
+    for (const entity of args.detected) {
+      const canonicalName = canonicalizeName(entity.name);
+      const key = `${entity.type}:${canonicalName}`;
+      const existing = deduped.get(key);
+      const aliases = normalizeAliases(entity.aliases ?? []);
+      const properties = (entity.properties ?? {}) as Record<string, unknown>;
+
+      if (existing) {
+        existing.aliases = mergeAliases(existing.aliases, aliases, existing.name);
+        existing.properties = { ...existing.properties, ...properties };
+        continue;
+      }
+
+      deduped.set(key, {
+        name: entity.name,
+        type: entity.type,
+        canonicalName,
+        aliases,
+        properties,
+      });
+    }
+
+    const created: Array<{ id: Id<"entities">; name: string; type: string }> = [];
+    const updated: Array<{ id: Id<"entities">; name: string; type: string }> = [];
+    const now = Date.now();
+    const unmatchedByType = new Map<
+      string,
+      Array<{
+        name: string;
+        type: string;
+        canonicalName: string;
+        aliases: string[];
+        properties: Record<string, unknown>;
+      }>
+    >();
+
+    for (const entity of deduped.values()) {
+      const existing = await ctx.db
+        .query("entities")
+        .withIndex("by_project_type_canonical", (q) =>
+          q
+            .eq("projectId", args.projectId)
+            .eq("type", entity.type)
+            .eq("canonicalName", entity.canonicalName)
+        )
+        .first();
+
+      if (existing) {
+        const aliases = mergeAliases(
+          existing.aliases ?? [],
+          [entity.name, ...entity.aliases],
+          existing.name
+        );
+        const properties = {
+          ...(existing.properties ?? {}),
+          ...entity.properties,
+        };
+        const canonicalName = existing.canonicalName ?? canonicalizeName(existing.name);
+
+        await ctx.db.patch(existing._id, {
+          aliases,
+          properties,
+          canonicalName,
+          updatedAt: now,
+        });
+
+        await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+          projectId: existing.projectId,
+          targetType: "entity",
+          targetId: existing._id,
+        });
+
+        updated.push({ id: existing._id, name: existing.name, type: existing.type });
+      } else {
+        const pending = unmatchedByType.get(entity.type) ?? [];
+        pending.push(entity);
+        unmatchedByType.set(entity.type, pending);
+      }
+    }
+
+    for (const [type, pendingEntities] of unmatchedByType.entries()) {
+      const candidates = await ctx.db
+        .query("entities")
+        .withIndex("by_project_type", (q) =>
+          q.eq("projectId", args.projectId).eq("type", type)
+        )
+        .collect();
+
+      const aliasLookup = new Map<string, (typeof candidates)[number]>();
+      for (const candidate of candidates) {
+        const keys = new Set<string>();
+        keys.add(canonicalizeName(candidate.name));
+        for (const alias of candidate.aliases ?? []) {
+          keys.add(canonicalizeName(alias));
+        }
+        for (const key of keys) {
+          if (!aliasLookup.has(key)) {
+            aliasLookup.set(key, candidate);
+          }
+        }
+      }
+
+      for (const entity of pendingEntities) {
+        const existing = aliasLookup.get(entity.canonicalName);
+
+        if (existing) {
+          const aliases = mergeAliases(
+            existing.aliases ?? [],
+            [entity.name, ...entity.aliases],
+            existing.name
+          );
+          const properties = {
+            ...(existing.properties ?? {}),
+            ...entity.properties,
+          };
+          const canonicalName = existing.canonicalName ?? canonicalizeName(existing.name);
+
+          await ctx.db.patch(existing._id, {
+            aliases,
+            properties,
+            canonicalName,
+            updatedAt: now,
+          });
+
+          await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+            projectId: existing.projectId,
+            targetType: "entity",
+            targetId: existing._id,
+          });
+
+          updated.push({ id: existing._id, name: existing.name, type: existing.type });
+          continue;
+        }
+
+        const id = await ctx.db.insert("entities", {
+          projectId: args.projectId,
+          type: entity.type,
+          name: entity.name,
+          canonicalName: entity.canonicalName,
+          aliases: entity.aliases,
+          properties: entity.properties,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+          projectId: args.projectId,
+          targetType: "entity",
+          targetId: id,
+        });
+
+        created.push({ id, name: entity.name, type: entity.type });
+      }
+    }
+
+    return { created, updated };
   },
 });
 
@@ -295,11 +545,13 @@ export const bulkCreate = mutation({
     const ids: Id<"entities">[] = [];
 
     for (const entity of args.entities) {
+      const canonicalName = canonicalizeName(entity.name);
       const id = await ctx.db.insert("entities", {
         projectId: args.projectId,
         type: entity.type,
         name: entity.name,
-        aliases: entity.aliases ?? [],
+        canonicalName,
+        aliases: normalizeAliases(entity.aliases ?? []),
         properties: entity.properties ?? {},
         notes: entity.notes,
         supabaseId: entity.supabaseId,

@@ -13,6 +13,7 @@ import { v } from "convex/values";
 import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import { canonicalizeName } from "../lib/canonicalize";
 
 // ============================================================
 // Constants
@@ -88,10 +89,6 @@ const COMMON_EXCLUDES = new Set([
   "to",
   "of",
 ]);
-
-function canonicalizeName(name: string): string {
-  return name.toLowerCase().trim().replace(/\s+/g, " ");
-}
 
 function classifyMockType(name: string): string {
   const lower = canonicalizeName(name);

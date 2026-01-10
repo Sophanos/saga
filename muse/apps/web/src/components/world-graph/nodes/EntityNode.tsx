@@ -11,7 +11,6 @@ export interface EntityNodeData extends Record<string, unknown> {
   entityId: string;
   name: string;
   type: EntityType;
-  selected?: boolean;
 }
 
 // Full node type for React Flow
@@ -42,7 +41,7 @@ function EntityNodeComponent({ data, selected }: NodeProps<EntityNodeType>) {
           "px-4 py-3 rounded-lg border-2 transition-all",
           "bg-mythos-bg-secondary shadow-lg",
           "min-w-[120px] max-w-[180px]",
-          selected || nodeData.selected
+          selected
             ? "ring-2 ring-mythos-accent-primary ring-offset-2 ring-offset-mythos-bg-primary"
             : "hover:shadow-xl"
         )}
