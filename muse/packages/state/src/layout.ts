@@ -32,6 +32,13 @@ interface LayoutState {
   setSidebarCollapsed: (collapsed: boolean) => void;
   setSidebarWidth: (width: number) => void;
 
+  // Knowledge suggestions ("Changes to review" / "Version history")
+  knowledgePanelOpen: boolean;
+  knowledgePanelProjectId: string | null;
+  openKnowledgePanel: (projectId?: string | null) => void;
+  closeKnowledgePanel: () => void;
+  toggleKnowledgePanel: (projectId?: string | null) => void;
+
   // View
   viewMode: ViewMode;
   currentProjectId: string | null;
@@ -55,6 +62,8 @@ interface LayoutState {
 const initialState = {
   sidebarCollapsed: false,
   sidebarWidth: LAYOUT_SIZING.sidebarDefault,
+  knowledgePanelOpen: false,
+  knowledgePanelProjectId: null as string | null,
   viewMode: 'home' as ViewMode,
   currentProjectId: null as string | null,
   aiPanelMode: 'side' as AIPanelMode,
@@ -72,6 +81,24 @@ export const useLayoutStore = create<LayoutState>()(
       setSidebarWidth: (width) => set({
         sidebarWidth: Math.max(LAYOUT_SIZING.sidebarMin, Math.min(LAYOUT_SIZING.sidebarMax, width)),
       }),
+
+      openKnowledgePanel: (projectId) =>
+        set({
+          knowledgePanelOpen: true,
+          knowledgePanelProjectId: projectId ?? get().knowledgePanelProjectId,
+        }),
+      closeKnowledgePanel: () => set({ knowledgePanelOpen: false }),
+      toggleKnowledgePanel: (projectId) => {
+        const isOpen = get().knowledgePanelOpen;
+        if (isOpen) {
+          set({ knowledgePanelOpen: false });
+          return;
+        }
+        set({
+          knowledgePanelOpen: true,
+          knowledgePanelProjectId: projectId ?? get().knowledgePanelProjectId,
+        });
+      },
 
       enterProject: (projectId) => set({ viewMode: 'project', currentProjectId: projectId }),
       exitProject: () => set({ viewMode: 'home', currentProjectId: null }),

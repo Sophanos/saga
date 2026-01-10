@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, useWindowDimensions, Pressable } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions, Pressable, Modal, Platform } from 'react-native';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -14,9 +14,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, radii, typography } from '@/design-system';
-import { useLayoutStore } from '@mythos/state';
+import { useLayoutStore, useProjectStore } from '@mythos/state';
 import { Sidebar } from './Sidebar';
 import { AIPanel, AIFloatingButton } from '@/components/ai';
+import { KnowledgePRsPanel } from '@/components/knowledge/KnowledgePRsPanel';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -41,7 +42,11 @@ export function AppShell({ children }: AppShellProps) {
     setAIPanelMode,
     aiPanelWidth,
     setAIPanelWidth,
+    knowledgePanelOpen,
+    knowledgePanelProjectId,
+    closeKnowledgePanel,
   } = useLayoutStore();
+  const fallbackProjectId = useProjectStore((s) => s.currentProjectId);
 
   const [showTooltip, setShowTooltip] = useState(false);
   const [showSidebarOverlay, setShowSidebarOverlay] = useState(false);
@@ -159,6 +164,34 @@ export function AppShell({ children }: AppShellProps) {
       )}
 
       <View style={styles.main}>{children}</View>
+
+      {Platform.OS === 'web' && knowledgePanelOpen && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={closeKnowledgePanel}
+        >
+          <Pressable style={styles.knowledgeBackdrop} onPress={closeKnowledgePanel}>
+            <Pressable
+              onPress={(e) => e.stopPropagation()}
+              style={({ pressed }) => [
+                styles.knowledgePanel,
+                {
+                  backgroundColor: colors.bgElevated,
+                  borderColor: colors.border,
+                  opacity: pressed ? 0.999 : 1, // Keeps hover/press styles consistent on web
+                },
+              ]}
+            >
+              <KnowledgePRsPanel
+                projectId={knowledgePanelProjectId ?? fallbackProjectId}
+                onClose={closeKnowledgePanel}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
 
       {showFull && (
         <View style={[styles.aiPanelContainer, styles.aiPanelFull]}>
@@ -337,6 +370,19 @@ const styles = StyleSheet.create({
   },
   main: {
     flex: 1,
+  },
+  knowledgeBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'stretch',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  knowledgePanel: {
+    height: '100%',
+    width: 760,
+    maxWidth: '100%',
+    marginLeft: 'auto',
+    borderLeftWidth: 1,
   },
 
   hoverTriggerZone: {

@@ -7,6 +7,17 @@ import { useLayoutStore } from '@mythos/state';
 
 export const navigationCommands: Command[] = [
   {
+    id: 'nav.changesToReview',
+    label: 'Changes to review',
+    description: 'Open changes to review (version history)',
+    icon: 'git-pull-request',
+    category: 'navigation',
+    keywords: ['changes', 'review', 'version', 'history', 'knowledge', 'suggestions'],
+    execute: () => {
+      useLayoutStore.getState().openKnowledgePanel();
+    },
+  },
+  {
     id: 'nav.toggle.sidebar',
     label: 'Toggle Sidebar',
     description: 'Show or hide the sidebar',

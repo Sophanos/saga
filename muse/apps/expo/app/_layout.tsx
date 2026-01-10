@@ -23,6 +23,7 @@ import { authClient, initAuth, initRevenueCat } from '@/lib/auth';
 import { initAnalytics } from '@/lib/analytics';
 import { initConsent } from '@/lib/consent';
 import { initClarity } from '@/lib/clarity';
+import { registerAllCommands } from '@mythos/commands';
 
 // Initialize Convex client
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL || 'https://convex.cascada.vision';
@@ -52,6 +53,7 @@ export default function RootLayout(): JSX.Element {
   useEffect(() => {
     initAuth();
     initRevenueCat();
+    registerAllCommands();
 
     // Initialize consent first, then analytics/clarity based on consent
     initConsent().then(() => {

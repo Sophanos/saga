@@ -102,6 +102,33 @@ export const getBetween = query({
   },
 });
 
+/**
+ * Get a relationship between two entities for a specific type.
+ */
+export const getByTypeBetween = query({
+  args: {
+    projectId: v.id("projects"),
+    sourceId: v.id("entities"),
+    targetId: v.id("entities"),
+    type: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await verifyProjectAccess(ctx, args.projectId);
+
+    return await ctx.db
+      .query("relationships")
+      .withIndex("by_source", (q) => q.eq("sourceId", args.sourceId))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("projectId"), args.projectId),
+          q.eq(q.field("targetId"), args.targetId),
+          q.eq(q.field("type"), args.type)
+        )
+      )
+      .first();
+  },
+});
+
 // ============================================================
 // MUTATIONS
 // ============================================================

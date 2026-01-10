@@ -19,6 +19,7 @@ import type {
 } from "@ai-sdk/provider";
 import { buildSystemPrompt, retrieveRAGContext, type RAGContext } from "./rag";
 import { askQuestionTool, writeContentTool } from "./tools/editorTools";
+import { commitDecisionTool } from "./tools/memoryTools";
 import {
   searchContextTool,
   readDocumentTool,
@@ -211,6 +212,7 @@ function createSagaAgent() {
     tools: {
       ask_question: askQuestionTool,
       write_content: writeContentTool,
+      commit_decision: commitDecisionTool,
       search_context: searchContextTool,
       read_document: readDocumentTool,
       search_chapters: searchChaptersTool,
@@ -291,6 +293,10 @@ function classifyKnowledgeSuggestion(toolName: string): { targetType: KnowledgeS
     case "create_edge":
     case "update_edge":
       return { targetType: "relationship", operation: toolName };
+    case "write_content":
+      return { targetType: "document", operation: toolName };
+    case "commit_decision":
+      return { targetType: "memory", operation: toolName };
     default:
       return null;
   }

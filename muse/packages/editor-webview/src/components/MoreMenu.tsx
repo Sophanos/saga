@@ -318,6 +318,7 @@ export function MoreMenu({
 }
 
 interface MenuItemProps {
+  id?: string;
   label: string;
   icon?: React.ReactNode;
   shortcut?: string;
@@ -326,9 +327,13 @@ interface MenuItemProps {
   hasSubmenu?: boolean;
 }
 
-function MenuItem({ label, icon, shortcut, onClick, danger, hasSubmenu }: MenuItemProps) {
+function MenuItem({ id, label, icon, shortcut, onClick, danger, hasSubmenu }: MenuItemProps) {
   return (
-    <button className={`menu-item ${danger ? 'menu-item--danger' : ''}`} onClick={onClick}>
+    <button
+      className={`menu-item ${danger ? 'menu-item--danger' : ''}`}
+      onClick={onClick}
+      data-testid={id === 'version' ? 'knowledge-open' : undefined}
+    >
       {icon && <span className="menu-item-icon">{icon}</span>}
       <span className="menu-item-label">{label}</span>
       {shortcut && <span className="menu-item-shortcut">{shortcut}</span>}

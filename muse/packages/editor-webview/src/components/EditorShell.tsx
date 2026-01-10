@@ -29,6 +29,7 @@ interface EditorShellProps {
   onDocumentChange?: (doc: DocumentState) => void;
   onQuickAction?: (action: QuickActionType) => void;
   onShare?: () => void;
+  onVersionHistory?: () => void;
   hideQuickActions?: boolean;
   colorScheme?: 'light' | 'dark';
   /** When true, adds left padding to TabBar for sidebar toggle button */
@@ -216,6 +217,7 @@ export function EditorShell({
   onDocumentChange,
   onQuickAction,
   onShare,
+  onVersionHistory,
   hideQuickActions = false,
   sidebarCollapsed = false,
   collaboration,
@@ -441,6 +443,10 @@ export function EditorShell({
           }
         }}
         onUndo={() => {}}
+        onVersionHistory={() => {
+          setShowMoreMenu(false);
+          onVersionHistory?.();
+        }}
       />
 
       <main className="editor-shell-main">

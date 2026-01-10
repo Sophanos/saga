@@ -237,6 +237,7 @@ export function needsToolApproval(
     // These always require approval (write operations)
     case "write_content":
     case "ask_question":
+    case "commit_decision":
       return true;
 
     // Default: no approval needed (read operations, etc.)

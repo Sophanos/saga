@@ -22,9 +22,9 @@ const LazyEditorShell = Platform.OS === 'web'
   ? lazy(() => import('@mythos/editor-webview').then(mod => ({ default: mod.EditorShell })))
   : null;
 
-export default function EditorScreen() {
+export default function EditorScreen(): JSX.Element {
   const { colors } = useTheme();
-  const { aiPanelMode, sidebarCollapsed } = useLayoutStore();
+  const { aiPanelMode, sidebarCollapsed, openKnowledgePanel } = useLayoutStore();
   const params = useLocalSearchParams<{ projectId?: string | string[]; documentId?: string | string[] }>();
   const user = useAuthStore((s) => s.user);
   const sessionToken = useAuthStore((s) => s.session?.token ?? undefined);
@@ -78,6 +78,9 @@ export default function EditorScreen() {
                   }
                 : undefined
             }
+            onVersionHistory={() => {
+              openKnowledgePanel(collaborationProjectId);
+            }}
             onQuickAction={(action: string) => {
               console.log('Quick action:', action);
             }}

@@ -21,6 +21,7 @@ import {
   useCommandPaletteOpen,
   useCommandPaletteQuery,
   useCommandPaletteFilter,
+  useProjectStore,
   type CommandFilter,
 } from '@mythos/state';
 import { commandRegistry, type Command } from '@mythos/commands';
@@ -41,7 +42,8 @@ export function CommandPalette() {
   const { close, setQuery, setFilter, cycleFilter, addRecent, recentIds } = useCommandPaletteStore();
   const inputRef = useRef<TextInput>(null);
 
-  const ctx = useMemo(() => ({ projectId: '1', hasSelection: false }), []);
+  const projectId = useProjectStore((s) => s.currentProjectId);
+  const ctx = useMemo(() => ({ projectId, hasSelection: false }), [projectId]);
 
   const commands = useMemo(() => {
     let list = query ? commandRegistry.search(query, ctx) : commandRegistry.list(ctx);
