@@ -7,6 +7,7 @@
 
 import React, { Suspense, lazy } from 'react';
 import { Platform, View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useTheme, typography } from '@/design-system';
 import { useAuthStore } from '@mythos/auth';
 import {
@@ -24,14 +25,20 @@ const LazyEditorShell = Platform.OS === 'web'
 export default function EditorScreen() {
   const { colors } = useTheme();
   const { aiPanelMode, sidebarCollapsed } = useLayoutStore();
+  const params = useLocalSearchParams<{ projectId?: string | string[]; documentId?: string | string[] }>();
   const user = useAuthStore((s) => s.user);
   const sessionToken = useAuthStore((s) => s.session?.token ?? undefined);
   const project = useCurrentProject();
   const documents = useDocuments();
   const currentDocumentId = useProjectStore((s) => s.currentDocumentId);
 
+  const queryProjectId =
+    typeof params.projectId === 'string' ? params.projectId : params.projectId?.[0];
+  const queryDocumentId =
+    typeof params.documentId === 'string' ? params.documentId : params.documentId?.[0];
+
   const activeDocumentId =
-    currentDocumentId ?? documents[0]?.id ?? null;
+    queryDocumentId ?? currentDocumentId ?? documents[0]?.id ?? null;
 
   const collaborationUser = user
     ? {
@@ -43,6 +50,7 @@ export default function EditorScreen() {
 
   // Hide quick actions when AI panel is visible (side or floating mode)
   const hideQuickActions = aiPanelMode === 'side' || aiPanelMode === 'floating';
+  const collaborationProjectId = queryProjectId ?? project?.id ?? null;
 
   // Web-only: render TipTap editor
   if (Platform.OS === 'web' && LazyEditorShell) {
@@ -61,9 +69,9 @@ export default function EditorScreen() {
             hideQuickActions={hideQuickActions}
             sidebarCollapsed={sidebarCollapsed}
             collaboration={
-              project && activeDocumentId && collaborationUser
+              collaborationProjectId && activeDocumentId && collaborationUser
                 ? {
-                    projectId: project.id,
+                    projectId: collaborationProjectId,
                     documentId: activeDocumentId,
                     user: collaborationUser,
                     authToken: sessionToken,

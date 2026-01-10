@@ -139,10 +139,17 @@ export const create = mutation({
     // Calculate orderIndex if not provided
     let orderIndex = args.orderIndex;
     if (orderIndex === undefined) {
-      const siblings = await ctx.db
-        .query("documents")
-        .withIndex("by_parent", (q) => q.eq("parentId", args.parentId))
-        .collect();
+      const siblings =
+        args.parentId !== undefined
+          ? await ctx.db
+              .query("documents")
+              .withIndex("by_parent", (q) => q.eq("parentId", args.parentId))
+              .collect()
+          : (await ctx.db
+              .query("documents")
+              .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+              .collect()
+            ).filter((doc) => doc.parentId == null);
       orderIndex = siblings.length;
     }
 
@@ -251,10 +258,17 @@ export const move = mutation({
     }
 
     // Get siblings at the new location
-    const siblings = await ctx.db
-      .query("documents")
-      .withIndex("by_parent", (q) => q.eq("parentId", newParentId))
-      .collect();
+    const siblings =
+      newParentId !== undefined
+        ? await ctx.db
+            .query("documents")
+            .withIndex("by_parent", (q) => q.eq("parentId", newParentId))
+            .collect()
+        : (await ctx.db
+            .query("documents")
+            .withIndex("by_project", (q) => q.eq("projectId", document.projectId))
+            .collect()
+          ).filter((doc) => doc.parentId == null);
 
     // Reorder siblings
     const reorderedSiblings = siblings

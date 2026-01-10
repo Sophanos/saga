@@ -4,6 +4,7 @@ import { getRunId } from "./utils/run-id";
 import {
   waitForConvexDocumentText,
   waitForConvexDocumentUpdatedAt,
+  waitForCondition,
 } from "./utils/wait-for";
 
 async function resolveEditorTestId(page: Page, testId: string): Promise<Locator> {
@@ -43,14 +44,14 @@ test("editor content persists after reload", async ({ page, browser }, testInfo)
   await page.getByTestId("e2e-document-title").fill(`Editor Doc ${runId}`);
   await page.getByTestId("e2e-create-document").click();
 
-  const projectId = (await page
-    .getByTestId("e2e-project-id-value")
-    .textContent())?.trim();
+  const projectId = await page
+    .getByTestId("e2e-project-id")
+    .getAttribute("data-project-id");
   expect(projectId).toBeTruthy();
 
-  const documentId = (await page
-    .getByTestId("e2e-document-id-value")
-    .textContent())?.trim();
+  const documentId = await page
+    .getByTestId("e2e-document-id")
+    .getAttribute("data-document-id");
   expect(documentId).toBeTruthy();
   if (!documentId || !projectId) {
     throw new Error("Missing E2E identifiers");
@@ -59,12 +60,9 @@ test("editor content persists after reload", async ({ page, browser }, testInfo)
   await page.getByTestId("e2e-open-editor").click();
   await expect(page).toHaveURL(/\/editor/);
 
-  const editorRoot = await resolveEditorTestId(page, "editor-view");
+  const editorRoot = await resolveEditorTestId(page, "editor-root");
   await expect(editorRoot).toHaveAttribute("data-document-id", documentId);
   await expect(editorRoot).toHaveAttribute("data-project-id", projectId);
-
-  const editorDocumentId = await resolveEditorTestId(page, "editor-document-id");
-  await expect(editorDocumentId).toHaveText(documentId);
 
   const editorReady = await resolveEditorTestId(page, "editor-ready");
   await expect(editorReady).toHaveCount(1);
@@ -77,8 +75,13 @@ test("editor content persists after reload", async ({ page, browser }, testInfo)
   const initialUpdatedAt = initialDoc?.updatedAt ?? 0;
 
   const editor = await resolveEditableSurface(page);
-  await editor.fill(content);
-  await expect(editor).toContainText(content);
+  await editor.click();
+  await page.keyboard.type(content);
+
+  await waitForCondition(async () => {
+    const text = await editor.innerText();
+    return text.includes(content);
+  });
 
   await waitForConvexDocumentText(
     { getDocument: e2eConvex.getDocumentForE2E },
@@ -123,13 +126,8 @@ test("editor content persists after reload", async ({ page, browser }, testInfo)
     `${baseUrl}/editor?projectId=${projectId}&documentId=${documentId}`
   );
 
-  const freshEditorRoot = await resolveEditorTestId(freshPage, "editor-view");
+  const freshEditorRoot = await resolveEditorTestId(freshPage, "editor-root");
   await expect(freshEditorRoot).toHaveAttribute("data-document-id", documentId);
-  const freshEditorDocumentId = await resolveEditorTestId(
-    freshPage,
-    "editor-document-id"
-  );
-  await expect(freshEditorDocumentId).toHaveText(documentId);
   await expect(freshEditorRoot).toHaveAttribute("data-project-id", projectId);
   const freshEditorReady = await resolveEditorTestId(freshPage, "editor-ready");
   await expect(freshEditorReady).toHaveCount(1);

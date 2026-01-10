@@ -17,18 +17,18 @@ test("creates project and document via E2E harness", async ({ page }, testInfo) 
   await page.getByTestId("e2e-project-name").fill(`E2E/Project/${runId}`);
   await page.getByTestId("e2e-create-project").click();
 
-  const projectId = (await page
-    .getByTestId("e2e-project-id-value")
-    .textContent())?.trim();
+  const projectId = await page
+    .getByTestId("e2e-project-id")
+    .getAttribute("data-project-id");
   expect(projectId).toBeTruthy();
 
   await page.getByTestId("e2e-document-title").fill(`E2E Doc ${runId}`);
   await page.getByTestId("e2e-document-type").fill("chapter");
   await page.getByTestId("e2e-create-document").click();
 
-  const documentId = (await page
-    .getByTestId("e2e-document-id-value")
-    .textContent())?.trim();
+  const documentId = await page
+    .getByTestId("e2e-document-id")
+    .getAttribute("data-document-id");
   expect(documentId).toBeTruthy();
 
   await page.getByTestId("e2e-open-editor").click();
@@ -38,11 +38,9 @@ test("creates project and document via E2E harness", async ({ page }, testInfo) 
     throw new Error("Missing E2E identifiers");
   }
 
-  const editorRoot = await resolveEditorTestId(page, "editor-view");
+  const editorRoot = await resolveEditorTestId(page, "editor-root");
   await expect(editorRoot).toHaveAttribute("data-document-id", documentId);
   await expect(editorRoot).toHaveAttribute("data-project-id", projectId);
-  const editorDocumentId = await resolveEditorTestId(page, "editor-document-id");
-  await expect(editorDocumentId).toHaveText(documentId);
   const editorReady = await resolveEditorTestId(page, "editor-ready");
   await expect(editorReady).toHaveCount(1);
 });
