@@ -290,11 +290,11 @@ async function resolveEntityByName(
   name: string,
   type?: string
 ): Promise<{ entity: Doc<"entities"> | null; error?: string }> {
-  const matches = await ctx.runQuery(
+  const matches = (await ctx.runQuery(
     // @ts-expect-error Deep types
     internal["ai/tools/worldGraphHandlers"].findEntityByCanonical,
     { projectId, name, type }
-  );
+  )) as Doc<"entities">[] | null;
 
   if (!matches || matches.length === 0) {
     return { entity: null };

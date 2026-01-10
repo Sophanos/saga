@@ -28,6 +28,8 @@ export const chunkSchema = v.object({
   toolCallId: v.optional(v.string()),
   toolName: v.optional(v.string()),
   approvalId: v.optional(v.string()),
+  approvalType: v.optional(v.string()),
+  danger: v.optional(v.string()),
   args: v.optional(v.any()),
   data: v.optional(v.any()),
   promptMessageId: v.optional(v.string()),
@@ -40,6 +42,8 @@ export type StreamChunk = {
   toolCallId?: string;
   toolName?: string;
   approvalId?: string;
+  approvalType?: string;
+  danger?: string;
   args?: unknown;
   data?: unknown;
   promptMessageId?: string;
@@ -64,7 +68,7 @@ export const create = internalMutation({
       userId,
       type,
       status: "streaming",
-      chunks: [],
+      chunkCount: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -85,6 +89,8 @@ export const appendChunk = internalMutation({
       toolCallId: v.optional(v.string()),
       toolName: v.optional(v.string()),
       approvalId: v.optional(v.string()),
+      approvalType: v.optional(v.string()),
+      danger: v.optional(v.string()),
       args: v.optional(v.any()),
       data: v.optional(v.any()),
       promptMessageId: v.optional(v.string()),
@@ -96,11 +102,28 @@ export const appendChunk = internalMutation({
       throw new Error("Stream not found");
     }
 
-    const nextIndex = stream.chunks.length;
+    const legacyChunks = (stream as { chunks?: StreamChunk[] }).chunks;
+    const nextIndex = stream.chunkCount ?? legacyChunks?.length ?? 0;
     const newChunk = { ...chunk, index: nextIndex };
 
+    await ctx.db.insert("generationStreamChunks", {
+      streamId: streamId as Id<"generationStreams">,
+      index: nextIndex,
+      type: newChunk.type,
+      content: newChunk.content,
+      toolCallId: newChunk.toolCallId,
+      toolName: newChunk.toolName,
+      approvalId: newChunk.approvalId,
+      approvalType: newChunk.approvalType,
+      danger: newChunk.danger,
+      args: newChunk.args,
+      data: newChunk.data,
+      promptMessageId: newChunk.promptMessageId,
+      createdAt: Date.now(),
+    });
+
     await ctx.db.patch(streamId as Id<"generationStreams">, {
-      chunks: [...stream.chunks, newChunk],
+      chunkCount: nextIndex + 1,
       updatedAt: Date.now(),
     });
 
@@ -161,13 +184,22 @@ export const getChunks = internalQuery({
     }
 
     const startIndex = afterIndex ?? 0;
-    const chunks = stream.chunks.filter(
-      (c: StreamChunk) => c.index >= startIndex
-    );
+    const chunks = await ctx.db
+      .query("generationStreamChunks")
+      .withIndex("by_stream_index", (q) =>
+        q.eq("streamId", streamId as Id<"generationStreams">).gte("index", startIndex)
+      )
+      .order("asc")
+      .collect();
+
+    const legacyChunks = (stream as { chunks?: StreamChunk[] }).chunks;
+    const legacySlice = legacyChunks
+      ? legacyChunks.filter((c: StreamChunk) => c.index >= startIndex)
+      : [];
 
     return {
       status: stream.status,
-      chunks,
+      chunks: chunks.length > 0 ? chunks : legacySlice,
       result: stream.result,
       error: stream.error,
     };
@@ -204,11 +236,23 @@ export const watch = query({
       return null;
     }
 
+    const legacyChunks = (stream as { chunks?: StreamChunk[] }).chunks;
+    const chunkCount = stream.chunkCount ?? legacyChunks?.length ?? 0;
+
+    const lastStoredChunk = await ctx.db
+      .query("generationStreamChunks")
+      .withIndex("by_stream_index", (q) => q.eq("streamId", streamId))
+      .order("desc")
+      .first();
+
+    const lastChunk =
+      lastStoredChunk ?? (legacyChunks ? legacyChunks[legacyChunks.length - 1] ?? null : null);
+
     // Return essential state for UI
     return {
       status: stream.status,
-      chunkCount: stream.chunks.length,
-      lastChunk: stream.chunks[stream.chunks.length - 1] ?? null,
+      chunkCount,
+      lastChunk,
       result: stream.result,
       error: stream.error,
       updatedAt: stream.updatedAt,
@@ -231,13 +275,22 @@ export const replay = query({
     }
 
     const startIndex = afterIndex ?? 0;
-    const chunks = stream.chunks.filter(
-      (c: StreamChunk) => c.index >= startIndex
-    );
+    const chunks = await ctx.db
+      .query("generationStreamChunks")
+      .withIndex("by_stream_index", (q) =>
+        q.eq("streamId", streamId).gte("index", startIndex)
+      )
+      .order("asc")
+      .collect();
+
+    const legacyChunks = (stream as { chunks?: StreamChunk[] }).chunks;
+    const legacySlice = legacyChunks
+      ? legacyChunks.filter((c: StreamChunk) => c.index >= startIndex)
+      : [];
 
     return {
       status: stream.status,
-      chunks,
+      chunks: chunks.length > 0 ? chunks : legacySlice,
       result: stream.result,
       error: stream.error,
     };
