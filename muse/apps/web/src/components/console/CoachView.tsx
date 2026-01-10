@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { RefreshCw, Lightbulb, Zap, BookOpen, GraduationCap } from "lucide-react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
+import type { CommitDecisionArgs, CommitDecisionResult } from "@mythos/agent-protocol";
 import { TensionGraph } from "./TensionGraph";
 import { SensoryHeatmap } from "./SensoryHeatmap";
 import { ShowDontTellMeter } from "./ShowDontTellMeter";
@@ -8,6 +9,8 @@ import { StyleIssuesList } from "./StyleIssuesList";
 import { StyleFixPreviewModal } from "./StyleFixPreviewModal";
 import { useAnalysisData } from "../../hooks/useWritingAnalysis";
 import { useEditorNavigation } from "../../hooks/useEditorNavigation";
+import { useToolRuntime } from "../../hooks/useToolRuntime";
+import { getTool, type ToolDefinition } from "../../tools";
 import {
   useIsAnalyzing,
   usePacing,
@@ -17,7 +20,34 @@ import {
   useStyleIssues,
   useReadabilityMetrics,
 } from "../../stores/analysis";
+import { useMythosStore } from "../../stores";
 import type { StyleIssue } from "@mythos/core";
+
+function buildPolicyDecisionFromIssue(issue: StyleIssue): { decision: string; rationale: string } {
+  const templates: Partial<Record<StyleIssue["type"], string>> = {
+    telling: "Prefer showing (action/sensory detail) over telling.",
+    passive: "Prefer active voice unless intentionally passive.",
+    adverb: "Limit adverbs; choose stronger verbs/adjectives.",
+    repetition: "Avoid repetition; vary phrasing and sentence structure.",
+    ambiguous_pronoun: "Avoid ambiguous pronouns; make antecedents explicit.",
+    unclear_antecedent: "Clarify references; ensure antecedents are unambiguous.",
+    cliche: "Avoid clichés; use specific, original imagery.",
+    filler_word: "Cut filler words and hedging language.",
+    dangling_modifier: "Avoid dangling modifiers; ensure modifiers attach to the correct subject.",
+  };
+
+  const decision = templates[issue.type] ?? `Improve clarity: address ${issue.type} issues.`;
+  const rationaleParts: string[] = [];
+
+  rationaleParts.push("Pinned from coach issue.");
+  if (issue.line !== undefined) {
+    rationaleParts.push(`Line ${issue.line}.`);
+  }
+  rationaleParts.push(`Excerpt: "${issue.text}"`);
+  rationaleParts.push(`Suggestion: ${issue.suggestion}`);
+
+  return { decision, rationale: rationaleParts.join(" ") };
+}
 
 /**
  * Props for CoachView component
@@ -93,7 +123,7 @@ function InsightsPanel() {
       <div className="flex items-center gap-2 mb-2">
         <Lightbulb className="w-4 h-4 text-mythos-accent-cyan" />
         <span className="text-sm font-medium text-mythos-accent-cyan">
-          World Graph Insight
+          Coaching Notes
         </span>
       </div>
       <ul className="space-y-2">
@@ -248,6 +278,11 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
   const isAnalyzing = useIsAnalyzing();
   const { metrics, error } = useAnalysisData();
   const { jumpToLine, applyTextReplacement, isReady } = useEditorNavigation();
+  const { buildContext } = useToolRuntime();
+  const setSelectedMemoryId = useMythosStore((state) => state.setSelectedMemoryId);
+  const manifestCollapsed = useMythosStore((state) => state.ui.manifestCollapsed);
+  const toggleManifest = useMythosStore((state) => state.toggleManifest);
+  const documentId = useMythosStore((state) => state.document.currentDocument?.id ?? null);
   const dismissStyleIssue = useAnalysisStore((state) => state.dismissStyleIssue);
   const setSelectedStyleIssueId = useAnalysisStore(
     (state) => state.setSelectedStyleIssueId
@@ -256,6 +291,8 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
   // Style fix preview modal state
   const [previewIssue, setPreviewIssue] = useState<StyleIssue | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isPinningPolicy, setIsPinningPolicy] = useState(false);
+  const [policyError, setPolicyError] = useState<string | null>(null);
 
   // Get all style issues
   const styleIssues = useStyleIssues();
@@ -405,6 +442,59 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
     [isReady, styleIssues, applyTextReplacement, dismissStyleIssue, closeStyleFixPreview]
   );
 
+  const pinPolicyFromIssue = useCallback(
+    async (issue: StyleIssue) => {
+      const tool = getTool("commit_decision") as
+        | ToolDefinition<CommitDecisionArgs, CommitDecisionResult>
+        | undefined;
+      if (!tool) {
+        setPolicyError("commit_decision tool not registered");
+        return;
+      }
+
+      const ctx = buildContext();
+      if (!ctx) {
+        setPolicyError("No project selected");
+        return;
+      }
+
+      setIsPinningPolicy(true);
+      setPolicyError(null);
+
+      try {
+        const { decision, rationale } = buildPolicyDecisionFromIssue(issue);
+        const result = await tool.execute(
+          {
+            decision,
+            category: "policy",
+            rationale,
+            documentId: documentId ?? undefined,
+            pinned: true,
+          },
+          ctx
+        );
+
+        if (!result.success || !result.result?.memoryId) {
+          setPolicyError(result.error ?? "Failed to pin policy");
+          return;
+        }
+
+        const memoryId = result.result.memoryId;
+        setSelectedMemoryId(memoryId);
+        if (manifestCollapsed) {
+          toggleManifest();
+        }
+
+        closeStyleFixPreview();
+      } catch (e) {
+        setPolicyError(e instanceof Error ? e.message : "Failed to pin policy");
+      } finally {
+        setIsPinningPolicy(false);
+      }
+    },
+    [buildContext, closeStyleFixPreview, documentId, manifestCollapsed, setSelectedMemoryId, toggleManifest]
+  );
+
   return (
     <div className={cn("relative h-full flex flex-col", className)}>
       {/* Header */}
@@ -433,6 +523,11 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
       {error && (
         <div className="p-3 m-3 rounded bg-mythos-accent-red/10 border border-mythos-accent-red/30">
           <p className="text-xs text-mythos-accent-red">{error}</p>
+        </div>
+      )}
+      {policyError && (
+        <div className="p-3 m-3 rounded bg-mythos-accent-amber/10 border border-mythos-accent-amber/30">
+          <p className="text-xs text-mythos-accent-amber">{policyError}</p>
         </div>
       )}
 
@@ -499,6 +594,8 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
         onApplyFix={applyStyleFixFromPreview}
         onApplyAllSimilar={applyAllSimilarStyleFixes}
         similarIssuesCount={similarIssuesCount}
+        onPinPolicy={pinPolicyFromIssue}
+        isPinningPolicy={isPinningPolicy}
       />
     </div>
   );

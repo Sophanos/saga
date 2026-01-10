@@ -12,6 +12,7 @@
  * Environment Variables:
  *   SUPABASE_URL   - Supabase project URL
  *   SAGA_API_KEY   - Saga/Supabase API key (anon key or service role key)
+ *   SAGA_PROJECT_ID - Optional default projectId for project-scoped tools
  *
  * @packageDocumentation
  */
@@ -29,6 +30,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { SAGA_TOOLS, TOOL_MAP } from "./tools.js";
+import { PROJECT_REQUIRED_TOOLS } from "./tools.js";
 import {
   RESOURCE_TEMPLATES,
   fetchResource,
@@ -49,6 +51,7 @@ const SERVER_VERSION = "1.0.0";
 function getApiConfig(): SagaApiConfig {
   const supabaseUrl = process.env.SUPABASE_URL;
   const apiKey = process.env.SAGA_API_KEY || process.env.SUPABASE_ANON_KEY;
+  const defaultProjectId = process.env.SAGA_PROJECT_ID || process.env.SAGA_DEFAULT_PROJECT_ID;
 
   if (!supabaseUrl) {
     console.error("[saga-mcp] SUPABASE_URL environment variable is required");
@@ -62,12 +65,44 @@ function getApiConfig(): SagaApiConfig {
     process.exit(1);
   }
 
-  return { supabaseUrl, apiKey };
+  return { supabaseUrl, apiKey, defaultProjectId };
 }
 
 // =============================================================================
 // Tool Execution
 // =============================================================================
+
+function resolveProjectIdForTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  config: SagaApiConfig
+): { args: Record<string, unknown>; projectId?: string; error?: string } {
+  const effectiveArgs: Record<string, unknown> = { ...args };
+  const projectIdFromArgs = typeof effectiveArgs.projectId === "string" ? effectiveArgs.projectId : undefined;
+
+  if (projectIdFromArgs) {
+    return { args: effectiveArgs, projectId: projectIdFromArgs };
+  }
+
+  if (PROJECT_REQUIRED_TOOLS.has(toolName)) {
+    if (config.defaultProjectId) {
+      console.error(
+        `[saga-mcp] Using default projectId for ${toolName}: ${config.defaultProjectId}`
+      );
+      effectiveArgs.projectId = config.defaultProjectId;
+      return { args: effectiveArgs, projectId: config.defaultProjectId };
+    }
+
+    return {
+      args: effectiveArgs,
+      error:
+        `Missing projectId for ${toolName}. ` +
+        `Pass {"projectId":"..."} or set SAGA_PROJECT_ID (or SAGA_DEFAULT_PROJECT_ID).`,
+    };
+  }
+
+  return { args: effectiveArgs, projectId: undefined };
+}
 
 /**
  * Executes a tool by calling the Saga API.
@@ -80,6 +115,14 @@ async function executeTool(
   console.error(`[saga-mcp] Executing tool: ${toolName}`);
 
   try {
+    const resolved = resolveProjectIdForTool(toolName, args, config);
+    if (resolved.error) {
+      return {
+        content: [{ type: "text", text: resolved.error }],
+        isError: true,
+      };
+    }
+
     // Call the Saga edge function
     const response = await fetch(`${config.supabaseUrl}/functions/v1/ai-saga`, {
       method: "POST",
@@ -91,8 +134,8 @@ async function executeTool(
       body: JSON.stringify({
         kind: "execute_tool",
         toolName,
-        input: args,
-        projectId: args.projectId as string | undefined,
+        input: resolved.args,
+        projectId: resolved.projectId,
       }),
     });
 
@@ -143,7 +186,15 @@ async function executeSearchTool(
   args: Record<string, unknown>,
   config: SagaApiConfig
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const projectId = args.projectId as string;
+  const resolved = resolveProjectIdForTool("search_entities", args, config);
+  if (resolved.error) {
+    return {
+      content: [{ type: "text", text: resolved.error }],
+      isError: true,
+    };
+  }
+
+  const projectId = resolved.projectId as string;
   const query = args.query as string;
 
   if (!projectId || !query) {
@@ -244,6 +295,14 @@ function createServer(config: SagaApiConfig): Server {
     const { name, arguments: args = {} } = request.params;
     console.error(`[saga-mcp] Tool call: ${name}`);
 
+    const resolvedArgs = resolveProjectIdForTool(name, args as Record<string, unknown>, config);
+    if (resolvedArgs.error) {
+      return {
+        content: [{ type: "text", text: resolvedArgs.error }],
+        isError: true,
+      };
+    }
+
     // Validate tool exists
     if (!TOOL_MAP.has(name)) {
       return {
@@ -259,11 +318,11 @@ function createServer(config: SagaApiConfig): Server {
 
     // Handle search_entities locally
     if (name === "search_entities") {
-      return executeSearchTool(args as Record<string, unknown>, config);
+      return executeSearchTool(resolvedArgs.args, config);
     }
 
     // Execute tool via Saga API
-    return executeTool(name, args as Record<string, unknown>, config);
+    return executeTool(name, resolvedArgs.args, config);
   });
 
   // ---------------------------------------------------------------------------

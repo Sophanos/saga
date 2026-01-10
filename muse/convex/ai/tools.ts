@@ -381,6 +381,7 @@ Respond with JSON containing a "names" array.`;
 
 interface CommitDecisionInput {
   decision: string;
+  category?: "decision" | "policy";
   rationale?: string;
   entityIds?: string[];
   documentId?: string;
@@ -402,6 +403,9 @@ async function executeCommitDecision(
   const decision = input.decision?.trim();
   if (!decision) {
     throw new Error("decision is required and cannot be empty");
+  }
+  if (input.category && input.category !== "decision" && input.category !== "policy") {
+    throw new Error('category must be "decision" or "policy"');
   }
   if (decision.length > MAX_DECISION_LENGTH) {
     throw new Error(`decision exceeds maximum length of ${MAX_DECISION_LENGTH} characters`);
@@ -441,7 +445,7 @@ async function executeCommitDecision(
     project_id: projectId,
     memory_id: memoryId,
     type: "memory",
-    category: "decision",
+    category: input.category ?? "decision",
     scope: "project",
     text: content,
     source: "user",

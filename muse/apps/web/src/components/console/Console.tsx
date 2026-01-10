@@ -5,6 +5,7 @@ import {
   BarChart3,
   Search,
   Activity as ActivityIcon,
+  GitPullRequest,
 } from "lucide-react";
 import { jumpToPosition } from "@mythos/editor";
 import { DynamicsView } from "./DynamicsView";
@@ -12,6 +13,7 @@ import { CoachView } from "./CoachView";
 import { LinterView } from "./LinterView";
 import { AnalysisDashboard } from "./AnalysisDashboard";
 import { SearchPanel } from "./SearchPanel";
+import { KnowledgePRsView } from "./KnowledgePRsView";
 import { ChatPanel } from "../chat";
 import { ActivityFeed } from "../collaboration";
 import {
@@ -243,6 +245,18 @@ export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
           Activity
         </button>
         <button
+          onClick={() => setActiveTab("knowledge")}
+          className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === "knowledge"
+              ? "text-mythos-accent-primary border-b-2 border-mythos-accent-primary"
+              : "text-mythos-text-muted hover:text-mythos-text-secondary"
+          }`}
+          data-testid="knowledge-open"
+        >
+          <GitPullRequest className="w-4 h-4" />
+          Knowledge PRs
+        </button>
+        <button
           onClick={() => setActiveTab("dynamics")}
           className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
             activeTab === "dynamics"
@@ -262,7 +276,7 @@ export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
           }`}
         >
           <TrendingUp className="w-4 h-4" />
-          Coach
+          Clarity
         </button>
         <button
           onClick={() => setActiveTab("history")}
@@ -303,6 +317,8 @@ export function Console({ isAnonymous = false, onSignUp }: ConsoleProps) {
         />
       ) : activeTab === "activity" ? (
         <ActivityFeed showHeader={false} compact />
+      ) : activeTab === "knowledge" ? (
+        <KnowledgePRsView />
       ) : activeTab === "dynamics" ? (
         <DynamicsView />
       ) : activeTab === "coach" ? (

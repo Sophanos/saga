@@ -6,6 +6,7 @@ import {
   RefreshCcw,
   Copy,
   CheckCircle2,
+  BookmarkPlus,
   Layers,
   HelpCircle,
   Link2,
@@ -45,6 +46,10 @@ interface StyleFixPreviewModalProps {
   similarIssuesCount?: number;
   /** Whether a fix is currently being applied */
   isApplying?: boolean;
+  /** Pin the issue type as a project policy */
+  onPinPolicy?: (issue: StyleIssue) => void;
+  /** Whether a policy pin is currently in progress */
+  isPinningPolicy?: boolean;
 }
 
 /**
@@ -131,6 +136,8 @@ export function StyleFixPreviewModal({
   onApplyAllSimilar,
   similarIssuesCount = 0,
   isApplying = false,
+  onPinPolicy,
+  isPinningPolicy = false,
 }: StyleFixPreviewModalProps) {
   // Handle keyboard events
   const handleKeyDown = useCallback(
@@ -159,6 +166,12 @@ export function StyleFixPreviewModal({
       onApplyAllSimilar(issue.type);
     }
   }, [issue, onApplyAllSimilar]);
+
+  const handlePinPolicy = useCallback(() => {
+    if (issue && onPinPolicy) {
+      onPinPolicy(issue);
+    }
+  }, [issue, onPinPolicy]);
 
   if (!isOpen || !issue) return null;
 
@@ -320,6 +333,19 @@ export function StyleFixPreviewModal({
             >
               <Layers className="w-3 h-3 mr-1.5" />
               Apply All {typeConfig.label} Fixes ({similarIssuesCount} issues)
+            </Button>
+          )}
+
+          {onPinPolicy && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handlePinPolicy}
+              disabled={isApplying || isPinningPolicy}
+              className="w-full h-8 text-xs text-mythos-text-muted hover:text-mythos-text-primary"
+            >
+              <BookmarkPlus className="w-3 h-3 mr-1.5" />
+              Pin as Policy
             </Button>
           )}
 

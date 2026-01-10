@@ -6,6 +6,8 @@ import { useHistoryStore } from "../stores/history";
 import { useMythosStore } from "../stores";
 import { simpleHash } from "../utils/hash";
 import { getAnalysisPersistenceQueue, type PersistenceQueueState } from "../services/analysis";
+import { executeClarityCheck } from "../services/ai/sagaClient";
+import { useApiKey } from "./useApiKey";
 
 /**
  * Debounce delay in milliseconds before triggering analysis
@@ -92,6 +94,8 @@ export function useWritingAnalysis(
 ): UseWritingAnalysisResult {
   const { content, autoAnalyze = true, debounceMs = DEBOUNCE_DELAY, enabled = true } = options;
 
+  const { key: apiKey } = useApiKey();
+
   // Store state and actions
   const {
     metrics,
@@ -105,6 +109,9 @@ export function useWritingAnalysis(
     updateAnalysis,
     clearAnalysis,
     updatePersistenceState,
+    setClarityIssues,
+    setReadabilityMetrics,
+    clearClarity,
   } = useAnalysisStore();
 
   // History store actions
@@ -177,9 +184,32 @@ export function useWritingAnalysis(
 
     setAnalyzing(true);
     setError(null);
+    clearClarity();
 
     try {
-      const result = await writingCoach.quickAnalyze(content);
+      const coachPromise = writingCoach.quickAnalyze(content);
+      const clarityPromise =
+        apiKey && currentProject?.id
+          ? executeClarityCheck(
+              { scope: "document", maxIssues: 25, text: content },
+              {
+                apiKey,
+                projectId: currentProject.id,
+                signal: abortControllerRef.current.signal,
+              }
+            )
+          : Promise.resolve(null);
+
+      const [coachSettled, claritySettled] = await Promise.allSettled([
+        coachPromise,
+        clarityPromise,
+      ]);
+
+      if (coachSettled.status === "rejected") {
+        throw coachSettled.reason;
+      }
+
+      const result = coachSettled.value;
 
       // Check if we were aborted
       if (abortControllerRef.current?.signal.aborted) {
@@ -213,6 +243,31 @@ export function useWritingAnalysis(
 
       // Update last analyzed content
       lastContentRef.current = content;
+
+      if (claritySettled.status === "fulfilled" && claritySettled.value) {
+        const clarityResult = claritySettled.value;
+
+        const clarityIssues: StyleIssue[] = clarityResult.issues.map((issue) => ({
+          id: issue.id,
+          type: issue.type as StyleIssue["type"],
+          text: issue.text,
+          line: issue.line,
+          position: issue.position,
+          suggestion: issue.suggestion,
+          fix: issue.fix,
+        }));
+
+        setClarityIssues(clarityIssues);
+        setReadabilityMetrics(clarityResult.metrics);
+      } else if (claritySettled.status === "rejected") {
+        console.warn("[useWritingAnalysis] Clarity check failed:", claritySettled.reason);
+        setReadabilityMetrics(null);
+        setClarityIssues([]);
+      } else {
+        // No clarity check (missing apiKey or project context)
+        setReadabilityMetrics(null);
+        setClarityIssues([]);
+      }
     } catch (err) {
       // Ignore abort errors
       if (err instanceof Error && err.name === "AbortError") {

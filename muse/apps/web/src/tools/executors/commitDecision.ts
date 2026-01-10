@@ -66,6 +66,7 @@ export const commitDecisionExecutor: ToolDefinition<CommitDecisionArgs, CommitDe
         projectId: ctx.projectId,
         input: {
           decision: args.decision,
+          category: args.category,
           rationale: args.rationale,
           entityIds: args.entityIds,
           documentId: args.documentId,

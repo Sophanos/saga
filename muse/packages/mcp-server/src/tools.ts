@@ -79,6 +79,66 @@ const NAME_CULTURES = [
   "custom",
 ] as const;
 
+const DECISION_CATEGORIES = [
+  "decision",
+  "policy",
+] as const;
+
+const ASSET_TYPES = [
+  "portrait",
+  "scene",
+  "location",
+  "item",
+  "reference",
+  "other",
+] as const;
+
+const IMAGE_STYLES = [
+  "fantasy_art",
+  "dark_fantasy",
+  "high_fantasy",
+  "manga",
+  "anime",
+  "light_novel",
+  "visual_novel",
+  "realistic",
+  "oil_painting",
+  "watercolor",
+  "concept_art",
+  "portrait_photo",
+  "sci_fi",
+  "horror",
+  "romance",
+  "noir",
+  "comic_book",
+  "pixel_art",
+  "chibi",
+] as const;
+
+const ASPECT_RATIOS = [
+  "1:1",
+  "3:4",
+  "4:3",
+  "9:16",
+  "16:9",
+  "2:3",
+  "3:2",
+] as const;
+
+const EXTRACTION_FOCUS = [
+  "full",
+  "appearance",
+  "environment",
+  "object",
+] as const;
+
+const SCENE_FOCUS = [
+  "action",
+  "dialogue",
+  "establishing",
+  "dramatic",
+] as const;
+
 // =============================================================================
 // Tool Definitions
 // =============================================================================
@@ -828,6 +888,269 @@ export const generateContentTool: Tool = {
   },
 };
 
+/**
+ * Commit Decision Tool
+ * Stores a pinned canon or policy decision in project memory.
+ */
+export const commitDecisionTool: Tool = {
+  name: "commit_decision",
+  description:
+    "Store a pinned canon (story fact) or policy (house style) decision in project memory for future citation and enforcement.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID",
+      },
+      decision: {
+        type: "string",
+        description: "Canonical decision statement to store",
+      },
+      category: {
+        type: "string",
+        enum: DECISION_CATEGORIES,
+        description: "Decision category: decision (canon) or policy (house style)",
+      },
+      rationale: {
+        type: "string",
+        description: "Optional rationale/evidence for the decision",
+      },
+      entityIds: {
+        type: "array",
+        items: { type: "string" },
+        description: "Related entity IDs (optional)",
+      },
+      documentId: {
+        type: "string",
+        description: "Source document ID (optional)",
+      },
+      confidence: {
+        type: "number",
+        minimum: 0,
+        maximum: 1,
+        description: "Confidence score (0-1, optional)",
+      },
+      pinned: {
+        type: "boolean",
+        description: "Pin decision (default true on server)",
+      },
+    },
+    required: ["decision"],
+  },
+};
+
+/**
+ * Search Images Tool
+ * Semantic text→image search over project assets.
+ */
+export const searchImagesTool: Tool = {
+  name: "search_images",
+  description:
+    "Search for images in the project using semantic text search (CLIP embeddings). Returns ranked image hits.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID to search in",
+      },
+      query: {
+        type: "string",
+        description: "Search query for the images",
+      },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 20,
+        description: "Maximum number of results (default 10)",
+      },
+      assetType: {
+        type: "string",
+        enum: ASSET_TYPES,
+        description: "Filter by asset type",
+      },
+      entityId: {
+        type: "string",
+        description: "Filter by entity ID",
+      },
+      entityType: {
+        type: "string",
+        enum: ENTITY_TYPES,
+        description: "Filter by entity type",
+      },
+      style: {
+        type: "string",
+        enum: IMAGE_STYLES,
+        description: "Optional style filter",
+      },
+    },
+    required: ["query"],
+  },
+};
+
+/**
+ * Find Similar Images Tool
+ * Image→image similarity search using CLIP embeddings.
+ */
+export const findSimilarImagesTool: Tool = {
+  name: "find_similar_images",
+  description:
+    "Find images similar to a reference image (by assetId) or an entity's portrait. Returns ranked results.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID to search in",
+      },
+      assetId: {
+        type: "string",
+        description: "UUID of the reference image asset",
+      },
+      entityName: {
+        type: "string",
+        description: "Entity name to use their portrait as reference (optional)",
+      },
+      entityType: {
+        type: "string",
+        enum: ENTITY_TYPES,
+        description: "Entity type for disambiguation (optional)",
+      },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 20,
+        description: "Maximum number of results (default 10)",
+      },
+      assetType: {
+        type: "string",
+        enum: ASSET_TYPES,
+        description: "Filter by asset type",
+      },
+    },
+  },
+};
+
+/**
+ * Analyze Image Tool
+ * Extracts structured visual details from an image.
+ */
+export const analyzeImageTool: Tool = {
+  name: "analyze_image",
+  description:
+    "Analyze an uploaded/reference image to extract structured visual details (appearance, environment, objects).",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID",
+      },
+      imageSource: {
+        type: "string",
+        description: "Base64 data URL or storage path of the image",
+      },
+      entityTypeHint: {
+        type: "string",
+        enum: ENTITY_TYPES,
+        description: "Optional entity type hint",
+      },
+      extractionFocus: {
+        type: "string",
+        enum: EXTRACTION_FOCUS,
+        description: "What to focus extraction on (default full)",
+      },
+    },
+    required: ["imageSource"],
+  },
+};
+
+/**
+ * Create Entity From Image Tool
+ * Upload → analyze → create entity (+ optional portrait) composite.
+ */
+export const createEntityFromImageTool: Tool = {
+  name: "create_entity_from_image",
+  description:
+    "Create an entity from an image: upload/analyze the image and create an entity, optionally setting the portrait.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID",
+      },
+      imageData: {
+        type: "string",
+        description: "Base64 encoded image data (data URL)",
+      },
+      name: {
+        type: "string",
+        description: "Optional name for the entity",
+      },
+      entityType: {
+        type: "string",
+        enum: ENTITY_TYPES,
+        description: "Optional entity type (default character)",
+      },
+      setAsPortrait: {
+        type: "boolean",
+        description: "Whether to set the image as entity portrait (default true)",
+      },
+    },
+    required: ["imageData"],
+  },
+};
+
+/**
+ * Illustrate Scene Tool
+ * Generates a scene illustration from narrative text.
+ */
+export const illustrateSceneTool: Tool = {
+  name: "illustrate_scene",
+  description:
+    "Generate a scene illustration from narrative text. Optionally includes character portrait references for consistency.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID",
+      },
+      sceneText: {
+        type: "string",
+        description: "The narrative text describing the scene",
+      },
+      characterNames: {
+        type: "array",
+        items: { type: "string" },
+        description: "Character names to include (optional)",
+      },
+      style: {
+        type: "string",
+        enum: IMAGE_STYLES,
+        description: "Art style preset (optional)",
+      },
+      aspectRatio: {
+        type: "string",
+        enum: ASPECT_RATIOS,
+        description: "Aspect ratio (default 16:9 for scenes)",
+      },
+      sceneFocus: {
+        type: "string",
+        enum: SCENE_FOCUS,
+        description: "Composition focus (optional)",
+      },
+      negativePrompt: {
+        type: "string",
+        description: "Negative prompt (what to avoid, optional)",
+      },
+    },
+    required: ["sceneText"],
+  },
+};
+
 // =============================================================================
 // Tool Registry
 // =============================================================================
@@ -850,6 +1173,8 @@ export const SAGA_TOOLS: Tool[] = [
   // World generation
   genesisWorldTool,
   generateTemplateTool,
+  // Canon / policy decisions
+  commitDecisionTool,
   // Analysis
   detectEntitiesTool,
   checkConsistencyTool,
@@ -857,6 +1182,12 @@ export const SAGA_TOOLS: Tool[] = [
   checkLogicTool,
   // Utilities
   nameGeneratorTool,
+  // Images
+  searchImagesTool,
+  findSimilarImagesTool,
+  analyzeImageTool,
+  createEntityFromImageTool,
+  illustrateSceneTool,
 ];
 
 /**
@@ -879,6 +1210,12 @@ export const PROJECT_REQUIRED_TOOLS = new Set([
   "update_edge",
   "search_entities",
   "generate_content",
+  "commit_decision",
+  "search_images",
+  "find_similar_images",
+  "analyze_image",
+  "create_entity_from_image",
+  "illustrate_scene",
 ]);
 
 /**

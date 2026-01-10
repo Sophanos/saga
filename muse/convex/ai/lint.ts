@@ -10,6 +10,7 @@ import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { CONSISTENCY_LINTER_SYSTEM } from "./prompts/linter";
+import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
 import { getModelForTaskSync, checkTaskAccess, type TierId } from "../lib/providers";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -75,6 +76,15 @@ function buildAnalysisPrompt(
 
 function parseResponse(response: string): ConsistencyIssue[] {
   try {
+    // Prefer direct JSON parsing when response_format is used
+    const trimmed = response.trim();
+    if (trimmed.startsWith("{")) {
+      const parsed = JSON.parse(trimmed) as { issues?: unknown[] };
+      if (parsed.issues && Array.isArray(parsed.issues)) {
+        return parsed.issues as ConsistencyIssue[];
+      }
+    }
+
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]) as { issues?: unknown[] };
@@ -140,7 +150,25 @@ export const runLint = internalAction({
     }
 
     const resolved = getModelForTaskSync("lint", tierId);
-    const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships);
+    let canonDecisionsText: string | undefined;
+    try {
+      const pinnedCanon = await fetchPinnedProjectMemories(projectId, {
+        limit: 25,
+        categories: ["decision"],
+      });
+      if (pinnedCanon.length > 0) {
+        canonDecisionsText = formatMemoriesForPrompt(pinnedCanon);
+      }
+    } catch (error) {
+      console.warn("[ai/lint] Failed to fetch pinned canon memories:", error);
+    }
+
+    const userPrompt = buildAnalysisPrompt(
+      documentContent,
+      entities,
+      relationships,
+      canonDecisionsText
+    );
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
@@ -156,6 +184,7 @@ export const runLint = internalAction({
           { role: "system", content: CONSISTENCY_LINTER_SYSTEM },
           { role: "user", content: userPrompt },
         ],
+        response_format: { type: "json_object" },
         temperature: 0.2,
         max_tokens: 4096,
       }),

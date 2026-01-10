@@ -18,6 +18,15 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 
 - Phase 1: Project Graph (`projectTypeRegistry` + `create_node`/`update_node`/`create_edge`/`update_edge` + registry-aware approvals)
 - Phase 2: Knowledge PRs (`knowledgeSuggestions` + `suggestionId` in streams + tool-result resolution)
+- Phase 3: Integrations (MCP)
+  - Expanded MCP tool surface + project defaults (`SAGA_PROJECT_ID`) for external clients
+  - Added `commit_decision` + image tooling to MCP (`search_images`, `find_similar_images`, `analyze_image`, `create_entity_from_image`, `illustrate_scene`)
+- Phase 3: Canon Promotion + Citations
+  - Contradiction resolution now promotes user choices into pinned canon memories (`commit_decision`)
+  - Linter consumes pinned canon decisions and emits `canonCitations` for jump-to-canon UX
+- Phase 4: Clarity/Policy Coach
+  - “Coach” refocused as “Clarity” with readability + clarity issues (`clarity_check`)
+  - Policy rules can be pinned as project memory (`commit_decision` with `category="policy"`)
 
 ### Recent Updates (2026-01-09)
 

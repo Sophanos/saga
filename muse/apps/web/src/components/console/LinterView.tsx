@@ -21,13 +21,22 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
+import type { CommitDecisionArgs, CommitDecisionResult } from "@mythos/agent-protocol";
+import type { CanonChoice } from "@mythos/ai";
+import {
+  ConsistencyChoiceModal,
+  type ConsistencyIssueWithChoices,
+} from "../modals/ConsistencyChoiceModal";
 import {
   useLinterIssues,
   useIsLinting,
   useLinterError,
   type LinterIssue,
+  useMythosStore,
 } from "../../stores";
 import { useCanUndo, useCanRedo, useUndoCount } from "../../stores/undo";
+import { useToolRuntime } from "../../hooks/useToolRuntime";
+import { getTool, type ToolDefinition } from "../../tools";
 import { FixPreviewModal } from "./FixPreviewModal";
 import {
   SEVERITY_CONFIG,
@@ -102,6 +111,39 @@ function generateIssueId(issue: LinterIssue, index: number): string {
   return issue.id || `${issue.type}-${issue.severity}-${issue.location.line}-${index}`;
 }
 
+function buildCanonDecisionRationale(issue: LinterIssue, choice: CanonChoice): string {
+  const parts: string[] = [];
+
+  parts.push(`Issue: ${issue.message}`);
+
+  if (issue.canonQuestion) {
+    parts.push(`Question: ${issue.canonQuestion}`);
+  }
+
+  parts.push(`Chosen: ${choice.label}`);
+
+  if (choice.explanation) {
+    parts.push(`Explanation: ${choice.explanation}`);
+  }
+
+  const evidence: Array<{ line?: number; text: string }> = [];
+  if (issue.location?.text) {
+    evidence.push({ line: issue.location.line, text: issue.location.text });
+  }
+  if (issue.evidence && issue.evidence.length > 0) {
+    evidence.push(...issue.evidence);
+  }
+
+  if (evidence.length > 0) {
+    const lines = evidence
+      .slice(0, 6)
+      .map((e) => (e.line !== undefined ? `Line ${e.line}: "${e.text}"` : `"${e.text}"`));
+    parts.push(`Evidence:\n${lines.join("\n")}`);
+  }
+
+  return parts.join("\n");
+}
+
 /**
  * Severity badge in header
  */
@@ -162,6 +204,7 @@ function IssueItem({
   onJumpToRelatedLocation,
   onJumpToCanon,
   onApplyFix,
+  onEstablishCanon,
   onPreview,
 }: {
   issue: LinterIssue;
@@ -170,11 +213,13 @@ function IssueItem({
   onJumpToRelatedLocation?: (line: number, text: string) => void;
   onJumpToCanon?: (memoryId: string) => void;
   onApplyFix?: (issueId: string, fix: string) => void;
+  onEstablishCanon?: (issue: LinterIssue) => void;
   onPreview?: (issue: LinterIssue) => void;
 }) {
   const severityConf = SEVERITY_CONFIG[issue.severity];
   const SeverityIcon = getSeverityIconComponent(issue.severity);
   const hasFix = Boolean(issue.suggestion);
+  const canEstablishCanon = Boolean(issue.isContradiction && issue.canonChoices && issue.canonChoices.length > 0);
 
   return (
     <div
@@ -299,13 +344,24 @@ function IssueItem({
       )}
 
       {/* Actions */}
-      {hasFix && (
+      {(hasFix || canEstablishCanon) && (
         <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-mythos-text-muted/10">
+          {canEstablishCanon && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => onEstablishCanon?.(issue)}
+            >
+              Establish Canon
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
             className="h-7 text-xs opacity-70 hover:opacity-100"
             onClick={() => onPreview?.(issue)}
+            disabled={!hasFix}
           >
             <Eye className="w-3 h-3" />
             Preview
@@ -315,6 +371,7 @@ function IssueItem({
             variant="ghost"
             className="h-7 text-xs opacity-70 hover:opacity-100"
             onClick={() => onApplyFix?.(issueId, issue.suggestion)}
+            disabled={!hasFix}
           >
             <Wand2 className="w-3 h-3" />
             Auto-Fix
@@ -335,6 +392,7 @@ function SeveritySection({
   onJumpToRelatedLocation,
   onJumpToCanon,
   onApplyFix,
+  onEstablishCanon,
   onPreview,
 }: {
   severity: Severity;
@@ -343,6 +401,7 @@ function SeveritySection({
   onJumpToRelatedLocation?: (line: number, text: string) => void;
   onJumpToCanon?: (memoryId: string) => void;
   onApplyFix?: (issueId: string, fix: string) => void;
+  onEstablishCanon?: (issue: LinterIssue) => void;
   onPreview?: (issue: LinterIssue) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -401,6 +460,7 @@ function SeveritySection({
               onJumpToRelatedLocation={onJumpToRelatedLocation}
               onJumpToCanon={onJumpToCanon}
               onApplyFix={onApplyFix}
+              onEstablishCanon={onEstablishCanon}
               onPreview={onPreview}
             />
           ))}
@@ -573,10 +633,19 @@ export function LinterView({
   const canUndo = useCanUndo();
   const canRedo = useCanRedo();
   const undoCount = useUndoCount();
+  const setLinterIssues = useMythosStore((s) => s.setLinterIssues);
+  const documentId = useMythosStore((s) => s.document.currentDocument?.id ?? null);
+  const { buildContext } = useToolRuntime();
 
   // Preview modal state
   const [previewIssue, setPreviewIssue] = useState<LinterIssue | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Canon decision modal state (Phase 3)
+  const [canonIssue, setCanonIssue] = useState<LinterIssue | null>(null);
+  const [isCanonModalOpen, setIsCanonModalOpen] = useState(false);
+  const [isCommittingCanon, setIsCommittingCanon] = useState(false);
+  const [canonCommitError, setCanonCommitError] = useState<string | null>(null);
 
   // Group issues by severity with IDs
   const groupedIssues = useMemo(() => {
@@ -612,11 +681,90 @@ export function LinterView({
     setIsPreviewOpen(true);
   }, []);
 
+  const handleOpenCanonModal = useCallback((issue: LinterIssue) => {
+    if (!issue.isContradiction || !issue.canonChoices || issue.canonChoices.length === 0) {
+      return;
+    }
+
+    setCanonCommitError(null);
+    setCanonIssue(issue);
+    setIsCanonModalOpen(true);
+  }, []);
+
   // Handle closing preview modal
   const handleClosePreview = useCallback(() => {
     setIsPreviewOpen(false);
     setPreviewIssue(null);
   }, []);
+
+  const handleCloseCanonModal = useCallback(() => {
+    if (isCommittingCanon) return;
+    setIsCanonModalOpen(false);
+    setCanonIssue(null);
+    setCanonCommitError(null);
+  }, [isCommittingCanon]);
+
+  const handleChooseCanon = useCallback(
+    async (_choiceId: string, choice: CanonChoice) => {
+      if (!canonIssue) return;
+
+      const tool = getTool("commit_decision") as
+        | ToolDefinition<CommitDecisionArgs, CommitDecisionResult>
+        | undefined;
+      if (!tool) {
+        setCanonCommitError("commit_decision tool not registered");
+        return;
+      }
+
+      const ctx = buildContext();
+      if (!ctx) {
+        setCanonCommitError("No project selected");
+        return;
+      }
+
+      setIsCommittingCanon(true);
+      setCanonCommitError(null);
+
+      try {
+        const result = await tool.execute(
+          {
+            decision: choice.label,
+            category: "decision",
+            rationale: buildCanonDecisionRationale(canonIssue, choice),
+            documentId: documentId ?? undefined,
+            pinned: true,
+          },
+          ctx
+        );
+
+        if (!result.success || !result.result?.memoryId) {
+          setCanonCommitError(result.error ?? "Failed to establish canon");
+          return;
+        }
+
+        const memoryId = result.result.memoryId;
+
+        const updated = issues.map((issue) => {
+          if (issue.id !== canonIssue.id) return issue;
+          const existing = issue.canonCitations ?? [];
+          const next = existing.some((c) => c.memoryId === memoryId)
+            ? existing
+            : [...existing, { memoryId, excerpt: choice.label, reason: "Established by user choice" }];
+          return { ...issue, canonCitations: next };
+        });
+        setLinterIssues(updated);
+
+        setIsCanonModalOpen(false);
+        setCanonIssue(null);
+        onJumpToCanon?.(memoryId);
+      } catch (e) {
+        setCanonCommitError(e instanceof Error ? e.message : "Failed to establish canon");
+      } finally {
+        setIsCommittingCanon(false);
+      }
+    },
+    [buildContext, canonIssue, documentId, issues, onJumpToCanon, setLinterIssues]
+  );
 
   // Handle applying fix from preview modal
   const handleApplyFromPreview = useCallback(
@@ -695,6 +843,11 @@ export function LinterView({
           <p className="text-xs text-mythos-accent-red">{error}</p>
         </div>
       )}
+      {canonCommitError && (
+        <div className="p-3 m-3 rounded bg-mythos-accent-amber/10 border border-mythos-accent-amber/30">
+          <p className="text-xs text-mythos-accent-amber">{canonCommitError}</p>
+        </div>
+      )}
 
       {/* Content */}
       <ScrollArea className="flex-1">
@@ -713,6 +866,7 @@ export function LinterView({
                   onJumpToRelatedLocation={onJumpToRelatedLocation}
                   onJumpToCanon={onJumpToCanon}
                   onApplyFix={onApplyFix}
+                  onEstablishCanon={handleOpenCanonModal}
                   onPreview={handleOpenPreview}
                 />
               ))}
@@ -729,6 +883,14 @@ export function LinterView({
         onApplyFix={handleApplyFromPreview}
         onApplyAllSimilar={handleApplyAllSimilar}
         similarIssuesCount={previewIssue ? getSimilarIssuesCount(previewIssue.type) : 0}
+      />
+
+      <ConsistencyChoiceModal
+        isOpen={isCanonModalOpen}
+        issue={canonIssue ? (canonIssue as unknown as ConsistencyIssueWithChoices) : null}
+        onClose={handleCloseCanonModal}
+        onChoose={handleChooseCanon}
+        isApplying={isCommittingCanon}
       />
     </div>
   );

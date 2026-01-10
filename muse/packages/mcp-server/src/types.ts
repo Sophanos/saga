@@ -70,6 +70,27 @@ export type NameCulture =
 export type NameStyle = "short" | "standard" | "long";
 
 // =============================================================================
+// Canon / Policy Decision Types
+// =============================================================================
+
+export type DecisionCategory = "decision" | "policy";
+
+export interface CommitDecisionInput {
+  decision: string;
+  rationale?: string;
+  entityIds?: string[];
+  documentId?: string;
+  confidence?: number;
+  pinned?: boolean;
+  category?: DecisionCategory;
+}
+
+export interface CommitDecisionResult {
+  memoryId: string;
+  content: string;
+}
+
+// =============================================================================
 // Genesis World Types
 // =============================================================================
 
@@ -250,6 +271,51 @@ export interface NameGeneratorResult {
 }
 
 // =============================================================================
+// Image Search Types
+// =============================================================================
+
+export type AssetType = "portrait" | "scene" | "location" | "item" | "reference" | "other";
+
+export interface SearchImagesInput {
+  query: string;
+  limit?: number;
+  assetType?: AssetType;
+  entityId?: string;
+  entityType?: EntityType;
+  style?: string;
+}
+
+export interface ImageSearchHit {
+  id: string;
+  url: string;
+  thumbnailUrl?: string;
+  description?: string;
+  entityId?: string;
+  entityName?: string;
+  assetType?: string;
+  style?: string;
+  score: number;
+}
+
+export interface SearchImagesResult {
+  query: string;
+  results: ImageSearchHit[];
+}
+
+export interface FindSimilarImagesInput {
+  assetId?: string;
+  entityName?: string;
+  entityType?: EntityType;
+  limit?: number;
+  assetType?: AssetType;
+}
+
+export interface FindSimilarImagesResult {
+  referenceAssetId: string;
+  results: ImageSearchHit[];
+}
+
+// =============================================================================
 // Template Types
 // =============================================================================
 
@@ -309,6 +375,7 @@ export interface GenerateTemplateResult {
 export interface SagaApiConfig {
   supabaseUrl: string;
   apiKey: string;
+  defaultProjectId?: string;
 }
 
 export interface ToolExecuteResult<T = unknown> {

@@ -588,6 +588,8 @@ export interface FindSimilarImagesArgs {
 export interface CommitDecisionArgs {
   /** Canonical decision statement */
   decision: string;
+  /** Decision category (canon vs house style) */
+  category?: "decision" | "policy";
   /** Optional rationale/evidence */
   rationale?: string;
   /** Related entities */
