@@ -1,6 +1,9 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-10 (Project Graph + Knowledge PRs; Writer tools: Focus Mode, Grammar/Style, Logic Validation) | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-10 (Project Graph + Knowledge PRs; UI integration checklist; Writer tools: Focus Mode, Grammar/Style, Logic Validation) | **Target:** Web + macOS first, then iOS/iPad
+>
+> See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
+> See also: [MLP2 Proactivity Engine](./MLP2_PROACTIVITY_ENGINE.md)
 
 ## Summary
 
@@ -16,17 +19,39 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 
 ### Recent Updates (2026-01-10)
 
-- Phase 1: Project Graph (`projectTypeRegistry` + `create_node`/`update_node`/`create_edge`/`update_edge` + registry-aware approvals)
-- Phase 2: Knowledge PRs (`knowledgeSuggestions` + `suggestionId` in streams + tool-result resolution)
+- Phase 1: Project Graph (`projectTypeRegistry` + `create_node`/`update_node`/`create_edge`/`update_edge` + registry-aware approvals) (`muse/convex/projectTypeRegistry.ts`, `muse/convex/lib/typeRegistry.ts`, `muse/convex/ai/tools/worldGraphTools.ts`, `muse/convex/ai/tools/worldGraphHandlers.ts`, `muse/convex/ai/agentRuntime.ts`)
+- Phase 2: Knowledge PRs (`knowledgeSuggestions` + `suggestionId` in streams + tool-result resolution) (`muse/convex/knowledgeSuggestions.ts`, `muse/convex/schema.ts`, `muse/convex/ai/agentRuntime.ts`)
+  - Expo Web UI: “Changes to review” panel (open via editor More menu → “Version history” and Cmd+K) (`muse/apps/expo/src/components/knowledge/*`, `muse/packages/editor-webview/src/components/EditorShell.tsx`, `muse/packages/commands/src/definitions/navigation.ts`)
 - Phase 3: Integrations (MCP)
-  - Expanded MCP tool surface + project defaults (`SAGA_PROJECT_ID`) for external clients
-  - Added `commit_decision` + image tooling to MCP (`search_images`, `find_similar_images`, `analyze_image`, `create_entity_from_image`, `illustrate_scene`)
+  - Expanded MCP tool surface + project defaults (`SAGA_PROJECT_ID`) for external clients (`muse/packages/mcp-server/src/index.ts`, `muse/packages/mcp-server/src/tools.ts`)
+  - Added `commit_decision` + image tooling to MCP (`search_images`, `find_similar_images`, `analyze_image`, `create_entity_from_image`, `illustrate_scene`) (`muse/packages/mcp-server/src/tools.ts`)
 - Phase 3: Canon Promotion + Citations
-  - Contradiction resolution now promotes user choices into pinned canon memories (`commit_decision`)
-  - Linter consumes pinned canon decisions and emits `canonCitations` for jump-to-canon UX
+  - Contradiction resolution now promotes user choices into pinned canon memories (`commit_decision`) (`muse/convex/ai/tools.ts`, `muse/convex/ai/canon.ts`)
+  - Linter consumes pinned canon decisions and emits `canonCitations` for jump-to-canon UX (`muse/convex/ai/lint.ts`, `muse/convex/ai/prompts/linter.ts`, `muse/apps/web/src/components/modals/ConsistencyChoiceModal.tsx`)
 - Phase 4: Clarity/Policy Coach
-  - “Coach” refocused as “Clarity” with readability + clarity issues (`clarity_check`)
-  - Policy rules can be pinned as project memory (`commit_decision` with `category="policy"`)
+  - “Coach” refocused as “Clarity” with readability + clarity issues (`clarity_check`) (`muse/convex/ai/tools.ts`, `muse/apps/web/src/components/console/CoachView.tsx`)
+  - Policy rules can be pinned as project memory (`commit_decision` with `category="policy"`) (`muse/convex/ai/tools.ts`)
+
+### UI Integration (Design Checklist)
+
+**Phase 1: Project Graph**
+- Project settings: type registry editor (`projectTypeRegistry`) for entity/relationship types, risk levels, and optional JSON schema.
+- Graph UI: generic node/edge create/edit that supports `type: string` + `properties`, with schema-driven forms when available.
+- Approvals UX: surface risk level + approval requirement at the point of change.
+
+**Phase 2: Knowledge PRs**
+- Knowledge PRs inbox: unified review queue across `document`/`entity`/`relationship`/`memory` with filters + batch actions (label: “Changes to review”; opened from editor “Version history” menu item).
+- Diff/preview: document diff + property/edge diff + JSON Patch view for opaque operations.
+- History/rollback: revision timeline for accepted suggestions across graph + memory, with provenance links.
+
+**Phase 3: Integrations + Citations (MCP)**
+- Integrations settings: connect/disconnect, scopes, status, and audit for external sources.
+- Evidence viewer: show source documents/excerpts and canon citation metadata; deep-link from lint/coach issues.
+- Promote-to-model: promote evidence into the Living Model by creating a Knowledge PR with attached citations.
+
+**Phase 4: Clarity/Policy Coach**
+- Coach mode selector (Writing / Clarity / Policy) with taxonomy-aware labels.
+- Issue UI: ambiguity/unverifiable/not-testable/policy-conflict categories while preserving the same “issue + suggested fix” structure.
 
 ### Recent Updates (2026-01-09)
 
@@ -920,10 +945,43 @@ embeddingJobs: defineTable({
 | **Rejection Feedback** | Optional reason capture (wrong tone, etc.) for learning |
 | **Tool Transparency** | "Sources" expandable with top-K chunks + scores |
 | **Memory Dashboard** | "What AI learned" - style vectors, decisions, entity count |
+| **Project Type Registry** | Project settings UI for `projectTypeRegistry` (types, risk levels, optional JSON schema) |
+| **Knowledge PRs Inbox** | Unified review queue for `knowledgeSuggestions` across graph/memory/docs with batch actions |
+| **Diff/Preview** | Document diff + graph/memory patch preview (incl. JSON Patch / property diffs) |
+| **Integrations (MCP)** | Connection management (scopes, status, audit) and MCP tool transparency |
+| **Graph/Memory History** | Revision timeline + rollback UX for entities/relationships/memories |
+| **Coach Modes** | Writing / Clarity / Policy mode selector and taxonomy-aware issue UI |
 
 ---
 
 ## Remaining Work
+
+### MLP1 Ship Checklist (Writer-First)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Focus Mode MVP (AI silent unless invoked) | 🔲 | Zen UI, no proactive interruptions, manual invoke only |
+| Focus sessions (timer + word goals) | 🔲 | Pomodoro/sprint/custom, session stats |
+| Living Model UI entry points | ✅ | Cmd+K “Changes to review” + editor More menu (“Version history”) opens review panel; home entry point TBD |
+| Knowledge PRs review UX (polish) | ✅ (baseline) | Approve/reject + batch actions + provenance + undo (graph/memory); document apply remains editor UI |
+| Project/World Graph editor UX | 🔲 | Create/edit nodes/edges; registry-aware type picker + properties editor |
+| Lint → “jump to canon” UX | 🔲 | Canon citations link to Decision Ledger items |
+| Clarity/Policy Coach UX | 🔲 | Mode selector + taxonomy-aware issues + apply/dismiss |
+| E2E coverage for new surfaces | 🔲 | Stable `data-testid` hooks per `muse/docs/E2E_TESTABILITY_CONTRACT.md` |
+
+### P1: Living Model UI (Design)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Project Type Registry screen | 🔲 | Manage types, risk levels, optional JSON schema; drives create/edit and approvals |
+| Project Graph editor UX | 🔲 | Node/edge create/edit for `type` + `properties` (schema-driven when available) |
+| Knowledge PRs inbox UX | ✅ (baseline) | Expo Web right-panel (“Changes to review”) with filters, selection, batch approve/reject |
+| Knowledge PR diff/preview components | ✅ (baseline) | Entity/relationship diffs + memory preview + raw patch; document diff + JSON Patch view TBD |
+| Knowledge history + rollback UX | ✅ (baseline) | Undo supported for accepted suggestions with rollback metadata (graph/memory) |
+| Integrations settings UX | 🔲 | Connections, scopes, status, and audit trail for external sources |
+| Evidence + citations UX | 🔲 | Canon citation drilldown + jump-to-canon from lint/coach |
+| Promote-to-model flow UX | 🔲 | From evidence/context inspector → create Knowledge PR with citations |
+| Coach mode selector UX | 🔲 | Writing / Clarity / Policy and taxonomy-aware issue labels |
 
 ### P2: Collaboration UI (Expo Web)
 
@@ -932,6 +990,24 @@ embeddingJobs: defineTable({
 | Expo-web UI for revision history or activity feed | 🔲 | Add to EditorShell layout for web-only experience |
 | Revision history/restore UI | 🔲 | Subtle, integrated panel (no modal spam) |
 | Activity feed UI | 🔲 | Designed as a low-noise, contextual feed |
+
+### MLP3: Writer Studio (Exploration)
+
+These build on the Living Model + Decision Ledger + Knowledge PRs to help writers iterate into new media formats.
+
+| Idea | Why it matters |
+|------|----------------|
+| Manga/storyboard generation | Turn scenes into panels, beats, captions, and shot composition references |
+| Series bible / lorebook compiler | Auto-compile canon, characters, factions, timeline into a shareable bible |
+| Presentation/pitch deck generator | Convert project truth into a clean pitch deck with citations to canon |
+| Trailer / series video planning | Scene → shot list → storyboard frames; future: video generation toolchain |
+| World simulation agent | Maintain consistent world state over time and propose canon updates as PRs |
+
+### Research Spikes (Product Teams)
+
+| Spike | Goal | Notes |
+|------|------|------|
+| GitHub integration (evidence + change events) | Improve “what changed” understanding and drift detection for product teams | Treat as evidence/ingest + citations + Impact PRs; avoid “index everything” positioning |
 
 ### Phase 3: Platform Integration
 
