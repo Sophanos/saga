@@ -308,3 +308,10 @@
 .btn-secondary:hover {
   border-color: var(--mythos-text-muted);
 }
+
+@layer base {
+  .ProseMirror {
+    white-space: pre-wrap;
+    white-space: break-spaces;
+  }
+}

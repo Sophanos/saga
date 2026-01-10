@@ -479,6 +479,7 @@ export function EditorShell({
             editable={!isLocked}
             showTitle={true}
             autoFocus
+            syncContentFromProps={false}
           />
         )}
 
