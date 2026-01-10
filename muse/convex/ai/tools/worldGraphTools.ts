@@ -166,6 +166,89 @@ export function updateRelationshipNeedsApproval(args: UpdateRelationshipArgs): b
 }
 
 // =============================================================================
+// Project Graph (Generic) Tools
+// =============================================================================
+
+export const createNodeParameters = z.object({
+  type: z.string().describe("Node type (validated against the project registry)"),
+  name: z.string().describe("The name of the node"),
+  aliases: z.array(z.string()).optional().describe("Alternative names or nicknames"),
+  notes: z.string().optional().describe("General notes about the node"),
+  properties: z
+    .record(z.any())
+    .optional()
+    .describe("Arbitrary node properties (shallow object)"),
+});
+
+export type CreateNodeArgs = z.infer<typeof createNodeParameters>;
+
+export const createNodeTool = tool({
+  description:
+    "Create a new project graph node using a per-project type registry. This is the generic counterpart to create_entity.",
+  inputSchema: createNodeParameters,
+});
+
+export const updateNodeParameters = z.object({
+  nodeName: z.string().describe("The current name of the node to update"),
+  nodeType: z.string().optional().describe("Optional type (for disambiguation)"),
+  updates: z.object({
+    name: z.string().optional().describe("New name for the node"),
+    aliases: z.array(z.string()).optional().describe("Updated alternative names"),
+    notes: z.string().optional().describe("Updated notes"),
+    properties: z
+      .record(z.any())
+      .optional()
+      .describe("Properties to merge into existing properties (shallow merge)"),
+  }),
+});
+
+export type UpdateNodeArgs = z.infer<typeof updateNodeParameters>;
+
+export const updateNodeTool = tool({
+  description:
+    "Update an existing project graph node using a per-project type registry. This is the generic counterpart to update_entity.",
+  inputSchema: updateNodeParameters,
+});
+
+export const createEdgeParameters = z.object({
+  sourceName: z.string().describe("Name of the source node"),
+  targetName: z.string().describe("Name of the target node"),
+  type: z.string().describe("Edge type (validated against the project registry)"),
+  bidirectional: z.boolean().optional().describe("Whether the edge goes both ways"),
+  notes: z.string().optional().describe("Additional context about the edge"),
+  strength: z.number().min(0).max(1).optional().describe("Strength of the edge (0-1)"),
+  metadata: z.record(z.any()).optional().describe("Additional edge metadata (JSON object)"),
+});
+
+export type CreateEdgeArgs = z.infer<typeof createEdgeParameters>;
+
+export const createEdgeTool = tool({
+  description:
+    "Create an edge between two nodes using a per-project type registry. This is the generic counterpart to create_relationship.",
+  inputSchema: createEdgeParameters,
+});
+
+export const updateEdgeParameters = z.object({
+  sourceName: z.string().describe("Name of the source node"),
+  targetName: z.string().describe("Name of the target node"),
+  type: z.string().describe("The current edge type (to identify it)"),
+  updates: z.object({
+    notes: z.string().optional().describe("Updated notes about the edge"),
+    strength: z.number().min(0).max(1).optional().describe("Updated strength (0-1)"),
+    bidirectional: z.boolean().optional().describe("Whether the edge is bidirectional"),
+    metadata: z.record(z.any()).optional().describe("Updated metadata (merged or replaced by clients)"),
+  }),
+});
+
+export type UpdateEdgeArgs = z.infer<typeof updateEdgeParameters>;
+
+export const updateEdgeTool = tool({
+  description:
+    "Update an existing edge between two nodes using a per-project type registry. This is the generic counterpart to update_relationship.",
+  inputSchema: updateEdgeParameters,
+});
+
+// =============================================================================
 // Image Tools
 // =============================================================================
 

@@ -18,6 +18,11 @@ export {
   updateEntityNeedsApproval,
   type CreateEntityArgs,
   type UpdateEntityArgs,
+  // Project graph (generic) tools
+  createNodeTool,
+  updateNodeTool,
+  type CreateNodeArgs,
+  type UpdateNodeArgs,
   // Relationship tools
   createRelationshipTool,
   updateRelationshipTool,
@@ -25,6 +30,11 @@ export {
   updateRelationshipNeedsApproval,
   type CreateRelationshipArgs,
   type UpdateRelationshipArgs,
+  // Project graph (generic) edges
+  createEdgeTool,
+  updateEdgeTool,
+  type CreateEdgeArgs,
+  type UpdateEdgeArgs,
   // Image tools
   generateImageTool,
   generateImageNeedsApproval,
@@ -42,4 +52,8 @@ export {
   executeUpdateEntity,
   executeCreateRelationship,
   executeUpdateRelationship,
+  executeCreateNode,
+  executeUpdateNode,
+  executeCreateEdge,
+  executeUpdateEdge,
 } from "./worldGraphHandlers";

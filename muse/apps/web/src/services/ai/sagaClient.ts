@@ -162,6 +162,7 @@ export interface SagaStreamEvent {
   args?: unknown;
   approvalType?: ToolApprovalType;
   danger?: ToolApprovalDanger;
+  suggestionId?: string;
   promptMessageId?: string;
   message?: string;
   progress?: { pct?: number; stage?: string };
@@ -177,6 +178,7 @@ export interface ToolApprovalRequest {
   args: unknown;
   approvalType: ToolApprovalType;
   danger?: ToolApprovalDanger;
+  suggestionId?: string;
   promptMessageId?: string;
 }
 
@@ -338,6 +340,7 @@ function handleSSEEvent(
           args: event.args,
           approvalType: event.approvalType ?? "execution",
           danger: event.danger,
+          suggestionId: event.suggestionId,
           promptMessageId: event.promptMessageId,
         });
       }
@@ -770,4 +773,3 @@ export async function sendToolResultStreaming(
     }
   }
 }
-

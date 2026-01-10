@@ -52,6 +52,37 @@ export default defineSchema({
     .index("by_updated", ["updatedAt"]),
 
   // ============================================================
+  // PROJECT TYPE REGISTRY (Project Graph schema + approval policy)
+  // ============================================================
+  projectTypeRegistry: defineTable({
+    projectId: v.id("projects"),
+    entityTypes: v.array(
+      v.object({
+        type: v.string(),
+        displayName: v.string(),
+        riskLevel: v.optional(
+          v.union(v.literal("low"), v.literal("high"), v.literal("core"))
+        ),
+        schema: v.optional(v.any()),
+        icon: v.optional(v.string()),
+        color: v.optional(v.string()),
+      })
+    ),
+    relationshipTypes: v.array(
+      v.object({
+        type: v.string(),
+        displayName: v.string(),
+        riskLevel: v.optional(
+          v.union(v.literal("low"), v.literal("high"), v.literal("core"))
+        ),
+        schema: v.optional(v.any()),
+      })
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  // ============================================================
   // DOCUMENTS (chapters, scenes, notes)
   // ============================================================
   documents: defineTable({
@@ -124,6 +155,51 @@ export default defineSchema({
     .index("by_project", ["projectId"]),
 
   // ============================================================
+  // KNOWLEDGE SUGGESTIONS (Graph + memory proposals / review)
+  // ============================================================
+  knowledgeSuggestions: defineTable({
+    projectId: v.id("projects"),
+    targetType: v.union(
+      v.literal("document"),
+      v.literal("entity"),
+      v.literal("relationship"),
+      v.literal("memory")
+    ),
+    targetId: v.optional(v.string()),
+    operation: v.string(),
+    proposedPatch: v.any(),
+    status: v.union(
+      v.literal("proposed"),
+      v.literal("accepted"),
+      v.literal("rejected"),
+      v.literal("resolved")
+    ),
+    // Provenance
+    actorType: v.string(), // "user" | "ai" | "system"
+    actorUserId: v.optional(v.string()),
+    actorAgentId: v.optional(v.string()),
+    actorName: v.optional(v.string()),
+    toolName: v.string(),
+    toolCallId: v.string(),
+    approvalType: v.string(),
+    danger: v.optional(v.string()),
+    streamId: v.optional(v.string()),
+    threadId: v.optional(v.string()),
+    promptMessageId: v.optional(v.string()),
+    model: v.optional(v.string()),
+    // Resolution
+    resolvedByUserId: v.optional(v.string()),
+    resolvedAt: v.optional(v.number()),
+    result: v.optional(v.any()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project_createdAt", ["projectId", "createdAt"])
+    .index("by_project_status_createdAt", ["projectId", "status", "createdAt"])
+    .index("by_tool_call_id", ["toolCallId"]),
+
+  // ============================================================
   // DOCUMENT REVISIONS (version history)
   // ============================================================
   documentRevisions: defineTable({
@@ -176,6 +252,7 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_type", ["projectId", "type"])
     .index("by_project_type_canonical", ["projectId", "type", "canonicalName"])
+    .index("by_project_canonical", ["projectId", "canonicalName"])
     .index("by_project_name", ["projectId", "name"])
     .index("by_supabase_id", ["supabaseId"])
     .searchIndex("search_entities", {
@@ -331,6 +408,7 @@ export default defineSchema({
           toolCallId: v.optional(v.string()),
           toolName: v.optional(v.string()),
           approvalId: v.optional(v.string()),
+          suggestionId: v.optional(v.string()),
           approvalType: v.optional(v.string()),
           danger: v.optional(v.string()),
           args: v.optional(v.any()),
@@ -356,6 +434,7 @@ export default defineSchema({
     toolCallId: v.optional(v.string()),
     toolName: v.optional(v.string()),
     approvalId: v.optional(v.string()),
+    suggestionId: v.optional(v.string()),
     approvalType: v.optional(v.string()),
     danger: v.optional(v.string()),
     args: v.optional(v.any()),

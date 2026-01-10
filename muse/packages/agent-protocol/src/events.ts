@@ -106,6 +106,8 @@ export interface ToolApprovalRequestEvent {
   approvalType: ToolApprovalType;
   /** Optional UI hint for risk/impact. */
   danger?: ToolApprovalDanger;
+  /** Optional ID of the corresponding knowledge suggestion (Knowledge PR). */
+  suggestionId?: string;
   promptMessageId?: string;
 }
 

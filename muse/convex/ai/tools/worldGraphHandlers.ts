@@ -6,13 +6,21 @@ import { v } from "convex/values";
 import { internalAction, internalQuery, internalMutation, type ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { ENTITY_TYPES } from "../../lib/approvalConfig";
 import { canonicalizeName } from "../../lib/canonicalize";
+import {
+  requireEntityType,
+  requireRelationshipType,
+  type ProjectTypeRegistryResolved,
+} from "../../lib/typeRegistry";
 import type {
   CreateEntityArgs,
   UpdateEntityArgs,
   CreateRelationshipArgs,
   UpdateRelationshipArgs,
+  CreateNodeArgs,
+  UpdateNodeArgs,
+  CreateEdgeArgs,
+  UpdateEdgeArgs,
 } from "./worldGraphTools";
 
 // =============================================================================
@@ -80,23 +88,12 @@ export const findEntityByCanonical = internalQuery({
       });
     }
 
-    const matches: Array<Doc<"entities">> = [];
-
-    for (const entityType of ENTITY_TYPES) {
-      const match = await ctx.db
-        .query("entities")
-        .withIndex("by_project_type_canonical", (q) =>
-          q
-            .eq("projectId", projectId)
-            .eq("type", entityType)
-            .eq("canonicalName", canonicalName)
-        )
-        .first();
-
-      if (match) {
-        matches.push(match);
-      }
-    }
+    const matches = await ctx.db
+      .query("entities")
+      .withIndex("by_project_canonical", (q) =>
+        q.eq("projectId", projectId).eq("canonicalName", canonicalName)
+      )
+      .collect();
 
     if (matches.length > 0) {
       return matches;
@@ -189,6 +186,7 @@ export const createRelationshipMutation = internalMutation({
     bidirectional: v.optional(v.boolean()),
     strength: v.optional(v.number()),
     notes: v.optional(v.string()),
+    metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("relationships", {
@@ -199,6 +197,7 @@ export const createRelationshipMutation = internalMutation({
       bidirectional: args.bidirectional ?? false,
       strength: args.strength,
       notes: args.notes,
+      metadata: args.metadata,
       createdAt: Date.now(),
     });
   },
@@ -329,6 +328,15 @@ function buildEntityProperties(args: CreateEntityArgs): Record<string, unknown> 
   return props;
 }
 
+async function getResolvedRegistry(
+  ctx: ActionCtx,
+  projectId: Id<"projects">
+): Promise<ProjectTypeRegistryResolved> {
+  return (await ctx.runQuery((internal as any).projectTypeRegistry.getResolvedInternal, {
+    projectId,
+  })) as ProjectTypeRegistryResolved;
+}
+
 export const executeCreateEntity = internalAction({
   args: {
     projectId: v.string(),
@@ -362,6 +370,13 @@ export const executeCreateEntity = internalAction({
     );
     if (accessError) {
       return { success: false, message: accessError };
+    }
+
+    const registry = await getResolvedRegistry(ctx, projectIdVal);
+    try {
+      requireEntityType(registry, args.type);
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : "Invalid entity type" };
     }
 
     const resolved = await resolveEntityByName(
@@ -457,6 +472,8 @@ export const executeUpdateEntity = internalAction({
       return { success: false, message: accessError };
     }
 
+    const registry = await getResolvedRegistry(ctx, projectIdVal);
+
     const resolved = await resolveEntityByName(
       ctx,
       projectIdVal,
@@ -474,6 +491,11 @@ export const executeUpdateEntity = internalAction({
     }
 
     const entity = resolved.entity;
+    try {
+      requireEntityType(registry, entity.type);
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : "Invalid entity type" };
+    }
     const { name, aliases, notes, ...propertyUpdates } = args.updates;
 
     const dbUpdates: Record<string, unknown> = {};
@@ -562,6 +584,13 @@ export const executeCreateRelationship = internalAction({
     );
     if (accessError) {
       return { success: false, message: accessError };
+    }
+
+    const registry = await getResolvedRegistry(ctx, projectIdVal);
+    try {
+      requireRelationshipType(registry, args.type);
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : "Invalid relationship type" };
     }
 
     const sourceResult = await resolveEntityByName(ctx, projectIdVal, args.sourceName);
@@ -673,6 +702,13 @@ export const executeUpdateRelationship = internalAction({
       return { success: false, message: accessError };
     }
 
+    const registry = await getResolvedRegistry(ctx, projectIdVal);
+    try {
+      requireRelationshipType(registry, args.type);
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : "Invalid relationship type" };
+    }
+
     const sourceResult = await resolveEntityByName(ctx, projectIdVal, args.sourceName);
     if (sourceResult.error) {
       return { success: false, message: sourceResult.error };
@@ -736,6 +772,408 @@ export const executeUpdateRelationship = internalAction({
       success: true,
       relationshipId: rel._id as string,
       message: `Updated relationship ${args.sourceName} → ${args.type} → ${args.targetName}: ${updatedFields.join(", ")}`,
+    };
+  },
+});
+
+export const executeCreateNode = internalAction({
+  args: {
+    projectId: v.string(),
+    toolArgs: v.any(),
+    actor: v.optional(
+      v.object({
+        actorType: v.string(),
+        actorUserId: v.optional(v.string()),
+        actorAgentId: v.optional(v.string()),
+        actorName: v.optional(v.string()),
+      })
+    ),
+    source: v.optional(
+      v.object({
+        streamId: v.optional(v.string()),
+        threadId: v.optional(v.string()),
+        toolCallId: v.optional(v.string()),
+        promptMessageId: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (
+    ctx,
+    { projectId, toolArgs, actor, source: sourceContext }
+  ): Promise<{ success: boolean; entityId?: string; message: string }> => {
+    const args = toolArgs as CreateNodeArgs;
+    const projectIdVal = projectId as Id<"projects">;
+    const actorInfo = resolveActor(actor as ToolActorContext | undefined);
+
+    const accessError = await getProjectAccessError(ctx, projectIdVal, actorInfo.actorUserId);
+    if (accessError) {
+      return { success: false, message: accessError };
+    }
+
+    const registry = await getResolvedRegistry(ctx, projectIdVal);
+    try {
+      requireEntityType(registry, args.type);
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : "Invalid node type" };
+    }
+
+    const resolved = await resolveEntityByName(ctx, projectIdVal, args.name, args.type);
+    if (resolved.error) {
+      return { success: false, message: resolved.error };
+    }
+    if (resolved.entity) {
+      return {
+        success: false,
+        message: `Node "${args.name}" already exists as ${resolved.entity.type}`,
+      };
+    }
+
+    const entityId = await ctx.runMutation(
+      // @ts-expect-error Deep types
+      internal["ai/tools/worldGraphHandlers"].createEntityMutation,
+      {
+        projectId: projectIdVal,
+        type: args.type,
+        name: args.name,
+        aliases: args.aliases,
+        properties: args.properties ?? {},
+        notes: args.notes,
+      }
+    );
+
+    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+      projectId: projectIdVal,
+      targetType: "entity",
+      targetId: entityId,
+    });
+
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId: projectIdVal,
+      ...actorInfo,
+      action: "entity_created",
+      summary: `Created ${args.type} "${args.name}"`,
+      metadata: {
+        entityId,
+        type: args.type,
+        name: args.name,
+        source: sourceContext,
+      },
+    });
+
+    return {
+      success: true,
+      entityId: entityId as string,
+      message: `Created ${args.type} "${args.name}"`,
+    };
+  },
+});
+
+export const executeUpdateNode = internalAction({
+  args: {
+    projectId: v.string(),
+    toolArgs: v.any(),
+    actor: v.optional(
+      v.object({
+        actorType: v.string(),
+        actorUserId: v.optional(v.string()),
+        actorAgentId: v.optional(v.string()),
+        actorName: v.optional(v.string()),
+      })
+    ),
+    source: v.optional(
+      v.object({
+        streamId: v.optional(v.string()),
+        threadId: v.optional(v.string()),
+        toolCallId: v.optional(v.string()),
+        promptMessageId: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (
+    ctx,
+    { projectId, toolArgs, actor, source: sourceContext }
+  ): Promise<{ success: boolean; entityId?: string; message: string }> => {
+    const args = toolArgs as UpdateNodeArgs;
+    const projectIdVal = projectId as Id<"projects">;
+    const actorInfo = resolveActor(actor as ToolActorContext | undefined);
+
+    const accessError = await getProjectAccessError(ctx, projectIdVal, actorInfo.actorUserId);
+    if (accessError) {
+      return { success: false, message: accessError };
+    }
+
+    const registry = await getResolvedRegistry(ctx, projectIdVal);
+
+    const resolved = await resolveEntityByName(ctx, projectIdVal, args.nodeName, args.nodeType);
+    if (resolved.error) {
+      return { success: false, message: resolved.error };
+    }
+    if (!resolved.entity) {
+      return { success: false, message: `Node "${args.nodeName}" not found` };
+    }
+
+    const entity = resolved.entity;
+    try {
+      requireEntityType(registry, entity.type);
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : "Invalid node type" };
+    }
+
+    const { name, aliases, notes, properties } = args.updates;
+
+    const dbUpdates: Record<string, unknown> = {};
+    if (name !== undefined) {
+      dbUpdates["name"] = name;
+      dbUpdates["canonicalName"] = canonicalizeName(name);
+    }
+    if (aliases !== undefined) dbUpdates["aliases"] = normalizeAliases(aliases);
+    if (notes !== undefined) dbUpdates["notes"] = notes;
+
+    if (properties !== undefined && typeof properties === "object" && properties !== null) {
+      const existingProps = (entity.properties ?? {}) as Record<string, unknown>;
+      dbUpdates["properties"] = { ...existingProps, ...(properties as Record<string, unknown>) };
+    }
+
+    await ctx.runMutation(
+      // @ts-expect-error Deep types
+      internal["ai/tools/worldGraphHandlers"].updateEntityMutation,
+      { id: entity._id, updates: dbUpdates }
+    );
+
+    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+      projectId: entity.projectId,
+      targetType: "entity",
+      targetId: entity._id,
+    });
+
+    const updatedFields = Object.keys(args.updates).filter(
+      (k) => args.updates[k as keyof typeof args.updates] !== undefined
+    );
+
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId: projectIdVal,
+      ...actorInfo,
+      action: "entity_updated",
+      summary: `Updated ${entity.type} "${entity.name}"`,
+      metadata: {
+        entityId: entity._id,
+        updatedFields,
+        source: sourceContext,
+      },
+    });
+
+    return {
+      success: true,
+      entityId: entity._id as string,
+      message: `Updated ${entity.type} "${entity.name}": ${updatedFields.join(", ")}`,
+    };
+  },
+});
+
+export const executeCreateEdge = internalAction({
+  args: {
+    projectId: v.string(),
+    toolArgs: v.any(),
+    actor: v.optional(
+      v.object({
+        actorType: v.string(),
+        actorUserId: v.optional(v.string()),
+        actorAgentId: v.optional(v.string()),
+        actorName: v.optional(v.string()),
+      })
+    ),
+    source: v.optional(
+      v.object({
+        streamId: v.optional(v.string()),
+        threadId: v.optional(v.string()),
+        toolCallId: v.optional(v.string()),
+        promptMessageId: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (
+    ctx,
+    { projectId, toolArgs, actor, source: sourceContext }
+  ): Promise<{ success: boolean; relationshipId?: string; message: string }> => {
+    const args = toolArgs as CreateEdgeArgs;
+    const projectIdVal = projectId as Id<"projects">;
+    const actorInfo = resolveActor(actor as ToolActorContext | undefined);
+
+    const accessError = await getProjectAccessError(ctx, projectIdVal, actorInfo.actorUserId);
+    if (accessError) {
+      return { success: false, message: accessError };
+    }
+
+    const registry = await getResolvedRegistry(ctx, projectIdVal);
+    try {
+      requireRelationshipType(registry, args.type);
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : "Invalid edge type" };
+    }
+
+    const sourceResult = await resolveEntityByName(ctx, projectIdVal, args.sourceName);
+    if (sourceResult.error) return { success: false, message: sourceResult.error };
+    if (!sourceResult.entity) return { success: false, message: `Source node "${args.sourceName}" not found` };
+
+    const targetResult = await resolveEntityByName(ctx, projectIdVal, args.targetName);
+    if (targetResult.error) return { success: false, message: targetResult.error };
+    if (!targetResult.entity) return { success: false, message: `Target node "${args.targetName}" not found` };
+
+    const source = sourceResult.entity;
+    const target = targetResult.entity;
+
+    const existing = await ctx.runQuery(
+      // @ts-expect-error Deep types
+      internal["ai/tools/worldGraphHandlers"].findRelationship,
+      {
+        projectId: projectIdVal,
+        sourceId: source._id,
+        targetId: target._id,
+        type: args.type,
+      }
+    );
+
+    if (existing) {
+      return {
+        success: false,
+        message: `Edge ${args.sourceName} → ${args.type} → ${args.targetName} already exists`,
+      };
+    }
+
+    const relId = await ctx.runMutation(
+      // @ts-expect-error Deep types
+      internal["ai/tools/worldGraphHandlers"].createRelationshipMutation,
+      {
+        projectId: projectIdVal,
+        sourceId: source._id,
+        targetId: target._id,
+        type: args.type,
+        bidirectional: args.bidirectional,
+        strength: args.strength,
+        notes: args.notes,
+        metadata: args.metadata,
+      }
+    );
+
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId: projectIdVal,
+      ...actorInfo,
+      action: "relationship_created",
+      summary: `Created edge ${args.sourceName} → ${args.type} → ${args.targetName}`,
+      metadata: {
+        relationshipId: relId,
+        sourceId: source._id,
+        targetId: target._id,
+        type: args.type,
+        source: sourceContext,
+      },
+    });
+
+    const direction = args.bidirectional ? "↔" : "→";
+    return {
+      success: true,
+      relationshipId: relId as string,
+      message: `Created edge: ${args.sourceName} ${direction} ${args.type} ${direction} ${args.targetName}`,
+    };
+  },
+});
+
+export const executeUpdateEdge = internalAction({
+  args: {
+    projectId: v.string(),
+    toolArgs: v.any(),
+    actor: v.optional(
+      v.object({
+        actorType: v.string(),
+        actorUserId: v.optional(v.string()),
+        actorAgentId: v.optional(v.string()),
+        actorName: v.optional(v.string()),
+      })
+    ),
+    source: v.optional(
+      v.object({
+        streamId: v.optional(v.string()),
+        threadId: v.optional(v.string()),
+        toolCallId: v.optional(v.string()),
+        promptMessageId: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (
+    ctx,
+    { projectId, toolArgs, actor, source: sourceContext }
+  ): Promise<{ success: boolean; relationshipId?: string; message: string }> => {
+    const args = toolArgs as UpdateEdgeArgs;
+    const projectIdVal = projectId as Id<"projects">;
+    const actorInfo = resolveActor(actor as ToolActorContext | undefined);
+
+    const accessError = await getProjectAccessError(ctx, projectIdVal, actorInfo.actorUserId);
+    if (accessError) {
+      return { success: false, message: accessError };
+    }
+
+    const registry = await getResolvedRegistry(ctx, projectIdVal);
+    try {
+      requireRelationshipType(registry, args.type);
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : "Invalid edge type" };
+    }
+
+    const sourceResult = await resolveEntityByName(ctx, projectIdVal, args.sourceName);
+    if (sourceResult.error) return { success: false, message: sourceResult.error };
+    if (!sourceResult.entity) return { success: false, message: `Source node "${args.sourceName}" not found` };
+
+    const targetResult = await resolveEntityByName(ctx, projectIdVal, args.targetName);
+    if (targetResult.error) return { success: false, message: targetResult.error };
+    if (!targetResult.entity) return { success: false, message: `Target node "${args.targetName}" not found` };
+
+    const source = sourceResult.entity;
+    const target = targetResult.entity;
+
+    const rel = await ctx.runQuery(
+      // @ts-expect-error Deep types
+      internal["ai/tools/worldGraphHandlers"].findRelationship,
+      {
+        projectId: projectIdVal,
+        sourceId: source._id,
+        targetId: target._id,
+        type: args.type,
+      }
+    );
+
+    if (!rel) {
+      return {
+        success: false,
+        message: `Edge ${args.sourceName} → ${args.type} → ${args.targetName} not found`,
+      };
+    }
+
+    await ctx.runMutation(
+      // @ts-expect-error Deep types
+      internal["ai/tools/worldGraphHandlers"].updateRelationshipMutation,
+      { id: rel._id, updates: args.updates }
+    );
+
+    const updatedFields = Object.keys(args.updates).filter(
+      (k) => args.updates[k as keyof typeof args.updates] !== undefined
+    );
+
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId: projectIdVal,
+      ...actorInfo,
+      action: "relationship_updated",
+      summary: `Updated edge ${args.sourceName} → ${args.type} → ${args.targetName}`,
+      metadata: {
+        relationshipId: rel._id,
+        updatedFields,
+        source: sourceContext,
+      },
+    });
+
+    return {
+      success: true,
+      relationshipId: rel._id as string,
+      message: `Updated edge ${args.sourceName} → ${args.type} → ${args.targetName}: ${updatedFields.join(", ")}`,
     };
   },
 });

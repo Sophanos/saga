@@ -33,6 +33,10 @@ export type ToolName =
   | "create_relationship"
   | "update_relationship"
   | "delete_relationship"
+  | "create_node"
+  | "update_node"
+  | "create_edge"
+  | "update_edge"
   | "generate_content"
   | "generate_image"
   | "edit_image"
@@ -205,6 +209,31 @@ export interface CreateRelationshipArgs {
 }
 
 /**
+ * Arguments for create_node tool (Project Graph).
+ */
+export interface CreateNodeArgs {
+  type: string;
+  name: string;
+  aliases?: string[];
+  notes?: string;
+  properties?: Record<string, unknown>;
+}
+
+/**
+ * Arguments for update_node tool (Project Graph).
+ */
+export interface UpdateNodeArgs {
+  nodeName: string;
+  nodeType?: string;
+  updates: {
+    name?: string;
+    aliases?: string[];
+    notes?: string;
+    properties?: Record<string, unknown>;
+  };
+}
+
+/**
  * Arguments for update_relationship tool.
  */
 export interface UpdateRelationshipArgs {
@@ -215,6 +244,34 @@ export interface UpdateRelationshipArgs {
     notes?: string;
     strength?: number;
     bidirectional?: boolean;
+  };
+}
+
+/**
+ * Arguments for create_edge tool (Project Graph).
+ */
+export interface CreateEdgeArgs {
+  sourceName: string;
+  targetName: string;
+  type: string;
+  bidirectional?: boolean;
+  notes?: string;
+  strength?: number; // 0-1
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Arguments for update_edge tool (Project Graph).
+ */
+export interface UpdateEdgeArgs {
+  sourceName: string;
+  targetName: string;
+  type: string;
+  updates: {
+    notes?: string;
+    strength?: number;
+    bidirectional?: boolean;
+    metadata?: Record<string, unknown>;
   };
 }
 
@@ -707,6 +764,10 @@ export interface ToolArgsMap {
   create_relationship: CreateRelationshipArgs;
   update_relationship: UpdateRelationshipArgs;
   delete_relationship: DeleteRelationshipArgs;
+  create_node: CreateNodeArgs;
+  update_node: UpdateNodeArgs;
+  create_edge: CreateEdgeArgs;
+  update_edge: UpdateEdgeArgs;
   generate_content: GenerateContentArgs;
   generate_image: GenerateImageArgs;
   edit_image: EditImageArgs;
@@ -769,6 +830,44 @@ export interface CreateRelationshipResult {
   sourceId: string;
   targetId: string;
   type: RelationType;
+}
+
+/**
+ * Result of create_node tool.
+ */
+export interface CreateNodeResult {
+  entityId: string;
+  name: string;
+  type: string;
+}
+
+/**
+ * Result of update_node tool.
+ */
+export interface UpdateNodeResult {
+  entityId: string;
+  name: string;
+  updatedFields: string[];
+}
+
+/**
+ * Result of create_edge tool.
+ */
+export interface CreateEdgeResult {
+  relationshipId: string;
+  sourceId: string;
+  targetId: string;
+  type: string;
+}
+
+/**
+ * Result of update_edge tool.
+ */
+export interface UpdateEdgeResult {
+  relationshipId: string;
+  sourceId: string;
+  targetId: string;
+  updatedFields: string[];
 }
 
 /**
@@ -1182,6 +1281,10 @@ export interface ToolResultsMap {
   create_relationship: CreateRelationshipResult;
   update_relationship: UpdateEntityResult; // Same shape
   delete_relationship: DeleteEntityResult; // Same shape
+  create_node: CreateNodeResult;
+  update_node: UpdateNodeResult;
+  create_edge: CreateEdgeResult;
+  update_edge: UpdateEdgeResult;
   generate_content: GenerateContentResult;
   generate_image: GenerateImageResult;
   edit_image: EditImageResult;

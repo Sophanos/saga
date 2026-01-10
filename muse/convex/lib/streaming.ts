@@ -39,6 +39,7 @@ export interface SSEToolApprovalRequestEvent {
   args: unknown;
   approvalType: ToolApprovalType;
   danger?: ToolApprovalDanger;
+  suggestionId?: string;
   promptMessageId?: string;
 }
 
@@ -92,6 +93,7 @@ export function createToolApprovalRequestEvent(
   args: unknown,
   approvalType: ToolApprovalType,
   danger?: ToolApprovalDanger,
+  suggestionId?: string,
   toolCallId?: string,
   promptMessageId?: string
 ): Uint8Array {
@@ -103,6 +105,7 @@ export function createToolApprovalRequestEvent(
     args,
     approvalType,
     danger,
+    suggestionId,
     promptMessageId,
   });
 }
@@ -153,6 +156,7 @@ export class SSEStreamController {
     args: unknown,
     approvalType: ToolApprovalType,
     danger?: ToolApprovalDanger,
+    suggestionId?: string,
     toolCallId?: string,
     promptMessageId?: string
   ): void {
@@ -164,6 +168,7 @@ export class SSEStreamController {
         args,
         approvalType,
         danger,
+        suggestionId,
         toolCallId,
         promptMessageId
       )

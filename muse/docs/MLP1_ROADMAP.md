@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-09 (Writer tools: Focus Mode, Grammar/Style, Logic Validation) | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-10 (Project Graph + Knowledge PRs; Writer tools: Focus Mode, Grammar/Style, Logic Validation) | **Target:** Web + macOS first, then iOS/iPad
 
 ## Summary
 
@@ -13,6 +13,11 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 - Offline-first + real-time sync (Figma model)
 - **Focus Mode** — distraction-free writing, AI silent unless invoked
 - **Sortiermaschine** — auto-organize entities, relationships, world (World Graph)
+
+### Recent Updates (2026-01-10)
+
+- Phase 1: Project Graph (`projectTypeRegistry` + `create_node`/`update_node`/`create_edge`/`update_edge` + registry-aware approvals)
+- Phase 2: Knowledge PRs (`knowledgeSuggestions` + `suggestionId` in streams + tool-result resolution)
 
 ### Recent Updates (2026-01-09)
 

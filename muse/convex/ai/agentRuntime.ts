@@ -31,10 +31,19 @@ import {
   updateEntityTool,
   createRelationshipTool,
   updateRelationshipTool,
+  createNodeTool,
+  updateNodeTool,
+  createEdgeTool,
+  updateEdgeTool,
 } from "./tools/worldGraphTools";
 import { getEmbeddingModelForTask } from "../lib/embeddings";
 import { ServerAgentEvents } from "../lib/analytics";
-import { needsToolApproval } from "../lib/approvalConfig";
+import {
+  hasIdentityChange,
+  isSignificantStrengthChange,
+  needsToolApproval,
+} from "../lib/approvalConfig";
+import type { ProjectTypeRegistryResolved, RiskLevel } from "../lib/typeRegistry";
 
 const AI_PRESENCE_ROOM_PREFIXES = {
   project: "project",
@@ -211,6 +220,10 @@ function createSagaAgent() {
       update_entity: updateEntityTool,
       create_relationship: createRelationshipTool,
       update_relationship: updateRelationshipTool,
+      create_node: createNodeTool,
+      update_node: updateNodeTool,
+      create_edge: createEdgeTool,
+      update_edge: updateEdgeTool,
     },
     maxSteps: 8,
   });
@@ -240,6 +253,10 @@ const worldGraphTools = new Set([
   "update_entity",
   "create_relationship",
   "update_relationship",
+  "create_node",
+  "update_node",
+  "create_edge",
+  "update_edge",
 ]);
 
 type ToolActorContext = {
@@ -260,6 +277,119 @@ type ToolApprovalType = "execution" | "input" | "apply";
 
 type ToolApprovalDanger = "safe" | "costly" | "destructive";
 
+type KnowledgeSuggestionTargetType = "document" | "entity" | "relationship" | "memory";
+
+function classifyKnowledgeSuggestion(toolName: string): { targetType: KnowledgeSuggestionTargetType; operation: string } | null {
+  switch (toolName) {
+    case "create_entity":
+    case "update_entity":
+    case "create_node":
+    case "update_node":
+      return { targetType: "entity", operation: toolName };
+    case "create_relationship":
+    case "update_relationship":
+    case "create_edge":
+    case "update_edge":
+      return { targetType: "relationship", operation: toolName };
+    default:
+      return null;
+  }
+}
+
+function isHighRiskLevel(level: RiskLevel | undefined): boolean {
+  return level === "high" || level === "core";
+}
+
+async function resolveUniqueEntityTypeForUpdate(
+  ctx: ActionCtx,
+  projectId: Id<"projects">,
+  name: string,
+  typeHint?: string
+): Promise<string | null> {
+  const matches = (await ctx.runQuery(
+    // @ts-expect-error Deep types
+    internal["ai/tools/worldGraphHandlers"].findEntityByCanonical,
+    { projectId, name, type: typeHint }
+  )) as Array<{ type: string }> | null;
+
+  if (!matches || matches.length !== 1) return null;
+  return matches[0]?.type ?? null;
+}
+
+async function needsWorldGraphToolApproval(
+  ctx: ActionCtx,
+  projectId: Id<"projects">,
+  toolName: string,
+  args: Record<string, unknown>,
+  registry: ProjectTypeRegistryResolved | null
+): Promise<boolean> {
+  if (!registry) return true;
+
+  switch (toolName) {
+    case "create_entity":
+    case "create_node": {
+      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      if (!type) return true;
+      const def = registry.entityTypes[type];
+      if (!def) return true;
+      return isHighRiskLevel(def.riskLevel);
+    }
+
+    case "update_entity": {
+      const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+      const typeHint =
+        typeof args["entityType"] === "string" ? (args["entityType"] as string) : undefined;
+      const name = typeof args["entityName"] === "string" ? (args["entityName"] as string) : undefined;
+      if (!name) return true;
+
+      const resolvedType = await resolveUniqueEntityTypeForUpdate(ctx, projectId, name, typeHint);
+      if (!resolvedType) return true;
+      const def = registry.entityTypes[resolvedType];
+      if (!def) return true;
+      if (def.riskLevel === "core") return true;
+      return hasIdentityChange(updates);
+    }
+
+    case "update_node": {
+      const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+      const typeHint = typeof args["nodeType"] === "string" ? (args["nodeType"] as string) : undefined;
+      const name = typeof args["nodeName"] === "string" ? (args["nodeName"] as string) : undefined;
+      if (!name) return true;
+
+      const resolvedType = await resolveUniqueEntityTypeForUpdate(ctx, projectId, name, typeHint);
+      if (!resolvedType) return true;
+      const def = registry.entityTypes[resolvedType];
+      if (!def) return true;
+      if (def.riskLevel === "core") return true;
+      return hasIdentityChange(updates);
+    }
+
+    case "create_relationship":
+    case "create_edge": {
+      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      if (!type) return true;
+      const def = registry.relationshipTypes[type];
+      if (!def) return true;
+      return isHighRiskLevel(def.riskLevel);
+    }
+
+    case "update_relationship":
+    case "update_edge": {
+      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      if (!type) return true;
+      const def = registry.relationshipTypes[type];
+      if (!def) return true;
+      if (def.riskLevel === "core") return true;
+      const updates = args["updates"] as Record<string, unknown> | undefined;
+      if (updates?.["bidirectional"] !== undefined) return true;
+      return isSignificantStrengthChange(updates?.["strength"] as number | undefined);
+    }
+
+    default:
+      return true;
+  }
+}
+
 function resolveApprovalType(toolName: string): ToolApprovalType {
   if (toolName === "ask_question") return "input";
   if (toolName === "write_content") return "apply";
@@ -268,8 +398,9 @@ function resolveApprovalType(toolName: string): ToolApprovalType {
 
 function resolveApprovalDanger(toolName: string, args: Record<string, unknown>): ToolApprovalDanger {
   if (toolName === "write_content") {
-    const content = typeof args.content === "string" ? args.content : "";
-    const operation = typeof args.operation === "string" ? args.operation : undefined;
+    const content = typeof args["content"] === "string" ? (args["content"] as string) : "";
+    const operation =
+      typeof args["operation"] === "string" ? (args["operation"] as string) : undefined;
     if (operation === "append_document" || content.length > 800) {
       return "costly";
     }
@@ -358,6 +489,34 @@ async function executeWorldGraphTool(
         actor,
         source,
       });
+    case "create_node":
+      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeCreateNode, {
+        projectId,
+        toolArgs: args,
+        actor,
+        source,
+      });
+    case "update_node":
+      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeUpdateNode, {
+        projectId,
+        toolArgs: args,
+        actor,
+        source,
+      });
+    case "create_edge":
+      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeCreateEdge, {
+        projectId,
+        toolArgs: args,
+        actor,
+        source,
+      });
+    case "update_edge":
+      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeUpdateEdge, {
+        projectId,
+        toolArgs: args,
+        actor,
+        source,
+      });
     default:
       throw new Error(`Unknown world graph tool: ${toolName}`);
   }
@@ -372,6 +531,7 @@ async function appendStreamChunk(
     toolCallId?: string;
     toolName?: string;
     approvalId?: string;
+    suggestionId?: string;
     approvalType?: ToolApprovalType;
     danger?: ToolApprovalDanger;
     args?: unknown;
@@ -457,6 +617,11 @@ export const runSagaAgentChatToStream = internalAction({
 
     try {
       const startTime = Date.now();
+      const registry = isTemplateBuilder
+        ? null
+        : ((await ctx.runQuery((internal as any).projectTypeRegistry.getResolvedInternal, {
+            projectId: projectIdValue,
+          })) as ProjectTypeRegistryResolved);
 
       if (E2E_TEST_MODE) {
         const scenario = resolveE2EScenario(contextHints) ?? "default";
@@ -673,7 +838,14 @@ export const runSagaAgentChatToStream = internalAction({
 
         for (const call of worldGraphCalls) {
           const args = call.input as Record<string, unknown>;
-          if (needsToolApproval(call.toolName, args)) {
+          const requiresApproval = await needsWorldGraphToolApproval(
+            ctx,
+            projectIdValue,
+            call.toolName,
+            args,
+            registry
+          );
+          if (requiresApproval) {
             pendingWorldGraphCalls.push(call);
           } else {
             autoWorldGraphCalls.push(call);
@@ -736,12 +908,42 @@ export const runSagaAgentChatToStream = internalAction({
         // Request approval for high-impact world graph tools
         for (const call of pendingWorldGraphCalls) {
           const approvalArgs = call.input as Record<string, unknown>;
+          let suggestionId: string | undefined;
+          const suggestion = classifyKnowledgeSuggestion(call.toolName);
+          if (suggestion && !isTemplateBuilder) {
+            try {
+              suggestionId = (await ctx.runMutation(
+                (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
+                {
+                  projectId: projectIdValue,
+                  toolCallId: call.toolCallId,
+                  toolName: call.toolName,
+                  approvalType: resolveApprovalType(call.toolName),
+                  danger: resolveApprovalDanger(call.toolName, approvalArgs),
+                  operation: suggestion.operation,
+                  targetType: suggestion.targetType,
+                  proposedPatch: call.input,
+                  actorType: aiActor.actorType,
+                  actorUserId: aiActor.actorUserId,
+                  actorAgentId: aiActor.actorAgentId,
+                  actorName: aiActor.actorName,
+                  streamId,
+                  threadId,
+                  promptMessageId: currentPromptMessageId,
+                  model: DEFAULT_MODEL,
+                }
+              )) as string;
+            } catch (error) {
+              console.warn("[agentRuntime] Failed to create knowledge suggestion:", error);
+            }
+          }
           await appendStreamChunk(ctx, streamId, {
             type: "tool-approval-request",
             content: "",
             approvalId: call.toolCallId,
             toolCallId: call.toolCallId,
             toolName: call.toolName,
+            suggestionId,
             approvalType: resolveApprovalType(call.toolName),
             danger: resolveApprovalDanger(call.toolName, approvalArgs),
             args: call.input,
@@ -771,12 +973,42 @@ export const runSagaAgentChatToStream = internalAction({
         for (const call of otherCalls) {
           const args = call.input as Record<string, unknown>;
           if (needsToolApproval(call.toolName, args)) {
+            let suggestionId: string | undefined;
+            const suggestion = classifyKnowledgeSuggestion(call.toolName);
+            if (suggestion && !isTemplateBuilder) {
+              try {
+                suggestionId = (await ctx.runMutation(
+                  (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
+                  {
+                    projectId: projectIdValue,
+                    toolCallId: call.toolCallId,
+                    toolName: call.toolName,
+                    approvalType: resolveApprovalType(call.toolName),
+                    danger: resolveApprovalDanger(call.toolName, args),
+                    operation: suggestion.operation,
+                    targetType: suggestion.targetType,
+                    proposedPatch: call.input,
+                    actorType: aiActor.actorType,
+                    actorUserId: aiActor.actorUserId,
+                    actorAgentId: aiActor.actorAgentId,
+                    actorName: aiActor.actorName,
+                    streamId,
+                    threadId,
+                    promptMessageId: currentPromptMessageId,
+                    model: DEFAULT_MODEL,
+                  }
+                )) as string;
+              } catch (error) {
+                console.warn("[agentRuntime] Failed to create knowledge suggestion:", error);
+              }
+            }
             await appendStreamChunk(ctx, streamId, {
               type: "tool-approval-request",
               content: "",
               approvalId: call.toolCallId,
               toolCallId: call.toolCallId,
               toolName: call.toolName,
+              suggestionId,
               approvalType: resolveApprovalType(call.toolName),
               danger: resolveApprovalDanger(call.toolName, args),
               args: call.input,
@@ -935,6 +1167,12 @@ export const applyToolResultAndResumeToStream = internalAction({
     };
 
     try {
+      const registry = isTemplateBuilder
+        ? null
+        : ((await ctx.runQuery((internal as any).projectTypeRegistry.getResolvedInternal, {
+            projectId: projectIdValue,
+          })) as ProjectTypeRegistryResolved);
+
       if (E2E_TEST_MODE) {
         const script = await ctx.runQuery((internal as any)["e2e"].getSagaScript, {
           projectId: projectIdValue,
@@ -1007,6 +1245,19 @@ export const applyToolResultAndResumeToStream = internalAction({
         });
       }
 
+      if (!isTemplateBuilder) {
+        try {
+          await ctx.runMutation((internal as any).knowledgeSuggestions.resolveFromToolResult, {
+            toolCallId,
+            toolName,
+            resolvedByUserId: userId,
+            result,
+          });
+        } catch (error) {
+          console.warn("[agentRuntime] Failed to resolve knowledge suggestion:", error);
+        }
+      }
+
       const systemPrompt = buildSystemPrompt({
         mode: "editing",
         ragContext: buildEmptyContext(),
@@ -1041,13 +1292,48 @@ export const applyToolResultAndResumeToStream = internalAction({
       const toolCalls = await resumeResult.toolCalls;
       for (const call of toolCalls) {
         const callArgs = call.input as Record<string, unknown>;
-        if (needsToolApproval(call.toolName, callArgs)) {
+        const requiresApproval =
+          worldGraphTools.has(call.toolName)
+            ? await needsWorldGraphToolApproval(ctx, projectIdValue, call.toolName, callArgs, registry)
+            : needsToolApproval(call.toolName, callArgs);
+
+        if (requiresApproval) {
+          let suggestionId: string | undefined;
+          const suggestion = classifyKnowledgeSuggestion(call.toolName);
+          if (suggestion && !isTemplateBuilder) {
+            try {
+              suggestionId = (await ctx.runMutation(
+                (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
+                {
+                  projectId: projectIdValue,
+                  toolCallId: call.toolCallId,
+                  toolName: call.toolName,
+                  approvalType: resolveApprovalType(call.toolName),
+                  danger: resolveApprovalDanger(call.toolName, callArgs),
+                  operation: suggestion.operation,
+                  targetType: suggestion.targetType,
+                  proposedPatch: call.input,
+                  actorType: aiActor.actorType,
+                  actorUserId: aiActor.actorUserId,
+                  actorAgentId: aiActor.actorAgentId,
+                  actorName: aiActor.actorName,
+                  streamId,
+                  threadId,
+                  promptMessageId,
+                  model: DEFAULT_MODEL,
+                }
+              )) as string;
+            } catch (error) {
+              console.warn("[agentRuntime] Failed to create knowledge suggestion:", error);
+            }
+          }
           await appendStreamChunk(ctx, streamId, {
             type: "tool-approval-request",
             content: "",
             approvalId: call.toolCallId,
             toolCallId: call.toolCallId,
             toolName: call.toolName,
+            suggestionId,
             approvalType: resolveApprovalType(call.toolName),
             danger: resolveApprovalDanger(call.toolName, callArgs),
             args: call.input,

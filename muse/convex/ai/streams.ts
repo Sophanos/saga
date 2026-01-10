@@ -28,6 +28,7 @@ export const chunkSchema = v.object({
   toolCallId: v.optional(v.string()),
   toolName: v.optional(v.string()),
   approvalId: v.optional(v.string()),
+  suggestionId: v.optional(v.string()),
   approvalType: v.optional(v.string()),
   danger: v.optional(v.string()),
   args: v.optional(v.any()),
@@ -42,6 +43,7 @@ export type StreamChunk = {
   toolCallId?: string;
   toolName?: string;
   approvalId?: string;
+  suggestionId?: string;
   approvalType?: string;
   danger?: string;
   args?: unknown;
@@ -89,6 +91,7 @@ export const appendChunk = internalMutation({
       toolCallId: v.optional(v.string()),
       toolName: v.optional(v.string()),
       approvalId: v.optional(v.string()),
+      suggestionId: v.optional(v.string()),
       approvalType: v.optional(v.string()),
       danger: v.optional(v.string()),
       args: v.optional(v.any()),
@@ -114,6 +117,7 @@ export const appendChunk = internalMutation({
       toolCallId: newChunk.toolCallId,
       toolName: newChunk.toolName,
       approvalId: newChunk.approvalId,
+      suggestionId: newChunk.suggestionId,
       approvalType: newChunk.approvalType,
       danger: newChunk.danger,
       args: newChunk.args,

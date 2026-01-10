@@ -186,6 +186,48 @@ export const createEntityTool: Tool = {
 };
 
 /**
+ * Create Node Tool (Project Graph)
+ * Creates a new node using a per-project type registry.
+ */
+export const createNodeTool: Tool = {
+  name: "create_node",
+  description:
+    "Create a new project graph node using a per-project type registry. Returns a proposal for the node creation.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID to create the node in",
+      },
+      type: {
+        type: "string",
+        description: "Node type (validated against the project's type registry)",
+      },
+      name: {
+        type: "string",
+        description: "The name of the node",
+      },
+      aliases: {
+        type: "array",
+        items: { type: "string" },
+        description: "Alternative names or nicknames for the node",
+      },
+      notes: {
+        type: "string",
+        description: "General notes about the node",
+      },
+      properties: {
+        type: "object",
+        description: "Arbitrary node properties (JSON object)",
+        additionalProperties: true,
+      },
+    },
+    required: ["projectId", "type", "name"],
+  },
+};
+
+/**
  * Update Entity Tool
  * Updates an existing entity's properties.
  */
@@ -218,6 +260,53 @@ export const updateEntityTool: Tool = {
       },
     },
     required: ["projectId", "entityId"],
+  },
+};
+
+/**
+ * Update Node Tool (Project Graph)
+ * Updates an existing node using a per-project type registry.
+ */
+export const updateNodeTool: Tool = {
+  name: "update_node",
+  description:
+    "Update an existing project graph node using a per-project type registry. Identify the node by name (with optional type for disambiguation).",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID containing the node",
+      },
+      nodeName: {
+        type: "string",
+        description: "The current name of the node to update",
+      },
+      nodeType: {
+        type: "string",
+        description: "Optional node type for disambiguation",
+      },
+      updates: {
+        type: "object",
+        description: "Fields to update on the node",
+        properties: {
+          name: { type: "string", description: "New name for the node" },
+          aliases: {
+            type: "array",
+            items: { type: "string" },
+            description: "Updated aliases",
+          },
+          notes: { type: "string", description: "Updated notes" },
+          properties: {
+            type: "object",
+            description: "Properties to merge into existing properties",
+            additionalProperties: true,
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    required: ["projectId", "nodeName", "updates"],
   },
 };
 
@@ -259,6 +348,109 @@ export const createRelationshipTool: Tool = {
       },
     },
     required: ["projectId", "sourceEntityId", "targetEntityId", "type"],
+  },
+};
+
+/**
+ * Create Edge Tool (Project Graph)
+ * Creates an edge between two nodes using a per-project relationship registry.
+ */
+export const createEdgeTool: Tool = {
+  name: "create_edge",
+  description:
+    "Create an edge between two nodes in the project graph using a per-project relationship registry.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID",
+      },
+      sourceName: {
+        type: "string",
+        description: "Name of the source node",
+      },
+      targetName: {
+        type: "string",
+        description: "Name of the target node",
+      },
+      type: {
+        type: "string",
+        description: "Edge type (validated against the project's type registry)",
+      },
+      notes: {
+        type: "string",
+        description: "Additional notes about the edge",
+      },
+      bidirectional: {
+        type: "boolean",
+        description: "Whether the edge goes both ways",
+      },
+      strength: {
+        type: "number",
+        description: "Strength of the edge (0-1)",
+        minimum: 0,
+        maximum: 1,
+      },
+      metadata: {
+        type: "object",
+        description: "Additional edge metadata (JSON object)",
+        additionalProperties: true,
+      },
+    },
+    required: ["projectId", "sourceName", "targetName", "type"],
+  },
+};
+
+/**
+ * Update Edge Tool (Project Graph)
+ * Updates an existing edge between two nodes.
+ */
+export const updateEdgeTool: Tool = {
+  name: "update_edge",
+  description:
+    "Update an existing edge between two nodes in the project graph. Identify the edge by source name, target name, and type.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID",
+      },
+      sourceName: {
+        type: "string",
+        description: "Name of the source node",
+      },
+      targetName: {
+        type: "string",
+        description: "Name of the target node",
+      },
+      type: {
+        type: "string",
+        description: "The current edge type (to identify it)",
+      },
+      updates: {
+        type: "object",
+        description: "Fields to update on the edge",
+        properties: {
+          notes: { type: "string", description: "Updated notes" },
+          bidirectional: { type: "boolean", description: "Whether the edge is bidirectional" },
+          strength: {
+            type: "number",
+            description: "Updated strength (0-1)",
+            minimum: 0,
+            maximum: 1,
+          },
+          metadata: {
+            type: "object",
+            description: "Updated metadata (JSON object)",
+            additionalProperties: true,
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    required: ["projectId", "sourceName", "targetName", "type", "updates"],
   },
 };
 
@@ -648,6 +840,11 @@ export const SAGA_TOOLS: Tool[] = [
   createEntityTool,
   updateEntityTool,
   createRelationshipTool,
+  // Project Graph (generic)
+  createNodeTool,
+  updateNodeTool,
+  createEdgeTool,
+  updateEdgeTool,
   searchEntitiesTool,
   generateContentTool,
   // World generation
@@ -676,6 +873,10 @@ export const PROJECT_REQUIRED_TOOLS = new Set([
   "create_entity",
   "update_entity",
   "create_relationship",
+  "create_node",
+  "update_node",
+  "create_edge",
+  "update_edge",
   "search_entities",
   "generate_content",
 ]);
