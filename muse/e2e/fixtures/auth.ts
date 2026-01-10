@@ -67,10 +67,25 @@ async function waitForAuthToken(page: Page) {
     if (!raw) return false;
     try {
       const parsed = JSON.parse(raw);
-      return Boolean(parsed?.state?.session?.token);
+      const session = parsed?.state?.session;
+      const token =
+        session?.token ??
+        session?.sessionToken ??
+        session?.access_token ??
+        session?.accessToken ??
+        null;
+      if (token) return true;
+      if (parsed?.state?.isAuthenticated) return true;
     } catch {
-      return false;
+      // fall through
     }
+    const betterAuthCookie = window.localStorage.getItem("better-auth_cookie");
+    if (betterAuthCookie) return true;
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith("better-auth")) return true;
+    }
+    return false;
   });
 }
 
