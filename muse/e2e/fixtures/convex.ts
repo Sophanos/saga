@@ -1,11 +1,11 @@
-import { ConvexHttpClient } from "convex/node";
+import { ConvexHttpClient } from "convex/browser";
+import { anyApi } from "convex/server";
 import type { Page } from "@playwright/test";
-import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
 
-// Convex API types may not include new actions until codegen runs.
-// @ts-ignore
-const apiAny: any = api;
+type Id<TableName extends string> = string;
+
+// Avoid pulling the generated API type graph into E2E fixtures.
+const apiAny = anyApi as any;
 
 const CONVEX_URL =
   process.env.PLAYWRIGHT_CONVEX_URL ||
@@ -77,19 +77,19 @@ export async function getConvexHelpers(page: Page) {
   return {
     userId,
     createProject: async (args: { name: string; description?: string }) =>
-      client.mutation(api.projects.create, {
+      client.mutation(apiAny.projects.create, {
         name: args.name,
         description: args.description,
       }),
     deleteProject: async (projectId: Id<"projects">) =>
-      client.mutation(api.projects.remove, { id: projectId }),
+      client.mutation(apiAny.projects.remove, { id: projectId }),
     createDocument: async (args: {
       projectId: Id<"projects">;
       type: string;
       title: string;
       contentText?: string;
     }) =>
-      client.mutation(api.documents.create, {
+      client.mutation(apiAny.documents.create, {
         projectId: args.projectId,
         type: args.type,
         title: args.title,
@@ -97,16 +97,16 @@ export async function getConvexHelpers(page: Page) {
         contentText: args.contentText ?? "",
       }),
     updateDocumentText: async (args: { id: Id<"documents">; contentText: string }) =>
-      client.mutation(api.documents.update, {
+      client.mutation(apiAny.documents.update, {
         id: args.id,
         contentText: args.contentText,
       }),
     getDocument: async (id: Id<"documents">) =>
-      client.query(api.documents.get, { id }),
+      client.query(apiAny.documents.get, { id }),
     listEntities: async (projectId: Id<"projects">) =>
-      client.query(api.entities.list, { projectId, limit: 200 }),
+      client.query(apiAny.entities.list, { projectId, limit: 200 }),
     listRelationships: async (projectId: Id<"projects">) =>
-      client.query(api.relationships.list, { projectId, limit: 200 }),
+      client.query(apiAny.relationships.list, { projectId, limit: 200 }),
     createEntity: async (args: {
       projectId: Id<"projects">;
       name: string;
@@ -114,7 +114,7 @@ export async function getConvexHelpers(page: Page) {
       aliases?: string[];
       properties?: Record<string, unknown>;
     }) =>
-      client.mutation(api.entities.create, {
+      client.mutation(apiAny.entities.create, {
         projectId: args.projectId,
         name: args.name,
         type: args.type,
@@ -128,7 +128,7 @@ export async function getConvexHelpers(page: Page) {
       type: string;
       bidirectional?: boolean;
     }) =>
-      client.mutation(api.relationships.create, {
+      client.mutation(apiAny.relationships.create, {
         projectId: args.projectId,
         sourceId: args.sourceId,
         targetId: args.targetId,
@@ -140,7 +140,7 @@ export async function getConvexHelpers(page: Page) {
       userId: string;
       role?: "owner" | "editor" | "viewer";
     }) =>
-      client.mutation(api.collaboration.addProjectMember, {
+      client.mutation(apiAny.collaboration.addProjectMember, {
         projectId: args.projectId,
         userId: args.userId,
         role: args.role ?? "editor",

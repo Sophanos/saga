@@ -87,7 +87,7 @@ export default function SignUpScreen() {
         <Text style={styles.subtitle}>Start your creative journey</Text>
 
         {error && (
-          <View style={styles.errorContainer}>
+          <View style={styles.errorContainer} testID="auth-error">
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
@@ -101,6 +101,7 @@ export default function SignUpScreen() {
             onChangeText={setName}
             autoCapitalize="words"
             autoComplete="name"
+            testID="auth-name"
           />
           <TextInput
             style={styles.input}
@@ -111,6 +112,7 @@ export default function SignUpScreen() {
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
+            testID="auth-email"
           />
           <TextInput
             style={styles.input}
@@ -120,6 +122,7 @@ export default function SignUpScreen() {
             onChangeText={setPassword}
             secureTextEntry
             autoComplete="new-password"
+            testID="auth-password"
           />
           <TextInput
             style={styles.input}
@@ -129,12 +132,15 @@ export default function SignUpScreen() {
             onChangeText={setConfirmPassword}
             secureTextEntry
             autoComplete="new-password"
+            testID="auth-password-confirm"
           />
 
           <TouchableOpacity
             style={[styles.button, styles.primaryButton]}
             onPress={handleSignUp}
             disabled={isLoading}
+            testID="auth-sign-up"
+            accessibilityRole="button"
           >
             {isLoading ? (
               <ActivityIndicator color="#fff" />

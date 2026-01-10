@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { getConvexHelpers } from "./fixtures/convex";
+import { getRunId } from "./utils/run-id";
 
 const hasE2ESecret = !!(process.env.PLAYWRIGHT_E2E_SECRET || process.env.E2E_TEST_SECRET);
 
@@ -15,10 +16,10 @@ async function openProject(page: Page, projectId: string): Promise<void> {
 }
 
 test.describe("E2E-08 Billing + Tier Limits", () => {
-  test("renders billing usage from mocked edge response", async ({ page }) => {
+  test("renders billing usage from mocked edge response", async ({ page }, testInfo) => {
     test.skip(skipIfNotWeb(test.info().project.name), "Billing UI is web-only");
 
-    const runId = `${Date.now()}`;
+    const runId = getRunId(testInfo, "billing");
     const convex = await getConvexHelpers(page);
 
     const projectId = await convex.createProject({
@@ -64,12 +65,12 @@ test.describe("E2E-08 Billing + Tier Limits", () => {
     await expect(page.getByTestId("billing-tokens-remaining")).toContainText("880");
   });
 
-  test("upserts subscription and reports tier", async ({ page }) => {
+  test("upserts subscription and reports tier", async ({ page }, testInfo) => {
     test.skip(
       !hasE2ESecret || process.env.E2E_TEST_MODE !== "true",
       "E2E harness not configured"
     );
-    const runId = `${Date.now()}`;
+    const runId = getRunId(testInfo, "billing-tier");
     const convex = await getConvexHelpers(page);
 
     await convex.upsertSubscription({

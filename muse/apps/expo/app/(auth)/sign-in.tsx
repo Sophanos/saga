@@ -107,7 +107,7 @@ export default function SignInScreen() {
         <Text style={styles.subtitle}>Sign in to continue</Text>
 
         {error && (
-          <View style={styles.errorContainer}>
+          <View style={styles.errorContainer} testID="auth-error">
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
@@ -122,6 +122,7 @@ export default function SignInScreen() {
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
+            testID="auth-email"
           />
           <TextInput
             style={styles.input}
@@ -131,12 +132,15 @@ export default function SignInScreen() {
             onChangeText={setPassword}
             secureTextEntry
             autoComplete="password"
+            testID="auth-password"
           />
 
           <TouchableOpacity
             style={[styles.button, styles.primaryButton]}
             onPress={handleEmailSignIn}
             disabled={isLoading}
+            testID="auth-sign-in"
+            accessibilityRole="button"
           >
             {isLoading ? (
               <ActivityIndicator color="#fff" />

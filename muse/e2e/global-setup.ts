@@ -2,6 +2,7 @@ import { chromium } from "@playwright/test";
 import path from "path";
 import { mkdir } from "fs/promises";
 import { buildTestUser, signInUI, signUpUI } from "./fixtures/auth";
+import { getRunId } from "./utils/run-id";
 
 const expoBaseURL = process.env.PLAYWRIGHT_EXPO_URL ?? "http://localhost:19006";
 const tauriBaseURL = process.env.PLAYWRIGHT_TAURI_URL ?? "http://localhost:1420";
@@ -38,7 +39,7 @@ async function createStorageState(args: {
 }
 
 export default async function globalSetup() {
-  const runId = process.env.PLAYWRIGHT_RUN_ID ?? `${Date.now()}`;
+  const runId = getRunId();
   const user = buildTestUser(runId, "seed");
 
   const targetEnv = process.env.PLAYWRIGHT_TARGETS;

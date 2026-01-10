@@ -8,6 +8,9 @@ bun install && bun run dev
 bun run dev:expo:web
 bun run typecheck
 bun run --filter @mythos/expo typecheck
+bun run e2e:expo
+bun run e2e:tauri
+bun run e2e:typecheck
 bd ready | bd create "Title" -p 1 | bd close <id>
 ```
 
@@ -70,6 +73,12 @@ const { colors, isDark } = useTheme();
 - Tier limits: `convex/lib/tierConfig.ts`
 - Provider registry: `convex/lib/providers/`
 
+## Docs of Record
+- Roadmap: `docs/MLP1_ROADMAP.md`
+- E2E plan: `docs/MLP1_E2E_SCRIPT.md`
+- E2E testability contract: `docs/E2E_TESTABILITY_CONTRACT.md`
+- E2E review prompts: `docs/MLP1_E2E_CONTEXT_BUILDER_PROMPTS.md`
+
 **Constraints:** keep files under 800 LOC. No AI slop; concise code.
 
 ## Convex AI (high level)
@@ -82,6 +91,13 @@ const { colors, isDark } = useTheme();
 - Export/Import centralization into `@mythos/io` (P2)
 - Platform capability layer in `@mythos/platform` (no `.tauri.ts` sprawl)
 - Full details: `docs/MLP1_ROADMAP.md`
+
+## E2E Guidelines
+- Playwright runs TS directly; no precompile step.
+- Use `e2e:typecheck` only when you want explicit type checks.
+- Avoid Convex codegen types in E2E fixtures; `e2e/fixtures/convex.ts` uses `anyApi` + string IDs.
+- Keep auth + harness selectors stable (`data-testid`); follow `docs/E2E_TESTABILITY_CONTRACT.md`.
+- E2E harness UI lives at `apps/expo/app/(app)/e2e.tsx`.
 
 ## Environment (examples)
 ```env

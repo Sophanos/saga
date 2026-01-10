@@ -36,6 +36,12 @@
 - Tier limits: `convex/lib/tierConfig.ts`
 - AI provider registry: `convex/lib/providers/`
 
+## Docs of Record
+- Roadmap: `muse/docs/MLP1_ROADMAP.md`
+- E2E plan: `muse/docs/MLP1_E2E_SCRIPT.md`
+- E2E testability contract: `muse/docs/E2E_TESTABILITY_CONTRACT.md`
+- E2E review prompts: `muse/docs/MLP1_E2E_CONTEXT_BUILDER_PROMPTS.md`
+
 ## Roadmap Focus (MLP1)
 - Platform priority: Expo Web → macOS (Tauri) → iOS/iPad (Expo).
 - Focus Mode + writer tools are P1/P2; AI stays silent unless invoked.
@@ -44,6 +50,10 @@
 
 ## Testing
 - `bun run test` (Turbo) when configured; keep tests in their package.
+- E2E runs TypeScript directly (no precompile): `bun run e2e`, `bun run e2e:expo`, `bun run e2e:tauri`, `bun run e2e:ui`.
+- Optional E2E typecheck: `bun run e2e:typecheck`.
+- E2E fixtures must avoid Convex codegen types; use `anyApi` and string IDs in `muse/e2e/fixtures/convex.ts`.
+- Add stable `data-testid` hooks per `muse/docs/E2E_TESTABILITY_CONTRACT.md`.
 
 ## Task Tracking (bd)
 - `bd ready` | `bd create "Title" -p 1` | `bd update <id> -s in-progress` | `bd close <id>`

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { getConvexHelpers } from "./fixtures/convex";
+import { getRunId } from "./utils/run-id";
 
 const hasE2EHarness =
   process.env.E2E_TEST_MODE === "true" &&
@@ -17,11 +18,13 @@ async function openProject(page: Page, projectId: string): Promise<void> {
 }
 
 test.describe("E2E-04 Entity Detection + World Graph", () => {
-  test.skip(({ project }) => skipIfNotWeb(project.name), "World Graph is web-only");
+  test.beforeEach(({}, testInfo) => {
+    test.skip(skipIfNotWeb(testInfo.project.name), "World Graph is web-only");
+  });
   test.skip(!hasE2EHarness, "E2E harness not configured");
 
-  test("detects entities and renders world graph", async ({ page }) => {
-    const runId = `${Date.now()}`;
+  test("detects entities and renders world graph", async ({ page }, testInfo) => {
+    const runId = getRunId(testInfo, "entities");
     const convex = await getConvexHelpers(page);
 
     const projectId = await convex.createProject({

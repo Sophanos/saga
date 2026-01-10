@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { getConvexHelpers } from "./fixtures/convex";
+import { getRunId } from "./utils/run-id";
 
 const hasE2EHarness =
   process.env.E2E_TEST_MODE === "true" &&
@@ -52,11 +53,13 @@ async function openChat(page: Page): Promise<void> {
 }
 
 test.describe("E2E-05 AI Agent Chat + Streaming", () => {
-  test.skip(({ project }) => skipIfNotWeb(project.name), "AI sidebar is web-only");
+  test.beforeEach(({}, testInfo) => {
+    test.skip(skipIfNotWeb(testInfo.project.name), "AI sidebar is web-only");
+  });
   test.skip(!hasE2EHarness, "E2E harness not configured");
 
-  test("streams assistant response", async ({ page }) => {
-    const runId = `${Date.now()}`;
+  test("streams assistant response", async ({ page }, testInfo) => {
+    const runId = getRunId(testInfo, "chat");
     const convex = await getConvexHelpers(page);
 
     const projectId = await convex.createProject({
@@ -87,8 +90,8 @@ test.describe("E2E-05 AI Agent Chat + Streaming", () => {
     await expect(assistantMessage).toContainText("Hello from Saga");
   });
 
-  test("renders tool approval request", async ({ page }) => {
-    const runId = `${Date.now()}`;
+  test("renders tool approval request", async ({ page }, testInfo) => {
+    const runId = getRunId(testInfo, "chat-approval");
     const convex = await getConvexHelpers(page);
 
     const projectId = await convex.createProject({

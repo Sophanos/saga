@@ -89,6 +89,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const submitTestId = mode === "signin" ? "auth-sign-in" : "auth-sign-up";
 
   const handleGoogleSignIn = useCallback(async () => {
     setIsLoading(true);
@@ -253,6 +254,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm mb-6"
+              data-testid="auth-error"
             >
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
@@ -297,6 +299,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
                         className="w-full h-11 pl-10 pr-4 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary text-mythos-text-primary placeholder:text-mythos-text-muted focus:outline-none focus:border-mythos-border-default-hover transition-colors"
                         required
                         disabled={isLoading}
+                        data-testid="auth-email"
                       />
                     </div>
                   </div>
@@ -375,18 +378,19 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
             {mode === "signup" && (
               <div>
                 <label className="block text-sm text-mythos-text-secondary mb-1.5">Name</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mythos-text-muted" />
-                  <input
-                    type="text"
-                    placeholder="Your name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full h-11 pl-10 pr-4 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary text-mythos-text-primary placeholder:text-mythos-text-muted focus:outline-none focus:border-mythos-border-default-hover transition-colors"
-                    disabled={isLoading}
-                  />
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mythos-text-muted" />
+                    <input
+                      type="text"
+                      placeholder="Your name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full h-11 pl-10 pr-4 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary text-mythos-text-primary placeholder:text-mythos-text-muted focus:outline-none focus:border-mythos-border-default-hover transition-colors"
+                      disabled={isLoading}
+                      data-testid="auth-name"
+                    />
+                  </div>
                 </div>
-              </div>
             )}
 
             <div>
@@ -401,6 +405,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
                   className="w-full h-11 pl-10 pr-4 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary text-mythos-text-primary placeholder:text-mythos-text-muted focus:outline-none focus:border-mythos-border-default-hover transition-colors"
                   required
                   disabled={isLoading}
+                  data-testid="auth-email"
                 />
               </div>
             </div>
@@ -429,6 +434,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
                   required
                   minLength={6}
                   disabled={isLoading}
+                  data-testid="auth-password"
                 />
               </div>
             </div>
@@ -437,6 +443,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
               type="submit"
               disabled={isLoading}
               className="w-full h-11 rounded-lg bg-white text-bg-primary font-medium hover:bg-white/90 transition-colors disabled:opacity-50"
+              data-testid={submitTestId}
             >
               {isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin mx-auto" />

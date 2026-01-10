@@ -1,6 +1,7 @@
 import { test, expect, type FrameLocator, type Locator, type Page } from "@playwright/test";
 import { buildTestUser, signUpUI } from "./fixtures/auth";
 import { getConvexHelpers } from "./fixtures/convex";
+import { getRunId } from "./utils/run-id";
 
 function skipIfNotWeb(projectName: string): boolean {
   return projectName !== "tauri-web";
@@ -30,10 +31,12 @@ async function resolveEditor(page: Page): Promise<{ editor: Locator; frame: Fram
 }
 
 test.describe("E2E-07 Real-Time Collaboration", () => {
-  test.skip(({ project }) => skipIfNotWeb(project.name), "Collaboration is web-only");
+  test.beforeEach(({}, testInfo) => {
+    test.skip(skipIfNotWeb(testInfo.project.name), "Collaboration is web-only");
+  });
 
-  test("syncs edits between two users", async ({ browser, page }) => {
-    const runId = `${Date.now()}`;
+  test("syncs edits between two users", async ({ browser, page }, testInfo) => {
+    const runId = getRunId(testInfo, "collab");
     const userB = buildTestUser(runId, "collab-b");
 
     const contextB = await browser.newContext();

@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Switch, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Switch, Alert, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useAction } from 'convex/react';
@@ -11,6 +11,17 @@ import { api } from '../../../convex/_generated/api';
 import { useTheme, spacing, typography, radii } from '@/design-system';
 import { useLayoutStore } from '@mythos/state';
 import { useSession, signOut } from '@/lib/auth';
+
+function blurActiveElement(): void {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') {
+    return;
+  }
+
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement) {
+    activeElement.blur();
+  }
+}
 
 export default function SettingsScreen() {
   const { colors, isDark } = useTheme();
@@ -35,8 +46,9 @@ export default function SettingsScreen() {
 
   const handleSignOut = async () => {
     try {
+      blurActiveElement();
       await signOut();
-      router.replace('/');
+      router.replace('/sign-in');
     } catch (error) {
       Alert.alert('Error', 'Failed to sign out. Please try again.');
     }
@@ -74,8 +86,9 @@ export default function SettingsScreen() {
     setIsDeleting(true);
     try {
       await deleteMyAccount();
+      blurActiveElement();
       await signOut();
-      router.replace('/');
+      router.replace('/sign-in');
       Alert.alert('Account Deleted', 'Your account has been permanently deleted.');
     } catch (error) {
       Alert.alert('Error', 'Failed to delete account. Please try again.');

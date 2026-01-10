@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getConvexHelpers } from "./fixtures/convex";
+import { getRunId } from "./utils/run-id";
 
 const hasQdrant = !!process.env.QDRANT_URL;
 const hasE2ESecret = !!(process.env.PLAYWRIGHT_E2E_SECRET || process.env.E2E_TEST_SECRET);
@@ -9,8 +10,8 @@ test.describe("E2E-06 RAG Pipeline", () => {
   test.skip(!hasQdrant, "Qdrant not configured");
   test.skip(!hasE2EHarness, "E2E harness not configured");
 
-  test("retrieves embeddings-backed context", async ({ page }) => {
-    const runId = `${Date.now()}`;
+  test("retrieves embeddings-backed context", async ({ page }, testInfo) => {
+    const runId = getRunId(testInfo, "rag");
     const uniquePhrase = `E2E_RAG_${runId}_PhoenixSong`;
     const convex = await getConvexHelpers(page);
 

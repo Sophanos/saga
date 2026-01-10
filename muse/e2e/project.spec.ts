@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { getRunId } from "./utils/run-id";
 
 function extractId(text: string | null) {
   if (!text) return null;
@@ -6,8 +7,8 @@ function extractId(text: string | null) {
   return parts.length > 1 ? parts.slice(1).join(":").trim() : null;
 }
 
-test("creates project and document via E2E harness", async ({ page }) => {
-  const runId = `${Date.now()}`;
+test("creates project and document via E2E harness", async ({ page }, testInfo) => {
+  const runId = getRunId(testInfo, "project");
 
   await page.goto("/e2e");
   await page.getByTestId("e2e-project-name").fill(`E2E/Project/${runId}`);

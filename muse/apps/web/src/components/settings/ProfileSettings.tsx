@@ -414,6 +414,7 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
               onClick={handleSignOut}
               disabled={isSigningOut}
               className="w-full gap-2"
+              data-testid="auth-sign-out"
             >
               {isSigningOut ? (
                 <>

@@ -34,6 +34,11 @@ Optional / recommended:
 - `E2E_MOCK_AI=true` (recommended for CI reliability)
 - `OPENROUTER_API_KEY` (only if not using mock mode)
 
+Notes from local runs:
+- Expo E2E requires `EXPO_PUBLIC_E2E=true` to expose the harness route and sign-in flow.
+- If you source `.env` in a shell, ensure values with `|` or spaces are quoted or exported safely; otherwise `source`/`set -a` can fail.
+- If you pass env inline to `bun run e2e`, that overrides `.env` cleanly without shell parsing issues.
+
 ## E2E-01: Infrastructure
 ### Scope
 - Playwright multi-project config (`expo-web`, `tauri-web`)
@@ -43,11 +48,15 @@ Optional / recommended:
 
 ### Artifacts
 - `muse/e2e/playwright.config.cjs`
-- `muse/e2e/tsconfig.json` (precompile config)
+- `muse/e2e/tsconfig.json` (optional typecheck config)
 - `muse/e2e/global-setup.ts`
 - `muse/e2e/fixtures/auth.ts`
 - `muse/e2e/fixtures/convex.ts`
 - `muse/e2e/utils/wait-for.ts`
+
+### Notes
+- Playwright runs TypeScript directly; there is no precompile step.
+- E2E fixtures use `anyApi` to avoid Convex codegen type graph; IDs are treated as strings.
 
 ## E2E-02: Authentication
 ### Scenarios
@@ -148,15 +157,20 @@ Optional / recommended:
 
 ## How to Run
 - Install browsers: `bun run e2e:install`
+- Optional typecheck: `bun run e2e:typecheck`
 - Expo E2E: `bun run e2e:expo`
 - Tauri (web content) E2E: `bun run e2e:tauri`
 - Full suite: `bun run e2e`
 - Debugging helpers: `--headed`, `--ui`, `--debug`, `--last-failed`, `-g "title"`
 
+Observed behavior (local):
+- `bun run e2e -- --project=expo-web e2e/ai-chat.spec.ts` still expanded to both `expo-web` and `tauri-web` via the script. Use `e2e:expo` or update the script if you need a strict single-project run.
+- Playwright runs TypeScript directly; use `bun run e2e:typecheck` if you want explicit typechecking for E2E.
+
 ## Known Issues / Remaining Work
-- Node 25 + Playwright TS ESM loader requires a precompile step; E2E tests are compiled to `muse/e2e/.compiled`, and the runner uses `muse/e2e/playwright.config.cjs`.
-- `e2e:build` emits JS even with type errors; tighten this if we want strict TS gating for E2E.
-- Global setup can time out waiting for the Expo sign-in form; ensure the Expo server is ready (or increase web server timeouts and add explicit readiness checks).
+- Global setup can time out waiting for the Expo sign-in form or auth token; ensure the Expo server is ready and auth env is set (Better Auth + Convex URLs).
+  - If auth routes or selectors change, update `muse/e2e/fixtures/auth.ts`.
+  - If sign-in fails, surface the error via `auth-error` and verify credentials/env.
 
 ## Output
 - HTML report: `playwright-report/`

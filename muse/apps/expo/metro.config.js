@@ -10,6 +10,9 @@ const config = getDefaultConfig(__dirname);
 // Enable CSS support for web
 config.resolver.sourceExts.push('css');
 
+// Better Auth uses package exports
+config.resolver.unstable_enablePackageExports = true;
+
 // Fix import.meta issue with zustand and other packages
 // This makes Metro prefer CJS builds over ESM builds that use import.meta
 // See: https://github.com/pmndrs/zustand/discussions/1967

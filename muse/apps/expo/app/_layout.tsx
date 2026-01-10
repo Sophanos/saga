@@ -30,14 +30,21 @@ const convex = new ConvexReactClient(convexUrl, {
   skipConvexDeploymentUrlCheck: true, // Self-hosted
 });
 
+// Auth sync component
+function AuthSync(): null {
+  const { useAuthSync } = require('@mythos/auth/hooks');
+  useAuthSync(authClient);
+  return null;
+}
+
 // RevenueCat sync component
-function RevenueCatSync() {
+function RevenueCatSync(): null {
   const { useRevenueCatSync } = require('@mythos/auth/hooks');
   useRevenueCatSync();
   return null;
 }
 
-export default function RootLayout() {
+export default function RootLayout(): JSX.Element {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -65,6 +72,7 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <ConvexProvider client={convex}>
             <ConvexBetterAuthProvider client={convex} authClient={authClient}>
+              <AuthSync />
               <RevenueCatSync />
               <StatusBar style={isDark ? 'light' : 'dark'} />
               <Stack

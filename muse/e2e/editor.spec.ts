@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getConvexHelpers } from "./fixtures/convex";
+import { getRunId } from "./utils/run-id";
 import { waitForConvexDocumentText, waitForCondition } from "./utils/wait-for";
 
 function extractId(text: string | null) {
@@ -8,8 +9,8 @@ function extractId(text: string | null) {
   return parts.length > 1 ? parts.slice(1).join(":").trim() : null;
 }
 
-test("editor content persists after reload", async ({ page }) => {
-  const runId = `${Date.now()}`;
+test("editor content persists after reload", async ({ page }, testInfo) => {
+  const runId = getRunId(testInfo, "editor");
   const content = `E2E_SAVE_${runId}`;
 
   await page.goto("/e2e");

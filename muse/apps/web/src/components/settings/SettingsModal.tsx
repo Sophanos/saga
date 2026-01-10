@@ -568,6 +568,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
                       onClick={handleSignOut}
                       disabled={isSigningOut}
                       className="gap-2"
+                      data-testid="auth-sign-out"
                     >
                       {isSigningOut ? (
                         <>

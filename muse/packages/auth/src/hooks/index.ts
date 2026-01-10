@@ -7,7 +7,7 @@
 import { useEffect, useCallback } from "react";
 import { useAuthStore, useSubscriptionStore } from "../store";
 import { getPlatform, isNativePlatform } from "../config";
-import type { User, Subscription } from "../types";
+import type { Session, Subscription, User } from "../types";
 
 /**
  * Hook: Get current user
@@ -95,29 +95,36 @@ export function useAuth() {
  * Hook: Initialize auth sync
  * Call this at app root to sync Better Auth session with store
  */
-export function useAuthSync(authClient: any) {
+export function useAuthSync(authClient: any): { sync: () => Promise<void> } {
   const setUser = useAuthStore((s) => s.setUser);
+  const setSession = useAuthStore((s) => s.setSession);
   const setLoading = useAuthStore((s) => s.setLoading);
   const setError = useAuthStore((s) => s.setError);
 
-  const sync = useCallback(async () => {
-    setLoading(true);
-    try {
-      const session = await authClient.getSession();
-      if (session?.data?.user) {
-        setUser(session.data.user as User);
-      } else {
-        setUser(null);
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Auth sync failed");
-      setUser(null);
-    }
-  }, [authClient, setUser, setLoading, setError]);
+  const { data, isPending, error, refetch } = authClient.useSession();
 
   useEffect(() => {
-    sync();
-  }, [sync]);
+    setLoading(isPending);
+  }, [isPending, setLoading]);
+
+  useEffect(() => {
+    if (isPending) return;
+
+    if (error) {
+      setError(error.message ?? "Auth sync failed");
+      setUser(null);
+      setSession(null);
+      return;
+    }
+
+    setError(null);
+    setUser((data?.user as User | null) ?? null);
+    setSession((data?.session as Session | null) ?? null);
+  }, [data, error, isPending, setError, setSession, setUser]);
+
+  const sync = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
   return { sync };
 }

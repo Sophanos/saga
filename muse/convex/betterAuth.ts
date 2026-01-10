@@ -12,7 +12,7 @@
 
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
-import { betterAuth } from "better-auth/minimal";
+import { betterAuth } from "better-auth";
 import { expo } from "@better-auth/expo";
 import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
@@ -28,8 +28,12 @@ export const authComponent = createClient<DataModel>(components.betterAuth);
 /**
  * Site URLs for different environments
  */
-const getSiteUrl = () => {
-  return process.env["SITE_URL"] || "https://cascada.vision";
+const getSiteUrl = (): string => {
+  const siteUrl = process.env["SITE_URL"];
+  if (!siteUrl) {
+    console.warn("[better-auth] SITE_URL not set; defaulting to https://cascada.vision");
+  }
+  return siteUrl ?? "https://cascada.vision";
 };
 
 /**
