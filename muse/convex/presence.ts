@@ -18,6 +18,28 @@ const AI_NAME = "Muse";
 const AI_COLOR = "#22D3EE";
 const AI_INTERVAL_MS = 10_000;
 
+const presenceCursor = v.object({
+  from: v.number(),
+  to: v.number(),
+});
+
+const presenceStatus = v.union(
+  v.literal("online"),
+  v.literal("typing"),
+  v.literal("idle")
+);
+
+const presenceData = v.object({
+  name: v.optional(v.string()),
+  avatarUrl: v.optional(v.string()),
+  color: v.optional(v.string()),
+  documentId: v.optional(v.string()),
+  cursor: v.optional(presenceCursor),
+  status: v.optional(presenceStatus),
+  isAi: v.optional(v.boolean()),
+  metadata: v.optional(v.any()),
+});
+
 function parseRoomId(roomId: string):
   | { scope: "project"; id: Id<"projects"> }
   | { scope: "document"; id: Id<"documents"> } {
@@ -71,7 +93,7 @@ export const list = query({
 export const update = mutation({
   args: {
     roomId: v.string(),
-    data: v.any(),
+    data: presenceData,
   },
   handler: async (ctx, { roomId, data }) => {
     const { userId } = await verifyRoomAccess(ctx, roomId);

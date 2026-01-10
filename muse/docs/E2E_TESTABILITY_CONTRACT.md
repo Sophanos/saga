@@ -11,6 +11,7 @@ Applies to MLP1 journeys (auth, editor, entities/world graph, AI chat, RAG, coll
 - Test IDs must be semantic and stable; never depend on visible copy, translated text, or placeholder text.
 - Error and empty states must expose a single container test ID (e.g., `auth-error`).
 - Dynamic lists must expose stable row IDs (e.g., `entity-row-<id>`), not index-based selectors.
+- Collaboration cursors must expose `remote-cursor-<userId>` and `remote-cursor-label-<userId>` test IDs for identity-based assertions.
 - Provide a deterministic E2E path behind `E2E_TEST_MODE` for AI/embeddings and other non-deterministic APIs.
 - For keyboard-only shortcuts, expose a secondary UI path so tests can reach the same state without relying on key combos.
 - World Graph edges must expose `wg-edge-<relationshipId>` on the label for edge assertions.

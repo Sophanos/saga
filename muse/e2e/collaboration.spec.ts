@@ -7,10 +7,14 @@ function skipIfNotWeb(projectName: string): boolean {
   return projectName !== "tauri-web";
 }
 
-async function openProject(page: Page, projectId: string): Promise<void> {
-  await page.addInitScript((id: string) => {
-    window.localStorage.setItem("mythos:lastProjectId", id);
-  }, projectId);
+async function openProjectAndDocument(
+  page: Page,
+  args: { projectId: string; documentId: string }
+): Promise<void> {
+  await page.addInitScript((payload: { projectId: string; documentId: string }) => {
+    window.localStorage.setItem("mythos:lastProjectId", payload.projectId);
+    window.localStorage.setItem("mythos:lastDocumentId", payload.documentId);
+  }, args);
   await page.goto("/");
 }
 
@@ -28,6 +32,25 @@ async function resolveEditor(page: Page): Promise<{ editor: Locator; frame: Fram
     editor: page.getByTestId("editor-surface").locator(".ProseMirror"),
     frame: null,
   };
+}
+
+async function waitForEditorReady(
+  page: Page,
+  resolved: { editor: Locator; frame: FrameLocator | null }
+): Promise<void> {
+  if (resolved.frame) {
+    await expect(resolved.frame.getByTestId("collab-editor")).toBeVisible();
+  } else {
+    const collabRoot = page.getByTestId("collab-editor");
+    if (await collabRoot.count()) {
+      await expect(collabRoot).toBeVisible();
+    } else {
+      await expect(page.getByTestId("editor-ready")).toBeAttached();
+    }
+  }
+
+  await expect(resolved.editor).toBeVisible();
+  await expect(resolved.editor).toHaveAttribute("contenteditable", "true");
 }
 
 test.describe("E2E-07 Real-Time Collaboration", () => {
@@ -51,7 +74,7 @@ test.describe("E2E-07 Real-Time Collaboration", () => {
       name: `E2E/Collab/${runId}`,
     });
 
-    await convexA.createDocument({
+    const documentId = await convexA.createDocument({
       projectId,
       type: "chapter",
       title: `Collab Doc ${runId}`,
@@ -64,19 +87,30 @@ test.describe("E2E-07 Real-Time Collaboration", () => {
       role: "editor",
     });
 
-    await openProject(page, projectId as string);
-    await openProject(pageB, projectId as string);
+    await openProjectAndDocument(page, {
+      projectId: projectId as string,
+      documentId: documentId as string,
+    });
+    await openProjectAndDocument(pageB, {
+      projectId: projectId as string,
+      documentId: documentId as string,
+    });
 
     const editorA = await resolveEditor(page);
     const editorB = await resolveEditor(pageB);
+
+    await waitForEditorReady(page, editorA);
+    await waitForEditorReady(pageB, editorB);
 
     await editorA.editor.click();
     await editorA.editor.type(`Hello from A ${runId}`);
 
     await expect(editorB.editor).toContainText(`Hello from A ${runId}`);
 
-    if (editorB.frame) {
-      await expect(editorB.frame.locator(".remote-cursor__label")).toHaveCount(1);
-    }
+    const cursorLabelId = `remote-cursor-label-${convexA.userId}`;
+    const remoteCursorLabel = editorB.frame
+      ? editorB.frame.getByTestId(cursorLabelId)
+      : pageB.getByTestId(cursorLabelId);
+    await expect(remoteCursorLabel).toBeVisible();
   });
 });

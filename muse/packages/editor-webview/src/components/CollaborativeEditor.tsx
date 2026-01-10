@@ -15,6 +15,11 @@ const DEFAULT_INITIAL_CONTENT = {
   content: [{ type: 'paragraph' }],
 };
 
+type PresenceStatus = 'online' | 'typing' | 'idle';
+
+const CURSOR_THROTTLE_MS = 350;
+const TYPING_STATUS_IDLE_MS = 1500;
+
 // Convex API types are too deep for this package; treat as untyped here.
 // @ts-ignore
 const apiAny: any = api;
@@ -41,6 +46,7 @@ export interface CollaborativeEditorProps
   authToken?: string | null;
   convexUrl?: string;
   presenceIntervalMs?: number;
+  onSyncError?: (error: Error) => void;
 }
 
 function CollaborativeEditorInner({
@@ -50,10 +56,14 @@ function CollaborativeEditorInner({
   authToken: _authToken,
   convexUrl,
   presenceIntervalMs = 10_000,
+  onSyncError,
   ...editorProps
 }: CollaborativeEditorProps) {
+  const { onChange: onEditorChange, onFocusChange: onEditorFocusChange, ...restEditorProps } =
+    editorProps;
   const sync = useTiptapSync(apiAny.prosemirrorSync as any, documentId, {
     onSyncError: (error) => {
+      onSyncError?.(error);
       console.error('[CollaborativeEditor] Sync error:', error);
     },
   });
@@ -76,8 +86,16 @@ function CollaborativeEditorInner({
     convexUrl
   );
 
-  const updatePresenceData = useCallback(
-    (cursor?: { from: number; to: number }) => {
+  const pendingCursorRef = useRef<{ from: number; to: number } | null>(null);
+  const cursorTimerRef = useRef<number | null>(null);
+  const typingTimeoutRef = useRef<number | null>(null);
+  const [editorInstance, setEditorInstance] = useState<TiptapEditor | null>(null);
+  const lastSentCursorRef = useRef<{ from: number; to: number } | null>(null);
+  const isFocusedRef = useRef(false);
+  const statusRef = useRef<PresenceStatus>('online');
+
+  const sendPresenceUpdate = useCallback(
+    (payload: { cursor?: { from: number; to: number }; status: PresenceStatus }) => {
       updatePresence({
         roomId,
         data: {
@@ -85,8 +103,8 @@ function CollaborativeEditorInner({
           avatarUrl: user.avatarUrl,
           color: colorRef.current,
           documentId,
-          cursor,
-          status: 'online',
+          cursor: payload.cursor,
+          status: payload.status,
           isAi: false,
         },
       }).catch((error) => {
@@ -96,26 +114,81 @@ function CollaborativeEditorInner({
     [updatePresence, roomId, user.name, user.avatarUrl, documentId]
   );
 
-  const pendingCursorRef = useRef<{ from: number; to: number } | null>(null);
-  const cursorTimerRef = useRef<number | null>(null);
-  const [editorInstance, setEditorInstance] = useState<TiptapEditor | null>(null);
-  const lastSentCursorRef = useRef<{ from: number; to: number } | null>(null);
-  const isFocusedRef = useRef(false);
+  const updateStatusPresence = useCallback(
+    (status: PresenceStatus) => {
+      if (statusRef.current === status) return;
+      statusRef.current = status;
+      const cursor = lastSentCursorRef.current ?? pendingCursorRef.current ?? undefined;
+      sendPresenceUpdate({ status, cursor });
+    },
+    [sendPresenceUpdate]
+  );
+
+  const updateCursorPresence = useCallback(
+    (cursor?: { from: number; to: number }) => {
+      sendPresenceUpdate({ status: statusRef.current, cursor });
+    },
+    [sendPresenceUpdate]
+  );
+
+  const clearCursorTimer = useCallback(() => {
+    if (cursorTimerRef.current !== null) {
+      window.clearTimeout(cursorTimerRef.current);
+      cursorTimerRef.current = null;
+    }
+  }, []);
+
+  const clearTypingTimer = useCallback(() => {
+    if (typingTimeoutRef.current !== null) {
+      window.clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleTypingReset = useCallback(() => {
+    clearTypingTimer();
+    typingTimeoutRef.current = window.setTimeout(() => {
+      typingTimeoutRef.current = null;
+      updateStatusPresence('online');
+    }, TYPING_STATUS_IDLE_MS);
+  }, [clearTypingTimer, updateStatusPresence]);
 
   const handleFocusChange = useCallback(
     (focused: boolean) => {
       isFocusedRef.current = focused;
-      if (!focused) {
-        pendingCursorRef.current = null;
-        if (cursorTimerRef.current !== null) {
-          window.clearTimeout(cursorTimerRef.current);
-          cursorTimerRef.current = null;
-        }
-        lastSentCursorRef.current = null;
-        updatePresenceData(undefined);
+      onEditorFocusChange?.(focused);
+      if (focused) {
+        updateStatusPresence('online');
+        return;
       }
+      clearTypingTimer();
+      pendingCursorRef.current = null;
+      clearCursorTimer();
+      lastSentCursorRef.current = null;
+      if (presenceState === null || presenceState === undefined) {
+        return;
+      }
+      statusRef.current = 'idle';
+      sendPresenceUpdate({ status: 'idle', cursor: undefined });
     },
-    [updatePresenceData]
+    [
+      clearCursorTimer,
+      clearTypingTimer,
+      onEditorFocusChange,
+      presenceState,
+      sendPresenceUpdate,
+      updateStatusPresence,
+    ]
+  );
+
+  const handleContentChange = useCallback(
+    (content: string) => {
+      onEditorChange?.(content);
+      if (!isFocusedRef.current) return;
+      updateStatusPresence('typing');
+      scheduleTypingReset();
+    },
+    [onEditorChange, scheduleTypingReset, updateStatusPresence]
   );
 
   const handleCursorChange = useCallback(
@@ -134,7 +207,7 @@ function CollaborativeEditorInner({
         pendingCursorRef.current = null;
         cursorTimerRef.current = null;
         if (!cursor) {
-          updatePresenceData(undefined);
+          updateCursorPresence(undefined);
           return;
         }
         if (
@@ -144,23 +217,22 @@ function CollaborativeEditorInner({
           return;
         }
         lastSentCursorRef.current = cursor;
-        updatePresenceData(cursor);
-      }, 350);
+        updateCursorPresence(cursor);
+      }, CURSOR_THROTTLE_MS);
     },
-    [updatePresenceData]
+    [updateCursorPresence]
   );
 
   useEffect(() => {
-    updatePresenceData();
-  }, [updatePresenceData]);
+    sendPresenceUpdate({ status: statusRef.current, cursor: undefined });
+  }, [sendPresenceUpdate]);
 
   useEffect(() => {
     return () => {
-      if (cursorTimerRef.current) {
-        window.clearTimeout(cursorTimerRef.current);
-      }
+      clearCursorTimer();
+      clearTypingTimer();
     };
-  }, []);
+  }, [clearCursorTimer, clearTypingTimer]);
 
   useEffect(() => {
     if (sync.isLoading) return;
@@ -274,11 +346,12 @@ function CollaborativeEditorInner({
   return (
     <div data-testid="collab-editor" style={{ height: "100%" }}>
       <Editor
-        {...editorProps}
+        {...restEditorProps}
         content={sync.initialContent}
         extraExtensions={[sync.extension]}
         remoteCursors={remoteCursors}
         currentUserId={user.id}
+        onChange={handleContentChange}
         onCursorChange={handleCursorChange}
         onFocusChange={handleFocusChange}
         onEditorReady={handleEditorReady}

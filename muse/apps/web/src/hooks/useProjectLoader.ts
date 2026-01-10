@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useMythosStore } from "../stores";
 import { useProgressiveStore } from "@mythos/state";
 import {
   getProject,
@@ -12,7 +11,8 @@ import {
   mapDbRelationshipToRelationship,
 } from "@mythos/db";
 import type { Project, Document } from "@mythos/core";
-
+import { LAST_DOCUMENT_KEY } from "../constants/storageKeys";
+import { useMythosStore } from "../stores";
 
 /**
  * Options for the useProjectLoader hook
@@ -40,6 +40,29 @@ export interface UseProjectLoaderResult {
   reloadProject: () => Promise<void>;
 }
 
+function readLastDocumentId(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return localStorage.getItem(LAST_DOCUMENT_KEY);
+}
+
+function selectInitialDocument(documents: Document[]): Document | null {
+  if (documents.length === 0) {
+    return null;
+  }
+
+  const lastDocumentId = readLastDocumentId();
+  if (lastDocumentId) {
+    const match = documents.find((doc) => doc.id === lastDocumentId);
+    if (match) {
+      return match;
+    }
+  }
+
+  const topLevel = documents.find((doc) => doc.parentId === undefined);
+  return topLevel ?? documents[0];
+}
 
 /**
  * Hook for initializing the application with project data.
@@ -141,10 +164,10 @@ export function useProjectLoader(
         // Batch set all documents
         setDocuments(documents);
 
-        // Set the first document as current if available
-        if (documents.length > 0) {
-          const firstDoc = documents.find((d: Document) => d.parentId === undefined) ?? documents[0];
-          setCurrentDocument(firstDoc);
+        // Set the preferred document as current if available
+        const preferredDoc = selectInitialDocument(documents);
+        if (preferredDoc) {
+          setCurrentDocument(preferredDoc);
         }
 
         // Batch set all entities

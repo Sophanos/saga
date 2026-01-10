@@ -150,6 +150,10 @@ Notes from local runs:
 - `muse/e2e/collaboration.spec.ts`
 - `muse/packages/editor-webview/src/components/CollaborativeEditor.tsx` (collab editor test id)
 
+### Notes
+- Deterministic open uses `mythos:lastProjectId` + `mythos:lastDocumentId` before navigation.
+- Collab selectors: `collab-editor`, `editor-surface`, `remote-cursor-<userId>`, `remote-cursor-label-<userId>`.
+
 ## E2E-08: Billing + Tier Limits
 ### Scenarios
 1. Mock billing-subscription response; verify tier + tokens in UI

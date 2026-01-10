@@ -22,11 +22,13 @@ function createCursorWidget(user: RemoteCursorUser) {
   cursor.className = `remote-cursor${user.isAi ? ' remote-cursor--ai' : ''}`;
   cursor.style.borderColor = user.color;
   cursor.setAttribute('data-user-id', user.id);
+  cursor.setAttribute('data-testid', `remote-cursor-${user.id}`);
 
   const label = document.createElement('span');
   label.className = 'remote-cursor__label';
   label.textContent = user.name || 'Collaborator';
   label.style.backgroundColor = user.color;
+  label.setAttribute('data-testid', `remote-cursor-label-${user.id}`);
   cursor.appendChild(label);
 
   return cursor;

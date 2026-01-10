@@ -4,7 +4,7 @@ import { Layout } from "./components/Layout";
 import { TemplatePickerModal } from "./components/modals";
 import { AuthScreen, AuthCallback } from "./components/auth";
 import { InviteAcceptPage } from "./components/collaboration";
-import { PENDING_INVITE_TOKEN_KEY } from "./constants/storageKeys";
+import { LAST_DOCUMENT_KEY, PENDING_INVITE_TOKEN_KEY } from "./constants/storageKeys";
 import { LandingPage } from "@mythos/website/pages";
 import { useProjects } from "./hooks/useProjects";
 import { useProjectLoader } from "./hooks/useProjectLoader";
@@ -15,8 +15,6 @@ import { useNavigationStore } from "./stores/navigation";
 import { useMythosStore } from "./stores";
 import { useRequestProjectStartAction } from "./stores/projectStart";
 import { useProjectSelectionStore } from "./stores/projectSelection";
-
-
 
 /**
  * Loading screen shown while checking auth state
@@ -101,6 +99,7 @@ function AuthenticatedApp() {
   const selectedProjectId = useProjectSelectionStore((s) => s.selectedProjectId);
   const setSelectedProjectId = useProjectSelectionStore((s) => s.setSelectedProjectId);
   const clearSelectedProjectId = useProjectSelectionStore((s) => s.clearSelectedProjectId);
+  const currentDocumentId = useMythosStore((s) => s.document.currentDocument?.id ?? null);
 
   // State for create project modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -178,6 +177,15 @@ function AuthenticatedApp() {
     resetForProjectSwitch,
     setCurrentProject,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (currentDocumentId) {
+      localStorage.setItem(LAST_DOCUMENT_KEY, currentDocumentId);
+      return;
+    }
+    localStorage.removeItem(LAST_DOCUMENT_KEY);
+  }, [currentDocumentId]);
 
   // Handle successful project creation
   const handleProjectCreated = useCallback(async (projectId: string) => {

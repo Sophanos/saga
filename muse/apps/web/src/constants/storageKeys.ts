@@ -6,5 +6,8 @@
 /** Key for persisting the last opened project ID */
 export const LAST_PROJECT_KEY = "mythos:lastProjectId";
 
+/** Key for persisting the last opened document ID */
+export const LAST_DOCUMENT_KEY = "mythos:lastDocumentId";
+
 /** Key for storing pending invitation token during auth flows */
 export const PENDING_INVITE_TOKEN_KEY = "mythos:pendingInviteToken";

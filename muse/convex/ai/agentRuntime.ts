@@ -32,7 +32,7 @@ import {
   createRelationshipTool,
   updateRelationshipTool,
 } from "./tools/worldGraphTools";
-import { createQwenEmbeddingModel } from "../lib/deepinfraEmbedding";
+import { getEmbeddingModelForTask } from "../lib/embeddings";
 import { ServerAgentEvents } from "../lib/analytics";
 import { needsToolApproval } from "../lib/approvalConfig";
 
@@ -176,7 +176,7 @@ function createSagaAgent() {
     languageModel,
 
     // Thread memory: vector search for similar past messages
-    textEmbeddingModel: testMode ? undefined : createQwenEmbeddingModel(),
+    textEmbeddingModel: testMode ? undefined : getEmbeddingModelForTask("embed_document"),
     contextOptions: testMode
       ? {
           recentMessages: 0,
@@ -446,6 +446,15 @@ export const runSagaAgentChatToStream = internalAction({
     let presenceDocumentId: string | undefined;
     let lastAiPresenceAt = 0;
 
+    const clearAiPresence = async (): Promise<void> => {
+      if (isTemplateBuilder || !presenceDocumentId) return;
+      try {
+        await setAiPresence(ctx, projectId, presenceDocumentId, false);
+      } catch (error) {
+        console.warn("[agentRuntime] Failed to clear AI presence:", error);
+      }
+    };
+
     try {
       const startTime = Date.now();
 
@@ -553,6 +562,7 @@ export const runSagaAgentChatToStream = internalAction({
             excludeMemories: false,
             lexical: { documents: lexicalDocuments, entities: lexicalEntities },
             chunkContext: { before: 2, after: 1 },
+            telemetry: { distinctId: userId },
           });
 
       if (!shouldSkipRag) {
@@ -852,25 +862,9 @@ export const runSagaAgentChatToStream = internalAction({
       // Track stream completed
       await ServerAgentEvents.streamCompleted(userId, Date.now() - startTime);
 
-      if (!isTemplateBuilder && presenceDocumentId) {
-        try {
-          await setAiPresence(ctx, projectId, presenceDocumentId, false);
-        } catch (error) {
-          console.warn("[agentRuntime] Failed to clear AI presence:", error);
-        }
-      }
-
       await ctx.runMutation((internal as any)["ai/streams"].complete, { streamId });
     } catch (error) {
       console.error("[agentRuntime.runSagaAgentChatToStream] Error:", error);
-
-      if (!isTemplateBuilder && presenceDocumentId) {
-        try {
-          await setAiPresence(ctx, projectId, presenceDocumentId, false);
-        } catch (presenceError) {
-          console.warn("[agentRuntime] Failed to clear AI presence:", presenceError);
-        }
-      }
 
       // Track stream failed
       await ServerAgentEvents.streamFailed(userId, error instanceof Error ? error.message : "Unknown error");
@@ -879,6 +873,8 @@ export const runSagaAgentChatToStream = internalAction({
         streamId,
         error: error instanceof Error ? error.message : "Unknown error",
       });
+    } finally {
+      await clearAiPresence();
     }
   },
 });
@@ -928,6 +924,15 @@ export const applyToolResultAndResumeToStream = internalAction({
     let presenceDocumentId: string | undefined;
     let activityDocumentId: Id<"documents"> | undefined;
     let lastAiPresenceAt = 0;
+
+    const clearAiPresence = async (): Promise<void> => {
+      if (isTemplateBuilder || !presenceDocumentId) return;
+      try {
+        await setAiPresence(ctx, projectId, presenceDocumentId, false);
+      } catch (error) {
+        console.warn("[agentRuntime] Failed to clear AI presence:", error);
+      }
+    };
 
     try {
       if (E2E_TEST_MODE) {
@@ -1096,30 +1101,16 @@ export const applyToolResultAndResumeToStream = internalAction({
         }
       }
 
-      if (!isTemplateBuilder && presenceDocumentId) {
-        try {
-          await setAiPresence(ctx, projectId, presenceDocumentId, false);
-        } catch (error) {
-          console.warn("[agentRuntime] Failed to clear AI presence:", error);
-        }
-      }
-
       await ctx.runMutation((internal as any)["ai/streams"].complete, { streamId });
     } catch (error) {
       console.error("[agentRuntime.applyToolResultAndResumeToStream] Error:", error);
-
-      if (!isTemplateBuilder && presenceDocumentId) {
-        try {
-          await setAiPresence(ctx, projectId, presenceDocumentId, false);
-        } catch (presenceError) {
-          console.warn("[agentRuntime] Failed to clear AI presence:", presenceError);
-        }
-      }
 
       await ctx.runMutation((internal as any)["ai/streams"].fail, {
         streamId,
         error: error instanceof Error ? error.message : "Unknown error",
       });
+    } finally {
+      await clearAiPresence();
     }
   },
 });
