@@ -29,6 +29,18 @@ MLP1 note: MLP1 already has PR mechanics and canon citations; these items are pr
 
 ---
 
+## Research backlog (USP validation)
+
+Use these as explicit research spikes to validate demand, UX, and operational cost:
+
+- **Impact PRs:** validate whether “downstream PRs from a single change” feels magical or noisy; test on real projects.
+- **Policy/invariant watchlists:** confirm that teams can author useful constraints without heavy setup; evaluate false-positive rate.
+- **Citations everywhere:** test if provenance links change review behavior and trust; measure how often users click into sources.
+- **Permission-scoped Pulse/PRs:** validate team needs for scoped visibility and approval; ensure it does not slow review.
+- **Tracked-changes exports:** validate external workflow fit (editors, legal, compliance) and acceptable DOCX fidelity.
+
+---
+
 ## Proactivity modes (per project + per user)
 
 1. **Off**: no background analysis; only manual tools.
@@ -246,4 +258,3 @@ Defer (costly early):
 - **Memgraph/graph DB**: add when multi-hop traversal + impact analysis become primary UX; keep the abstraction so you can start with adjacency tables and cached traversals (see `muse/docs/MLP1_ROADMAP.md`).
 - **DOCX tracked-changes export**: make “PR output” shippable (writers + compliance workflows) without rethinking the core system.
 - **Connector breadth via MCP**: add Notion/Office/GitHub/SAP as *evidence sources* (delta capture + citations), not as a promise to “index everything”.
-
