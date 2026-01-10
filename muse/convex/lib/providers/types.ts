@@ -26,6 +26,9 @@ export const AI_TASK_CATEGORIES = {
     "thinking", // Deep reasoning
     "creative", // Creative generation
     "summarize", // Text summarization
+    "embed_document", // Document/entity embeddings
+    "embed_query", // Query embeddings
+    "rerank_candidates", // Reranking
   ],
   image: [
     "image_generate", // Text → image

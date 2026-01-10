@@ -71,6 +71,41 @@ export const ServerAgentEvents = {
       entities_found: entitiesFound,
       memories_found: memoriesFound,
     }),
+  ragRetrievalMetrics: (
+    userId: string,
+    metrics: {
+      projectId: string;
+      scope: string;
+      denseCandidates: number;
+      lexicalCandidates: number;
+      fusedCandidates: number;
+      rerankCandidates: number;
+      documentsReturned: number;
+      entitiesReturned: number;
+      memoriesReturned: number;
+      embedMs: number;
+      qdrantMs: number;
+      rerankMs: number;
+      chunkMs: number;
+      totalMs: number;
+    }
+  ) =>
+    trackServerEvent(userId, 'server_rag_retrieval_metrics', {
+      project_id: metrics.projectId,
+      scope: metrics.scope,
+      dense_candidates: metrics.denseCandidates,
+      lexical_candidates: metrics.lexicalCandidates,
+      fused_candidates: metrics.fusedCandidates,
+      rerank_candidates: metrics.rerankCandidates,
+      documents_returned: metrics.documentsReturned,
+      entities_returned: metrics.entitiesReturned,
+      memories_returned: metrics.memoriesReturned,
+      embed_ms: metrics.embedMs,
+      qdrant_ms: metrics.qdrantMs,
+      rerank_ms: metrics.rerankMs,
+      chunk_ms: metrics.chunkMs,
+      total_ms: metrics.totalMs,
+    }),
 
   streamCompleted: (userId: string, durationMs: number, tokens?: number) =>
     trackServerEvent(userId, 'server_agent_stream_completed', { duration_ms: durationMs, tokens }),

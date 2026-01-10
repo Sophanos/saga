@@ -39,7 +39,7 @@ export const executeSearchContext = internalAction({
     const scope = (args.scope ?? "all") as Scope;
 
     const ragContext = await retrieveRAGContext(query, projectId, {
-      excludeMemories: scope === "documents" || scope === "entities",
+      scope,
       chunkContext: { before: CHUNK_CONTEXT_BEFORE, after: CHUNK_CONTEXT_AFTER },
     });
 
@@ -136,7 +136,7 @@ export const executeSearchChapters = internalAction({
       return { error: "Embeddings not configured" };
     }
 
-    const embedding = await generateEmbedding(query);
+    const embedding = await generateEmbedding(query, { task: "embed_query" });
 
     const filter: QdrantFilter = {
       must: [
@@ -174,7 +174,7 @@ export const executeSearchWorld = internalAction({
       return { error: "Embeddings not configured" };
     }
 
-    const embedding = await generateEmbedding(query);
+    const embedding = await generateEmbedding(query, { task: "embed_query" });
 
     const worldTypes = ["location", "faction", "magic_system", "concept"];
     const filter: QdrantFilter = {

@@ -5,12 +5,14 @@
  * Supports multiple providers with fallback chains.
  */
 
-import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createDeepInfra } from "@ai-sdk/deepinfra";
-import type { LanguageModel, EmbeddingModel } from "ai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
+import type { EmbeddingModel, LanguageModel, RerankingModel } from "ai";
 import type { AdapterType, LlmProvider } from "./types";
+import { createQwenEmbeddingModel, QWEN_EMBEDDING_MODEL } from "../deepinfraEmbedding";
+import { createDeepInfraRerankingModel } from "../deepinfraRerank";
 
 // ============================================================================
 // DEFAULT PROVIDER CONFIGS
@@ -80,6 +82,7 @@ export const DEFAULT_PROVIDERS: Record<string, Omit<LlmProvider, "enabled">> = {
 interface ProviderInstance {
   chat: (model: string) => LanguageModel;
   embedding?: (model: string) => EmbeddingModel;
+  reranking?: (model: string) => RerankingModel;
 }
 
 const providerCache = new Map<string, ProviderInstance>();
@@ -127,7 +130,17 @@ export function createProviderInstance(
       const provider = createDeepInfra({ apiKey });
       return {
         chat: (model) => provider.languageModel(model) as unknown as LanguageModel,
-        embedding: (model) => provider.textEmbeddingModel(model) as unknown as EmbeddingModel,
+        embedding: (model) => {
+          if (model === QWEN_EMBEDDING_MODEL) {
+            return createQwenEmbeddingModel();
+          }
+          return provider.textEmbeddingModel(model) as unknown as EmbeddingModel;
+        },
+        reranking: (model) =>
+          createDeepInfraRerankingModel({
+            apiKey,
+            modelId: model,
+          }),
       };
     }
 
@@ -153,6 +166,11 @@ export function createProviderInstance(
       return {
         chat: (model) => provider.chat(model),
         embedding: (model) => provider.embedding(model),
+        reranking: (model) =>
+          createDeepInfraRerankingModel({
+            apiKey,
+            modelId: model,
+          }),
       };
     }
 
@@ -217,6 +235,21 @@ export function getEmbeddingModel(
   }
 }
 
+export function getRerankingModel(
+  providerSlug: string,
+  modelId: string
+): RerankingModel | null {
+  const provider = getProvider(providerSlug);
+  if (!provider?.reranking) return null;
+
+  try {
+    return provider.reranking(modelId);
+  } catch (error) {
+    console.error(`Failed to get reranking model ${modelId} from ${providerSlug}:`, error);
+    return null;
+  }
+}
+
 // ============================================================================
 // FALLBACK CHAIN
 // ============================================================================
@@ -227,6 +260,122 @@ export interface ModelWithFallback {
   modelId: string;
   isFallback: boolean;
   fallbackLevel: 0 | 1 | 2;
+}
+
+export interface EmbeddingModelWithFallback {
+  model: EmbeddingModel;
+  provider: string;
+  modelId: string;
+  isFallback: boolean;
+  fallbackLevel: 0 | 1 | 2;
+}
+
+export interface RerankingModelWithFallback {
+  model: RerankingModel;
+  provider: string;
+  modelId: string;
+  isFallback: boolean;
+  fallbackLevel: 0 | 1 | 2;
+}
+
+export function getEmbeddingModelWithFallback(
+  directProvider: string,
+  directModel: string,
+  fallback1Provider?: string,
+  fallback1Model?: string,
+  fallback2Provider?: string,
+  fallback2Model?: string
+): EmbeddingModelWithFallback | null {
+  const direct = getEmbeddingModel(directProvider, directModel);
+  if (direct) {
+    return {
+      model: direct,
+      provider: directProvider,
+      modelId: directModel,
+      isFallback: false,
+      fallbackLevel: 0,
+    };
+  }
+
+  if (fallback1Provider && fallback1Model) {
+    const fallback = getEmbeddingModel(fallback1Provider, fallback1Model);
+    if (fallback) {
+      console.warn(`Using embedding fallback 1: ${fallback1Provider}/${fallback1Model}`);
+      return {
+        model: fallback,
+        provider: fallback1Provider,
+        modelId: fallback1Model,
+        isFallback: true,
+        fallbackLevel: 1,
+      };
+    }
+  }
+
+  if (fallback2Provider && fallback2Model) {
+    const fallback = getEmbeddingModel(fallback2Provider, fallback2Model);
+    if (fallback) {
+      console.warn(`Using embedding fallback 2: ${fallback2Provider}/${fallback2Model}`);
+      return {
+        model: fallback,
+        provider: fallback2Provider,
+        modelId: fallback2Model,
+        isFallback: true,
+        fallbackLevel: 2,
+      };
+    }
+  }
+
+  return null;
+}
+
+export function getRerankingModelWithFallback(
+  directProvider: string,
+  directModel: string,
+  fallback1Provider?: string,
+  fallback1Model?: string,
+  fallback2Provider?: string,
+  fallback2Model?: string
+): RerankingModelWithFallback | null {
+  const direct = getRerankingModel(directProvider, directModel);
+  if (direct) {
+    return {
+      model: direct,
+      provider: directProvider,
+      modelId: directModel,
+      isFallback: false,
+      fallbackLevel: 0,
+    };
+  }
+
+  if (fallback1Provider && fallback1Model) {
+    const fallback = getRerankingModel(fallback1Provider, fallback1Model);
+    if (fallback) {
+      console.warn(`Using reranking fallback 1: ${fallback1Provider}/${fallback1Model}`);
+      return {
+        model: fallback,
+        provider: fallback1Provider,
+        modelId: fallback1Model,
+        isFallback: true,
+        fallbackLevel: 1,
+      };
+    }
+  }
+
+  if (fallback2Provider && fallback2Model) {
+    const fallback = getRerankingModel(fallback2Provider, fallback2Model);
+    if (fallback) {
+      console.warn(`Using reranking fallback 2: ${fallback2Provider}/${fallback2Model}`);
+      return {
+        model: fallback,
+        provider: fallback2Provider,
+        modelId: fallback2Model,
+        isFallback: true,
+        fallbackLevel: 2,
+      };
+    }
+  }
+
+  return null;
 }
 
 export function getModelWithFallback(

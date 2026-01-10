@@ -335,6 +335,7 @@ export default defineSchema({
           danger: v.optional(v.string()),
           args: v.optional(v.any()),
           data: v.optional(v.any()),
+          promptMessageId: v.optional(v.string()),
         })
       )
     ),

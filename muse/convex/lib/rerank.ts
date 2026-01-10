@@ -1,9 +1,13 @@
 /**
- * DeepInfra reranker client.
+ * Reranking client using AI SDK model adapters.
  */
 
-const DEEPINFRA_INFERENCE_URL = "https://api.deepinfra.com/v1/inference";
-const DEFAULT_RERANK_MODEL = "Qwen/Qwen3-Reranker-4B";
+import { rerank as aiRerank, type RerankingModel } from "ai";
+import { createDeepInfraRerankingModel } from "./deepinfraRerank";
+import { getRerankingModelWithFallback } from "./providers/registry";
+import { getTaskConfigSync } from "./providers/taskConfig";
+import type { AITaskSlug } from "./providers/types";
+
 const DEFAULT_TIMEOUT_MS = 10000;
 
 export class RerankError extends Error {
@@ -17,63 +21,54 @@ export function isRerankConfigured(): boolean {
   return !!process.env["DEEPINFRA_API_KEY"];
 }
 
-function getApiKey(): string {
-  const apiKey = process.env["DEEPINFRA_API_KEY"];
-  if (!apiKey) {
-    throw new RerankError("DEEPINFRA_API_KEY environment variable not set");
+function resolveRerankingModel(): RerankingModel {
+  const config = getTaskConfigSync("rerank_candidates" as AITaskSlug);
+  const resolved = getRerankingModelWithFallback(
+    config.directProvider,
+    config.directModel,
+    config.fallback1Provider,
+    config.fallback1Model,
+    config.fallback2Provider,
+    config.fallback2Model
+  );
+
+  if (resolved) {
+    return resolved.model;
   }
-  return apiKey;
+
+  return createDeepInfraRerankingModel();
 }
 
 export async function rerank(
   query: string,
   documents: string[],
-  options?: { timeoutMs?: number }
+  options?: { timeoutMs?: number; topN?: number }
 ): Promise<number[]> {
   if (documents.length === 0) return [];
 
-  const apiKey = getApiKey();
-  const modelId = process.env["DEEPINFRA_RERANK_MODEL"] ?? DEFAULT_RERANK_MODEL;
+  const model = resolveRerankingModel();
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(`${DEEPINFRA_INFERENCE_URL}/${modelId}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        queries: [query],
-        documents,
-      }),
-      signal: controller.signal,
+    const result = await aiRerank({
+      model,
+      documents,
+      query,
+      topN: options?.topN,
+      abortSignal: controller.signal,
     });
 
     clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      let message = `DeepInfra rerank error: ${response.status}`;
-      try {
-        const errorData = await response.json();
-        if (errorData?.error?.message) {
-          message = errorData.error.message;
-        }
-      } catch {
-        // ignore JSON errors
-      }
-      throw new RerankError(message, response.status);
+    const scores = new Array<number>(documents.length).fill(0);
+    for (const item of result.ranking) {
+      scores[item.originalIndex] = item.score;
     }
 
-    const data = (await response.json()) as { scores?: number[] };
-    if (!Array.isArray(data.scores)) {
-      throw new RerankError("Invalid rerank response: missing scores");
-    }
-
-    return data.scores;
+    return scores;
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof RerankError) {

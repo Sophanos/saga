@@ -246,7 +246,7 @@ export const learnStyle = internalAction({
       const vectorId = await generateStyleId(projectId, userId, rule);
 
       try {
-        const embedding = await generateEmbedding(rule);
+        const embedding = await generateEmbedding(rule, { task: "embed_document" });
 
         await ctx.runMutation((internal as any)["ai/style"].upsertStyleMemory, {
           projectId: projectId as Id<"projects">,

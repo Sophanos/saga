@@ -133,10 +133,18 @@ curl -X PUT "http://localhost:6333/collections/saga_vectors" \
     "title": "text",
     "content_preview": "text",
     "document_id": "keyword",
-    "entity_id": "keyword"
+    "entity_id": "keyword",
+    "chunk_index": "integer",
+    "chunk_hash": "keyword",
+    "updated_at": "keyword"
   }
 }
 ```
+
+Notes:
+- `chunk_index` should be stored as an integer for range filters and ordered scrolls.
+- `chunk_hash` supports incremental re-embedding and stale-chunk cleanup.
+- `updated_at` tracks the last vector sync timestamp (ISO string).
 
 ### Verify Setup
 

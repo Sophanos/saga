@@ -2,39 +2,21 @@
  * Custom DeepInfra Embedding Model for AI SDK
  *
  * Why custom? The official @ai-sdk/deepinfra doesn't include Qwen/Qwen3-Embedding-8B.
- * This wrapper implements the EmbeddingModelV1 interface for use with Convex Agent.
+ * This wrapper implements the EmbeddingModelV3 interface for use with Convex Agent.
  *
  * Model: Qwen/Qwen3-Embedding-8B (4096 dimensions)
  * Endpoint: https://api.deepinfra.com/v1/inference/{model}
  */
 
+import type { EmbeddingModelV3 } from "@ai-sdk/provider";
+
 const DEEPINFRA_INFERENCE_URL = "https://api.deepinfra.com/v1/inference";
-const QWEN_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B";
+export const QWEN_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B";
 const EMBEDDING_DIMENSIONS = 4096;
 
 interface DeepInfraEmbeddingResponse {
   embeddings: number[][];
   input_tokens?: number;
-}
-
-/**
- * AI SDK EmbeddingModelV1 interface (simplified for our use case)
- */
-interface EmbeddingModelV1<VALUE> {
-  readonly specificationVersion: "v1";
-  readonly modelId: string;
-  readonly provider: string;
-  readonly maxEmbeddingsPerCall?: number;
-  readonly supportsParallelCalls?: boolean;
-
-  doEmbed(options: {
-    values: VALUE[];
-    abortSignal?: AbortSignal;
-  }): Promise<{
-    embeddings: number[][];
-    usage?: { tokens: number };
-    rawResponse?: { headers?: Record<string, string> };
-  }>;
 }
 
 /**
@@ -48,9 +30,9 @@ interface EmbeddingModelV1<VALUE> {
  * });
  * ```
  */
-export function createQwenEmbeddingModel(): EmbeddingModelV1<string> {
+export function createQwenEmbeddingModel(): EmbeddingModelV3 {
   return {
-    specificationVersion: "v1",
+    specificationVersion: "v3",
     modelId: QWEN_EMBEDDING_MODEL,
     provider: "deepinfra",
     maxEmbeddingsPerCall: 96,
@@ -94,6 +76,7 @@ export function createQwenEmbeddingModel(): EmbeddingModelV1<string> {
       return {
         embeddings,
         usage: data.input_tokens ? { tokens: data.input_tokens } : undefined,
+        warnings: [],
       };
     },
   };

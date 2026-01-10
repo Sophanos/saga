@@ -138,6 +138,7 @@ Notes from local runs:
 
 ### Notes
 - Requires `QDRANT_URL` and `E2E_TEST_MODE=true` for deterministic embeddings.
+- Deterministic embeddings use a token-hash bag-of-ngrams so multi-doc retrieval stays stable.
 
 ## E2E-07: Real-Time Collaboration
 ### Scenarios
@@ -163,6 +164,9 @@ Notes from local runs:
 - `muse/e2e/billing.spec.ts`
 - `muse/convex/e2e.ts` (`upsertSubscription`, `getUserTierForE2E`)
 - Billing selectors: `project-billing-button`, `billing-modal`, `billing-current-tier`, `billing-tokens-remaining`
+
+### Notes
+- Billing snapshot served by Convex HTTP action `/api/billing-subscription`; optional `projectId` enables memory + vector usage details.
 
 ---
 

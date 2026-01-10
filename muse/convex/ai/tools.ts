@@ -426,7 +426,7 @@ async function executeCommitDecision(
     ? content.slice(0, MAX_DECISION_EMBEDDING_CHARS)
     : content;
 
-  const embedding = await generateEmbedding(embeddingText);
+  const embedding = await generateEmbedding(embeddingText, { task: "embed_document" });
   const memoryId = crypto.randomUUID();
   const now = Date.now();
   const isoNow = new Date(now).toISOString();
@@ -527,7 +527,7 @@ async function executeSearchImages(
   const limit = Math.min(input.limit ?? 10, 50);
 
   // Generate query embedding
-  const queryEmbedding = await generateEmbedding(input.query);
+  const queryEmbedding = await generateEmbedding(input.query, { task: "embed_query" });
 
   // Build filter
   const filter: QdrantFilter = {

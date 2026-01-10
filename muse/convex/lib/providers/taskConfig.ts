@@ -136,6 +136,36 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskSlug, LlmTaskConfig> = {
     minTier: "free",
     enabled: true,
   },
+  embed_document: {
+    taskSlug: "embed_document",
+    modality: "text",
+    description: "Embedding generation for documents and entities",
+    directModel: "Qwen/Qwen3-Embedding-8B",
+    directProvider: "deepinfra",
+    responseFormat: "text",
+    minTier: "free",
+    enabled: true,
+  },
+  embed_query: {
+    taskSlug: "embed_query",
+    modality: "text",
+    description: "Embedding generation for search queries",
+    directModel: "Qwen/Qwen3-Embedding-8B",
+    directProvider: "deepinfra",
+    responseFormat: "text",
+    minTier: "free",
+    enabled: true,
+  },
+  rerank_candidates: {
+    taskSlug: "rerank_candidates",
+    modality: "text",
+    description: "Rerank dense and lexical candidates",
+    directModel: "Qwen/Qwen3-Reranker-4B",
+    directProvider: "deepinfra",
+    responseFormat: "text",
+    minTier: "free",
+    enabled: true,
+  },
 
   // Image tasks
   image_generate: {

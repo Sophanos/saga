@@ -4,20 +4,24 @@
  * Retrieves project context from Qdrant and builds system prompts.
  */
 
+import { ServerAgentEvents } from "../lib/analytics";
+import { generateEmbedding, isDeepInfraConfigured } from "../lib/embeddings";
 import {
-  searchPoints,
   isQdrantConfigured,
+  searchPoints,
   type QdrantFilter,
   type QdrantSearchResult,
 } from "../lib/qdrant";
-import { generateEmbedding, isDeepInfraConfigured } from "../lib/embeddings";
-import { rerank, isRerankConfigured } from "../lib/rerank";
+import { isRerankConfigured, rerank } from "../lib/rerank";
 import type { LexicalHit } from "./lexical";
 import { fetchDocumentChunkContext } from "./ragChunkContext";
 
 const RAG_LIMIT = 10;
 const CANDIDATE_LIMIT = 30;
 const RRF_K = 60;
+const MAX_CHUNKS_PER_DOC = 2;
+const RERANK_LIMIT = 15;
+const RERANK_MAX_CHARS = 1200;
 
 export type RAGSource = "qdrant" | "lexical" | "memory" | "text";
 
@@ -27,6 +31,7 @@ export interface RAGContextItem {
   name?: string;
   type: string;
   preview: string;
+  chunkIndex?: number;
   category?: string;
   score?: number;
   source?: RAGSource;
@@ -47,6 +52,7 @@ interface RAGCandidate {
   name?: string;
   category?: string;
   preview: string;
+  rerankText?: string;
   source: RAGSource;
   pointId?: string;
   chunkIndex?: number;
@@ -64,6 +70,19 @@ function getPreview(payload: Record<string, unknown>): string {
     (typeof payload["content"] === "string" && payload["content"]) ||
     "";
   return preview;
+}
+
+function getRerankText(payload: Record<string, unknown>): string {
+  return (
+    (typeof payload["text"] === "string" && payload["text"]) ||
+    (typeof payload["content"] === "string" && payload["content"]) ||
+    getPreview(payload)
+  );
+}
+
+function truncateRerankText(text: string): string {
+  if (text.length <= RERANK_MAX_CHARS) return text;
+  return text.slice(0, RERANK_MAX_CHARS);
 }
 
 function formatChunkContextPreview(context: {
@@ -97,6 +116,7 @@ function buildCandidatesFromQdrant(results: QdrantSearchResult[]): RAGCandidate[
     const payload = result.payload;
     const type = payload["type"] as string;
     const preview = getPreview(payload);
+    const rerankText = truncateRerankText(getRerankText(payload));
 
     if (type === "document") {
       const id =
@@ -104,20 +124,23 @@ function buildCandidatesFromQdrant(results: QdrantSearchResult[]): RAGCandidate[
         (payload["id"] as string | undefined) ??
         result.id;
       const rawChunkIndex = payload["chunk_index"];
-      const parsedChunkIndex =
-        typeof rawChunkIndex === "number"
-          ? rawChunkIndex
-          : typeof rawChunkIndex === "string"
-            ? Number(rawChunkIndex)
-            : undefined;
+      let parsedChunkIndex: number | undefined;
+      if (typeof rawChunkIndex === "number") {
+        parsedChunkIndex = rawChunkIndex;
+      } else if (typeof rawChunkIndex === "string") {
+        const parsed = Number(rawChunkIndex);
+        if (Number.isFinite(parsed)) parsedChunkIndex = parsed;
+      }
       const chunkIndex = Number.isFinite(parsedChunkIndex) ? parsedChunkIndex : undefined;
+      const chunkKey = chunkIndex ?? 0;
       candidates.push({
-        key: `document:${id}`,
+        key: `document:${id}:${chunkKey}`,
         id,
         kind: "document",
         type: (payload["document_type"] as string | undefined) ?? "document",
         title: (payload["title"] as string | undefined) ?? undefined,
         preview,
+        rerankText,
         source: "qdrant",
         pointId: result.id,
         chunkIndex,
@@ -128,15 +151,27 @@ function buildCandidatesFromQdrant(results: QdrantSearchResult[]): RAGCandidate[
         (payload["entity_id"] as string | undefined) ??
         (payload["id"] as string | undefined) ??
         result.id;
+      const rawChunkIndex = payload["chunk_index"];
+      let parsedChunkIndex: number | undefined;
+      if (typeof rawChunkIndex === "number") {
+        parsedChunkIndex = rawChunkIndex;
+      } else if (typeof rawChunkIndex === "string") {
+        const parsed = Number(rawChunkIndex);
+        if (Number.isFinite(parsed)) parsedChunkIndex = parsed;
+      }
+      const chunkIndex = Number.isFinite(parsedChunkIndex) ? parsedChunkIndex : undefined;
+      const chunkKey = chunkIndex ?? 0;
       candidates.push({
-        key: `entity:${id}`,
+        key: `entity:${id}:${chunkKey}`,
         id,
         kind: "entity",
         type: (payload["entity_type"] as string | undefined) ?? "entity",
         name: (payload["name"] as string | undefined) ?? (payload["title"] as string | undefined),
         preview,
+        rerankText,
         source: "qdrant",
         vectorScore: result.score,
+        chunkIndex,
       });
     } else if (type === "memory") {
       const id =
@@ -150,6 +185,7 @@ function buildCandidatesFromQdrant(results: QdrantSearchResult[]): RAGCandidate[
         type: "memory",
         category: (payload["category"] as string | undefined) ?? undefined,
         preview,
+        rerankText,
         source: "memory",
         vectorScore: result.score,
       });
@@ -171,9 +207,30 @@ function buildCandidatesFromLexical(
     title: hit.title,
     name: hit.name,
     preview: hit.preview,
+    rerankText: truncateRerankText(hit.preview),
     source: "lexical",
     lexicalScore: hit.score,
   }));
+}
+
+function findBestCandidateKey(
+  candidates: Map<string, RAGCandidate>,
+  kind: "document" | "entity",
+  id: string
+): string | null {
+  let bestKey: string | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const [key, candidate] of candidates.entries()) {
+    if (candidate.kind !== kind || candidate.id !== id) continue;
+    const score = candidate.vectorScore ?? candidate.rrfScore ?? candidate.lexicalScore ?? 0;
+    if (score > bestScore) {
+      bestScore = score;
+      bestKey = key;
+    }
+  }
+
+  return bestKey;
 }
 
 function applyRrfScores(candidates: Map<string, RAGCandidate>, orderedKeys: string[]) {
@@ -197,6 +254,7 @@ function pickTopCandidates(candidates: Map<string, RAGCandidate>): RAGCandidate[
 
 function buildContextFromCandidates(candidates: RAGCandidate[]): RAGContext {
   const context: RAGContext = { documents: [], entities: [], memories: [] };
+  const docCounts = new Map<string, number>();
 
   for (const candidate of candidates) {
     const item: RAGContextItem = {
@@ -205,13 +263,18 @@ function buildContextFromCandidates(candidates: RAGCandidate[]): RAGContext {
       name: candidate.name,
       type: candidate.type,
       preview: candidate.preview,
+      chunkIndex: candidate.chunkIndex,
       category: candidate.category,
       score: candidate.rerankScore ?? candidate.rrfScore ?? candidate.vectorScore ?? candidate.lexicalScore,
       source: candidate.source,
     };
 
     if (candidate.kind === "document" && context.documents.length < RAG_LIMIT) {
-      context.documents.push(item);
+      const count = docCounts.get(candidate.id) ?? 0;
+      if (count < MAX_CHUNKS_PER_DOC) {
+        context.documents.push(item);
+        docCounts.set(candidate.id, count + 1);
+      }
     } else if (candidate.kind === "entity" && context.entities.length < RAG_LIMIT) {
       context.entities.push(item);
     } else if (candidate.kind === "memory" && context.memories.length < RAG_LIMIT) {
@@ -232,8 +295,10 @@ export async function retrieveRAGContext(
   projectId: string,
   options?: {
     excludeMemories?: boolean;
+    scope?: "all" | "documents" | "entities" | "memories";
     lexical?: { documents: LexicalHit[]; entities: LexicalHit[] };
     chunkContext?: ChunkContextOptions;
+    telemetry?: { distinctId: string };
   }
 ): Promise<RAGContext> {
   const context: RAGContext = {
@@ -242,8 +307,15 @@ export async function retrieveRAGContext(
     memories: [],
   };
 
-  const lexicalDocs = options?.lexical?.documents ?? [];
-  const lexicalEntities = options?.lexical?.entities ?? [];
+  const scope = options?.scope ?? "all";
+  const lexicalDocs =
+    scope === "all" || scope === "documents"
+      ? options?.lexical?.documents ?? []
+      : [];
+  const lexicalEntities =
+    scope === "all" || scope === "entities"
+      ? options?.lexical?.entities ?? []
+      : [];
 
   if (!isQdrantConfigured() || !isDeepInfraConfigured()) {
     if (lexicalDocs.length === 0 && lexicalEntities.length === 0) {
@@ -253,23 +325,44 @@ export async function retrieveRAGContext(
   }
 
   try {
+    const totalStart = Date.now();
+    let embedMs = 0;
+    let qdrantMs = 0;
+    let rerankMs = 0;
+    let chunkMs = 0;
+    let denseCandidatesCount = 0;
+    const lexicalCandidatesCount = lexicalDocs.length + lexicalEntities.length;
+    let fusedCandidatesCount = 0;
+    let rerankCandidatesCount = 0;
+
     const candidates = new Map<string, RAGCandidate>();
     const denseKeys: string[] = [];
     const lexicalKeys: string[] = [];
 
     if (isQdrantConfigured() && isDeepInfraConfigured()) {
-      const queryEmbedding = await generateEmbedding(query);
+      const embedStart = Date.now();
+      const queryEmbedding = await generateEmbedding(query, { task: "embed_query" });
+      embedMs = Date.now() - embedStart;
 
       const filter: QdrantFilter = {
         must: [{ key: "project_id", match: { value: projectId } }],
       };
 
-      if (options?.excludeMemories) {
+      if (scope === "documents") {
+        filter.must!.push({ key: "type", match: { value: "document" } });
+      } else if (scope === "entities") {
+        filter.must!.push({ key: "type", match: { value: "entity" } });
+      } else if (scope === "memories") {
+        filter.must!.push({ key: "type", match: { value: "memory" } });
+      } else if (options?.excludeMemories) {
         filter.must_not = [{ key: "type", match: { value: "memory" } }];
       }
 
-      const results = await searchPoints(queryEmbedding, RAG_LIMIT * 3, filter);
+      const qdrantStart = Date.now();
+      const results = await searchPoints(queryEmbedding, CANDIDATE_LIMIT, filter);
+      qdrantMs = Date.now() - qdrantStart;
       const denseCandidates = buildCandidatesFromQdrant(results);
+      denseCandidatesCount = denseCandidates.length;
 
       for (const candidate of denseCandidates) {
         if (!candidates.has(candidate.key)) {
@@ -280,21 +373,27 @@ export async function retrieveRAGContext(
     }
 
     for (const candidate of buildCandidatesFromLexical(lexicalDocs, "document")) {
-      candidates.set(candidate.key, {
-        ...(candidates.get(candidate.key) ?? candidate),
+      const existingKey = findBestCandidateKey(candidates, "document", candidate.id);
+      const targetKey = existingKey ?? candidate.key;
+      const existing = candidates.get(targetKey) ?? candidate;
+      candidates.set(targetKey, {
+        ...existing,
         lexicalScore: candidate.lexicalScore,
-        source: candidates.get(candidate.key)?.source ?? candidate.source,
+        source: existing.source ?? candidate.source,
       });
-      lexicalKeys.push(candidate.key);
+      lexicalKeys.push(targetKey);
     }
 
     for (const candidate of buildCandidatesFromLexical(lexicalEntities, "entity")) {
-      candidates.set(candidate.key, {
-        ...(candidates.get(candidate.key) ?? candidate),
+      const existingKey = findBestCandidateKey(candidates, "entity", candidate.id);
+      const targetKey = existingKey ?? candidate.key;
+      const existing = candidates.get(targetKey) ?? candidate;
+      candidates.set(targetKey, {
+        ...existing,
         lexicalScore: candidate.lexicalScore,
-        source: candidates.get(candidate.key)?.source ?? candidate.source,
+        source: existing.source ?? candidate.source,
       });
-      lexicalKeys.push(candidate.key);
+      lexicalKeys.push(targetKey);
     }
 
     if (denseKeys.length === 0 && lexicalKeys.length === 0) {
@@ -305,23 +404,32 @@ export async function retrieveRAGContext(
     applyRrfScores(candidates, lexicalKeys);
 
     let topCandidates = pickTopCandidates(candidates);
+    fusedCandidatesCount = topCandidates.length;
 
     if (isRerankConfigured() && topCandidates.length > 0) {
       try {
-        const texts = topCandidates.map((candidate) => candidate.preview);
+        const rerankStart = Date.now();
+        const rerankCandidates = topCandidates.slice(0, RERANK_LIMIT);
+        rerankCandidatesCount = rerankCandidates.length;
+        const texts = rerankCandidates.map(
+          (candidate) => candidate.rerankText ?? candidate.preview
+        );
         const scores = await rerank(query, texts);
-        topCandidates = topCandidates
+        const reranked = rerankCandidates
           .map((candidate, index) => ({
             ...candidate,
             rerankScore: scores[index] ?? 0,
           }))
           .sort((a, b) => (b.rerankScore ?? 0) - (a.rerankScore ?? 0));
+        topCandidates = [...reranked, ...topCandidates.slice(rerankCandidates.length)];
+        rerankMs = Date.now() - rerankStart;
       } catch (error) {
         console.warn("[saga] Rerank failed, using fused ranking", error);
       }
     }
 
     if (options?.chunkContext && isQdrantConfigured()) {
+      const chunkStart = Date.now();
       const docCandidates = topCandidates
         .filter((candidate) => candidate.kind === "document")
         .slice(0, RAG_LIMIT);
@@ -345,9 +453,34 @@ export async function retrieveRAGContext(
           }
         })
       );
+      chunkMs = Date.now() - chunkStart;
     }
 
     const finalContext = buildContextFromCandidates(topCandidates);
+    const totalMs = Date.now() - totalStart;
+
+    if (options?.telemetry?.distinctId) {
+      try {
+        await ServerAgentEvents.ragRetrievalMetrics(options.telemetry.distinctId, {
+          projectId,
+          scope,
+          denseCandidates: denseCandidatesCount,
+          lexicalCandidates: lexicalCandidatesCount,
+          fusedCandidates: fusedCandidatesCount,
+          rerankCandidates: rerankCandidatesCount,
+          documentsReturned: finalContext.documents.length,
+          entitiesReturned: finalContext.entities.length,
+          memoriesReturned: finalContext.memories.length,
+          embedMs,
+          qdrantMs,
+          rerankMs,
+          chunkMs,
+          totalMs,
+        });
+      } catch (error) {
+        console.warn("[saga] RAG telemetry failed", error);
+      }
+    }
 
     console.log(
       `[saga] RAG context: ${finalContext.documents.length} docs, ` +

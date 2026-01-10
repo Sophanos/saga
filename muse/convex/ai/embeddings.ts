@@ -7,11 +7,20 @@ import { internalAction, internalMutation, internalQuery } from "../_generated/s
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateEmbeddings, isDeepInfraConfigured } from "../lib/embeddings";
-import { upsertPoints, isQdrantConfigured, type QdrantPoint } from "../lib/qdrant";
+import {
+  deletePointsByFilter,
+  isQdrantConfigured,
+  scrollPoints,
+  type QdrantFilter,
+  type QdrantPoint,
+  upsertPoints,
+} from "../lib/qdrant";
 
 const DEFAULT_BATCH_SIZE = 10;
 const MAX_EMBED_BATCH = 16;
 const MAX_CHUNK_CHARS = 1200;
+const EMBEDDING_QUEUE_COOLDOWN_MS = 15000;
+const MAX_EXISTING_CHUNK_SCAN = 500;
 
 interface EmbeddingJobRecord {
   _id: Id<"embeddingJobs">;
@@ -20,6 +29,10 @@ interface EmbeddingJobRecord {
   targetId: string;
   status: string;
   attempts: number;
+  desiredContentHash?: string;
+  processedContentHash?: string;
+  dirty?: boolean;
+  queuedAt?: number;
 }
 
 function chunkText(text: string, maxChars = MAX_CHUNK_CHARS): string[] {
@@ -83,6 +96,97 @@ function buildEntityText(entity: {
   return parts.join("\n");
 }
 
+async function hashText(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function hashChunk(text: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+async function getDesiredContentHash(
+  ctx: { db: { get: (id: Id<"documents"> | Id<"entities">) => Promise<any> } },
+  targetType: string,
+  targetId: string
+): Promise<string | undefined> {
+  if (targetType === "document") {
+    const doc = await ctx.db.get(targetId as Id<"documents">);
+    if (!doc) return undefined;
+    const contentText = doc.contentText ?? "";
+    return await hashText(contentText);
+  }
+
+  if (targetType === "entity") {
+    const entity = await ctx.db.get(targetId as Id<"entities">);
+    if (!entity) return undefined;
+    const text = buildEntityText({
+      name: entity.name,
+      aliases: entity.aliases,
+      notes: entity.notes ?? null,
+      properties: entity.properties ?? null,
+    });
+    return await hashText(text);
+  }
+
+  return undefined;
+}
+
+function parseChunkIndex(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+async function fetchExistingChunkHashes(options: {
+  projectId: string;
+  targetType: "document" | "entity";
+  targetId: string;
+  expectedCount: number;
+}): Promise<Map<number, string> | null> {
+  const { projectId, targetType, targetId, expectedCount } = options;
+  if (expectedCount === 0) return new Map();
+  if (expectedCount > MAX_EXISTING_CHUNK_SCAN) return null;
+
+  const filter: QdrantFilter = {
+    must: [
+      { key: "project_id", match: { value: projectId } },
+      { key: "type", match: { value: targetType } },
+    ],
+  };
+
+  if (targetType === "document") {
+    filter.must!.push({ key: "document_id", match: { value: targetId } });
+  } else {
+    filter.must!.push({ key: "entity_id", match: { value: targetId } });
+  }
+
+  const points = await scrollPoints(filter, expectedCount, {
+    orderBy: { key: "chunk_index", direction: "asc" },
+  });
+  const hashes = new Map<number, string>();
+
+  for (const point of points) {
+    const chunkIndex = parseChunkIndex(point.payload["chunk_index"]);
+    const chunkHash = point.payload["chunk_hash"];
+    if (chunkIndex === undefined || typeof chunkHash !== "string") continue;
+    hashes.set(chunkIndex, chunkHash);
+  }
+
+  return hashes;
+}
+
 export const enqueueEmbeddingJob = internalMutation({
   args: {
     projectId: v.id("projects"),
@@ -91,6 +195,11 @@ export const enqueueEmbeddingJob = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const desiredContentHash = await getDesiredContentHash(
+      ctx,
+      args.targetType,
+      args.targetId
+    );
     const activeStatuses = ["pending", "processing"] as const;
 
     for (const status of activeStatuses) {
@@ -100,7 +209,15 @@ export const enqueueEmbeddingJob = internalMutation({
           q.eq("targetType", args.targetType).eq("targetId", args.targetId).eq("status", status)
         )
         .first();
-      if (activeJob) return activeJob._id;
+      if (activeJob) {
+        await ctx.db.patch(activeJob._id, {
+          desiredContentHash,
+          queuedAt: now,
+          updatedAt: now,
+          dirty: status === "processing",
+        });
+        return activeJob._id;
+      }
     }
 
     const existing = await ctx.db
@@ -114,14 +231,16 @@ export const enqueueEmbeddingJob = internalMutation({
       .first();
 
     if (existing) {
-      if (existing.status === "failed") {
-        await ctx.db.patch(existing._id, {
-          status: "pending",
-          attempts: 0,
-          lastError: undefined,
-          updatedAt: now,
-        });
-      }
+      await ctx.db.patch(existing._id, {
+        status: "pending",
+        attempts: 0,
+        lastError: undefined,
+        chunksProcessed: 0,
+        desiredContentHash,
+        dirty: false,
+        queuedAt: now,
+        updatedAt: now,
+      });
       return existing._id;
     }
 
@@ -133,6 +252,10 @@ export const enqueueEmbeddingJob = internalMutation({
       attempts: 0,
       lastError: undefined,
       chunksProcessed: 0,
+      desiredContentHash,
+      processedContentHash: undefined,
+      dirty: false,
+      queuedAt: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -145,10 +268,21 @@ export const getPendingJobs = internalQuery({
   },
   handler: async (ctx, { limit }) => {
     const batchLimit = Math.max(1, Math.min(limit ?? DEFAULT_BATCH_SIZE, 50));
-    return await ctx.db
+    const oversampleLimit = Math.min(batchLimit * 3, 50);
+    const now = Date.now();
+    const cutoff = now - EMBEDDING_QUEUE_COOLDOWN_MS;
+
+    const pending = await ctx.db
       .query("embeddingJobs")
       .withIndex("by_status", (q) => q.eq("status", "pending"))
-      .take(batchLimit);
+      .take(oversampleLimit);
+
+    return pending
+      .filter((job) => {
+        const queuedAt = job.queuedAt ?? job.updatedAt ?? job.createdAt ?? 0;
+        return queuedAt <= cutoff;
+      })
+      .slice(0, batchLimit);
   },
 });
 
@@ -164,6 +298,7 @@ export const markProcessing = internalMutation({
       status: "processing",
       attempts: (job.attempts ?? 0) + 1,
       lastError: undefined,
+      dirty: false,
       updatedAt: Date.now(),
     });
   },
@@ -186,11 +321,15 @@ export const markSynced = internalMutation({
   args: {
     jobId: v.id("embeddingJobs"),
     chunksProcessed: v.number(),
+    processedContentHash: v.optional(v.string()),
   },
-  handler: async (ctx, { jobId, chunksProcessed }) => {
+  handler: async (ctx, { jobId, chunksProcessed, processedContentHash }) => {
     await ctx.db.patch(jobId, {
       status: "synced",
       chunksProcessed,
+      processedContentHash,
+      desiredContentHash: processedContentHash,
+      dirty: false,
       updatedAt: Date.now(),
     });
   },
@@ -225,6 +364,35 @@ export const getEntity = internalQuery({
   },
   handler: async (ctx, { id }) => {
     return await ctx.db.get(id);
+  },
+});
+
+export const getEmbeddingJob = internalQuery({
+  args: {
+    id: v.id("embeddingJobs"),
+  },
+  handler: async (ctx, { id }) => {
+    return await ctx.db.get(id);
+  },
+});
+
+export const requeueEmbeddingJob = internalMutation({
+  args: {
+    jobId: v.id("embeddingJobs"),
+    desiredContentHash: v.optional(v.string()),
+  },
+  handler: async (ctx, { jobId, desiredContentHash }) => {
+    const now = Date.now();
+    await ctx.db.patch(jobId, {
+      status: "pending",
+      attempts: 0,
+      lastError: undefined,
+      chunksProcessed: 0,
+      desiredContentHash,
+      dirty: false,
+      queuedAt: now,
+      updatedAt: now,
+    });
   },
 });
 
@@ -263,19 +431,41 @@ export const processEmbeddingJobs = internalAction({
           }
 
           const contentText = doc.contentText ?? "";
+          const contentHash = await hashText(contentText);
           const chunks = chunkText(contentText);
           const isoNow = new Date().toISOString();
           let processed = 0;
 
-          for (let i = 0; i < chunks.length; i += MAX_EMBED_BATCH) {
-            const slice = chunks.slice(i, i + MAX_EMBED_BATCH);
-            const { embeddings } = await generateEmbeddings(slice);
+          let existingHashes: Map<number, string> | null = null;
+          if (chunks.length > 0) {
+            existingHashes = await fetchExistingChunkHashes({
+              projectId: String(job.projectId),
+              targetType: "document",
+              targetId: job.targetId,
+              expectedCount: chunks.length,
+            });
+          }
+
+          const chunkData = chunks.map((text, index) => ({
+            index,
+            text,
+            hash: hashChunk(text),
+          }));
+          const chunksToEmbed = existingHashes
+            ? chunkData.filter((chunk) => existingHashes?.get(chunk.index) !== chunk.hash)
+            : chunkData;
+
+          for (let i = 0; i < chunksToEmbed.length; i += MAX_EMBED_BATCH) {
+            const slice = chunksToEmbed.slice(i, i + MAX_EMBED_BATCH);
+            const { embeddings } = await generateEmbeddings(
+              slice.map((chunk) => chunk.text),
+              { task: "embed_document" }
+            );
 
             const points: QdrantPoint[] = embeddings.map((vector, idx) => {
-              const chunkIndex = i + idx;
-              const text = slice[idx];
+              const chunk = slice[idx];
               return {
-                id: `document:${job.targetId}:${chunkIndex}`,
+                id: `document:${job.targetId}:${chunk.index}`,
                 vector,
                 payload: {
                   type: "document",
@@ -283,9 +473,10 @@ export const processEmbeddingJobs = internalAction({
                   document_id: job.targetId,
                   title: doc.title ?? "Untitled",
                   document_type: doc.type ?? "document",
-                  text,
-                  preview: text.slice(0, 200),
-                  chunk_index: chunkIndex,
+                  text: chunk.text,
+                  preview: chunk.text.slice(0, 200),
+                  chunk_index: chunk.index,
+                  chunk_hash: chunk.hash,
                   updated_at: isoNow,
                 },
               };
@@ -302,10 +493,45 @@ export const processEmbeddingJobs = internalAction({
             });
           }
 
-          await ctx.runMutation(internal.ai.embeddings.markSynced, {
-            jobId: job._id,
-            chunksProcessed: processed,
+          const baseFilter: QdrantFilter = {
+            must: [
+              { key: "project_id", match: { value: String(job.projectId) } },
+              { key: "type", match: { value: "document" } },
+              { key: "document_id", match: { value: job.targetId } },
+            ],
+          };
+
+          if (chunks.length === 0) {
+            await deletePointsByFilter(baseFilter);
+          } else {
+            await deletePointsByFilter({
+              must: [
+                ...baseFilter.must!,
+                { key: "chunk_index", range: { gte: chunks.length } },
+              ],
+            });
+          }
+
+          const latestJob = await ctx.runQuery(internal.ai.embeddings.getEmbeddingJob, {
+            id: job._id,
           });
+          const desiredHash = latestJob?.desiredContentHash ?? contentHash;
+          const shouldRequeue = Boolean(
+            latestJob?.dirty && desiredHash && desiredHash !== contentHash
+          );
+
+          if (shouldRequeue) {
+            await ctx.runMutation(internal.ai.embeddings.requeueEmbeddingJob, {
+              jobId: job._id,
+              desiredContentHash: desiredHash,
+            });
+          } else {
+            await ctx.runMutation(internal.ai.embeddings.markSynced, {
+              jobId: job._id,
+              chunksProcessed: chunks.length,
+              processedContentHash: contentHash,
+            });
+          }
         } else if (job.targetType === "entity") {
           const entity = await ctx.runQuery(internal.ai.embeddings.getEntity, {
             id: job.targetId as Id<"entities">,
@@ -325,19 +551,41 @@ export const processEmbeddingJobs = internalAction({
             notes: entity.notes ?? null,
             properties: entity.properties ?? null,
           });
+          const contentHash = await hashText(text);
           const chunks = chunkText(text);
           const isoNow = new Date().toISOString();
           let processed = 0;
 
-          for (let i = 0; i < chunks.length; i += MAX_EMBED_BATCH) {
-            const slice = chunks.slice(i, i + MAX_EMBED_BATCH);
-            const { embeddings } = await generateEmbeddings(slice);
+          let existingHashes: Map<number, string> | null = null;
+          if (chunks.length > 0) {
+            existingHashes = await fetchExistingChunkHashes({
+              projectId: String(job.projectId),
+              targetType: "entity",
+              targetId: job.targetId,
+              expectedCount: chunks.length,
+            });
+          }
+
+          const chunkData = chunks.map((chunkTextValue, index) => ({
+            index,
+            text: chunkTextValue,
+            hash: hashChunk(chunkTextValue),
+          }));
+          const chunksToEmbed = existingHashes
+            ? chunkData.filter((chunk) => existingHashes?.get(chunk.index) !== chunk.hash)
+            : chunkData;
+
+          for (let i = 0; i < chunksToEmbed.length; i += MAX_EMBED_BATCH) {
+            const slice = chunksToEmbed.slice(i, i + MAX_EMBED_BATCH);
+            const { embeddings } = await generateEmbeddings(
+              slice.map((chunk) => chunk.text),
+              { task: "embed_document" }
+            );
 
             const points: QdrantPoint[] = embeddings.map((vector, idx) => {
-              const chunkIndex = i + idx;
-              const chunkTextValue = slice[idx];
+              const chunk = slice[idx];
               return {
-                id: `entity:${job.targetId}:${chunkIndex}`,
+                id: `entity:${job.targetId}:${chunk.index}`,
                 vector,
                 payload: {
                   type: "entity",
@@ -345,9 +593,10 @@ export const processEmbeddingJobs = internalAction({
                   entity_id: job.targetId,
                   entity_type: entity.type,
                   title: entity.name,
-                  text: chunkTextValue,
-                  preview: chunkTextValue.slice(0, 200),
-                  chunk_index: chunkIndex,
+                  text: chunk.text,
+                  preview: chunk.text.slice(0, 200),
+                  chunk_index: chunk.index,
+                  chunk_hash: chunk.hash,
                   updated_at: isoNow,
                 },
               };
@@ -364,10 +613,45 @@ export const processEmbeddingJobs = internalAction({
             });
           }
 
-          await ctx.runMutation(internal.ai.embeddings.markSynced, {
-            jobId: job._id,
-            chunksProcessed: processed,
+          const baseFilter: QdrantFilter = {
+            must: [
+              { key: "project_id", match: { value: String(job.projectId) } },
+              { key: "type", match: { value: "entity" } },
+              { key: "entity_id", match: { value: job.targetId } },
+            ],
+          };
+
+          if (chunks.length === 0) {
+            await deletePointsByFilter(baseFilter);
+          } else {
+            await deletePointsByFilter({
+              must: [
+                ...baseFilter.must!,
+                { key: "chunk_index", range: { gte: chunks.length } },
+              ],
+            });
+          }
+
+          const latestJob = await ctx.runQuery(internal.ai.embeddings.getEmbeddingJob, {
+            id: job._id,
           });
+          const desiredHash = latestJob?.desiredContentHash ?? contentHash;
+          const shouldRequeue = Boolean(
+            latestJob?.dirty && desiredHash && desiredHash !== contentHash
+          );
+
+          if (shouldRequeue) {
+            await ctx.runMutation(internal.ai.embeddings.requeueEmbeddingJob, {
+              jobId: job._id,
+              desiredContentHash: desiredHash,
+            });
+          } else {
+            await ctx.runMutation(internal.ai.embeddings.markSynced, {
+              jobId: job._id,
+              chunksProcessed: chunks.length,
+              processedContentHash: contentHash,
+            });
+          }
         } else {
           throw new Error(`Unsupported embedding target type: ${job.targetType}`);
         }
