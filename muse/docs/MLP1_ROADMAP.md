@@ -963,7 +963,7 @@ embeddingJobs: defineTable({
 | Focus Mode MVP (AI silent unless invoked) | 🔲 | Zen UI, no proactive interruptions, manual invoke only |
 | Focus sessions (timer + word goals) | 🔲 | Pomodoro/sprint/custom, session stats |
 | Living Model UI entry points | ✅ | Cmd+K “Changes to review” + editor More menu (“Version history”) opens review panel; home entry point TBD |
-| Knowledge PRs review UX (polish) | ✅ (baseline) | Approve/reject + batch actions + provenance + undo (graph/memory); document apply remains editor UI |
+| Knowledge PRs review UX (polish) | ✅ (MVP, not production-ready) | Approve/reject + batch actions + provenance + undo (graph/memory); document apply remains editor UI |
 | Project/World Graph editor UX | 🔲 | Create/edit nodes/edges; registry-aware type picker + properties editor |
 | Lint → “jump to canon” UX | 🔲 | Canon citations link to Decision Ledger items |
 | Clarity/Policy Coach UX | 🔲 | Mode selector + taxonomy-aware issues + apply/dismiss |
@@ -975,9 +975,9 @@ embeddingJobs: defineTable({
 |------|--------|-------|
 | Project Type Registry screen | 🔲 | Manage types, risk levels, optional JSON schema; drives create/edit and approvals |
 | Project Graph editor UX | 🔲 | Node/edge create/edit for `type` + `properties` (schema-driven when available) |
-| Knowledge PRs inbox UX | ✅ (baseline) | Expo Web right-panel (“Changes to review”) with filters, selection, batch approve/reject |
-| Knowledge PR diff/preview components | ✅ (baseline) | Entity/relationship diffs + memory preview + raw patch; document diff + JSON Patch view TBD |
-| Knowledge history + rollback UX | ✅ (baseline) | Undo supported for accepted suggestions with rollback metadata (graph/memory) |
+| Knowledge PRs inbox UX | ✅ (MVP, not production-ready) | Expo Web right-panel (“Changes to review”) with filters, selection, batch approve/reject |
+| Knowledge PR diff/preview components | ✅ (MVP, not production-ready) | Entity/relationship diffs + memory preview + raw patch; document diff + JSON Patch view TBD |
+| Knowledge history + rollback UX | ✅ (MVP, not production-ready) | Undo supported for accepted suggestions with rollback metadata (graph/memory) |
 | Integrations settings UX | 🔲 | Connections, scopes, status, and audit trail for external sources |
 | Evidence + citations UX | 🔲 | Canon citation drilldown + jump-to-canon from lint/coach |
 | Promote-to-model flow UX | 🔲 | From evidence/context inspector → create Knowledge PR with citations |
