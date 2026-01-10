@@ -83,6 +83,13 @@ export default function E2EScreen() {
   };
 
   const handleOpenEditor = () => {
+    if (projectId && documentId) {
+      router.push({
+        pathname: "/editor",
+        params: { projectId, documentId },
+      });
+      return;
+    }
     router.push("/editor");
   };
 
@@ -125,9 +132,21 @@ export default function E2EScreen() {
           <Text style={styles.buttonText}>Create Project</Text>
         </Pressable>
         {projectId && (
-          <Text style={[styles.meta, { color: colors.textMuted }]} testID="e2e-project-id">
-            Project ID: {projectId}
-          </Text>
+          <>
+            <Text
+              style={[styles.meta, { color: colors.textMuted }]}
+              testID="e2e-project-id"
+              data-project-id={projectId}
+            >
+              Project ID: {projectId}
+            </Text>
+            <Text
+              style={[styles.meta, { color: colors.textMuted }]}
+              testID="e2e-project-id-value"
+            >
+              {projectId}
+            </Text>
+          </>
         )}
       </View>
 
@@ -158,9 +177,21 @@ export default function E2EScreen() {
           <Text style={styles.buttonText}>Create Document</Text>
         </Pressable>
         {documentId && (
-          <Text style={[styles.meta, { color: colors.textMuted }]} testID="e2e-document-id">
-            Document ID: {documentId}
-          </Text>
+          <>
+            <Text
+              style={[styles.meta, { color: colors.textMuted }]}
+              testID="e2e-document-id"
+              data-document-id={documentId}
+            >
+              Document ID: {documentId}
+            </Text>
+            <Text
+              style={[styles.meta, { color: colors.textMuted }]}
+              testID="e2e-document-id-value"
+            >
+              {documentId}
+            </Text>
+          </>
         )}
       </View>
 
@@ -168,6 +199,8 @@ export default function E2EScreen() {
         onPress={handleOpenEditor}
         style={[styles.button, styles.secondaryButton, { borderColor: colors.border }]}
         testID="e2e-open-editor"
+        data-project-id={projectId ?? undefined}
+        data-document-id={documentId ?? undefined}
       >
         <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Open Editor</Text>
       </Pressable>

@@ -20,7 +20,7 @@ import type { Suggestion, SuggestionType } from './extensions/suggestion-plugin'
  */
 export type EditorToNativeMessage =
   // Content updates
-  | { type: 'contentChange'; content: string; html: string }
+  | { type: 'contentChange'; content: string; html: string; json: unknown }
   | { type: 'titleChange'; title: string }
   | { type: 'selectionChange'; selection: { from: number; to: number; text: string } | null }
   // Suggestion events
@@ -637,4 +637,3 @@ if (typeof window !== 'undefined') {
     handleNativeMessage(data.payload, data);
   });
 }
-

@@ -230,6 +230,32 @@ export const getSagaScript = internalQuery({
   },
 });
 
+export const getDocumentForE2E = query({
+  args: {
+    secret: v.string(),
+    documentId: v.id("documents"),
+  },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    contentText: string | null;
+    updatedAt: number | null;
+    wordCount: number | null;
+    title: string | null;
+  } | null> => {
+    assertE2EAccess(args.secret);
+    const doc = await ctx.db.get(args.documentId);
+    if (!doc) return null;
+    return {
+      contentText: doc.contentText ?? null,
+      updatedAt: doc.updatedAt ?? null,
+      wordCount: doc.wordCount ?? null,
+      title: doc.title ?? null,
+    };
+  },
+});
+
 export const processEmbeddingJobsNow = action({
   args: {
     secret: v.string(),

@@ -10,7 +10,7 @@ import { ManifestPanel } from './components/manifest/ManifestPanel';
 import { EditorWebView } from './components/editor/EditorWebView';
 
 function App() {
-  const handleContentChange = useCallback((content: string, _html: string) => {
+  const handleContentChange = useCallback((content: string, _html: string, _json: unknown) => {
     console.log('[App] Content changed:', content.slice(0, 100));
   }, []);
 

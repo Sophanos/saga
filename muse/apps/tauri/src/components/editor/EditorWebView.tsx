@@ -12,7 +12,7 @@ const EDITOR_DEV_URL = 'http://localhost:5173';
 
 export interface EditorWebViewProps {
   initialContent?: string;
-  onContentChange?: (content: string, html: string) => void;
+  onContentChange?: (content: string, html: string, json: unknown) => void;
   onSelectionChange?: (selection: EditorState['selection']) => void;
   onAIRequest?: (selectedText: string, prompt?: string, action?: string) => void;
   onReady?: () => void;

@@ -22,7 +22,7 @@ export type BridgeConfigureOptions = {
 // Message types matching packages/editor-webview/src/bridge.ts
 
 export type EditorToNativeMessage =
-  | { type: 'contentChange'; content: string; html: string }
+  | { type: 'contentChange'; content: string; html: string; json: unknown }
   | { type: 'titleChange'; title: string }
   | { type: 'selectionChange'; selection: { from: number; to: number; text: string } | null }
   | { type: 'reviewRequired'; suggestions: unknown[] }
@@ -66,6 +66,7 @@ export interface EditorState {
   ready: boolean;
   content: string;
   html: string;
+  json: unknown | null;
   selection: { from: number; to: number; text: string } | null;
   focused: boolean;
 }
@@ -73,7 +74,7 @@ export interface EditorState {
 export interface UseEditorBridgeOptions {
   onMessage?: (message: EditorToNativeMessage) => void;
   onReady?: () => void;
-  onContentChange?: (content: string, html: string) => void;
+  onContentChange?: (content: string, html: string, json: unknown) => void;
   onSelectionChange?: (selection: EditorState['selection']) => void;
   onAIRequest?: (selectedText: string, prompt?: string, action?: string) => void;
   bridgeNonce?: string;
@@ -88,6 +89,7 @@ export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
     ready: false,
     content: '',
     html: '',
+    json: null,
     selection: null,
     focused: false,
   });
@@ -279,8 +281,13 @@ export function useEditorBridge(options: UseEditorBridgeOptions = {}) {
           callbacks.onReady?.();
           break;
         case 'contentChange':
-          setEditorState((prev) => ({ ...prev, content: message.content, html: message.html }));
-          callbacks.onContentChange?.(message.content, message.html);
+          setEditorState((prev) => ({
+            ...prev,
+            content: message.content,
+            html: message.html,
+            json: message.json ?? null,
+          }));
+          callbacks.onContentChange?.(message.content, message.html, message.json);
           break;
         case 'selectionChange':
           setEditorState((prev) => ({ ...prev, selection: message.selection }));

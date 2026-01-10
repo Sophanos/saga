@@ -4,6 +4,17 @@ import type { Page } from "@playwright/test";
 
 type Id<TableName extends string> = string;
 
+interface E2EDocumentResult {
+  contentText: string | null;
+  updatedAt: number | null;
+  wordCount: number | null;
+  title: string | null;
+}
+
+export interface E2EConvexHelpers {
+  getDocumentForE2E: (id: Id<"documents">) => Promise<E2EDocumentResult | null>;
+}
+
 // Avoid pulling the generated API type graph into E2E fixtures.
 const apiAny = anyApi as any;
 
@@ -49,6 +60,17 @@ function requireE2ESecret(): string {
     throw new Error("Missing E2E_TEST_SECRET for E2E harness calls");
   }
   return E2E_SECRET;
+}
+
+export function getE2EConvexHelpers(): E2EConvexHelpers {
+  const client = new ConvexHttpClient(CONVEX_URL);
+  return {
+    getDocumentForE2E: async (id: Id<"documents">) =>
+      client.query(apiAny.e2e.getDocumentForE2E, {
+        secret: requireE2ESecret(),
+        documentId: id,
+      }),
+  };
 }
 
 function decodeJwtSubject(token: string): string {

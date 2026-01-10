@@ -30,17 +30,44 @@ export async function waitForUrl(
   await page.waitForURL(predicate, { timeout: timeoutMs });
 }
 
+type ConvexDocument = {
+  contentText?: string | null;
+  updatedAt?: number | null;
+  wordCount?: number | null;
+};
+
 export async function waitForConvexDocumentText(
-  convex: { getDocument: (id: string) => Promise<{ contentText?: string | null } | null> },
+  convex: { getDocument: (id: string) => Promise<ConvexDocument | null> },
   documentId: string,
   expectedSubstring: string,
   timeoutMs = 20_000
-) {
+): Promise<ConvexDocument> {
   return waitForCondition(async () => {
     const doc = await convex.getDocument(documentId);
     if (!doc?.contentText) {
       return false;
     }
-    return doc.contentText.includes(expectedSubstring);
+    if (!doc.contentText.includes(expectedSubstring)) {
+      return false;
+    }
+    return doc;
+  }, { timeoutMs });
+}
+
+export async function waitForConvexDocumentUpdatedAt(
+  convex: { getDocument: (id: string) => Promise<ConvexDocument | null> },
+  documentId: string,
+  minUpdatedAt: number,
+  timeoutMs = 20_000
+): Promise<ConvexDocument> {
+  return waitForCondition(async () => {
+    const doc = await convex.getDocument(documentId);
+    if (!doc?.updatedAt) {
+      return false;
+    }
+    if (doc.updatedAt <= minUpdatedAt) {
+      return false;
+    }
+    return doc;
   }, { timeoutMs });
 }

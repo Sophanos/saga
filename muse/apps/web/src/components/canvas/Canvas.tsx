@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback, useRef } from "react";
+import { useEffect, useMemo, useCallback, useRef, useState } from "react";
 import {
   useEditor,
   EditorContent,
@@ -117,6 +117,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     (state) => state.document.currentDocument
   );
   const updateDocumentInStore = useMythosStore((state) => state.updateDocument);
+  const [isEditorReady, setIsEditorReady] = useState(false);
 
   // Track the current document ID to detect changes
   const previousDocumentIdRef = useRef<string | null>(null);
@@ -509,7 +510,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   useAutoApplyEntityMarks(editor, sceneEntities, currentDocument?.id ?? null);
 
   // Wire up auto-save for document persistence
-  const { isSaving, lastSavedAt, error: saveError } = useAutoSave({
+  const { isSaving, lastSavedAt, error: saveError, isDirty } = useAutoSave({
     editor,
     documentId: currentDocument?.id ?? null,
     enabled: !!currentDocument,
@@ -526,16 +527,20 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     // Only update content if the document actually changed
     if (currentId !== previousId) {
       previousDocumentIdRef.current = currentId;
+      setIsEditorReady(false);
 
       if (currentDocument?.content) {
         // Load the new document's content
         editor.commands.setContent(currentDocument.content);
+        setIsEditorReady(true);
       } else if (!currentDocument) {
         // No document selected - show placeholder
         editor.commands.setContent(PLACEHOLDER_CONTENT);
+        setIsEditorReady(false);
       } else {
         // New document with no content - start fresh
         editor.commands.setContent("");
+        setIsEditorReady(true);
       }
 
       // Update editable state
@@ -623,8 +628,55 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     return "—";
   }, [metrics]);
 
+  const autosaveStatus = useMemo(() => {
+    if (saveError) {
+      return "error";
+    }
+    if (isSaving) {
+      return "saving";
+    }
+    if (isDirty) {
+      return "dirty";
+    }
+    if (lastSavedAt) {
+      return "saved";
+    }
+    return "idle";
+  }, [isDirty, isSaving, lastSavedAt, saveError]);
+
   return (
-    <div className="h-full flex flex-col">
+    <div
+      className="h-full flex flex-col"
+      data-testid="editor-root"
+      data-document-id={currentDocument?.id}
+      data-project-id={currentProject?.id}
+    >
+      <span
+        data-testid="editor-view"
+        data-document-id={currentDocument?.id}
+        data-project-id={currentProject?.id}
+        style={{ display: "none" }}
+      />
+      {isEditorReady && (
+        <span data-testid="editor-ready" style={{ display: "none" }} />
+      )}
+      <span
+        data-testid="autosave-status"
+        data-status={autosaveStatus}
+        style={{ display: "none" }}
+      >
+        {autosaveStatus}
+      </span>
+      {currentDocument?.id && (
+        <span data-testid="editor-document-id" style={{ display: "none" }}>
+          {currentDocument.id}
+        </span>
+      )}
+      {saveError && (
+        <span data-testid="autosave-error" style={{ display: "none" }}>
+          {saveError}
+        </span>
+      )}
       {/* Scene Context Bar - shows cast, tension, and mood */}
       <SceneContextBar
         entities={sceneEntities}
@@ -643,6 +695,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
               key={currentDocument.id} // Reset input when document changes
               className="text-2xl font-serif font-bold bg-transparent border-none outline-none text-mythos-text-primary w-full placeholder:text-mythos-text-muted"
               placeholder="Document Title..."
+              data-testid="editor-title"
               onChange={(e) => {
                 if (currentDocument?.id) {
                   updateDocumentInStore(currentDocument.id, {

@@ -23,10 +23,18 @@ const EMBEDDING_DEBOUNCE_MS = 10000;
 const MIN_EMBEDDING_TEXT_LENGTH = 50;
 
 /**
+ * E2E mode flag for disabling flaky side effects.
+ */
+const E2E_MODE =
+  import.meta.env["VITE_E2E"] === "true" ||
+  import.meta.env["EXPO_PUBLIC_E2E"] === "true";
+
+/**
  * Check if embeddings feature is enabled (Qdrant-only architecture)
  * Embeddings are enabled by default - set VITE_EMBEDDINGS_ENABLED=false to disable
  */
-const EMBEDDINGS_ENABLED = import.meta.env["VITE_EMBEDDINGS_ENABLED"] !== "false";
+const EMBEDDINGS_ENABLED =
+  import.meta.env["VITE_EMBEDDINGS_ENABLED"] !== "false" && !E2E_MODE;
 
 /**
  * Options for the useAutoSave hook
@@ -268,14 +276,12 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
       // Get content in both formats
       const jsonContent = editor.getJSON();
       const textContent = editor.getText();
-      const wordCount = textContent.split(/\s+/).filter(Boolean).length;
 
       // Call the Convex updateDocument mutation
       await updateDocumentMutation({
         id: documentId as Id<"documents">,
         content: jsonContent as Record<string, unknown>,
         contentText: textContent,
-        wordCount: wordCount,
       });
 
       // Only update state if component is still mounted
@@ -411,14 +417,12 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
         // Use synchronous approach for unmount save attempt
         const jsonContent = editor.getJSON();
         const textContent = editor.getText();
-        const wordCount = textContent.split(/\s+/).filter(Boolean).length;
 
         // Fire and forget - we can't await in cleanup
         updateDocumentRef.current({
           id: documentId as Id<"documents">,
           content: jsonContent as Record<string, unknown>,
           contentText: textContent,
-          wordCount: wordCount,
         }).catch((err: unknown) => {
           console.error("[useAutoSave] Failed to save on unmount:", err);
         });
@@ -444,9 +448,11 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
       if (isDirty) {
         // Attempt to save
         saveNow();
-        // Show browser's native "unsaved changes" dialog
-        e.preventDefault();
-        e.returnValue = "";
+        if (!E2E_MODE) {
+          // Show browser's native "unsaved changes" dialog
+          e.preventDefault();
+          e.returnValue = "";
+        }
       }
     };
 

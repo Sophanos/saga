@@ -193,12 +193,15 @@ export function Editor({
     immediatelyRender: false,
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
+      const text = editor.getText();
+      const json = editor.getJSON();
       onChange?.(html);
       if (_enableBridge && bridgeSendRef.current) {
         bridgeSendRef.current({
           type: 'contentChange',
-          content: editor.getText(),
+          content: text,
           html,
+          json,
         });
       }
     },
@@ -585,6 +588,7 @@ export function Editor({
             placeholder="Untitled"
             rows={1}
             disabled={!editable}
+            data-testid="editor-title"
           />
         )}
         <EditorContent

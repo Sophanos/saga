@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { TabBar, type Tab } from './TabBar';
 import { PageHeader } from './PageHeader';
 import { MoreMenu } from './MoreMenu';
@@ -242,6 +242,8 @@ export function EditorShell({
   const [isOffline, setIsOffline] = useState(false);
   const [navHistory, setNavHistory] = useState<string[]>([activeDocId]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [readyDocumentId, setReadyDocumentId] = useState<string | null>(null);
+  const [autosaveError, setAutosaveError] = useState<string | null>(null);
 
   const activeDoc = documents.find((d) => d.id === activeDocId);
   const collaborationDocumentId = collaboration?.documentId ?? activeDocId;
@@ -328,9 +330,64 @@ export function EditorShell({
   }, [onQuickAction]);
 
   const isEmpty = !activeDoc?.content || activeDoc.content === '<p></p>';
+  const editorReady =
+    !!collaborationDocumentId && readyDocumentId === collaborationDocumentId;
+  const autosaveStatus = useMemo<'dirty' | 'saving' | 'saved' | 'error'>(() => {
+    if (autosaveError) {
+      return 'error';
+    }
+    if (!editorReady) {
+      return 'saving';
+    }
+    return activeDoc?.isDirty ? 'dirty' : 'saved';
+  }, [activeDoc?.isDirty, autosaveError, editorReady]);
+
+  const handleEditorReady = useCallback((editor: unknown) => {
+    if (!editor) {
+      return;
+    }
+    setReadyDocumentId(collaborationDocumentId ?? null);
+  }, [collaborationDocumentId]);
+
+  const handleSyncError = useCallback((error: Error) => {
+    setAutosaveError(error.message);
+  }, []);
+
+  useEffect(() => {
+    setAutosaveError(null);
+  }, [activeDocId, collaborationDocumentId]);
 
   return (
-    <div className="editor-shell">
+    <div
+      className="editor-shell"
+      data-testid="editor-root"
+      data-document-id={collaborationDocumentId}
+      data-project-id={collaboration?.projectId}
+    >
+      <span
+        data-testid="editor-view"
+        data-document-id={collaborationDocumentId}
+        data-project-id={collaboration?.projectId}
+        style={{ display: 'none' }}
+      />
+      {editorReady && (
+        <span data-testid="editor-ready" style={{ display: 'none' }} />
+      )}
+      <span
+        data-testid="autosave-status"
+        data-status={autosaveStatus}
+        style={{ display: 'none' }}
+      >
+        {autosaveStatus}
+      </span>
+      <span data-testid="editor-document-id" style={{ display: 'none' }}>
+        {collaborationDocumentId}
+      </span>
+      {autosaveError && (
+        <span data-testid="autosave-error" style={{ display: 'none' }}>
+          {autosaveError}
+        </span>
+      )}
       <TabBar
         tabs={tabs}
         activeTabId={activeDocId}
@@ -399,6 +456,8 @@ export function EditorShell({
             title={activeDoc?.title ?? ''}
             onTitleChange={handleTitleChange}
             onChange={handleContentChange}
+            onEditorReady={handleEditorReady}
+            onSyncError={handleSyncError}
             fontStyle={fontStyle}
             isSmallText={isSmallText}
             isFullWidth={isFullWidth}
@@ -413,6 +472,7 @@ export function EditorShell({
             content={activeDoc?.content ?? ''}
             onTitleChange={handleTitleChange}
             onChange={handleContentChange}
+            onEditorReady={handleEditorReady}
             fontStyle={fontStyle}
             isSmallText={isSmallText}
             isFullWidth={isFullWidth}
