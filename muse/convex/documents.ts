@@ -298,9 +298,10 @@ export const move = mutation({
 export const removeInternal = internalMutation({
   args: {
     id: v.id("documents"),
+    projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    const { id } = args;
+    const { id, projectId } = args;
 
     // Recursively delete children
     const children = await ctx.db
@@ -309,7 +310,10 @@ export const removeInternal = internalMutation({
       .collect();
 
     for (const child of children) {
-      await ctx.runMutation(internal.documents.removeInternal, { id: child._id });
+      await ctx.runMutation(internal.documents.removeInternal, {
+        id: child._id,
+        projectId,
+      });
     }
 
     // Delete mentions in this document
@@ -321,6 +325,19 @@ export const removeInternal = internalMutation({
     for (const mention of mentions) {
       await ctx.db.delete(mention._id);
     }
+
+    await ctx.runMutation(internal.maintenance.enqueueVectorDeleteJob, {
+      projectId,
+      targetType: "document",
+      targetId: id,
+      reason: "document_deleted",
+    });
+
+    await ctx.runMutation((internal as any)["ai/embeddings"].deleteEmbeddingJobsForTarget, {
+      projectId,
+      targetType: "document",
+      targetId: id,
+    });
 
     // Delete the document
     await ctx.db.delete(id);
@@ -340,8 +357,16 @@ export const remove = mutation({
     // Verify user has access via document's project
     await verifyDocumentAccess(ctx, args.id);
 
+    const document = await ctx.db.get(args.id);
+    if (!document) {
+      throw new Error("Document not found");
+    }
+
     // Delegate to internal mutation for recursive delete
-    await ctx.runMutation(internal.documents.removeInternal, { id: args.id });
+    await ctx.runMutation(internal.documents.removeInternal, {
+      id: args.id,
+      projectId: document.projectId,
+    });
     return args.id;
   },
 });

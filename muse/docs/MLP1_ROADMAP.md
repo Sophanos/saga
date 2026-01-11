@@ -62,6 +62,43 @@ Reference: `../DB_MIGRATION_REPORT.md`.
 - Approvals UX: surface risk level + approval requirement at the point of change.
 - Universal entity profile page: overview + graph + mentions + documents + history (spec in `docs/UNIVERSAL_ENTITY_PROFILE.md`).
 
+### Phase 1: Project Graph UX (Expo Web + Tauri v2) — Implementation Plan
+
+**Goal:** Editable Project Graph with registry-enforced validation and risk-aware approvals, running in Expo Web and shipped via Tauri v2.
+
+#### Graph UX (CRUD)
+- [ ] Add “Open Project Graph” secondary UI path in editor (`data-testid="editor-open-project-graph"`)
+- [ ] Graph: create entity (button/FAB → EntityFormModal)
+- [ ] Graph: create relationship (connect nodes → RelationshipFormModal)
+- [ ] Graph: edit relationship (edge click → RelationshipFormModal)
+- [ ] (Optional but recommended) Graph: delete entity/relationship with confirmation
+
+#### Schema-driven editors
+- [ ] Extract reusable JSON Schema object editor component (supports enum, string, number/int, boolean, array<string>, raw JSON fallback)
+- [ ] Relationship metadata editor (schema-driven + raw JSON fallback)
+
+#### Registry-driven UI (template-safe)
+- [ ] EntityFormModal type selector driven by resolved registry (not WRITER_ENTITY_TYPES)
+- [ ] Fill icon/color defaults for non-writer templates (product/engineering/design/comms)
+- [ ] Add relationship filters and “focus mode” (depth-based neighborhood)
+
+#### Validation + error contract
+- [ ] Ensure entity/relationship mutations validate type + schema (AJV reject-only) and return Graph API error codes
+- [ ] Client-side Convex error parser that surfaces `INVALID_TYPE`, `SCHEMA_VALIDATION_FAILED`, `REGISTRY_LOCKED`, etc.
+
+#### Approvals (AI graph writes)
+- [ ] Persist approval preview payloads for create/update entity/relationship tool calls
+- [ ] Approvals UI supports entity/relationship diffs + risk rationale + approve/reject
+- [ ] Applying an approval executes the tool, updates graph state, and logs activity
+
+#### Expo Web + Tauri v2 integration
+- [ ] Port or package Project Graph for Expo Web (web-only dependency surface)
+- [ ] Make ELK layout + ReactFlow styling compatible with Expo Web bundling
+- [ ] Tauri v2 shell points to Expo Web (`build.devUrl`, `build.frontendDist`, beforeDev/beforeBuild commands)
+
+#### E2E testability
+- [ ] Add missing `data-testid` coverage for: entity modal, relationship modal, registry editor, approvals panel, create/delete actions
+
 **Phase 2: Knowledge PRs**
 - Knowledge PRs inbox: unified review queue across `document`/`entity`/`relationship`/`memory` with filters + batch actions (label: “Changes to review”; opened from editor “Version history” menu item).
 - Diff/preview: document diff + property/edge diff + JSON Patch view for opaque operations.
@@ -924,6 +961,15 @@ embeddingJobs: defineTable({
   status: v.string(),            // "pending" | "processing" | "synced" | "failed"
   attempts: v.number(),
   lastError: v.optional(v.string()),
+  desiredContentHash: v.optional(v.string()),
+  processedContentHash: v.optional(v.string()),
+  dirty: v.optional(v.boolean()),
+  processingRunId: v.optional(v.string()),
+  processingStartedAt: v.optional(v.number()),
+  nextRunAt: v.optional(v.number()),
+  failedAt: v.optional(v.number()),
+  queuedAt: v.optional(v.number()),
+  updatedAt: v.number(),
   createdAt: v.number(),
 })
 ```
@@ -931,8 +977,14 @@ embeddingJobs: defineTable({
 ### Retry Logic
 
 - Max 5 retries: 30s, 1m, 2m, 4m, 8m (exponential backoff)
-- After 5 failures: status = 'failed', requires manual retry
-- Backoff resets on success
+- `nextRunAt` gates debounce + retry backoff
+- Processing lease requeues stuck jobs (stale processing recovery)
+- After 5 failures: status = `failed`, requires manual retry
+
+### Vector Delete Outbox
+
+- Server-side deletes enqueue `vectorDeleteJobs` for documents/entities
+- Jobs are reclaimed if they remain `processing` past the lease window
 
 ### SyncStatus UI
 
@@ -1710,6 +1762,9 @@ convex/
 | `expire-old-invitations` | Daily 4:00 AM UTC | Mark expired invitations |
 | `cleanup-deleted-assets` | Weekly Sunday 5:00 AM UTC | Hard delete soft-deleted assets (30+ days) |
 | `process-vector-delete-jobs` | Every minute | Process pending Qdrant deletions |
+| `requeue-stale-vector-delete-jobs` | Every 5 minutes | Reclaim stuck vector delete jobs |
+| `requeue-stale-embedding-jobs` | Every 5 minutes | Reclaim stuck embedding jobs |
+| `cleanup-embedding-jobs` | Daily 1:30 AM UTC | Remove stale/failed embedding jobs |
 | `purge-expired-memories` | Daily 2:00 AM UTC | Delete tier-expired memories |
 
 ### Completed Tasks (2026-01-09)
@@ -1730,14 +1785,7 @@ convex/
 
 ### Remaining Tasks (Supabase Migration)
 
-| Task | Priority | Notes |
-|------|----------|-------|
-| ProjectCreateModal.tsx | P2 | Replace `createProject`, `createDocument`, `createEntity`, `createRelationship` |
-| CreateProjectForm.tsx | P2 | Replace `createProject`, `createDocument` |
-| ProjectPickerSidebar.tsx | P2 | Replace `createDocument`, `mapDbDocumentToDocument` |
-| agentRuntimeClient.ts | P2 | Remove `getSupabaseClient`, `isSupabaseInitialized` |
-| contentAnalysisRepository.ts | P2 | Remove Supabase references |
-| seedProjectContext.ts | P2 | Replace `createDocument` |
+All Supabase → Convex migration tasks complete.
 
 ### P1: Performance Stabilization
 

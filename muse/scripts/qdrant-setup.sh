@@ -78,6 +78,12 @@ curl -X PUT "$QDRANT_URL/collections/$COLLECTION/index" \
   -H "api-key: $QDRANT_API_KEY" \
   -d '{"field_name": "entity_type", "field_schema": "keyword"}'
 
+# Index: chunk_index (for ordered scroll + range deletes)
+curl -X PUT "$QDRANT_URL/collections/$COLLECTION/index" \
+  -H "Content-Type: application/json" \
+  -H "api-key: $QDRANT_API_KEY" \
+  -d '{"field_name": "chunk_index", "field_schema": "integer"}'
+
 # Index: created_at_ts (for range queries, TTL)
 curl -X PUT "$QDRANT_URL/collections/$COLLECTION/index" \
   -H "Content-Type: application/json" \

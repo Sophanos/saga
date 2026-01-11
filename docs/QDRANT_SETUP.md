@@ -100,10 +100,15 @@ curl -s "http://localhost:6333/collections/saga_vectors" \
     "entity_type": "keyword",
     "title": "text",
     "document_id": "keyword",
-    "entity_id": "keyword"
+    "entity_id": "keyword",
+    "chunk_index": "integer"
   }
 }
 ```
+
+**Note:** `scrollPoints(... order_by: chunk_index ...)` requires a payload index on `chunk_index` (numeric/range). Ensure your Qdrant version supports `order_by` on payload fields before enabling this.
+
+**Delete semantics:** Qdrant delete requests are acknowledged by default. Saga treats deletes as eventual consistency (no `wait=true`) unless a workflow explicitly needs strict read-after-delete.
 
 ---
 

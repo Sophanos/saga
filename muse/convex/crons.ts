@@ -60,6 +60,23 @@ crons.interval(
 );
 
 // ============================================================
+// Embedding Job Recovery
+// Reclaims stuck processing jobs and cleans up stale records
+// ============================================================
+
+crons.interval(
+  "requeue-stale-embedding-jobs",
+  { minutes: 5 },
+  (internal as any)["ai/embeddings"].requeueStaleProcessingJobs
+);
+
+crons.daily(
+  "cleanup-embedding-jobs",
+  { hourUTC: 1, minuteUTC: 30 },
+  (internal as any)["ai/embeddings"].cleanupEmbeddingJobs
+);
+
+// ============================================================
 // Invitation Cleanup
 // Runs daily at 4:00 AM UTC to expire old invitations
 // ============================================================
@@ -90,6 +107,12 @@ crons.interval(
   "process-vector-delete-jobs",
   { minutes: 1 },
   internal.maintenance.processVectorDeleteJobs
+);
+
+crons.interval(
+  "requeue-stale-vector-delete-jobs",
+  { minutes: 5 },
+  internal.maintenance.requeueStaleVectorDeleteJobs
 );
 
 // ============================================================

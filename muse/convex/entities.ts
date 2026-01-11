@@ -564,6 +564,11 @@ export const remove = mutation({
     // Verify user has access via entity's project
     await verifyEntityAccess(ctx, id);
 
+    const entity = await ctx.db.get(id);
+    if (!entity) {
+      throw new Error("Entity not found");
+    }
+
     // Delete all relationships involving this entity
     const sourceRelationships = await ctx.db
       .query("relationships")
@@ -588,6 +593,19 @@ export const remove = mutation({
     for (const mention of mentions) {
       await ctx.db.delete(mention._id);
     }
+
+    await ctx.runMutation(internal.maintenance.enqueueVectorDeleteJob, {
+      projectId: entity.projectId,
+      targetType: "entity",
+      targetId: id,
+      reason: "entity_deleted",
+    });
+
+    await ctx.runMutation((internal as any)["ai/embeddings"].deleteEmbeddingJobsForTarget, {
+      projectId: entity.projectId,
+      targetType: "entity",
+      targetId: id,
+    });
 
     // Delete the entity itself
     await ctx.db.delete(id);

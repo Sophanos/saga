@@ -4,6 +4,7 @@
  * Internal mutations/actions called by cron jobs for system maintenance.
  */
 
+import { v } from "convex/values";
 import { internalMutation, internalAction, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { deletePointsByFilter, isQdrantConfigured, type QdrantFilter } from "./lib/qdrant";
@@ -222,6 +223,116 @@ const VECTOR_DELETE_BATCH_SIZE = 10;
 /** Max attempts before marking job as failed */
 const VECTOR_DELETE_MAX_ATTEMPTS = 5;
 
+/** Age in milliseconds before processing jobs are reclaimed */
+const VECTOR_DELETE_LEASE_MS = 5 * 60 * 1000;
+
+/** Max stale processing jobs to scan per run */
+const VECTOR_DELETE_STALE_SCAN_LIMIT = 50;
+
+function buildVectorDeleteFilter(options: {
+  projectId: string;
+  targetType: "document" | "entity" | "memory" | "image" | "project";
+  targetId?: string;
+}): QdrantFilter {
+  const filter: QdrantFilter = {
+    must: [{ key: "project_id", match: { value: options.projectId } }],
+  };
+
+  if (options.targetType === "project") {
+    return filter;
+  }
+
+  filter.must!.push({ key: "type", match: { value: options.targetType } });
+
+  if (options.targetType === "document") {
+    if (!options.targetId) throw new Error("document targetId is required");
+    filter.must!.push({ key: "document_id", match: { value: options.targetId } });
+    return filter;
+  }
+
+  if (options.targetType === "entity") {
+    if (!options.targetId) throw new Error("entity targetId is required");
+    filter.must!.push({ key: "entity_id", match: { value: options.targetId } });
+    return filter;
+  }
+
+  if (options.targetType === "memory") {
+    if (!options.targetId) throw new Error("memory targetId is required");
+    filter.must!.push({ key: "memory_id", match: { value: options.targetId } });
+    return filter;
+  }
+
+  if (options.targetType === "image") {
+    if (!options.targetId) throw new Error("image targetId is required");
+    filter.must!.push({ key: "asset_id", match: { value: options.targetId } });
+    return filter;
+  }
+
+  return filter;
+}
+
+/**
+ * Enqueue vector delete job.
+ */
+export const enqueueVectorDeleteJob = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    targetType: v.union(
+      v.literal("document"),
+      v.literal("entity"),
+      v.literal("memory"),
+      v.literal("image"),
+      v.literal("project")
+    ),
+    targetId: v.optional(v.string()),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const filter = buildVectorDeleteFilter({
+      projectId: String(args.projectId),
+      targetType: args.targetType,
+      targetId: args.targetId,
+    });
+
+    const activeStatuses = ["pending", "processing"] as const;
+    for (const status of activeStatuses) {
+      const existing = await ctx.db
+        .query("vectorDeleteJobs")
+        .withIndex("by_project_target_status", (q) =>
+          q
+            .eq("projectId", args.projectId)
+            .eq("targetType", args.targetType)
+            .eq("targetId", args.targetId)
+            .eq("status", status)
+        )
+        .first();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          reason: args.reason ?? existing.reason,
+          filter,
+          updatedAt: now,
+        });
+        return existing._id;
+      }
+    }
+
+    return await ctx.db.insert("vectorDeleteJobs", {
+      projectId: args.projectId,
+      filter,
+      targetType: args.targetType,
+      targetId: args.targetId,
+      reason: args.reason,
+      status: "pending",
+      attempts: 0,
+      lastError: undefined,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
 /**
  * Get pending vector delete jobs.
  */
@@ -243,10 +354,16 @@ export const markVectorJobProcessing = internalMutation({
     jobId: v.id("vectorDeleteJobs"),
   },
   handler: async (ctx, { jobId }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job) return { claimed: false as const };
+    if (job.status !== "pending") return { claimed: false as const };
+
     await ctx.db.patch(jobId, {
       status: "processing",
+      lastError: undefined,
       updatedAt: Date.now(),
     });
+    return { claimed: true as const };
   },
 });
 
@@ -287,7 +404,47 @@ export const markVectorJobFailed = internalMutation({
   },
 });
 
-import { v } from "convex/values";
+/**
+ * Requeue vector delete jobs that have been processing too long.
+ */
+export const requeueStaleVectorDeleteJobs = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const cutoff = now - VECTOR_DELETE_LEASE_MS;
+    const processing = await ctx.db
+      .query("vectorDeleteJobs")
+      .withIndex("by_status", (q) => q.eq("status", "processing"))
+      .take(VECTOR_DELETE_STALE_SCAN_LIMIT);
+
+    let reclaimed = 0;
+    let failed = 0;
+
+    for (const job of processing) {
+      if ((job.updatedAt ?? 0) >= cutoff) {
+        continue;
+      }
+
+      const nextAttempts = (job.attempts ?? 0) + 1;
+      const shouldFail = nextAttempts >= VECTOR_DELETE_MAX_ATTEMPTS;
+
+      await ctx.db.patch(job._id, {
+        status: shouldFail ? "failed" : "pending",
+        attempts: nextAttempts,
+        lastError: "processing_lease_expired",
+        updatedAt: now,
+      });
+
+      if (shouldFail) {
+        failed += 1;
+      } else {
+        reclaimed += 1;
+      }
+    }
+
+    return { reclaimed, failed };
+  },
+});
 
 /**
  * Process pending vector delete jobs.
@@ -312,9 +469,13 @@ export const processVectorDeleteJobs = internalAction({
 
     for (const job of jobs) {
       // Mark as processing
-      await ctx.runMutation(internal.maintenance.markVectorJobProcessing, {
+      const claim = await ctx.runMutation(internal.maintenance.markVectorJobProcessing, {
         jobId: job._id,
       });
+
+      if (!claim.claimed) {
+        continue;
+      }
 
       try {
         const filter = job.filter as QdrantFilter;

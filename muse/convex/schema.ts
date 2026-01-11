@@ -243,6 +243,18 @@ export default defineSchema({
       v.literal("rejected"),
       v.literal("resolved")
     ),
+    resolution: v.optional(
+      v.union(
+        v.literal("executed"),
+        v.literal("user_rejected"),
+        v.literal("execution_failed"),
+        v.literal("rolled_back"),
+        v.literal("applied_in_editor")
+      )
+    ),
+    preflight: v.optional(v.any()),
+    rolledBackAt: v.optional(v.number()),
+    rolledBackByUserId: v.optional(v.string()),
     // Provenance
     actorType: v.string(), // "user" | "ai" | "system"
     actorUserId: v.optional(v.string()),
@@ -267,6 +279,8 @@ export default defineSchema({
   })
     .index("by_project_createdAt", ["projectId", "createdAt"])
     .index("by_project_status_createdAt", ["projectId", "status", "createdAt"])
+    .index("by_project_targetType_createdAt", ["projectId", "targetType", "createdAt"])
+    .index("by_project_status_targetType_createdAt", ["projectId", "status", "targetType", "createdAt"])
     .index("by_tool_call_id", ["toolCallId"]),
 
   // ============================================================
@@ -458,6 +472,8 @@ export default defineSchema({
   activityLog: defineTable({
     projectId: v.id("projects"),
     documentId: v.optional(v.id("documents")),
+    suggestionId: v.optional(v.id("knowledgeSuggestions")),
+    toolCallId: v.optional(v.string()),
     actorType: v.string(), // "user" | "ai" | "system"
     actorUserId: v.optional(v.string()),
     actorAgentId: v.optional(v.string()),
@@ -469,7 +485,9 @@ export default defineSchema({
   })
     .index("by_project_createdAt", ["projectId", "createdAt"])
     .index("by_document_createdAt", ["documentId", "createdAt"])
-    .index("by_actor", ["projectId", "actorType", "createdAt"]),
+    .index("by_actor", ["projectId", "actorType", "createdAt"])
+    .index("by_project_suggestion_createdAt", ["projectId", "suggestionId", "createdAt"])
+    .index("by_project_toolCallId_createdAt", ["projectId", "toolCallId", "createdAt"]),
 
   // ============================================================
   // ANALYSIS RECORDS (writing analysis history)
@@ -612,12 +630,18 @@ export default defineSchema({
     desiredContentHash: v.optional(v.string()),
     processedContentHash: v.optional(v.string()),
     dirty: v.optional(v.boolean()),
+    processingRunId: v.optional(v.string()),
+    processingStartedAt: v.optional(v.number()),
+    nextRunAt: v.optional(v.number()),
+    failedAt: v.optional(v.number()),
     queuedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_status", ["status"])
     .index("by_status_queued", ["status", "queuedAt"])
+    .index("by_status_nextRunAt", ["status", "nextRunAt"])
+    .index("by_status_processingStartedAt", ["status", "processingStartedAt"])
     .index("by_project_target", ["projectId", "targetType", "targetId"])
     .index("by_target_status", ["targetType", "targetId", "status"]),
 
@@ -1135,5 +1159,6 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_status", ["status"])
-    .index("by_project", ["projectId"]),
+    .index("by_project", ["projectId"])
+    .index("by_project_target_status", ["projectId", "targetType", "targetId", "status"]),
 });

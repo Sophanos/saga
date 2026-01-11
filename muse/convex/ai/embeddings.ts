@@ -19,7 +19,14 @@ import {
 const DEFAULT_BATCH_SIZE = 10;
 const MAX_EMBED_BATCH = 16;
 const MAX_CHUNK_CHARS = 1200;
-const EMBEDDING_QUEUE_COOLDOWN_MS = 15000;
+const EMBEDDING_QUEUE_DEBOUNCE_MS = 15000;
+const EMBEDDING_JOB_LEASE_MS = 5 * 60 * 1000;
+const EMBEDDING_JOB_MAX_ATTEMPTS = 5;
+const EMBEDDING_JOB_BACKOFF_BASE_MS = 30 * 1000;
+const EMBEDDING_JOB_BACKOFF_MAX_MS = 15 * 60 * 1000;
+const EMBEDDING_JOB_CLEANUP_FAILED_AFTER_MS = 14 * 24 * 60 * 60 * 1000;
+const EMBEDDING_JOB_STALE_SCAN_LIMIT = 50;
+const EMBEDDING_JOB_CLEANUP_SCAN_LIMIT = 50;
 const MAX_EXISTING_CHUNK_SCAN = 500;
 
 interface EmbeddingJobRecord {
@@ -33,6 +40,9 @@ interface EmbeddingJobRecord {
   processedContentHash?: string;
   dirty?: boolean;
   queuedAt?: number;
+  nextRunAt?: number;
+  processingRunId?: string;
+  processingStartedAt?: number;
 }
 
 function chunkText(text: string, maxChars = MAX_CHUNK_CHARS): string[] {
@@ -149,6 +159,33 @@ function parseChunkIndex(value: unknown): number | undefined {
   return undefined;
 }
 
+function computeBackoffMs(attempts: number): number {
+  const exponent = Math.max(0, attempts - 1);
+  const baseDelay = EMBEDDING_JOB_BACKOFF_BASE_MS * Math.pow(2, exponent);
+  const capped = Math.min(baseDelay, EMBEDDING_JOB_BACKOFF_MAX_MS);
+  const jitter = 0.8 + Math.random() * 0.4;
+  return Math.round(capped * jitter);
+}
+
+function getEffectiveNextRunAt(job: {
+  nextRunAt?: number;
+  queuedAt?: number;
+  updatedAt?: number;
+  createdAt?: number;
+}): number {
+  return job.nextRunAt ?? job.queuedAt ?? job.updatedAt ?? job.createdAt ?? 0;
+}
+
+function isPermanentEmbeddingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("not found") ||
+    normalized.includes("project mismatch") ||
+    normalized.includes("unsupported embedding target")
+  );
+}
+
 async function fetchExistingChunkHashes(options: {
   projectId: string;
   targetType: "document" | "entity";
@@ -195,6 +232,7 @@ export const enqueueEmbeddingJob = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const nextRunAt = now + EMBEDDING_QUEUE_DEBOUNCE_MS;
     const desiredContentHash = await getDesiredContentHash(
       ctx,
       args.targetType,
@@ -213,6 +251,7 @@ export const enqueueEmbeddingJob = internalMutation({
         await ctx.db.patch(activeJob._id, {
           desiredContentHash,
           queuedAt: now,
+          nextRunAt: status === "pending" ? nextRunAt : activeJob.nextRunAt,
           updatedAt: now,
           dirty: status === "processing",
         });
@@ -239,6 +278,9 @@ export const enqueueEmbeddingJob = internalMutation({
         desiredContentHash,
         dirty: false,
         queuedAt: now,
+        nextRunAt,
+        processingRunId: undefined,
+        processingStartedAt: undefined,
         updatedAt: now,
       });
       return existing._id;
@@ -256,6 +298,9 @@ export const enqueueEmbeddingJob = internalMutation({
       processedContentHash: undefined,
       dirty: false,
       queuedAt: now,
+      nextRunAt,
+      processingRunId: undefined,
+      processingStartedAt: undefined,
       createdAt: now,
       updatedAt: now,
     });
@@ -268,39 +313,81 @@ export const getPendingJobs = internalQuery({
   },
   handler: async (ctx, { limit }) => {
     const batchLimit = Math.max(1, Math.min(limit ?? DEFAULT_BATCH_SIZE, 50));
-    const oversampleLimit = Math.min(batchLimit * 3, 50);
     const now = Date.now();
-    const cutoff = now - EMBEDDING_QUEUE_COOLDOWN_MS;
 
-    const pending = await ctx.db
+    const ready = await ctx.db
+      .query("embeddingJobs")
+      .withIndex("by_status_nextRunAt", (q) =>
+        q.eq("status", "pending").lte("nextRunAt", now)
+      )
+      .take(batchLimit);
+
+    if (ready.length >= batchLimit) {
+      return ready;
+    }
+
+    const oversampleLimit = Math.min(batchLimit * 3, 50);
+    const fallback = await ctx.db
       .query("embeddingJobs")
       .withIndex("by_status", (q) => q.eq("status", "pending"))
       .take(oversampleLimit);
 
-    return pending
-      .filter((job) => {
-        const queuedAt = job.queuedAt ?? job.updatedAt ?? job.createdAt ?? 0;
-        return queuedAt <= cutoff;
-      })
-      .slice(0, batchLimit);
+    const seen = new Set(ready.map((job) => job._id));
+    const merged = [...ready];
+
+    for (const job of fallback) {
+      if (merged.length >= batchLimit) break;
+      if (seen.has(job._id)) continue;
+      if (getEffectiveNextRunAt(job) <= now) {
+        merged.push(job);
+        seen.add(job._id);
+      }
+    }
+
+    return merged;
   },
 });
 
-export const markProcessing = internalMutation({
+export const claimEmbeddingJob = internalMutation({
   args: {
     jobId: v.id("embeddingJobs"),
   },
   handler: async (ctx, { jobId }) => {
+    const now = Date.now();
     const job = await ctx.db.get(jobId);
-    if (!job) throw new Error("Embedding job not found");
+    if (!job) return { claimed: false as const };
 
+    if (job.status !== "pending") {
+      return { claimed: false as const };
+    }
+
+    if (job.nextRunAt && job.nextRunAt > now) {
+      return { claimed: false as const };
+    }
+
+    if (job.attempts >= EMBEDDING_JOB_MAX_ATTEMPTS) {
+      await ctx.db.patch(jobId, {
+        status: "failed",
+        lastError: "max_attempts_exceeded",
+        failedAt: now,
+        updatedAt: now,
+      });
+      return { claimed: false as const };
+    }
+
+    const runId = crypto.randomUUID();
     await ctx.db.patch(jobId, {
       status: "processing",
       attempts: (job.attempts ?? 0) + 1,
       lastError: undefined,
       dirty: false,
-      updatedAt: Date.now(),
+      processingRunId: runId,
+      processingStartedAt: now,
+      nextRunAt: undefined,
+      updatedAt: now,
     });
+
+    return { claimed: true as const, runId };
   },
 });
 
@@ -317,35 +404,197 @@ export const updateProgress = internalMutation({
   },
 });
 
-export const markSynced = internalMutation({
+export const finalizeEmbeddingJob = internalMutation({
   args: {
     jobId: v.id("embeddingJobs"),
     chunksProcessed: v.number(),
-    processedContentHash: v.optional(v.string()),
+    processedContentHash: v.string(),
+    processingRunId: v.string(),
   },
-  handler: async (ctx, { jobId, chunksProcessed, processedContentHash }) => {
-    await ctx.db.patch(jobId, {
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const job = await ctx.db.get(args.jobId);
+    if (!job) return;
+
+    if (job.processingRunId !== args.processingRunId) return;
+
+    const desiredHash = job.desiredContentHash ?? args.processedContentHash;
+    const shouldRequeue = Boolean(job.dirty && desiredHash !== args.processedContentHash);
+
+    if (shouldRequeue) {
+      await ctx.db.patch(args.jobId, {
+        status: "pending",
+        chunksProcessed: 0,
+        desiredContentHash: desiredHash,
+        processedContentHash: args.processedContentHash,
+        dirty: false,
+        queuedAt: now,
+        nextRunAt: now + EMBEDDING_QUEUE_DEBOUNCE_MS,
+        processingRunId: undefined,
+        processingStartedAt: undefined,
+        updatedAt: now,
+      });
+      return;
+    }
+
+    await ctx.db.patch(args.jobId, {
       status: "synced",
-      chunksProcessed,
-      processedContentHash,
-      desiredContentHash: processedContentHash,
+      chunksProcessed: args.chunksProcessed,
+      processedContentHash: args.processedContentHash,
+      desiredContentHash: args.processedContentHash,
       dirty: false,
-      updatedAt: Date.now(),
+      processingRunId: undefined,
+      processingStartedAt: undefined,
+      updatedAt: now,
     });
   },
 });
 
-export const markFailed = internalMutation({
+export const recordEmbeddingFailure = internalMutation({
   args: {
     jobId: v.id("embeddingJobs"),
+    processingRunId: v.string(),
     error: v.string(),
+    permanent: v.optional(v.boolean()),
   },
-  handler: async (ctx, { jobId, error }) => {
-    await ctx.db.patch(jobId, {
-      status: "failed",
-      lastError: error,
-      updatedAt: Date.now(),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const job = await ctx.db.get(args.jobId);
+    if (!job) return;
+
+    if (job.processingRunId !== args.processingRunId) return;
+
+    const attempts = job.attempts ?? 0;
+    const shouldRetry = !args.permanent && attempts < EMBEDDING_JOB_MAX_ATTEMPTS;
+
+    await ctx.db.patch(args.jobId, {
+      status: shouldRetry ? "pending" : "failed",
+      lastError: args.error,
+      dirty: false,
+      queuedAt: shouldRetry ? now : job.queuedAt,
+      nextRunAt: shouldRetry ? now + computeBackoffMs(attempts) : undefined,
+      processingRunId: undefined,
+      processingStartedAt: undefined,
+      failedAt: shouldRetry ? undefined : now,
+      updatedAt: now,
     });
+  },
+});
+
+export const requeueStaleProcessingJobs = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const cutoff = now - EMBEDDING_JOB_LEASE_MS;
+    const stale = await ctx.db
+      .query("embeddingJobs")
+      .withIndex("by_status_processingStartedAt", (q) =>
+        q.eq("status", "processing").lt("processingStartedAt", cutoff)
+      )
+      .take(EMBEDDING_JOB_STALE_SCAN_LIMIT);
+
+    let reclaimed = 0;
+    let failed = 0;
+
+    for (const job of stale) {
+      if ((job.attempts ?? 0) >= EMBEDDING_JOB_MAX_ATTEMPTS) {
+        await ctx.db.patch(job._id, {
+          status: "failed",
+          lastError: "processing_lease_expired",
+          failedAt: now,
+          processingRunId: undefined,
+          processingStartedAt: undefined,
+          updatedAt: now,
+        });
+        failed += 1;
+        continue;
+      }
+
+      await ctx.db.patch(job._id, {
+        status: "pending",
+        lastError: "processing_lease_expired",
+        queuedAt: now,
+        nextRunAt: now,
+        processingRunId: undefined,
+        processingStartedAt: undefined,
+        updatedAt: now,
+      });
+      reclaimed += 1;
+    }
+
+    return { reclaimed, failed };
+  },
+});
+
+export const deleteEmbeddingJobsForTarget = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    targetType: v.string(),
+    targetId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const jobs = await ctx.db
+      .query("embeddingJobs")
+      .withIndex("by_project_target", (q) =>
+        q
+          .eq("projectId", args.projectId)
+          .eq("targetType", args.targetType)
+          .eq("targetId", args.targetId)
+      )
+      .collect();
+
+    for (const job of jobs) {
+      await ctx.db.delete(job._id);
+    }
+
+    return jobs.length;
+  },
+});
+
+export const cleanupEmbeddingJobs = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const expiredCutoff = now - EMBEDDING_JOB_CLEANUP_FAILED_AFTER_MS;
+
+    const failedJobs = await ctx.db
+      .query("embeddingJobs")
+      .withIndex("by_status", (q) => q.eq("status", "failed"))
+      .take(EMBEDDING_JOB_CLEANUP_SCAN_LIMIT);
+
+    let removed = 0;
+    let failedExpired = 0;
+
+    for (const job of failedJobs) {
+      const updatedAt = job.updatedAt ?? job.createdAt ?? 0;
+      if (updatedAt < expiredCutoff) {
+        await ctx.db.delete(job._id);
+        failedExpired += 1;
+      }
+    }
+
+    const pendingJobs = await ctx.db
+      .query("embeddingJobs")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .take(EMBEDDING_JOB_CLEANUP_SCAN_LIMIT);
+
+    for (const job of pendingJobs) {
+      if (job.targetType === "document") {
+        const doc = await ctx.db.get(job.targetId as Id<"documents">);
+        if (!doc) {
+          await ctx.db.delete(job._id);
+          removed += 1;
+        }
+      } else if (job.targetType === "entity") {
+        const entity = await ctx.db.get(job.targetId as Id<"entities">);
+        if (!entity) {
+          await ctx.db.delete(job._id);
+          removed += 1;
+        }
+      }
+    }
+
+    return { removed, failedExpired };
   },
 });
 
@@ -367,35 +616,6 @@ export const getEntity = internalQuery({
   },
 });
 
-export const getEmbeddingJob = internalQuery({
-  args: {
-    id: v.id("embeddingJobs"),
-  },
-  handler: async (ctx, { id }) => {
-    return await ctx.db.get(id);
-  },
-});
-
-export const requeueEmbeddingJob = internalMutation({
-  args: {
-    jobId: v.id("embeddingJobs"),
-    desiredContentHash: v.optional(v.string()),
-  },
-  handler: async (ctx, { jobId, desiredContentHash }) => {
-    const now = Date.now();
-    await ctx.db.patch(jobId, {
-      status: "pending",
-      attempts: 0,
-      lastError: undefined,
-      chunksProcessed: 0,
-      desiredContentHash,
-      dirty: false,
-      queuedAt: now,
-      updatedAt: now,
-    });
-  },
-});
-
 export const processEmbeddingJobs = internalAction({
   args: {
     batchSize: v.optional(v.number()),
@@ -414,7 +634,15 @@ export const processEmbeddingJobs = internalAction({
     const jobs = await ctx.runQuery(internal.ai.embeddings.getPendingJobs, { limit: batchSize });
 
     for (const job of jobs as EmbeddingJobRecord[]) {
-      await ctx.runMutation(internal.ai.embeddings.markProcessing, { jobId: job._id });
+      const claim = await ctx.runMutation(internal.ai.embeddings.claimEmbeddingJob, {
+        jobId: job._id,
+      });
+
+      if (!claim.claimed) {
+        continue;
+      }
+
+      const runId = claim.runId;
 
       try {
         if (job.targetType === "document") {
@@ -512,26 +740,12 @@ export const processEmbeddingJobs = internalAction({
             });
           }
 
-          const latestJob = await ctx.runQuery(internal.ai.embeddings.getEmbeddingJob, {
-            id: job._id,
+          await ctx.runMutation(internal.ai.embeddings.finalizeEmbeddingJob, {
+            jobId: job._id,
+            chunksProcessed: chunks.length,
+            processedContentHash: contentHash,
+            processingRunId: runId,
           });
-          const desiredHash = latestJob?.desiredContentHash ?? contentHash;
-          const shouldRequeue = Boolean(
-            latestJob?.dirty && desiredHash && desiredHash !== contentHash
-          );
-
-          if (shouldRequeue) {
-            await ctx.runMutation(internal.ai.embeddings.requeueEmbeddingJob, {
-              jobId: job._id,
-              desiredContentHash: desiredHash,
-            });
-          } else {
-            await ctx.runMutation(internal.ai.embeddings.markSynced, {
-              jobId: job._id,
-              chunksProcessed: chunks.length,
-              processedContentHash: contentHash,
-            });
-          }
         } else if (job.targetType === "entity") {
           const entity = await ctx.runQuery(internal.ai.embeddings.getEntity, {
             id: job.targetId as Id<"entities">,
@@ -632,33 +846,21 @@ export const processEmbeddingJobs = internalAction({
             });
           }
 
-          const latestJob = await ctx.runQuery(internal.ai.embeddings.getEmbeddingJob, {
-            id: job._id,
+          await ctx.runMutation(internal.ai.embeddings.finalizeEmbeddingJob, {
+            jobId: job._id,
+            chunksProcessed: chunks.length,
+            processedContentHash: contentHash,
+            processingRunId: runId,
           });
-          const desiredHash = latestJob?.desiredContentHash ?? contentHash;
-          const shouldRequeue = Boolean(
-            latestJob?.dirty && desiredHash && desiredHash !== contentHash
-          );
-
-          if (shouldRequeue) {
-            await ctx.runMutation(internal.ai.embeddings.requeueEmbeddingJob, {
-              jobId: job._id,
-              desiredContentHash: desiredHash,
-            });
-          } else {
-            await ctx.runMutation(internal.ai.embeddings.markSynced, {
-              jobId: job._id,
-              chunksProcessed: chunks.length,
-              processedContentHash: contentHash,
-            });
-          }
         } else {
           throw new Error(`Unsupported embedding target type: ${job.targetType}`);
         }
       } catch (error) {
-        await ctx.runMutation(internal.ai.embeddings.markFailed, {
+        await ctx.runMutation(internal.ai.embeddings.recordEmbeddingFailure, {
           jobId: job._id,
+          processingRunId: runId,
           error: error instanceof Error ? error.message : "Embedding job failed",
+          permanent: isPermanentEmbeddingError(error),
         });
       }
     }

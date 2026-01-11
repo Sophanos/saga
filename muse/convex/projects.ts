@@ -282,7 +282,10 @@ export const removeInternal = internalMutation({
 
     for (const doc of documents) {
       // Use internal document removal (handles mentions)
-      await ctx.runMutation(internal.documents.removeInternal, { id: doc._id });
+      await ctx.runMutation(internal.documents.removeInternal, {
+        id: doc._id,
+        projectId: id,
+      });
     }
 
     // Delete all entities (handles relationships and mentions via entity removal)
@@ -305,6 +308,19 @@ export const removeInternal = internalMutation({
       for (const rel of [...sourceRels, ...targetRels]) {
         await ctx.db.delete(rel._id);
       }
+
+      await ctx.runMutation(internal.maintenance.enqueueVectorDeleteJob, {
+        projectId: id,
+        targetType: "entity",
+        targetId: entity._id,
+        reason: "project_deleted",
+      });
+
+      await ctx.runMutation((internal as any)["ai/embeddings"].deleteEmbeddingJobsForTarget, {
+        projectId: id,
+        targetType: "entity",
+        targetId: entity._id,
+      });
 
       await ctx.db.delete(entity._id);
     }
