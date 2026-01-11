@@ -194,7 +194,7 @@ Core deliverables:
 
 ## AI Tools Overview
 
-### Active Tools (14 registered)
+### Active Tools (18 registered in agentRuntime.ts)
 
 | Category | Tool | Purpose | Approval |
 |----------|------|---------|----------|
@@ -210,8 +210,22 @@ Core deliverables:
 | | `update_entity` | Update entity properties | Risk-based |
 | | `create_relationship` | Connect entities | Risk-based |
 | | `update_relationship` | Modify relationship | Risk-based |
+| | `create_node` | Create graph node | Risk-based |
+| | `update_node` | Update graph node | Risk-based |
+| | `create_edge` | Create graph edge | Risk-based |
+| | `update_edge` | Update graph edge | Risk-based |
 | **Project Setup** | `project_manage` | Bootstrap project (template + seed flag) | User approval |
-| **Templates** | `generate_template` | Create template draft (internal) | User approval |
+| | `generate_template` | Create template draft (used internally) | User approval |
+
+### Defined but Not Registered
+
+| Tool | Location | Status |
+|------|----------|--------|
+| `generateImageTool` | projectGraphTools.ts | Handler exists, not wired to agent |
+| `illustrateSceneTool` | projectGraphTools.ts | Handler exists, not wired to agent |
+| `analyzeImageTool` | projectGraphTools.ts | Handler exists, not wired to agent |
+| `search_images` | tools.ts handler | Ready to wire |
+| `find_similar_images` | tools.ts handler | Ready to wire |
 
 ### Removed Tools (Consolidated)
 
@@ -225,18 +239,25 @@ Core deliverables:
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| `check_consistency` | Find contradictions | Works for any domain |
-| `detect_entities` | Extract entities from text | Already general |
-| `validate_rules` | Validate against rules | Renamed from `check_logic` |
-| `analyze_content` | Content quality analysis | Renamed from `clarity_check` |
-| `search_images` | Search image assets | Ready to wire |
-| `generate_image` | Generate images | Ready to wire |
-| `delete_entity` / `delete_relationship` | Delete operations | Ready to wire |
+| `check_consistency` | Find contradictions | Handler in tools.ts |
+| `detect_entities` | Extract entities from text | Handler in tools.ts |
+| `check_logic` | Validate against rules | Handler in tools.ts |
+| `clarity_check` | Content quality analysis | Handler in tools.ts |
+| `delete_entity` / `delete_relationship` | Delete operations | Need handlers |
+
+### Consolidation Opportunities (Future)
+
+| Current (18 tools) | Proposed (~10 tools) | Benefit |
+|--------------------|----------------------|---------|
+| 8 entity/graph tools | `graph_mutate({ action, target })` | Single tool with action: create/update/delete, target: entity/relationship/node/edge |
+| 4 analysis handlers | `analyze_content({ tasks: [] })` | Single tool, tasks: ["consistency", "entities", "quality", "rules"] |
+| `generate_template` | Fold into `project_manage` | Already internal; could be action: "generate_template" |
 
 ### Tool Implementation Paths
 
 - Tool definitions: `convex/ai/tools/*.ts`
-- Agent runtime: `convex/ai/agentRuntime.ts`
+- Tool handlers: `convex/ai/tools.ts` (executeToolWithContext)
+- Agent runtime: `convex/ai/agentRuntime.ts` (tools object)
 - Type definitions: `packages/agent-protocol/src/tools.ts`
 - Client executors: `apps/web/src/tools/executors/*.ts`
 - Client registry: `apps/web/src/tools/registry.ts`
