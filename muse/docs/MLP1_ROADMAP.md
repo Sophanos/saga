@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-11 (Expo workspace creation flow; Flow Mode extensions; template builder enhancements; web research tools; Widgets MVP1 plan)
+> Last Updated: 2026-01-11 (Schema alignment: Convex ↔ @mythos/core Project type; shared mapper; Expo `as any` hacks removed)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -37,6 +37,15 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Overall MLP 1 | In progress | 95 |
 
 ## Recent Updates (condensed)
+
+**2026-01-11 (schema alignment)**
+- Schema alignment: `@mythos/core` Project schema now matches Convex template IDs (`writer`, `product`, `engineering`, `design`, `comms`, `custom`).
+- Discriminated union: `projectSchema` for strict typing by template; `looseProjectSchema` for store state with partial writer config.
+- Shared mapper: `mapConvexProjectToCoreProject()` and `createProjectFromBootstrap()` in `@mythos/core/mappers/convex`.
+- Expo fixes: removed `as any` hacks from `CreateWorkspaceWizard`, `ProjectPickerDropdown`, and `e2e.tsx`.
+- State stores: updated to use `LooseProject` for flexible config access.
+- Template builder: extracted `projectTypes.ts` to `@mythos/core/templateBuilder` (shared between web/mobile).
+- Convex bootstrap: now returns created project record (no extra fetch needed).
 
 **2026-01-11 (late night)**
 - Expo workspace creation: Notion-style project switcher dropdown + multi-step wizard (template → name).
@@ -375,13 +384,13 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 
 ## Schema Sync Issues
 
-**Convex ↔ @mythos/core Project type mismatch:**
-- Convex `projects` table: flat fields (`name`, `description`, `templateId`, `metadata`, `settings`, `genre`, `styleConfig`, `linterConfig`).
-- @mythos/core `Project` type: nested `config` object with writer-specific schema (`styleMode`, `arcTemplate`, `genre`, `linterConfig`).
-- Impact: UI components use `as any` type assertions when calling `setProject()`.
-- Fix: Either (1) update @mythos/core to match Convex schema, or (2) create a mapping layer in `@mythos/state`.
+**✅ RESOLVED: Convex ↔ @mythos/core Project type mismatch**
+- Fixed: `@mythos/core` now uses `projectTemplateIdSchema` with Convex IDs (`writer`, `product`, `engineering`, `design`, `comms`, `custom`).
+- Old writer preset IDs (`epic_fantasy`, `wizarding_world`, etc.) moved to deprecated `writerPresetIdSchema`.
+- Shared mapper `mapConvexProjectToCoreProject()` handles Convex → Core conversion with legacy field support.
+- `LooseProject` type allows flexible config access; `Project` (discriminated union) for strict typing when needed.
+- Expo `as any` hacks removed from `CreateWorkspaceWizard`, `ProjectPickerDropdown`.
 
 **Template categories:**
-- Current templates in Convex: `writer`, `product`, `engineering`, `design`, `comms`, `custom`.
-- @mythos/core `templateIdSchema`: still has old writer-focused IDs (`epic_fantasy`, `wizarding_world`, etc.).
-- Expo wizard maps: Work → `product`, Daily Life → `writer`, Learning → `comms`.
+- Convex templates: `writer`, `product`, `engineering`, `design`, `comms`, `custom`.
+- Expo wizard maps: Work → `product`, Daily Life → `writer`, Learning → `comms`, AI Builder → `custom`.

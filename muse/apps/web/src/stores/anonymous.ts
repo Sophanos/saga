@@ -44,7 +44,7 @@ export interface AnonymousDocument {
   projectId: string;
   title: string;
   content: unknown; // Tiptap JSON
-  type: "chapter" | "scene" | "note" | "outline" | "worldbuilding";
+  type: string;
   parentId?: string | null;
   orderIndex: number;
   wordCount: number;

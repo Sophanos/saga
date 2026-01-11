@@ -1,6 +1,56 @@
 import { z } from "zod";
 
-// Genre types
+// =============================================================================
+// Project Template IDs (aligned with Convex)
+// =============================================================================
+
+/** Convex workspace-domain template IDs */
+export const projectTemplateIdSchema = z.enum([
+  "writer",
+  "product",
+  "engineering",
+  "design",
+  "comms",
+  "custom",
+]);
+
+export type ProjectTemplateId = z.infer<typeof projectTemplateIdSchema>;
+
+export const DEFAULT_PROJECT_TEMPLATE_ID: ProjectTemplateId = "writer";
+
+// =============================================================================
+// Writer Preset IDs (legacy genre/content-model presets)
+// =============================================================================
+
+/** Writer-specific preset IDs for genre/content-model configuration */
+export const writerPresetIdSchema = z.enum([
+  "epic_fantasy",
+  "wizarding_world",
+  "dnd_campaign",
+  "manga_novel",
+  "literary_fiction",
+  "science_fiction",
+  "horror",
+  "romance",
+  "mystery_thriller",
+  "screenplay",
+  "webnovel_serial",
+  "visual_novel",
+  "comics_graphic_novel",
+  "blank",
+]);
+
+export type WriterPresetId = z.infer<typeof writerPresetIdSchema>;
+
+/** @deprecated Use projectTemplateIdSchema instead */
+export const templateIdSchema = writerPresetIdSchema;
+/** @deprecated Use ProjectTemplateId instead */
+export type TemplateId = WriterPresetId;
+
+// =============================================================================
+// Genre & Style
+// =============================================================================
+
 export const genreSchema = z.enum([
   "high_fantasy",
   "urban_fantasy",
@@ -20,17 +70,19 @@ export const genreSchema = z.enum([
   "slice_of_life",
 ]);
 
-// Style modes (affects linter behavior)
 export const styleModeSchema = z.enum([
-  "hemingway", // Flag adverbs, prefer short sentences
-  "tolkien", // Encourage description, allow longer prose
-  "manga", // Flag long dialogue, encourage action beats
-  "noir", // Encourage metaphor, moody atmosphere
-  "minimalist", // Flag excessive description
-  "purple_prose", // Allow flowery language
+  "hemingway",
+  "tolkien",
+  "manga",
+  "noir",
+  "minimalist",
+  "purple_prose",
 ]);
 
-// Linter severity levels
+// =============================================================================
+// Linter Configuration
+// =============================================================================
+
 export const linterSeveritySchema = z.enum([
   "off",
   "info",
@@ -39,34 +91,25 @@ export const linterSeveritySchema = z.enum([
   "critical",
 ]);
 
-// Linter configuration
 export const linterConfigSchema = z.object({
-  // Consistency checks
   nameConsistency: linterSeveritySchema.default("error"),
   visualConsistency: linterSeveritySchema.default("warning"),
   locationConsistency: linterSeveritySchema.default("warning"),
   timelineConsistency: linterSeveritySchema.default("info"),
-
-  // Archetype checks
   archetypeDeviation: linterSeveritySchema.default("warning"),
-
-  // Power scaling (important for LitRPG/Progression)
   powerScaling: linterSeveritySchema.default("info"),
-
-  // Pacing
   pacingFlat: linterSeveritySchema.default("info"),
   dialogueLength: linterSeveritySchema.default("off"),
-
-  // Style
   adverbUsage: linterSeveritySchema.default("off"),
   passiveVoice: linterSeveritySchema.default("off"),
   showDontTell: linterSeveritySchema.default("off"),
-
-  // Symbolism (for literary/psychological fiction)
   symbolismConsistency: linterSeveritySchema.default("off"),
 });
 
-// Memory controls configuration
+// =============================================================================
+// Memory Controls
+// =============================================================================
+
 const memoryPolicyOverrideSchema = z.object({
   halfLife: z.string().optional(),
   ttl: z.string().optional(),
@@ -105,37 +148,25 @@ const memoryControlsSchema = z.object({
   recencyWeight: z.number().min(0).max(1).optional(),
 });
 
-// Arc structure templates
+// =============================================================================
+// Arc Templates
+// =============================================================================
+
 export const arcTemplateSchema = z.enum([
-  "heros_journey", // Campbell's monomyth
-  "three_act", // Setup, Confrontation, Resolution
-  "five_act", // Exposition, Rising Action, Climax, Falling Action, Denouement
-  "kishotenketsu", // Japanese 4-act (Introduction, Development, Twist, Conclusion)
-  "tragic_fall", // Faustian/Tragedy structure
-  "save_the_cat", // Blake Snyder's beats
-  "dan_harmon_circle", // Story circle
-  "freeform", // No structure
+  "heros_journey",
+  "three_act",
+  "five_act",
+  "kishotenketsu",
+  "tragic_fall",
+  "save_the_cat",
+  "dan_harmon_circle",
+  "freeform",
 ]);
 
-// Template IDs for builtin templates
-export const templateIdSchema = z.enum([
-  "epic_fantasy",
-  "wizarding_world",
-  "dnd_campaign",
-  "manga_novel",
-  "literary_fiction",
-  "science_fiction",
-  "horror",
-  "romance",
-  "mystery_thriller",
-  "screenplay",
-  "webnovel_serial",
-  "visual_novel",
-  "comics_graphic_novel",
-  "blank",
-]);
+// =============================================================================
+// UI Modules
+// =============================================================================
 
-// UI Module configuration
 export const uiModuleSchema = z.enum([
   "manifest",
   "console",
@@ -161,10 +192,27 @@ export const uiModuleSchema = z.enum([
   "scene_beats",
 ]);
 
-// Project configuration
-export const projectConfigSchema = z.object({
+// =============================================================================
+// Template Overrides
+// =============================================================================
+
+export const templateOverridesSchema = z.object({
+  customEntityKinds: z.array(z.any()).optional(),
+  disabledEntityKinds: z.array(z.string()).optional(),
+  customRelationshipKinds: z.array(z.any()).optional(),
+  customDocumentKinds: z.array(z.any()).optional(),
+  uiModuleOverrides: z.record(uiModuleSchema, z.boolean()).optional(),
+});
+
+// =============================================================================
+// Template-specific Config Schemas (discriminated union approach)
+// =============================================================================
+
+/** Writer-specific project config with genre, style, linter settings */
+export const writerConfigSchema = z.object({
   genre: genreSchema.optional(),
   subGenres: z.array(genreSchema).optional(),
+  writerPresetId: writerPresetIdSchema.optional(),
   styleMode: styleModeSchema.default("manga"),
   guardrails: z
     .object({
@@ -184,20 +232,16 @@ export const projectConfigSchema = z.object({
   arcTemplate: arcTemplateSchema.default("three_act"),
   linterConfig: linterConfigSchema.default({}),
   memoryControls: memoryControlsSchema.optional(),
-
-  // Custom rules
   customRules: z
     .array(
       z.object({
         name: z.string(),
         description: z.string(),
-        pattern: z.string().optional(), // Regex pattern
+        pattern: z.string().optional(),
         severity: linterSeveritySchema,
       })
     )
     .optional(),
-
-  // Word count targets
   targets: z
     .object({
       chapterWordCount: z.number().optional(),
@@ -206,36 +250,98 @@ export const projectConfigSchema = z.object({
     .optional(),
 });
 
-// Template override configuration (for customizing a template per-project)
-export const templateOverridesSchema = z.object({
-  // Entity kinds to add (custom kinds)
-  customEntityKinds: z.array(z.any()).optional(),
-  // Entity kinds from template to disable
-  disabledEntityKinds: z.array(z.string()).optional(),
-  // Relationship kinds to add
-  customRelationshipKinds: z.array(z.any()).optional(),
-  // Document kinds to add
-  customDocumentKinds: z.array(z.any()).optional(),
-  // UI module overrides (enable/disable specific modules)
-  uiModuleOverrides: z.record(uiModuleSchema, z.boolean()).optional(),
-});
+/** Generic empty config for non-writer templates */
+export const emptyConfigSchema = z.object({}).default({});
 
-// Project schema
-export const projectSchema = z.object({
+/** @deprecated Use writerConfigSchema or emptyConfigSchema based on templateId */
+export const projectConfigSchema = writerConfigSchema;
+
+// =============================================================================
+// Base Project Fields
+// =============================================================================
+
+const baseProjectFields = {
   id: z.string(),
   name: z.string().min(1, "Project name is required"),
   description: z.string().optional(),
-  // Template configuration
-  templateId: templateIdSchema.optional(),
   templateOverrides: templateOverridesSchema.optional(),
-  // Legacy config (merged with template defaults)
-  config: projectConfigSchema.default({}),
+  metadata: z.unknown().optional(),
+  settings: z.unknown().optional(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
+};
+
+// =============================================================================
+// Template-specific Project Schemas (discriminated union)
+// =============================================================================
+
+export const writerProjectSchema = z.object({
+  ...baseProjectFields,
+  templateId: z.literal("writer").default("writer"),
+  config: writerConfigSchema.default({}),
 });
 
-// Document types
-export const documentTypeSchema = z.enum([
+export const productProjectSchema = z.object({
+  ...baseProjectFields,
+  templateId: z.literal("product"),
+  config: emptyConfigSchema,
+});
+
+export const engineeringProjectSchema = z.object({
+  ...baseProjectFields,
+  templateId: z.literal("engineering"),
+  config: emptyConfigSchema,
+});
+
+export const designProjectSchema = z.object({
+  ...baseProjectFields,
+  templateId: z.literal("design"),
+  config: emptyConfigSchema,
+});
+
+export const commsProjectSchema = z.object({
+  ...baseProjectFields,
+  templateId: z.literal("comms"),
+  config: emptyConfigSchema,
+});
+
+export const customProjectSchema = z.object({
+  ...baseProjectFields,
+  templateId: z.literal("custom"),
+  config: emptyConfigSchema,
+});
+
+/** Discriminated union of all project types by templateId */
+export const projectSchema = z.discriminatedUnion("templateId", [
+  writerProjectSchema,
+  productProjectSchema,
+  engineeringProjectSchema,
+  designProjectSchema,
+  commsProjectSchema,
+  customProjectSchema,
+]);
+
+// =============================================================================
+// Loose Project Schema (for partial/input states)
+// =============================================================================
+
+/**
+ * Loose project schema that accepts any valid templateId and flexible config.
+ * Use this for store state where projects may be partially loaded.
+ * Config allows optional writer fields for backwards compatibility.
+ */
+export const looseProjectSchema = z.object({
+  ...baseProjectFields,
+  templateId: projectTemplateIdSchema.default("writer"),
+  config: writerConfigSchema.partial().default({}),
+});
+
+// =============================================================================
+// Document Types
+// =============================================================================
+
+/** Writer-specific document types (kept for backwards compatibility) */
+export const writerDocumentTypeSchema = z.enum([
   "chapter",
   "scene",
   "note",
@@ -243,29 +349,53 @@ export const documentTypeSchema = z.enum([
   "worldbuilding",
 ]);
 
-// Document schema
+/** Open-ended document type to support all templates */
+export const documentTypeSchema = z.string();
+
 export const documentSchema = z.object({
   id: z.string(),
   projectId: z.string(),
   parentId: z.string().optional(),
   type: documentTypeSchema,
   title: z.string().optional(),
-  content: z.any(), // Tiptap JSON content
+  content: z.any(),
   orderIndex: z.number().int().default(0),
   wordCount: z.number().int().default(0),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
 
+// =============================================================================
+// Type Exports
+// =============================================================================
+
 export type Genre = z.infer<typeof genreSchema>;
 export type StyleMode = z.infer<typeof styleModeSchema>;
 export type LinterSeverity = z.infer<typeof linterSeveritySchema>;
 export type LinterConfig = z.infer<typeof linterConfigSchema>;
 export type ArcTemplate = z.infer<typeof arcTemplateSchema>;
-export type TemplateId = z.infer<typeof templateIdSchema>;
 export type UIModule = z.infer<typeof uiModuleSchema>;
 export type TemplateOverrides = z.infer<typeof templateOverridesSchema>;
+
+export type WriterConfig = z.infer<typeof writerConfigSchema>;
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;
+
+export type WriterProject = z.infer<typeof writerProjectSchema>;
+export type ProductProject = z.infer<typeof productProjectSchema>;
+export type EngineeringProject = z.infer<typeof engineeringProjectSchema>;
+export type DesignProject = z.infer<typeof designProjectSchema>;
+export type CommsProject = z.infer<typeof commsProjectSchema>;
+export type CustomProject = z.infer<typeof customProjectSchema>;
+
+/** Strict project type (discriminated union) */
 export type Project = z.infer<typeof projectSchema>;
+
+/** Loose project type for partial/input states */
+export type LooseProject = z.infer<typeof looseProjectSchema>;
+
+/** Input type for creating projects (before defaults applied) */
+export type ProjectInput = z.input<typeof looseProjectSchema>;
+
+export type WriterDocumentType = z.infer<typeof writerDocumentTypeSchema>;
 export type DocumentType = z.infer<typeof documentTypeSchema>;
 export type Document = z.infer<typeof documentSchema>;

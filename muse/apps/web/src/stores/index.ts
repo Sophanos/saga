@@ -8,7 +8,7 @@ import type {
   Character,
   Location,
   Relationship,
-  Project,
+  LooseProject,
   Document,
 } from "@mythos/core";
 import type { ConsistencyIssue } from "@mythos/ai";
@@ -38,7 +38,7 @@ export type {
 
 // Project slice
 interface ProjectState {
-  currentProject: Project | null;
+  currentProject: LooseProject | null;
   isLoading: boolean;
   error: string | null;
 }
@@ -331,7 +331,7 @@ interface MythosStore {
   ui: UIState;
 
   // Project actions
-  setCurrentProject: (project: Project | null) => void;
+  setCurrentProject: (project: LooseProject | null) => void;
   setProjectLoading: (loading: boolean) => void;
   setProjectError: (error: string | null) => void;
 

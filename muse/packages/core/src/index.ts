@@ -12,6 +12,9 @@ export * from "./analysis";
 // Template system
 export * from "./templates";
 
+// Template Builder (AI-assisted template creation)
+export * from "./templateBuilder";
+
 // Collaboration types
 export * from "./collaboration";
 
@@ -30,3 +33,6 @@ export * from "./ai";
 // Utilities
 export * from "./utils";
 export * from "./trial/payload";
+
+// Mappers (Convex → Core)
+export * from "./mappers";

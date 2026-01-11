@@ -8,7 +8,7 @@
  * - Sign out
  */
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,15 +17,12 @@ import {
   StyleSheet,
   ActivityIndicator,
   Modal,
-  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { useQuery } from 'convex/react';
-import { api } from '../../../../../convex/_generated/api';
-import type { Id } from '../../../../../convex/_generated/dataModel';
 import { useTheme, spacing, typography, radii, shadows } from '@/design-system';
 import { useProjectStore } from '@mythos/state';
+import { createProjectFromBootstrap } from '@mythos/core';
 import { useSession, signOut } from '@/lib/auth';
 import { useProjects, type Project } from '@/hooks';
 
@@ -47,7 +44,7 @@ export function ProjectPickerDropdown({
   onCreateNew,
   anchorPosition,
 }: ProjectPickerDropdownProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const router = useRouter();
   const { data: session } = useSession();
   const { projects, isLoading } = useProjects();
@@ -56,17 +53,15 @@ export function ProjectPickerDropdown({
 
   const handleSelectProject = useCallback(
     (project: Project) => {
-      // Set just the project ID and name - minimal data for UI
-      // The full project data comes from Convex queries in components that need it
-      setProject({
-        id: project.id,
+      // Use shared mapper to create properly typed project
+      const coreProject = createProjectFromBootstrap({
+        projectId: project.id,
         name: project.name,
         description: project.description,
         templateId: project.templateId,
-        config: {}, // Empty config, will use defaults
-        createdAt: new Date(project.createdAt),
-        updatedAt: new Date(project.updatedAt),
-      } as any); // Type assertion needed due to @mythos/core schema mismatch
+      });
+
+      setProject(coreProject);
       onClose();
     },
     [setProject, onClose]

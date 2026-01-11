@@ -5,12 +5,12 @@
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { Project, Document, Entity, Relationship } from "@mythos/core";
+import type { LooseProject, Document, Entity, Relationship } from "@mythos/core";
 
 export interface ProjectState {
   // Current project
   currentProjectId: string | null;
-  project: Project | null;
+  project: LooseProject | null;
 
   // Documents
   documents: Document[];
@@ -25,7 +25,7 @@ export interface ProjectState {
   error: string | null;
 
   // Actions
-  setProject: (project: Project | null) => void;
+  setProject: (project: LooseProject | null) => void;
   setCurrentProjectId: (id: string | null) => void;
   setDocuments: (documents: Document[]) => void;
   setCurrentDocumentId: (id: string | null) => void;

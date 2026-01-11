@@ -5,7 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useTheme, spacing, typography, radii } from "@/design-system";
 import { useProjectStore } from "@mythos/state";
-import type { Project } from "@mythos/core";
+import type { LooseProject } from "@mythos/core";
 
 const EMPTY_DOC = { type: "doc", content: [{ type: "paragraph" }] };
 
@@ -40,30 +40,11 @@ export default function E2EScreen() {
       setProjectId(id);
 
       const now = new Date();
-      const project: Project = {
+      const project: LooseProject = {
         id,
         name: projectName,
-        description: undefined,
-        templateId: undefined,
-        templateOverrides: undefined,
-        config: {
-          styleMode: "manga",
-          arcTemplate: "three_act",
-          linterConfig: {
-            nameConsistency: "error",
-            visualConsistency: "warning",
-            locationConsistency: "warning",
-            timelineConsistency: "info",
-            archetypeDeviation: "warning",
-            powerScaling: "info",
-            pacingFlat: "info",
-            dialogueLength: "off",
-            adverbUsage: "off",
-            passiveVoice: "off",
-            showDontTell: "off",
-            symbolismConsistency: "off",
-          },
-        },
+        templateId: "writer",
+        config: {},
         createdAt: now,
         updatedAt: now,
       };

@@ -240,12 +240,31 @@ export const bootstrap = mutation({
       });
     }
 
+    // Fetch the created project to return it
+    const project = await ctx.db.get(projectId);
+
     return {
       projectId,
       initialDocumentId,
       seedDocumentId,
       seedContentText,
       genesis: args.genesis?.prompt ? "scheduled" : null,
+      project: project
+        ? {
+            _id: project._id,
+            name: project.name,
+            description: project.description,
+            templateId: project.templateId,
+            templateOverrides: project.templateOverrides,
+            metadata: project.metadata,
+            settings: project.settings,
+            genre: project.genre,
+            styleConfig: project.styleConfig,
+            linterConfig: project.linterConfig,
+            createdAt: project.createdAt,
+            updatedAt: project.updatedAt,
+          }
+        : null,
     };
   },
 });

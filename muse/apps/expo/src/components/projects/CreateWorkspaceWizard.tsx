@@ -24,6 +24,7 @@ import { useMutation } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { useTheme, spacing, typography, radii, shadows, palette } from '@/design-system';
 import { useProjectStore } from '@mythos/state';
+import { createProjectFromBootstrap } from '@mythos/core';
 
 type WizardStep = 'template' | 'details';
 
@@ -137,16 +138,14 @@ export function CreateWorkspaceWizard({
         initialDocumentTitle: 'Chapter 1',
       });
 
-      // Set the new project as current - minimal data for UI
-      // Full project data comes from Convex queries
-      setProject({
-        id: result.projectId,
+      // Use shared mapper to create properly typed project
+      const project = createProjectFromBootstrap({
+        projectId: result.projectId,
         name: projectName.trim(),
         templateId: selectedTemplate.templateId,
-        config: {}, // Empty config, will use defaults
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as any); // Type assertion needed due to @mythos/core schema mismatch
+      });
+
+      setProject(project);
 
       handleClose();
       onCreated(result.projectId);
