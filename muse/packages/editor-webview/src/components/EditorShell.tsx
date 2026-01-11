@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { TabBar, type Tab } from './TabBar';
 import { PageHeader } from './PageHeader';
 import { MoreMenu } from './MoreMenu';
@@ -9,7 +9,7 @@ import { CollaborativeEditor } from './CollaborativeEditor';
 type FontStyle = 'default' | 'serif' | 'mono';
 type PrivacyLevel = 'private' | 'workspace' | 'public';
 
-interface DocumentState {
+export interface DocumentState {
   id: string;
   title: string;
   content: string;
@@ -24,7 +24,24 @@ interface CollaborationConfig {
   convexUrl?: string;
 }
 
-interface EditorShellProps {
+export interface PendingWriteContentProp {
+  suggestionId: string;
+  toolCallId: string;
+  documentId: string;
+  content: string;
+  operation: 'replace_selection' | 'insert_at_cursor' | 'append_document';
+  selectionText?: string;
+}
+
+export interface WriteContentApplyResult {
+  applied: boolean;
+  documentId?: string;
+  snapshotJson?: string;
+  summary?: string;
+  error?: string;
+}
+
+export interface EditorShellProps {
   initialDocuments?: DocumentState[];
   onDocumentChange?: (doc: DocumentState) => void;
   onQuickAction?: (action: QuickActionType) => void;
@@ -35,6 +52,10 @@ interface EditorShellProps {
   /** When true, adds left padding to TabBar for sidebar toggle button */
   sidebarCollapsed?: boolean;
   collaboration?: CollaborationConfig;
+  /** Pending write_content suggestion to apply when editor is ready */
+  pendingWriteContent?: PendingWriteContentProp | null;
+  /** Callback when pending write_content is applied */
+  onWriteContentApplied?: (result: WriteContentApplyResult) => void;
 }
 
 const CSS_TOKENS = `
@@ -221,6 +242,8 @@ export function EditorShell({
   hideQuickActions = false,
   sidebarCollapsed = false,
   collaboration,
+  pendingWriteContent,
+  onWriteContentApplied,
 }: EditorShellProps) {
   useEffect(() => {
     const styleId = 'editor-webview-tokens';
@@ -246,6 +269,9 @@ export function EditorShell({
   const [historyIndex, setHistoryIndex] = useState(0);
   const [readyDocumentId, setReadyDocumentId] = useState<string | null>(null);
   const [autosaveError, setAutosaveError] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const editorInstanceRef = useRef<any>(null);
+  const pendingWriteContentAppliedRef = useRef(false);
 
   const activeDoc = documents.find((d) => d.id === activeDocId);
   const collaborationDocumentId = collaboration?.documentId ?? activeDocId;
@@ -348,8 +374,95 @@ export function EditorShell({
     if (!editor) {
       return;
     }
+    editorInstanceRef.current = editor;
     setReadyDocumentId(collaborationDocumentId ?? null);
   }, [collaborationDocumentId]);
+
+  // Apply pending write_content when editor is ready and document matches
+  useEffect(() => {
+    if (!pendingWriteContent || pendingWriteContentAppliedRef.current) return;
+    if (!editorInstanceRef.current) return;
+    if (pendingWriteContent.documentId !== collaborationDocumentId) return;
+
+    const editor = editorInstanceRef.current;
+    if (editor.isDestroyed) return;
+
+    pendingWriteContentAppliedRef.current = true;
+
+    const { content, operation } = pendingWriteContent;
+    let insertFrom = editor.state.selection.from;
+    let summary = '';
+
+    try {
+      if (operation === 'replace_selection') {
+        const { from, to } = editor.state.selection;
+        if (from === to) {
+          onWriteContentApplied?.({ applied: false, error: 'No selection to replace' });
+          return;
+        }
+        insertFrom = from;
+        editor.chain().focus().insertContentAt({ from, to }, content).run();
+        summary = 'Replaced selected text';
+      } else if (operation === 'append_document') {
+        const docEnd = editor.state.doc.content.size;
+        insertFrom = docEnd;
+        editor.chain().focus().insertContentAt(docEnd, content).run();
+        summary = 'Appended content';
+      } else {
+        insertFrom = editor.state.selection.from;
+        editor.chain().focus().insertContentAt(insertFrom, content).run();
+        summary = 'Inserted content';
+      }
+
+      // Mark inserted text as AI-generated
+      const endPos = editor.state.selection.from;
+      if (endPos > insertFrom && typeof editor.chain === 'function') {
+        try {
+          editor
+            .chain()
+            .setTextSelection({ from: insertFrom, to: endPos })
+            .setAIGeneratedMark?.({
+              aiId: pendingWriteContent.toolCallId,
+              aiTool: 'write_content',
+              aiTimestamp: new Date().toISOString(),
+              aiStatus: 'accepted',
+            })
+            .run();
+          editor.commands.setTextSelection(endPos);
+        } catch {
+          // AI mark extension may not be loaded
+        }
+      }
+
+      let snapshotJson: string | undefined;
+      try {
+        if (typeof editor.getJSON === 'function') {
+          snapshotJson = JSON.stringify(editor.getJSON());
+        }
+      } catch {
+        snapshotJson = undefined;
+      }
+
+      onWriteContentApplied?.({
+        applied: true,
+        documentId: pendingWriteContent.documentId,
+        snapshotJson,
+        summary,
+      });
+    } catch (error) {
+      onWriteContentApplied?.({
+        applied: false,
+        error: error instanceof Error ? error.message : 'Failed to apply write_content',
+      });
+    }
+  }, [pendingWriteContent, collaborationDocumentId, onWriteContentApplied, readyDocumentId]);
+
+  // Reset pending applied flag when pendingWriteContent changes
+  useEffect(() => {
+    if (!pendingWriteContent) {
+      pendingWriteContentAppliedRef.current = false;
+    }
+  }, [pendingWriteContent]);
 
   const handleSyncError = useCallback((error: Error) => {
     setAutosaveError(error.message);

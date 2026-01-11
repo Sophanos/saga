@@ -1,10 +1,16 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, Pressable, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { useTheme, spacing, radii, typography } from '@/design-system';
-import type { KnowledgeCitation, KnowledgeEditorContext, KnowledgeSuggestion } from './types';
+import type {
+  GraphPreviewChange,
+  KnowledgeCitation,
+  KnowledgeEditorContext,
+  KnowledgeSuggestion,
+  KnowledgeSuggestionPreview,
+} from './types';
 import { canonicalizeName, copyToClipboard, formatRelativeTime, titleCase } from './types';
 
 type ApplyDecision = 'approve' | 'reject';
@@ -14,6 +20,7 @@ export interface KnowledgeSuggestionDetailsProps {
   suggestion: KnowledgeSuggestion | null;
   onApply: (suggestionIds: string[], decision: ApplyDecision) => void;
   onRollback: (suggestionId: string) => void;
+  onOpenWriteContent?: (suggestion: KnowledgeSuggestion) => void;
   isBusy?: boolean;
 }
 
@@ -59,6 +66,18 @@ interface DiffRow {
   to: unknown;
 }
 
+function isGraphPreview(value: unknown): value is KnowledgeSuggestionPreview {
+  return Boolean(value && typeof value === 'object' && 'kind' in (value as Record<string, unknown>));
+}
+
+function toDiffRows(changes: GraphPreviewChange[]): DiffRow[] {
+  return changes.map((change) => ({
+    key: titleCase(change.key),
+    from: change.from,
+    to: change.to,
+  }));
+}
+
 type WriteContentOperation = 'replace_selection' | 'insert_at_cursor' | 'append_document';
 
 interface WriteContentDiffBlock {
@@ -84,6 +103,31 @@ function formatValue(value: unknown): string {
     return JSON.stringify(value, null, 2);
   } catch {
     return String(value);
+  }
+}
+
+function formatApprovalReason(reason: string): string {
+  switch (reason) {
+    case 'risk_core':
+      return 'Core registry type requires approval';
+    case 'risk_high':
+      return 'High-risk registry type requires approval';
+    case 'create_requires_approval':
+      return 'Registry requires approval for creation';
+    case 'update_requires_approval':
+      return 'Registry requires approval for updates';
+    case 'identity_change':
+      return 'Identity fields are changing';
+    case 'bidirectional_change':
+      return 'Bidirectional change requires review';
+    case 'strength_sensitive':
+      return 'Significant strength change requires review';
+    case 'invalid_type':
+      return 'Registry type could not be resolved';
+    case 'registry_unknown':
+      return 'Registry unavailable for this project';
+    default:
+      return titleCase(reason);
   }
 }
 
@@ -229,8 +273,12 @@ function getRollbackInfo(suggestion: KnowledgeSuggestion): { kind: string; rolle
       : null;
   const rollback = result && typeof result.rollback === 'object' ? (result.rollback as Record<string, unknown>) : null;
   if (!rollback || typeof rollback.kind !== 'string') return null;
-  const rolledBackAtValue = result?.rolledBackAt;
-  const rolledBackAt = typeof rolledBackAtValue === 'number' ? rolledBackAtValue : undefined;
+  let rolledBackAt: number | undefined;
+  if (typeof suggestion.rolledBackAt === 'number') {
+    rolledBackAt = suggestion.rolledBackAt;
+  } else if (typeof result?.rolledBackAt === 'number') {
+    rolledBackAt = result.rolledBackAt as number;
+  }
   return { kind: rollback.kind as string, rolledBackAt };
 }
 
@@ -248,18 +296,34 @@ export function KnowledgeSuggestionDetails({
   suggestion,
   onApply,
   onRollback,
+  onOpenWriteContent,
   isBusy = false,
 }: KnowledgeSuggestionDetailsProps): JSX.Element {
   const { colors } = useTheme();
+  const [isRecheckingPreflight, setIsRecheckingPreflight] = useState(false);
+  const [preflightRecheckError, setPreflightRecheckError] = useState<string | null>(null);
 
   // Convex API types are too deep for expo typecheck; treat as untyped.
   // @ts-ignore
   const apiAny: any = api;
+  const rerunPreflight = useMutation(apiAny.knowledgeSuggestions.rerunPreflight as any);
 
   const toolArgs = useMemo(() => {
     if (!suggestion || !suggestion.proposedPatch || typeof suggestion.proposedPatch !== 'object') return null;
     return suggestion.proposedPatch as Record<string, unknown>;
   }, [suggestion]);
+
+  const preview = useMemo((): KnowledgeSuggestionPreview | null => {
+    if (!suggestion || !isGraphPreview(suggestion.preview)) return null;
+    return suggestion.preview as KnowledgeSuggestionPreview;
+  }, [suggestion]);
+
+  const approvalReasons = useMemo((): string[] => {
+    return suggestion?.approvalReasons ?? [];
+  }, [suggestion]);
+
+  const shouldResolveGraph = !preview;
+  const hasGraphPreview = Boolean(preview);
 
   const documentId =
     suggestion?.targetType === 'document'
@@ -293,14 +357,14 @@ export function KnowledgeSuggestionDetails({
 
   const entityByCanonical = useQuery(
     apiAny.entities.getByCanonical as any,
-    projectId && entitySearchName && entitySearchType
+    shouldResolveGraph && projectId && entitySearchName && entitySearchType
       ? { projectId, type: entitySearchType, canonicalName: entitySearchName }
       : ('skip' as any)
   ) as EntityDoc | null | undefined;
 
   const entitySearchResults = useQuery(
     apiAny.entities.searchByName as any,
-    projectId && entitySearchName && !entitySearchType
+    shouldResolveGraph && projectId && entitySearchName && !entitySearchType
       ? { projectId, query: entitySearchName, limit: 20 }
       : ('skip' as any)
   ) as EntityDoc[] | undefined;
@@ -342,12 +406,16 @@ export function KnowledgeSuggestionDetails({
 
   const sourceEntityMatches = useQuery(
     apiAny.entities.searchByName as any,
-    projectId && relationshipSourceName ? { projectId, query: relationshipSourceName, limit: 20 } : ('skip' as any)
+    shouldResolveGraph && projectId && relationshipSourceName
+      ? { projectId, query: relationshipSourceName, limit: 20 }
+      : ('skip' as any)
   ) as EntityDoc[] | undefined;
 
   const targetEntityMatches = useQuery(
     apiAny.entities.searchByName as any,
-    projectId && relationshipTargetName ? { projectId, query: relationshipTargetName, limit: 20 } : ('skip' as any)
+    shouldResolveGraph && projectId && relationshipTargetName
+      ? { projectId, query: relationshipTargetName, limit: 20 }
+      : ('skip' as any)
   ) as EntityDoc[] | undefined;
 
   const resolvedSourceEntity = useMemo(() => {
@@ -362,48 +430,19 @@ export function KnowledgeSuggestionDetails({
 
   const relationshipByTypeBetween = useQuery(
     apiAny.relationships.getByTypeBetween as any,
-    projectId && relationshipType && resolvedSourceEntity && resolvedTargetEntity
+    shouldResolveGraph && projectId && relationshipType && resolvedSourceEntity && resolvedTargetEntity
       ? { projectId, sourceId: resolvedSourceEntity._id, targetId: resolvedTargetEntity._id, type: relationshipType }
       : ('skip' as any)
   ) as RelationshipDoc | null | undefined;
 
   const activity = useQuery(
-    apiAny.activity.listByProject as any,
-    projectId ? { projectId, limit: 80 } : ('skip' as any)
+    apiAny.activity.listBySuggestion as any,
+    suggestion && projectId ? { projectId, suggestionId: suggestion._id, limit: 20 } : ('skip' as any)
   ) as ActivityLogEntry[] | undefined;
 
   const relatedActivity = useMemo((): ActivityLogEntry[] => {
-    if (!suggestion || !activity) return [];
-    const toolCallId = suggestion.toolCallId;
-    const targetId = suggestion.targetId;
-    const results: ActivityLogEntry[] = [];
-
-    for (const entry of activity) {
-      const meta =
-        entry.metadata && typeof entry.metadata === 'object'
-          ? (entry.metadata as Record<string, unknown>)
-          : null;
-      const source =
-        meta?.source && typeof meta.source === 'object'
-          ? (meta.source as Record<string, unknown>)
-          : null;
-
-      const metaToolCallId = typeof meta?.toolCallId === 'string' ? (meta.toolCallId as string) : null;
-      const sourceToolCallId = typeof source?.toolCallId === 'string' ? (source.toolCallId as string) : null;
-      const metaEntityId = typeof meta?.entityId === 'string' ? (meta.entityId as string) : null;
-      const metaRelationshipId = typeof meta?.relationshipId === 'string' ? (meta.relationshipId as string) : null;
-
-      const matches =
-        (toolCallId && (metaToolCallId === toolCallId || sourceToolCallId === toolCallId)) ||
-        (targetId && (metaEntityId === targetId || metaRelationshipId === targetId));
-
-      if (matches) {
-        results.push(entry);
-      }
-    }
-
-    return results.slice(0, 6);
-  }, [activity, suggestion]);
+    return activity ?? [];
+  }, [activity]);
 
   const diffRows = useMemo((): DiffRow[] => {
     if (!suggestion || !toolArgs) return [];
@@ -449,6 +488,7 @@ export function KnowledgeSuggestionDetails({
 
   const renderEntityUpdatePreview = (): JSX.Element | null => {
     if (!suggestion) return null;
+    if (hasGraphPreview) return null;
     if (suggestion.toolName !== 'update_entity' && suggestion.toolName !== 'update_node') return null;
     if (diffRows.length > 0) {
       return <DiffList rows={diffRows} colors={colors} />;
@@ -462,6 +502,7 @@ export function KnowledgeSuggestionDetails({
 
   const renderRelationshipUpdatePreview = (): JSX.Element | null => {
     if (!suggestion) return null;
+    if (hasGraphPreview) return null;
     if (suggestion.toolName !== 'update_relationship' && suggestion.toolName !== 'update_edge') return null;
     if (diffRows.length > 0) {
       return <DiffList rows={diffRows} colors={colors} />;
@@ -491,9 +532,106 @@ export function KnowledgeSuggestionDetails({
     return <DocumentDiff diff={writeContentDiff} colors={colors} />;
   };
 
-  const canApprove = suggestion?.status === 'proposed';
+  const renderApprovalReasons = (): JSX.Element | null => {
+    if (!approvalReasons.length) return null;
+    return (
+      <View style={styles.block}>
+        <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Why approval is required</Text>
+        {approvalReasons.map((reason) => (
+          <Text key={reason} style={[styles.helperText, { color: colors.text }]}>
+            {formatApprovalReason(reason)}
+          </Text>
+        ))}
+      </View>
+    );
+  };
+
+  const renderGraphPreview = (): JSX.Element | null => {
+    if (!preview) return null;
+
+    if (preview.kind === 'entity_create') {
+      const values: Record<string, unknown> = {
+        type: preview.type,
+        name: preview.name,
+        aliases: preview.aliases,
+        notes: preview.notes,
+        properties: preview.properties,
+      };
+      return (
+        <View style={styles.block}>
+          <KeyValues title="New entity" values={values} colors={colors} />
+          {preview.note ? (
+            <Text style={[styles.helperText, { color: colors.textMuted }]}>{preview.note}</Text>
+          ) : null}
+        </View>
+      );
+    }
+
+    if (preview.kind === 'entity_update') {
+      if (preview.changes.length > 0) {
+        return <DiffList rows={toDiffRows(preview.changes)} colors={colors} />;
+      }
+      return (
+        <Text style={[styles.helperText, { color: colors.textMuted }]}>
+          {preview.note ?? 'No field changes found.'}
+        </Text>
+      );
+    }
+
+    if (preview.kind === 'relationship_create') {
+      const values: Record<string, unknown> = {
+        type: preview.type,
+        source: preview.sourceName ?? preview.sourceId,
+        target: preview.targetName ?? preview.targetId,
+        bidirectional: preview.bidirectional,
+        strength: preview.strength,
+        notes: preview.notes,
+        metadata: preview.metadata,
+      };
+      return (
+        <View style={styles.block}>
+          <KeyValues title="New relationship" values={values} colors={colors} />
+          {preview.note ? (
+            <Text style={[styles.helperText, { color: colors.textMuted }]}>{preview.note}</Text>
+          ) : null}
+        </View>
+      );
+    }
+
+    if (preview.kind === 'relationship_update') {
+      if (preview.changes.length > 0) {
+        return <DiffList rows={toDiffRows(preview.changes)} colors={colors} />;
+      }
+      return (
+        <Text style={[styles.helperText, { color: colors.textMuted }]}>
+          {preview.note ?? 'No field changes found.'}
+        </Text>
+      );
+    }
+
+    return null;
+  };
+
+  const preflight = suggestion?.preflight;
+  const isWriteContent = suggestion?.toolName === 'write_content';
+  const hasBlockingPreflight = preflight?.status === 'invalid' || preflight?.status === 'conflict';
+  const canApprove = Boolean(suggestion?.status === 'proposed' && !isWriteContent && !hasBlockingPreflight);
   const rollbackInfo = suggestion ? getRollbackInfo(suggestion) : null;
-  const canRollback = Boolean(suggestion && suggestion.status === 'accepted' && rollbackInfo && !rollbackInfo.rolledBackAt);
+  const isRolledBack = Boolean(suggestion?.resolution === 'rolled_back' || rollbackInfo?.rolledBackAt);
+  const canRollback = Boolean(suggestion && suggestion.status === 'accepted' && rollbackInfo && !isRolledBack);
+
+  const handleRecheckPreflight = useCallback(async (): Promise<void> => {
+    if (!suggestion) return;
+    setIsRecheckingPreflight(true);
+    setPreflightRecheckError(null);
+    try {
+      await rerunPreflight({ suggestionId: suggestion._id });
+    } catch (error) {
+      setPreflightRecheckError(error instanceof Error ? error.message : 'Recheck failed');
+    } finally {
+      setIsRecheckingPreflight(false);
+    }
+  }, [rerunPreflight, suggestion]);
 
   const handleCopyIds = useCallback((): void => {
     if (!suggestion) return;
@@ -547,21 +685,117 @@ export function KnowledgeSuggestionDetails({
         </View>
       ) : null}
 
+      {preflight && preflight.status !== 'ok' ? (
+        <View style={[styles.notice, { backgroundColor: '#ef444414', borderColor: '#ef44442A' }]}>
+          <Feather name="alert-triangle" size={14} color="#ef4444" />
+          <View style={{ flex: 1, gap: spacing[2] }}>
+            <View style={styles.noticeHeader}>
+              <Text style={[styles.noticeText, { color: '#ef4444', fontWeight: '700', flex: 1 }]}>
+                {preflight.status === 'conflict' ? 'Rebase required' : 'Preflight blocked'}
+              </Text>
+              {suggestion.status === 'proposed' && (
+                <Pressable
+                  onPress={() => { void handleRecheckPreflight(); }}
+                  disabled={isRecheckingPreflight || isBusy}
+                  style={({ pressed, hovered }) => [
+                    styles.recheckButton,
+                    {
+                      backgroundColor: pressed || hovered ? colors.bgHover : colors.bgSurface,
+                      borderColor: colors.border,
+                      opacity: isRecheckingPreflight || isBusy ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name="refresh-cw"
+                    size={12}
+                    color={colors.textMuted}
+                    style={isRecheckingPreflight ? { opacity: 0.5 } : undefined}
+                  />
+                  <Text style={[styles.recheckButtonText, { color: colors.text }]}>
+                    {isRecheckingPreflight ? 'Checking...' : 'Recheck'}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+            {preflight.status === 'conflict' ? (
+              <Text style={[styles.noticeText, { color: '#ef4444' }]}>
+                The target has changed since this proposal. Recheck to see if it can still be applied.
+              </Text>
+            ) : null}
+            {(preflight.errors ?? []).map((message, index) => (
+              <Text key={`preflight-error-${index}`} style={[styles.noticeText, { color: '#ef4444' }]}>
+                {message}
+              </Text>
+            ))}
+            {preflightRecheckError ? (
+              <Text style={[styles.noticeText, { color: '#ef4444' }]}>
+                Recheck failed: {preflightRecheckError}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
+      {preflight?.warnings && preflight.warnings.length > 0 ? (
+        <View style={[styles.notice, { backgroundColor: '#f59e0b14', borderColor: '#f59e0b2A' }]}>
+          <Feather name="info" size={14} color="#f59e0b" />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.noticeText, { color: '#f59e0b', fontWeight: '700' }]}>Review note</Text>
+            {preflight.warnings.map((message, index) => (
+              <Text key={`preflight-warning-${index}`} style={[styles.noticeText, { color: '#f59e0b' }]}>
+                {message}
+              </Text>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.actionsRow}>
-        {canApprove && (
+        {suggestion.status === 'proposed' && (
           <>
+            {isWriteContent ? (
+              <Pressable
+                disabled={isBusy || !onOpenWriteContent}
+                testID="knowledge-doc-open"
+                onPress={() => suggestion && onOpenWriteContent?.(suggestion)}
+                style={({ pressed, hovered }) => [
+                  styles.primaryButton,
+                  {
+                    backgroundColor:
+                      !onOpenWriteContent
+                        ? colors.bgSurface
+                        : pressed || hovered
+                          ? colors.accent + 'CC'
+                          : colors.accent,
+                    opacity: isBusy || !onOpenWriteContent ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Feather name="file-text" size={14} color={onOpenWriteContent ? '#fff' : colors.textMuted} />
+                <Text style={[styles.primaryButtonText, { color: onOpenWriteContent ? '#fff' : colors.textMuted }]}>
+                  Open in editor
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                testID={`approval-approve-${suggestion._id}`}
+                disabled={isBusy || !canApprove}
+                onPress={() => onApply([suggestion._id], 'approve')}
+                style={({ pressed, hovered }) => [
+                  styles.primaryButton,
+                  {
+                    backgroundColor: pressed || hovered ? colors.accent + 'CC' : colors.accent,
+                    opacity: isBusy || !canApprove ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Feather name="check" size={14} color="#fff" />
+                <Text style={[styles.primaryButtonText, { color: '#fff' }]}>Approve</Text>
+              </Pressable>
+            )}
             <Pressable
-              disabled={isBusy}
-              onPress={() => onApply([suggestion._id], 'approve')}
-              style={({ pressed, hovered }) => [
-                styles.primaryButton,
-                { backgroundColor: pressed || hovered ? colors.accent + 'CC' : colors.accent, opacity: isBusy ? 0.6 : 1 },
-              ]}
-            >
-              <Feather name="check" size={14} color="#fff" />
-              <Text style={[styles.primaryButtonText, { color: '#fff' }]}>Approve</Text>
-            </Pressable>
-            <Pressable
+              testID={`approval-reject-${suggestion._id}`}
               disabled={isBusy}
               onPress={() => onApply([suggestion._id], 'reject')}
               style={({ pressed, hovered }) => [
@@ -623,8 +857,18 @@ export function KnowledgeSuggestionDetails({
 
       <View style={[styles.metaCard, { borderColor: colors.border, backgroundColor: colors.bgSurface }]}>
         <MetaRow label="Status" value={titleCase(suggestion.status)} colors={colors} />
+        {suggestion.resolution ? (
+          <MetaRow label="Resolution" value={titleCase(suggestion.resolution)} colors={colors} />
+        ) : null}
         <MetaRow label="Created" value={created} colors={colors} />
-        {suggestion.riskLevel ? <MetaRow label="Risk" value={titleCase(suggestion.riskLevel)} colors={colors} /> : null}
+        {suggestion.riskLevel ? (
+          <MetaRow
+            label="Risk"
+            value={titleCase(suggestion.riskLevel)}
+            colors={colors}
+            testID={`approval-risk-${suggestion._id}`}
+          />
+        ) : null}
         {suggestion.actorName ? <MetaRow label="Actor" value={suggestion.actorName} colors={colors} /> : null}
         <MetaRow label="Tool" value={suggestion.toolName} colors={colors} mono />
         {suggestion.model ? <MetaRow label="Model" value={suggestion.model} colors={colors} mono /> : null}
@@ -634,13 +878,16 @@ export function KnowledgeSuggestionDetails({
       <View style={[styles.previewCard, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
         <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Preview</Text>
 
-        {suggestion.toolName === 'create_entity' || suggestion.toolName === 'create_node' ? (
+        {renderApprovalReasons()}
+        {renderGraphPreview()}
+
+        {!hasGraphPreview && (suggestion.toolName === 'create_entity' || suggestion.toolName === 'create_node') ? (
           <KeyValues title="New entity" values={toolArgs ?? {}} colors={colors} />
         ) : null}
 
         {renderEntityUpdatePreview()}
 
-        {suggestion.toolName === 'create_relationship' || suggestion.toolName === 'create_edge' ? (
+        {!hasGraphPreview && (suggestion.toolName === 'create_relationship' || suggestion.toolName === 'create_edge') ? (
           <KeyValues title="New relationship" values={toolArgs ?? {}} colors={colors} />
         ) : null}
 
@@ -737,14 +984,16 @@ function MetaRow({
   value,
   colors,
   mono = false,
+  testID,
 }: {
   label: string;
   value: string;
   colors: any;
   mono?: boolean;
+  testID?: string;
 }): JSX.Element {
   return (
-    <View style={styles.metaRow}>
+    <View style={styles.metaRow} testID={testID}>
       <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{label}</Text>
       <Text
         style={[
@@ -887,6 +1136,24 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: typography.sm,
     lineHeight: 18,
+  },
+  noticeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  recheckButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    borderRadius: radii.md,
+    borderWidth: 1,
+  },
+  recheckButtonText: {
+    fontSize: typography.xs,
+    fontWeight: '600',
   },
   actionsRow: {
     flexDirection: 'row',

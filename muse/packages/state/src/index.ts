@@ -86,6 +86,7 @@ export {
 export type {
   ViewMode,
   AIPanelMode,
+  PendingWriteContent,
 } from "./layout";
 
 // ============================================================

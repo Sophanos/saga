@@ -24,6 +24,15 @@ export const LAYOUT_SIZING = {
 export type ViewMode = 'home' | 'project';
 export type AIPanelMode = 'hidden' | 'side' | 'floating' | 'full';
 
+export interface PendingWriteContent {
+  suggestionId: string;
+  toolCallId: string;
+  documentId: string;
+  content: string;
+  operation: 'replace_selection' | 'insert_at_cursor' | 'append_document';
+  selectionText?: string;
+}
+
 interface LayoutState {
   // Sidebar
   sidebarCollapsed: boolean;
@@ -38,6 +47,11 @@ interface LayoutState {
   openKnowledgePanel: (projectId?: string | null) => void;
   closeKnowledgePanel: () => void;
   toggleKnowledgePanel: (projectId?: string | null) => void;
+
+  // Pending write_content suggestion to apply in editor
+  pendingWriteContent: PendingWriteContent | null;
+  setPendingWriteContent: (pending: PendingWriteContent | null) => void;
+  clearPendingWriteContent: () => void;
 
   // View
   viewMode: ViewMode;
@@ -64,6 +78,7 @@ const initialState = {
   sidebarWidth: LAYOUT_SIZING.sidebarDefault,
   knowledgePanelOpen: false,
   knowledgePanelProjectId: null as string | null,
+  pendingWriteContent: null as PendingWriteContent | null,
   viewMode: 'home' as ViewMode,
   currentProjectId: null as string | null,
   aiPanelMode: 'side' as AIPanelMode,
@@ -99,6 +114,9 @@ export const useLayoutStore = create<LayoutState>()(
           knowledgePanelProjectId: projectId ?? get().knowledgePanelProjectId,
         });
       },
+
+      setPendingWriteContent: (pending) => set({ pendingWriteContent: pending }),
+      clearPendingWriteContent: () => set({ pendingWriteContent: null }),
 
       enterProject: (projectId) => set({ viewMode: 'project', currentProjectId: projectId }),
       exitProject: () => set({ viewMode: 'home', currentProjectId: null }),

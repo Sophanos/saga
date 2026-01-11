@@ -8,9 +8,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useAction, useQuery } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { useTheme, spacing, radii, typography } from '@/design-system';
+import { useLayoutStore } from '@mythos/state';
 import { KnowledgeSuggestionDetails } from '@/components/knowledge/KnowledgeSuggestionDetails';
 import type { KnowledgeStatus, KnowledgeSuggestion } from '@/components/knowledge/types';
 import { formatRelativeTime, titleCase } from '@/components/knowledge/types';
@@ -40,6 +42,8 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
+  const router = useRouter();
+  const { setPendingWriteContent, closeKnowledgePanel } = useLayoutStore();
 
   const [status, setStatus] = useState<KnowledgeStatus | 'all'>('proposed');
   const [search, setSearch] = useState('');
@@ -141,8 +145,43 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
     }
   }, [projectId, rollbackSuggestion]);
 
+  const handleOpenWriteContent = useCallback((suggestion: KnowledgeSuggestion): void => {
+    if (!projectId || suggestion.toolName !== 'write_content') return;
+
+    const toolArgs = (suggestion.proposedPatch ?? {}) as Record<string, unknown>;
+    const content = typeof toolArgs.content === 'string' ? toolArgs.content : '';
+    const operation =
+      toolArgs.operation === 'replace_selection' || toolArgs.operation === 'append_document'
+        ? toolArgs.operation
+        : 'insert_at_cursor';
+    const documentId =
+      suggestion.editorContext?.documentId ?? suggestion.targetId ?? null;
+
+    if (!documentId || !content) {
+      setActionError('Missing document or content for write_content suggestion');
+      return;
+    }
+
+    // Set the pending write_content in state
+    setPendingWriteContent({
+      suggestionId: suggestion._id,
+      toolCallId: suggestion.toolCallId,
+      documentId,
+      content,
+      operation: operation as 'replace_selection' | 'insert_at_cursor' | 'append_document',
+      selectionText: suggestion.editorContext?.selectionText,
+    });
+
+    // Close the panel and navigate to the editor
+    closeKnowledgePanel();
+    router.push({
+      pathname: '/editor',
+      params: { projectId, documentId },
+    });
+  }, [closeKnowledgePanel, projectId, router, setPendingWriteContent]);
+
   return (
-    <View style={styles.root}>
+    <View style={styles.root} testID="approvals-panel">
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <View style={styles.headerLeft}>
           <View style={[styles.headerIcon, { backgroundColor: colors.bgHover }]}>
@@ -285,38 +324,38 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
                 </Text>
               </View>
             ) : (
-	              filtered.map((s) => {
-	                const isSelected = s._id === selectedId;
-	                const isChecked = checkedSet.has(s._id);
-	                const pill = statusPillColors(s.status, colors);
-	                const title = `${titleCase(s.operation || s.toolName)} · ${titleCase(s.targetType)}`;
-	                const subtitle = `${titleCase(s.toolName)}${s.targetId ? ` · ${s.targetId}` : ''}`;
-	                return (
-	                  <Pressable
-	                    key={s._id}
-	                    testID="knowledge-pr-row"
-	                    accessibilityLabel={`Change to review: ${title}`}
-	                    onPress={() => setSelectedId(s._id)}
-	                    style={({ pressed, hovered }) => {
-	                      let backgroundColor: string = 'transparent';
-	                      if (isSelected) {
-	                        backgroundColor = colors.accent + '10';
-	                      } else if (pressed || hovered) {
-	                        backgroundColor = colors.bgHover;
-	                      }
-	                      return [
-	                        styles.row,
-	                        {
-	                          backgroundColor,
-	                          borderColor: isSelected ? colors.accent + '30' : colors.border,
-	                        },
-	                      ];
-	                    }}
-	                  >
-	                    <View style={styles.rowTop}>
-	                      <Pressable
-	                        onPress={() => toggleChecked(s._id)}
-	                        hitSlop={8}
+              filtered.map((s) => {
+                const isSelected = s._id === selectedId;
+                const isChecked = checkedSet.has(s._id);
+                const pill = statusPillColors(s.status, colors);
+                const title = `${titleCase(s.operation || s.toolName)} · ${titleCase(s.targetType)}`;
+                const subtitle = `${titleCase(s.toolName)}${s.targetId ? ` · ${s.targetId}` : ''}`;
+                return (
+                  <Pressable
+                    key={s._id}
+                    testID={`approval-item-${s._id}`}
+                    accessibilityLabel={`Change to review: ${title}`}
+                    onPress={() => setSelectedId(s._id)}
+                    style={({ pressed, hovered }) => {
+                      let backgroundColor: string = 'transparent';
+                      if (isSelected) {
+                        backgroundColor = colors.accent + '10';
+                      } else if (pressed || hovered) {
+                        backgroundColor = colors.bgHover;
+                      }
+                      return [
+                        styles.row,
+                        {
+                          backgroundColor,
+                          borderColor: isSelected ? colors.accent + '30' : colors.border,
+                        },
+                      ];
+                    }}
+                  >
+                    <View style={styles.rowTop}>
+                      <Pressable
+                        onPress={() => toggleChecked(s._id)}
+                        hitSlop={8}
                         style={({ pressed, hovered }) => [
                           styles.rowCheckbox,
                           (pressed || hovered) && { backgroundColor: colors.bgHover },
@@ -365,6 +404,7 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
             suggestion={selected}
             onApply={handleApply}
             onRollback={handleRollback}
+            onOpenWriteContent={handleOpenWriteContent}
             isBusy={isBusy}
           />
         </View>

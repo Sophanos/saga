@@ -53,6 +53,11 @@ const TYPE_CLASS_MAP: Record<StyleIssueType, string> = {
   cliche: "style-cliche",
   filler_word: "style-filler-word",
   dangling_modifier: "style-dangling-modifier",
+  // Policy issues
+  policy_conflict: "style-policy-conflict",
+  unverifiable: "style-unverifiable",
+  not_testable: "style-not-testable",
+  policy_gap: "style-policy-gap",
 };
 
 /**

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, CornerUpLeft, X } from "lucide-react";
-import { useAction, useQuery } from "convex/react";
+import { Check, CornerUpLeft, FileText, X } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
 import { api } from "../../../../../convex/_generated/api";
 import { useMythosStore } from "../../stores";
@@ -8,6 +8,21 @@ import { DiffView } from "./DiffViews";
 
 type KnowledgeStatus = "proposed" | "accepted" | "rejected" | "resolved";
 type KnowledgeRiskLevel = "low" | "high" | "core";
+type KnowledgeResolution =
+  | "executed"
+  | "user_rejected"
+  | "execution_failed"
+  | "rolled_back"
+  | "applied_in_editor";
+type SuggestionPreflightStatus = "ok" | "invalid" | "conflict";
+
+interface SuggestionPreflight {
+  status: SuggestionPreflightStatus;
+  errors?: string[];
+  warnings?: string[];
+  resolvedTargetId?: string;
+  computedAt: number;
+}
 
 interface KnowledgeEditorContext {
   documentId?: string;
@@ -27,6 +42,10 @@ interface KnowledgeSuggestion {
   normalizedPatch?: unknown;
   editorContext?: KnowledgeEditorContext;
   status: KnowledgeStatus;
+  resolution?: KnowledgeResolution;
+  preflight?: SuggestionPreflight;
+  rolledBackAt?: number;
+  rolledBackByUserId?: string;
   actorType: string;
   actorUserId?: string;
   actorAgentId?: string;
@@ -115,6 +134,20 @@ function getRiskBadgeClasses(riskLevel: KnowledgeRiskLevel): string {
   }
 }
 
+function getResolutionBadgeClasses(resolution: KnowledgeResolution): string {
+  switch (resolution) {
+    case "executed":
+      return "bg-mythos-accent-green/15 text-mythos-accent-green border-mythos-accent-green/30";
+    case "applied_in_editor":
+      return "bg-mythos-accent-primary/15 text-mythos-accent-primary border-mythos-accent-primary/30";
+    case "rolled_back":
+      return "bg-mythos-accent-amber/15 text-mythos-accent-amber border-mythos-accent-amber/30";
+    case "user_rejected":
+    case "execution_failed":
+      return "bg-mythos-accent-red/15 text-mythos-accent-red border-mythos-accent-red/30";
+  }
+}
+
 function getRollbackInfo(
   suggestion: KnowledgeSuggestion
 ): { kind: string; rolledBackAt?: number } | null {
@@ -125,8 +158,14 @@ function getRollbackInfo(
       ? (result.rollback as Record<string, unknown>)
       : null;
   if (!rollback || typeof rollback.kind !== "string") return null;
-  const rolledBackAt =
-    typeof result.rolledBackAt === "number" ? result.rolledBackAt : undefined;
+
+  let rolledBackAt: number | undefined;
+  if (typeof suggestion.rolledBackAt === "number") {
+    rolledBackAt = suggestion.rolledBackAt;
+  } else if (typeof result.rolledBackAt === "number") {
+    rolledBackAt = result.rolledBackAt as number;
+  }
+
   return { kind: rollback.kind, rolledBackAt };
 }
 
@@ -306,6 +345,9 @@ function buildWriteContentDiff(
 
 export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
   const projectId = useMythosStore((s) => s.project.currentProject?.id);
+  const documents = useMythosStore((s) => s.document.documents);
+  const setCurrentDocument = useMythosStore((s) => s.setCurrentDocument);
+  const setCanvasView = useMythosStore((s) => s.setCanvasView);
   const apiAny: any = api;
 
   const [status, setStatus] = useState<KnowledgeStatus | "all">("proposed");
@@ -331,6 +373,12 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
   const rollbackSuggestion = useAction(
     apiAny.knowledgeSuggestions.rollbackSuggestion as any
   );
+  const rerunPreflight = useMutation(
+    apiAny.knowledgeSuggestions.rerunPreflight as any
+  );
+
+  const [isRecheckingPreflight, setIsRecheckingPreflight] = useState(false);
+  const [preflightRecheckError, setPreflightRecheckError] = useState<string | null>(null);
 
   const filtered = useMemo((): KnowledgeSuggestion[] => {
     const items = suggestions ?? [];
@@ -392,6 +440,17 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
     );
   }, [documentRecord?.title, documentText, selected]);
 
+  const handleOpenDocument = useCallback((): void => {
+    if (!documentId) return;
+    const doc = documents.find((item) => item.id === documentId);
+    if (!doc) {
+      setActionError("Document not found in workspace.");
+      return;
+    }
+    setCurrentDocument(doc);
+    setCanvasView("editor");
+  }, [documentId, documents, setActionError, setCanvasView, setCurrentDocument]);
+
   const metaLabel = useMemo((): string => {
     if (!projectId) return "No project selected";
     if (suggestions === undefined) return "Loading…";
@@ -431,9 +490,30 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
     }
   }, [rollbackSuggestion, selected]);
 
+  const handleRecheckPreflight = useCallback(async () => {
+    if (!selected) return;
+    setIsRecheckingPreflight(true);
+    setPreflightRecheckError(null);
+    try {
+      await rerunPreflight({ suggestionId: selected._id });
+    } catch (error) {
+      setPreflightRecheckError(
+        error instanceof Error ? error.message : "Recheck failed"
+      );
+    } finally {
+      setIsRecheckingPreflight(false);
+    }
+  }, [rerunPreflight, selected]);
+
+  const preflight = selected?.preflight;
+  const isWriteContent = selected?.toolName === "write_content";
+  const hasBlockingPreflight = preflight?.status === "invalid" || preflight?.status === "conflict";
+  const canApprove = Boolean(
+    selected?.status === "proposed" && !isWriteContent && !hasBlockingPreflight
+  );
   const rollbackInfo = selected ? getRollbackInfo(selected) : null;
-  const canRollback =
-    selected?.status === "accepted" && rollbackInfo && !rollbackInfo.rolledBackAt;
+  const isRolledBack = Boolean(selected?.resolution === "rolled_back" || rollbackInfo?.rolledBackAt);
+  const canRollback = Boolean(selected?.status === "accepted" && rollbackInfo && !isRolledBack);
 
   return (
     <div className="h-full flex flex-col md:flex-row">
@@ -545,6 +625,16 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
                     {titleCase(selected.riskLevel)}
                   </span>
                 ) : null}
+                {selected.resolution ? (
+                  <span
+                    className={cn(
+                      "text-xs px-2 py-0.5 rounded-full border",
+                      getResolutionBadgeClasses(selected.resolution)
+                    )}
+                  >
+                    {titleCase(selected.resolution)}
+                  </span>
+                ) : null}
               </div>
               <div className="text-xs text-mythos-text-muted">
                 {selected.toolName}
@@ -564,18 +654,73 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
               </div>
             ) : null}
 
+            {preflight && preflight.status !== "ok" ? (
+              <div className="text-xs text-mythos-accent-red border border-mythos-accent-red/30 bg-mythos-accent-red/10 rounded-md px-3 py-2 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold flex-1">
+                    {preflight.status === "conflict" ? "Rebase required" : "Preflight blocked"}
+                  </span>
+                  {selected.status === "proposed" && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onClick={handleRecheckPreflight}
+                      disabled={isRecheckingPreflight || isBusy}
+                      className="text-mythos-text-muted hover:text-mythos-text-primary"
+                    >
+                      {isRecheckingPreflight ? "Checking..." : "Recheck"}
+                    </Button>
+                  )}
+                </div>
+                {preflight.status === "conflict" ? (
+                  <div>
+                    The target has changed since this proposal. Recheck to see if it can still be applied.
+                  </div>
+                ) : null}
+                {(preflight.errors ?? []).map((message, index) => (
+                  <div key={`preflight-error-${index}`}>{message}</div>
+                ))}
+                {preflightRecheckError ? (
+                  <div>Recheck failed: {preflightRecheckError}</div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {preflight?.warnings && preflight.warnings.length > 0 ? (
+              <div className="text-xs text-mythos-accent-amber border border-mythos-accent-amber/30 bg-mythos-accent-amber/10 rounded-md px-3 py-2 space-y-1">
+                <div className="font-semibold">Review note</div>
+                {preflight.warnings.map((message, index) => (
+                  <div key={`preflight-warning-${index}`}>{message}</div>
+                ))}
+              </div>
+            ) : null}
+
             <div className="flex items-center gap-2 flex-wrap">
               {selected.status === "proposed" ? (
                 <>
-                  <Button
-                    size="sm"
-                    onClick={() => handleApply("approve")}
-                    disabled={isBusy}
-                    className="gap-1"
-                  >
-                    <Check className="w-3 h-3" />
-                    Approve
-                  </Button>
+                  {isWriteContent ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleOpenDocument}
+                      disabled={isBusy || !documentId}
+                      className="gap-1"
+                      data-testid="knowledge-doc-open"
+                    >
+                      <FileText className="w-3 h-3" />
+                      Open in editor
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => handleApply("approve")}
+                      disabled={isBusy || !canApprove}
+                      className="gap-1"
+                    >
+                      <Check className="w-3 h-3" />
+                      Approve
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"

@@ -59,10 +59,11 @@ export async function verifyProjectAccess(
   }
 
   if (project.teamId) {
+    const teamId = project.teamId;
     const teamMember = await ctx.db
       .query("teamMembers")
       .withIndex("by_team_user", (q) =>
-        q.eq("teamId", project.teamId).eq("userId", userId)
+        q.eq("teamId", teamId).eq("userId", userId)
       )
       .unique();
 
@@ -75,10 +76,11 @@ export async function verifyProjectAccess(
   }
 
   if (project.orgId) {
+    const orgId = project.orgId;
     const orgMember = await ctx.db
       .query("organizationMembers")
       .withIndex("by_org_user", (q) =>
-        q.eq("orgId", project.orgId).eq("userId", userId)
+        q.eq("orgId", orgId).eq("userId", userId)
       )
       .unique();
 
