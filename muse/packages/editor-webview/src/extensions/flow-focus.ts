@@ -210,41 +210,40 @@ function createFocusDecorations(
   const decorations: Decoration[] = [];
   const dimmedClass = options.dimmedClass || 'flow-dimmed';
 
-  // Create decorations for all text blocks EXCEPT the active range
+  // Create decorations for all text nodes EXCEPT those in the active range
   state.doc.descendants((node, pos) => {
-    if (!node.isTextblock) return true;
+    // Only process text nodes
+    if (!node.isText) return true;
 
-    const blockStart = pos + 1;
-    const blockEnd = pos + node.nodeSize - 1;
+    const nodeStart = pos;
+    const nodeEnd = pos + node.nodeSize;
 
-    // Check if this block overlaps with active range
-    const overlapStart = Math.max(blockStart, activeRange.from);
-    const overlapEnd = Math.min(blockEnd, activeRange.to);
+    // Check if this node overlaps with active range
+    const overlapStart = Math.max(nodeStart, activeRange.from);
+    const overlapEnd = Math.min(nodeEnd, activeRange.to);
     const hasOverlap = overlapStart < overlapEnd;
 
     if (!hasOverlap) {
-      // Entire block is dimmed
-      if (blockStart < blockEnd) {
-        decorations.push(
-          Decoration.inline(blockStart, blockEnd, {
-            class: dimmedClass,
-            style: `opacity: ${dimOpacity}; transition: opacity 150ms ease;`,
-          })
-        );
-      }
+      // Entire text node is dimmed
+      decorations.push(
+        Decoration.inline(nodeStart, nodeEnd, {
+          class: dimmedClass,
+          style: `opacity: ${dimOpacity}; transition: opacity 150ms ease;`,
+        })
+      );
     } else {
       // Partial overlap - dim before and after the active range
-      if (blockStart < activeRange.from) {
+      if (nodeStart < activeRange.from) {
         decorations.push(
-          Decoration.inline(blockStart, activeRange.from, {
+          Decoration.inline(nodeStart, activeRange.from, {
             class: dimmedClass,
             style: `opacity: ${dimOpacity}; transition: opacity 150ms ease;`,
           })
         );
       }
-      if (activeRange.to < blockEnd) {
+      if (activeRange.to < nodeEnd) {
         decorations.push(
-          Decoration.inline(activeRange.to, blockEnd, {
+          Decoration.inline(activeRange.to, nodeEnd, {
             class: dimmedClass,
             style: `opacity: ${dimOpacity}; transition: opacity 150ms ease;`,
           })
