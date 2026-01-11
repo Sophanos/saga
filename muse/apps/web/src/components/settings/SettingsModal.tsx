@@ -19,10 +19,33 @@ import { Button, Input, FormField, Select, ScrollArea, cn } from "@mythos/ui";
 import { api } from "../../../../convex/_generated/api";
 import { useMythosStore } from "../../stores";
 import { useAuthStore } from "../../stores/auth";
-import { updateProfile, signOut } from "../../hooks/useSupabaseAuthSync";
+import { signOut as authSignOut, authClient } from "../../lib/auth";
 import { useApiKey } from "../../hooks/useApiKey";
 import { formatGraphErrorMessage } from "../../utils";
 import type { NameCulture, NameStyle, LogicStrictness, SmartModeLevel, SmartModeConfig } from "@mythos/agent-protocol";
+
+// Wrapper for sign out
+async function signOut() {
+  try {
+    await authSignOut();
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err : new Error("Failed to sign out") };
+  }
+}
+
+// Wrapper for profile update via Better Auth
+async function updateProfile(_userId: string, data: { name?: string; avatar_url?: string; preferences?: unknown }) {
+  try {
+    await authClient.updateUser({
+      name: data.name,
+      image: data.avatar_url,
+    });
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err : new Error("Failed to update profile") };
+  }
+}
 
 type SettingsSection = "profile" | "personalization" | "api" | "project";
 

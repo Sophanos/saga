@@ -11,8 +11,23 @@ import {
   signInWithApple,
   signInWithEmail,
   signUpWithEmail,
-  resetPasswordForEmail,
-} from "../../hooks/useSupabaseAuthSync";
+  authClient,
+} from "../../lib/auth";
+
+// Password reset using Better Auth
+async function resetPasswordForEmail(email: string) {
+  try {
+    // Better Auth uses forgotPassword or forgetPassword depending on version
+    // @ts-expect-error - Better Auth API may vary
+    const method = authClient.forgetPassword ?? authClient.forgotPassword;
+    if (method) {
+      await method({ email, redirectTo: `${window.location.origin}/auth/reset-password` });
+    }
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err : new Error("Failed to send reset email") };
+  }
+}
 
 type AuthMode = "signin" | "signup" | "forgot";
 

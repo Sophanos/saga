@@ -95,7 +95,7 @@ interface LinterState {
 }
 
 // Console tab type - shared between UIState and setActiveTab action
-export type ConsoleTab = "chat" | "search" | "linter" | "activity" | "dynamics" | "coach" | "history";
+export type ConsoleTab = "chat" | "search" | "linter" | "activity" | "dynamics" | "coach" | "history" | "knowledge";
 
 // Canvas view type for switching between editor and project graph
 export type CanvasView = "editor" | "projectGraph";
@@ -115,6 +115,12 @@ export type ModalState =
   | { type: "import" }
   | { type: "export" }
   | { type: "entityForm"; mode: FormMode; entityType?: EntityType; entityId?: string }
+  | {
+      type: "relationshipForm";
+      mode: FormMode;
+      relationshipId?: string;
+      initial?: { sourceId: string; targetId: string };
+    }
   | { type: "templatePicker"; step: TemplatePickerStep; templateId?: string }
   | { type: "inviteMember" }
   | { type: "profile" };
@@ -393,6 +399,8 @@ interface MythosStore {
     appliedOperation?: WriteContentOperation;
     summary?: string;
     insertedTextPreview?: string;
+    documentId?: string;
+    snapshotJson?: string;
     error?: string;
   }>;
   clearChat: () => void;
@@ -901,12 +909,23 @@ export const useMythosStore = create<MythosStore>()(
           : operation === "append_document"
             ? "Appended content"
             : "Inserted content";
+      const documentId = state.document.currentDocument?.id;
+      let snapshotJson: string | undefined;
+      try {
+        if (typeof editor.getJSON === "function") {
+          snapshotJson = JSON.stringify(editor.getJSON());
+        }
+      } catch {
+        snapshotJson = undefined;
+      }
 
       return {
         applied: true,
         appliedOperation: operation,
         summary,
         insertedTextPreview,
+        documentId,
+        snapshotJson,
       };
     },
     clearChat: () =>

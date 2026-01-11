@@ -7,8 +7,31 @@ import { useState, useCallback, useEffect } from "react";
 import { X, User, Mail, Camera, Check, AlertCircle, Loader2, LogOut, Sparkles } from "lucide-react";
 import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, FormField, Select, type SelectOption } from "@mythos/ui";
 import { useAuthStore } from "../../stores/auth";
-import { updateProfile, signOut } from "../../hooks/useSupabaseAuthSync";
+import { signOut as authSignOut, authClient } from "../../lib/auth";
 import type { NameCulture, NameStyle, LogicStrictness } from "@mythos/agent-protocol";
+
+// Wrapper for sign out
+async function signOut() {
+  try {
+    await authSignOut();
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err : new Error("Failed to sign out") };
+  }
+}
+
+// Wrapper for profile update via Better Auth
+async function updateProfile(_userId: string, data: { name?: string; avatar_url?: string; preferences?: unknown }) {
+  try {
+    await authClient.updateUser({
+      name: data.name,
+      image: data.avatar_url,
+    });
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err : new Error("Failed to update profile") };
+  }
+}
 
 // Genre options
 const GENRE_OPTIONS: SelectOption[] = [

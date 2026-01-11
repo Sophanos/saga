@@ -43,7 +43,7 @@ export function ProjectPickerSidebar() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const currentProject = useCurrentProject();
-  const { projects, isLoading, error, reload } = useProjects();
+  const { projects, isLoading, error } = useProjects();
   const openModal = useMythosStore((s) => s.openModal);
   const requestNewProject = useNavigationStore((s) => s.requestNewProject);
   const setSelectedProjectId = useProjectSelectionStore((s) => s.setSelectedProjectId);
@@ -61,7 +61,7 @@ export function ProjectPickerSidebar() {
   const createDocumentMutation = useMutation(api.documents.create);
 
   const sortedProjects = useMemo(() => {
-    return [...projects].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    return [...projects].sort((a, b) => b.updatedAt - a.updatedAt);
   }, [projects]);
 
   const chapterSections = useMemo(() => {
@@ -298,13 +298,9 @@ export function ProjectPickerSidebar() {
                     </div>
                   )}
                   {error && (
-                    <button
-                      type="button"
-                      onClick={() => reload()}
-                      className="w-full px-3 py-2 text-left text-xs text-mythos-accent-red hover:bg-mythos-bg-hover"
-                    >
-                      Failed to load. Tap to retry.
-                    </button>
+                    <div className="px-3 py-2 text-xs text-mythos-accent-red">
+                      Failed to load projects.
+                    </div>
                   )}
                   {!isLoading && !error && sortedProjects.length === 0 && (
                     <div className="px-3 py-2 text-xs text-mythos-text-muted">

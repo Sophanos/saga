@@ -8,8 +8,8 @@ import { LAST_DOCUMENT_KEY, PENDING_INVITE_TOKEN_KEY } from "./constants/storage
 import { LandingPage } from "@mythos/website/pages";
 import { useProjects } from "./hooks/useProjects";
 import { useProjectLoader } from "./hooks/useProjectLoader";
-import { useSupabaseAuthSync } from "./hooks/useSupabaseAuthSync";
 import { useAnonymousProjectLoader } from "./hooks/useAnonymousProjectLoader";
+import { authClient } from "./lib/auth";
 import { useAuthStore } from "./stores/auth";
 import { useNavigationStore } from "./stores/navigation";
 import { useMythosStore } from "./stores";
@@ -104,8 +104,8 @@ function AuthenticatedApp() {
   // State for create project modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // Fetch project list
-  const { projects, isLoading: projectsLoading, error: projectsError, reload: reloadProjects } = useProjects();
+  // Fetch project list (Convex queries are reactive, no manual reload needed)
+  const { projects, isLoading: projectsLoading, error: projectsError } = useProjects();
 
   // Load selected project data into stores
   const { isLoading: projectLoading, error: projectLoadError } = useProjectLoader({
@@ -188,21 +188,19 @@ function AuthenticatedApp() {
   }, [currentDocumentId]);
 
   // Handle successful project creation
-  const handleProjectCreated = useCallback(async (projectId: string) => {
+  const handleProjectCreated = useCallback((projectId: string) => {
     // Close the modal
     setIsCreateModalOpen(false);
-    // Reload the project list
-    await reloadProjects();
-    // Select the newly created project
+    // Select the newly created project (Convex will auto-update the list)
     handleSelectProject(projectId);
-  }, [reloadProjects, handleSelectProject]);
+  }, [handleSelectProject]);
 
   useEffect(() => {
     if (selectedProjectId !== null) return;
     if (projectsLoading || projectsError) return;
     if (projects.length === 0) return;
 
-    const sorted = [...projects].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    const sorted = [...projects].sort((a, b) => b.updatedAt - a.updatedAt);
     setSelectedProjectId(sorted[0].id);
   }, [selectedProjectId, projectsLoading, projectsError, projects, setSelectedProjectId]);
 
@@ -271,7 +269,6 @@ function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const setAuthenticatedUser = useAuthStore((state) => state.setAuthenticatedUser);
   const setLoading = useAuthStore((state) => state.setLoading);
-  const updateUserProfile = useAuthStore((state) => state.updateUserProfile);
   const signOut = useAuthStore((state) => state.signOut);
 
   // State for showing auth screen vs landing page
@@ -296,15 +293,24 @@ function App() {
   const inviteToken = inviteTokenFromPath ?? pendingInviteToken;
   const isInviteRoute = Boolean(inviteToken);
 
-  // Sync Supabase auth with Zustand store
-  useSupabaseAuthSync({
-    authStore: {
-      setAuthenticatedUser,
-      setLoading,
-      updateUserProfile,
-      signOut,
-    },
-  });
+  // Sync Better Auth session with Zustand store
+  const { data: session, isPending: sessionLoading } = authClient.useSession();
+
+  useEffect(() => {
+    setLoading(sessionLoading);
+    if (sessionLoading) return;
+
+    if (session?.user) {
+      setAuthenticatedUser({
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name ?? undefined,
+        avatarUrl: session.user.image ?? undefined,
+      });
+    } else {
+      signOut();
+    }
+  }, [session, sessionLoading, setAuthenticatedUser, setLoading, signOut]);
 
   // Show loading state while checking auth
   if (isLoading) {
