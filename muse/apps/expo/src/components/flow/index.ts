@@ -8,3 +8,4 @@ export { FlowOverlay } from './FlowOverlay';
 export { FlowHeader } from './FlowHeader';
 export { FlowToggleButton } from './FlowToggleButton';
 export { FlowSummaryModal } from './FlowSummaryModal';
+export { FlowTimerVisual } from './FlowTimerVisual';
