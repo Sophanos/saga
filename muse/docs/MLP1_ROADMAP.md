@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-11 (Flow Mode extensions; template builder enhancements; web research tools; ask_question multi-tab UI; Widgets MVP1 plan; async notifications plan)
+> Last Updated: 2026-01-11 (Expo workspace creation flow; Flow Mode extensions; template builder enhancements; web research tools; Widgets MVP1 plan)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -32,19 +32,25 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Web Research Tools | Done | 100 |
 | Supabase -> Convex Migration | Done | 100 |
 | Real-Time Collaboration | In progress | 80 |
-| Widgets & Artifacts (MVP1) | In progress | 20 |
+| Widgets & Artifacts (MVP1) | In progress | 35 |
 | Async Jobs + Notifications (MVP1.5) | Planned | 0 |
 | Overall MLP 1 | In progress | 95 |
 
 ## Recent Updates (condensed)
 
+**2026-01-11 (late night)**
+- Expo workspace creation: Notion-style project switcher dropdown + multi-step wizard (template → name).
+- New components: `ProjectPickerDropdown`, `CreateWorkspaceWizard`, `useProjects` hook.
+- Sidebar: click project name → dropdown; "+" button → wizard; sign out in dropdown.
+- Template categories: Work (`product`) / Daily Life (`writer`) / Learning (`comms`) / AI Builder (placeholder).
+
 **2026-01-11 (night)**
-- Widgets MVP1: added widget capability kind + shared contract, Convex schema + `/ai/widgets` stream, and web wedge (Cmd+K filter, slash menu wiring, progress/preview, receipts block).
-- Flow Mode: added FlowFocus extension (iA Writer-style sentence/paragraph dimming), TypewriterScroll extension, FlowTimerPanel with break reminders, EditorMetrics store for word count tracking.
-- Template Builder: enhanced with project type selection, PhaseIndicator for build phases, ProgressiveTemplatePreview for live preview, domain-specific questions per project type.
-- Project setup: unified `project_manage` tool - bootstrap always generates template structure; `seed` flag controls starter content (default true); restructure/pivot stubbed.
-- Website: removed deprecated `apps/website/` (landing page moved to `apps/web/src/pages/`).
-- Widgets: added MVP1 execution-ready plan + MVP1.5 async notifications plan (`WIDGETS_MVP1_IMPLEMENTATION_PLAN.md`).
+- Widgets MVP1: widget capability kind + shared contract, Convex schema + `/ai/widgets` stream, web wedge (Cmd+K filter, slash menu, progress/preview, receipts).
+- Widgets MVP1: inline apply markers + highlight, receipts source picker, artifacts list/detail with staleness badges.
+- Flow Mode: FlowFocus extension (iA Writer dimming), TypewriterScroll, FlowTimerPanel with break reminders.
+- Template Builder: project type selection, PhaseIndicator, ProgressiveTemplatePreview, domain-specific questions.
+- Project setup: unified `project_manage` tool; bootstrap generates template; `seed` flag controls starter content.
+- Website: removed `apps/website/` (landing moved to `apps/web/src/pages/`).
 
 **2026-01-11 (late evening)**
 - Web Research: `web_search` + `web_extract` tools via Parallel Web SDK; auto-execute (no approval needed); agent can search web and extract full page content for research.
@@ -143,13 +149,6 @@ Integration points:
 ## Phase 2: Knowledge PRs Hardening
 
 Goal: production-grade review surface where every PR is actionable, diffs are readable, approvals are safe, rollbacks are reliable, and provenance is navigable.
-
-### P0 Blockers (ship before beta)
-
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | Rollback Confirmation Modal | ✅ Done | `RollbackConfirmModal.tsx` in Web + Expo; queries `getRollbackImpact`, shows cascade warnings |
-| 2 | Server-side Pagination | ✅ Done | PAGE_SIZE=50; Web "Load more" button, Expo FlatList `onEndReached` |
 
 ### P1 Important (post-beta)
 
@@ -334,6 +333,17 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 - `muse/apps/tauri/src-tauri/tauri.macos.conf.json`
 - `muse/apps/expo/app/(marketing)/`
 
+**Workspace/Project Creation (Expo)**
+- `muse/apps/expo/src/components/projects/ProjectPickerDropdown.tsx`
+- `muse/apps/expo/src/components/projects/CreateWorkspaceWizard.tsx`
+- `muse/apps/expo/src/hooks/useProjects.ts`
+- `muse/apps/expo/src/components/layout/Sidebar.tsx`
+
+**Workspace/Project Creation (Web - reference)**
+- `muse/apps/web/src/components/projects/ProjectPickerSidebar.tsx`
+- `muse/apps/web/src/components/modals/TemplatePickerModal/`
+- `muse/apps/web/src/stores/navigation.ts`
+
 ## Risks / Gaps
 
 - Registry editor UI missing; blocks non-writer template management.
@@ -341,3 +351,16 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 - Universal entity profile page not implemented.
 - Template icon/color defaults incomplete for non-writer templates.
 - Web entity/relationship diffs missing (Expo has them).
+
+## Schema Sync Issues
+
+**Convex ↔ @mythos/core Project type mismatch:**
+- Convex `projects` table: flat fields (`name`, `description`, `templateId`, `metadata`, `settings`, `genre`, `styleConfig`, `linterConfig`).
+- @mythos/core `Project` type: nested `config` object with writer-specific schema (`styleMode`, `arcTemplate`, `genre`, `linterConfig`).
+- Impact: UI components use `as any` type assertions when calling `setProject()`.
+- Fix: Either (1) update @mythos/core to match Convex schema, or (2) create a mapping layer in `@mythos/state`.
+
+**Template categories:**
+- Current templates in Convex: `writer`, `product`, `engineering`, `design`, `comms`, `custom`.
+- @mythos/core `templateIdSchema`: still has old writer-focused IDs (`epic_fantasy`, `wizarding_world`, etc.).
+- Expo wizard maps: Work → `product`, Daily Life → `writer`, Learning → `comms`.

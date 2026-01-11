@@ -30,10 +30,10 @@ export function WidgetPreviewModal() {
   const manifestDraft = useWidgetExecutionStore((s) => s.manifestDraft);
   const executionId = useWidgetExecutionStore((s) => s.executionId);
   const widgetId = useWidgetExecutionStore((s) => s.currentWidgetId);
-  const selection = useWidgetExecutionStore((s) => s.selection);
   const title = useWidgetExecutionStore((s) => s.title);
   const setTitle = useWidgetExecutionStore((s) => s.setTitle);
   const reset = useWidgetExecutionStore((s) => s.reset);
+  const confirmInlineApply = useWidgetExecutionStore((s) => s.confirmInlineApply);
 
   const editorInstance = useMythosStore((s) => s.editor.editorInstance) as Editor | null;
   const projectId = useMythosStore((s) => s.project.currentProject?.id);
@@ -54,20 +54,11 @@ export function WidgetPreviewModal() {
     setLocalError(null);
 
     if (widgetType === "inline") {
-      if (!editorInstance || editorInstance.isDestroyed) {
-        setLocalError("Editor is not available");
+      const result = confirmInlineApply(editorInstance);
+      if (!result.applied) {
+        setLocalError(result.error ?? "Failed to apply widget");
         return;
       }
-      const range = selection ?? {
-        from: editorInstance.state.selection.from,
-        to: editorInstance.state.selection.to,
-      };
-      editorInstance
-        .chain()
-        .focus()
-        .setTextSelection({ from: range.from, to: range.to })
-        .insertContent(previewContent)
-        .run();
       reset();
       return;
     }

@@ -6,6 +6,8 @@ import {
   Placeholder,
   EntityMark,
   AIGeneratedMark,
+  ExecutionMarker,
+  AppliedHighlight,
   LinterDecoration,
   StyleDecoration,
   PasteHandler,
@@ -55,6 +57,7 @@ import {
 import { SceneListBlock } from "../editor/SceneListBlock";
 import { ProjectGraphView } from "../project-graph";
 import { ProjectStartCanvas } from "../projects";
+import { ArtifactsView } from "../artifacts/ArtifactsView";
 
 /**
  * Placeholder content shown when no document is selected
@@ -84,6 +87,10 @@ export function Canvas({
   }
 
   // Render Project Graph if that view is selected
+  if (canvasView === "artifacts") {
+    return <ArtifactsView />;
+  }
+
   if (canvasView === "projectGraph") {
     return <ProjectGraphView />;
   }
@@ -426,6 +433,8 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       }),
       EntityMark,
       AIGeneratedMark,
+      ExecutionMarker,
+      AppliedHighlight,
       LinterDecoration,
       StyleDecoration.configure({
         onIssueSelect: (issueId) => setSelectedStyleIssueId(issueId),
@@ -590,6 +599,12 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       }
     },
   });
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const projectId = currentProject?.id ?? null;
+    editor.commands.setExecutionMarkerProjectId(projectId);
+  }, [editor, currentProject?.id]);
 
   // Store editor instance in Zustand for cross-component access (Console, etc.)
   useEffect(() => {

@@ -98,7 +98,7 @@ interface LinterState {
 export type ConsoleTab = "chat" | "search" | "linter" | "activity" | "dynamics" | "coach" | "history" | "knowledge";
 
 // Canvas view type for switching between editor and project graph
-export type CanvasView = "editor" | "projectGraph";
+export type CanvasView = "editor" | "projectGraph" | "artifacts";
 
 // Chat mode type for floating vs docked AI chat panel
 export type ChatMode = "docked" | "floating";

@@ -221,6 +221,30 @@
 }
 
 /* =============================================================================
+   Widget Applied Highlight
+   Brief inline highlight for widget insertions
+   ============================================================================= */
+
+.widget-applied-highlight {
+  border-radius: 2px;
+  background-color: rgba(35, 131, 226, 0.22);
+  box-shadow: inset 0 -1px 0 rgba(35, 131, 226, 0.35);
+  animation: widget-applied-highlight-fade 3.2s ease-out forwards;
+}
+
+@keyframes widget-applied-highlight-fade {
+  0% {
+    background-color: rgba(35, 131, 226, 0.22);
+  }
+  70% {
+    background-color: rgba(35, 131, 226, 0.1);
+  }
+  100% {
+    background-color: rgba(35, 131, 226, 0.0);
+  }
+}
+
+/* =============================================================================
    Clarity Issue Decorations
    Visual underlines for clarity check issues
    ============================================================================= */

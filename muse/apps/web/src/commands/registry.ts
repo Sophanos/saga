@@ -16,7 +16,7 @@ export interface CommandContext {
   openModal: (modal: ModalState) => void;
   closeModal: () => void;
   setActiveTab: (tab: string) => void;
-  setCanvasView: (view: "editor" | "projectGraph") => void;
+  setCanvasView: (view: "editor" | "projectGraph" | "artifacts") => void;
 }
 
 // Command definition

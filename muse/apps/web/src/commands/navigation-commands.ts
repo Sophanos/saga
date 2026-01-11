@@ -5,6 +5,7 @@ import {
   Network,
   PanelLeft,
   PanelRight,
+  Archive,
 } from "lucide-react";
 import type { Command } from "./registry";
 import { useCommandPaletteStore } from "../stores/commandPalette";
@@ -50,6 +51,18 @@ export const navigationCommands: Command[] = [
     when: (ctx) => ctx.state.project.currentProject !== null,
     execute: (ctx) => {
       ctx.setCanvasView("projectGraph");
+    },
+  },
+  {
+    id: "nav.artifacts",
+    label: "Open Artifacts",
+    description: "Browse generated artifacts and receipts",
+    icon: Archive,
+    category: "navigation",
+    keywords: ["artifacts", "widgets", "receipts", "deliverables"],
+    when: (ctx) => ctx.state.project.currentProject !== null,
+    execute: (ctx) => {
+      ctx.setCanvasView("artifacts");
     },
   },
   {

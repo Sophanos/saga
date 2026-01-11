@@ -1,5 +1,7 @@
 export { EntityMark, type EntityMarkOptions } from "./entity-mark";
 export { AIGeneratedMark, type AIGeneratedMarkOptions } from "./ai-generated-mark";
+export { ExecutionMarker, type ExecutionMarkerOptions } from "./execution-marker";
+export { AppliedHighlight } from "./applied-highlight";
 export {
   EntitySuggestion,
   type EntitySuggestionOptions,

@@ -6,7 +6,9 @@ import type {
   WidgetInvokeRequest,
   WidgetType,
 } from "@mythos/agent-protocol";
+import type { Editor } from "@mythos/editor";
 import { sendWidgetRunStreaming } from "../services/ai/widgetClient";
+import { applyInlineWidget } from "../lib/widgets/applyInlineWidget";
 
 interface WidgetExecutionState {
   status: WidgetExecutionStatus;
@@ -30,6 +32,7 @@ interface WidgetExecutionActions {
   setTitle: (title: string) => void;
   reset: () => void;
   cancel: () => void;
+  confirmInlineApply: (editor: Editor | null) => { applied: boolean; error?: string };
 }
 
 const initialState: WidgetExecutionState = {
@@ -155,6 +158,41 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
       set((state) => {
         Object.assign(state, initialState);
       });
+    },
+
+    confirmInlineApply: (editor) => {
+      const { previewContent, selection, currentWidgetId, projectId, executionId } = get();
+      if (!editor || editor.isDestroyed) {
+        return { applied: false, error: "Editor is not available" };
+      }
+      if (!previewContent) {
+        return { applied: false, error: "No preview content to apply" };
+      }
+      if (!currentWidgetId) {
+        return { applied: false, error: "Widget is not set" };
+      }
+      if (!projectId) {
+        return { applied: false, error: "Project is not set" };
+      }
+      if (!executionId) {
+        return { applied: false, error: "Execution is not ready" };
+      }
+
+      const range = selection ?? {
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+      };
+
+      applyInlineWidget({
+        editor,
+        executionId,
+        widgetId: currentWidgetId,
+        projectId,
+        range,
+        content: previewContent,
+      });
+
+      return { applied: true };
     },
   }))
 );
