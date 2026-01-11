@@ -17,6 +17,7 @@ import {
   useCurrentProject,
   useDocuments,
   useProjectStore,
+  useFlowEnabled,
 } from '@mythos/state';
 
 // Lazy load editor only on web
@@ -65,6 +66,9 @@ export default function EditorScreen(): JSX.Element {
       }
     : null;
 
+  // Flow mode (distraction-free writing)
+  const flowEnabled = useFlowEnabled();
+
   // Hide quick actions when AI panel is visible (side or floating mode)
   const hideQuickActions = aiPanelMode === 'side' || aiPanelMode === 'floating';
   const collaborationProjectId = queryProjectId ?? project?.id ?? null;
@@ -107,18 +111,20 @@ export default function EditorScreen(): JSX.Element {
         </View>
       }>
         <View style={styles.webContainer}>
-          <Pressable
-            testID="editor-open-project-graph"
-            onPress={() => router.push('/project-graph')}
-            style={({ pressed, hovered }) => [
-              styles.graphButton,
-              {
-                backgroundColor: pressed || hovered ? colors.accent + 'CC' : colors.accent,
-              },
-            ]}
-          >
-            <Text style={styles.graphButtonText}>Open Project Graph</Text>
-          </Pressable>
+          {!flowEnabled && (
+            <Pressable
+              testID="editor-open-project-graph"
+              onPress={() => router.push('/project-graph')}
+              style={({ pressed, hovered }) => [
+                styles.graphButton,
+                {
+                  backgroundColor: pressed || hovered ? colors.accent + 'CC' : colors.accent,
+                },
+              ]}
+            >
+              <Text style={styles.graphButtonText}>Open Project Graph</Text>
+            </Pressable>
+          )}
           <div style={{
             height: '100%',
             width: '100%',
@@ -127,6 +133,7 @@ export default function EditorScreen(): JSX.Element {
             <LazyEditorShell
               hideQuickActions={hideQuickActions}
               sidebarCollapsed={sidebarCollapsed}
+              minimalMode={flowEnabled}
               collaboration={
                 collaborationProjectId && activeDocumentId && collaborationUser
                   ? {

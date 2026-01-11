@@ -56,6 +56,8 @@ export interface EditorShellProps {
   pendingWriteContent?: PendingWriteContentProp | null;
   /** Callback when pending write_content is applied */
   onWriteContentApplied?: (result: WriteContentApplyResult) => void;
+  /** When true, hides TabBar and PageHeader for distraction-free editing (flow mode) */
+  minimalMode?: boolean;
 }
 
 const CSS_TOKENS = `
@@ -244,6 +246,7 @@ export function EditorShell({
   collaboration,
   pendingWriteContent,
   onWriteContentApplied,
+  minimalMode = false,
 }: EditorShellProps) {
   useEffect(() => {
     const styleId = 'editor-webview-tokens';
@@ -503,64 +506,70 @@ export function EditorShell({
           {autosaveError}
         </span>
       )}
-      <TabBar
-        tabs={tabs}
-        activeTabId={activeDocId}
-        onTabSelect={handleTabSelect}
-        onTabClose={handleTabClose}
-        onNewTab={handleNewTab}
-        onNavigateBack={handleNavigateBack}
-        onNavigateForward={handleNavigateForward}
-        canGoBack={historyIndex > 0}
-        canGoForward={historyIndex < navHistory.length - 1}
-        sidebarCollapsed={sidebarCollapsed}
-      />
+      {!minimalMode && (
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeDocId}
+          onTabSelect={handleTabSelect}
+          onTabClose={handleTabClose}
+          onNewTab={handleNewTab}
+          onNavigateBack={handleNavigateBack}
+          onNavigateForward={handleNavigateForward}
+          canGoBack={historyIndex > 0}
+          canGoForward={historyIndex < navHistory.length - 1}
+          sidebarCollapsed={sidebarCollapsed}
+        />
+      )}
 
-      <PageHeader
-        title={activeDoc?.title || 'Untitled'}
-        onTitleChange={handleTitleChange}
-        privacyLevel={privacyLevel}
-        onPrivacyChange={setPrivacyLevel}
-        isFavorite={isFavorite}
-        onToggleFavorite={() => setIsFavorite(!isFavorite)}
-        onShare={onShare}
-        onMoreClick={() => setShowMoreMenu(!showMoreMenu)}
-        showMoreMenu={showMoreMenu}
-      />
+      {!minimalMode && (
+        <PageHeader
+          title={activeDoc?.title || 'Untitled'}
+          onTitleChange={handleTitleChange}
+          privacyLevel={privacyLevel}
+          onPrivacyChange={setPrivacyLevel}
+          isFavorite={isFavorite}
+          onToggleFavorite={() => setIsFavorite(!isFavorite)}
+          onShare={onShare}
+          onMoreClick={() => setShowMoreMenu(!showMoreMenu)}
+          showMoreMenu={showMoreMenu}
+        />
+      )}
 
-      <MoreMenu
-        isOpen={showMoreMenu}
-        onClose={() => setShowMoreMenu(false)}
-        fontStyle={fontStyle}
-        onFontStyleChange={setFontStyle}
-        isOffline={isOffline}
-        onToggleOffline={() => setIsOffline(!isOffline)}
-        isSmallText={isSmallText}
-        onToggleSmallText={() => setIsSmallText(!isSmallText)}
-        isFullWidth={isFullWidth}
-        onToggleFullWidth={() => setIsFullWidth(!isFullWidth)}
-        isLocked={isLocked}
-        onToggleLocked={() => setIsLocked(!isLocked)}
-        onCopyLink={() => navigator.clipboard.writeText(window.location.href)}
-        onDuplicate={() => {
-          if (activeDoc) {
-            const newId = `doc-${Date.now()}`;
-            const newDoc: DocumentState = {
-              id: newId,
-              title: `${activeDoc.title} (copy)`,
-              content: activeDoc.content,
-              isDirty: true,
-            };
-            setDocuments((prev) => [...prev, newDoc]);
-            navigateTo(newId);
-          }
-        }}
-        onUndo={() => {}}
-        onVersionHistory={() => {
-          setShowMoreMenu(false);
-          onVersionHistory?.();
-        }}
-      />
+      {!minimalMode && (
+        <MoreMenu
+          isOpen={showMoreMenu}
+          onClose={() => setShowMoreMenu(false)}
+          fontStyle={fontStyle}
+          onFontStyleChange={setFontStyle}
+          isOffline={isOffline}
+          onToggleOffline={() => setIsOffline(!isOffline)}
+          isSmallText={isSmallText}
+          onToggleSmallText={() => setIsSmallText(!isSmallText)}
+          isFullWidth={isFullWidth}
+          onToggleFullWidth={() => setIsFullWidth(!isFullWidth)}
+          isLocked={isLocked}
+          onToggleLocked={() => setIsLocked(!isLocked)}
+          onCopyLink={() => navigator.clipboard.writeText(window.location.href)}
+          onDuplicate={() => {
+            if (activeDoc) {
+              const newId = `doc-${Date.now()}`;
+              const newDoc: DocumentState = {
+                id: newId,
+                title: `${activeDoc.title} (copy)`,
+                content: activeDoc.content,
+                isDirty: true,
+              };
+              setDocuments((prev) => [...prev, newDoc]);
+              navigateTo(newId);
+            }
+          }}
+          onUndo={() => {}}
+          onVersionHistory={() => {
+            setShowMoreMenu(false);
+            onVersionHistory?.();
+          }}
+        />
+      )}
 
       <main className="editor-shell-main">
         {/* Key forces remount on tab switch to reset Editor's internal state */}
