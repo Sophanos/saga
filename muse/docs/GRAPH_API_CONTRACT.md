@@ -11,6 +11,11 @@ This document is the source of truth for Project Graph writes and validation.
 - `projectTypeRegistry.getResolved(projectId) -> { entityTypes, relationshipTypes }`
 - Resolution merges project overrides with writer defaults (registry is authoritative for writes).
 
+### Registry Status
+
+- `projectTypeRegistry.getStatus(projectId) -> { locked, lockedAt, lockedByUserId, revision }`
+- `locked` defaults to `false` when unset.
+
 ### Registry Locking
 
 - `projectTypeRegistry.lock(projectId) -> { locked: true, revision }`
@@ -30,6 +35,46 @@ Registry errors:
 - `LOCK_FAILED_UNKNOWN_TYPES`
 - `INVALID_REGISTRY`
 
+`LOCK_FAILED_UNKNOWN_TYPES` includes a message listing the missing entity and/or relationship types.
+
+## Error Contract
+
+### Convex mutations (entities/relationships/registry)
+
+Errors are thrown with an explicit code prefix:
+
+```
+<CODE>: <message>
+```
+
+Example:
+
+```
+SCHEMA_VALIDATION_FAILED: properties must match schema
+```
+
+Clients should parse the prefix into a structured error code and treat the rest
+as a human-readable message.
+
+### Project Graph tool handlers
+
+Handlers in `muse/convex/ai/tools/worldGraphHandlers.ts` return:
+
+```ts
+{ success: true; message: string; entityId?: string; relationshipId?: string }
+```
+
+Or, on error:
+
+```ts
+{
+  success: false;
+  code: "INVALID_TYPE" | "SCHEMA_VALIDATION_FAILED" | "ACCESS_DENIED" | "NOT_FOUND" | "CONFLICT";
+  message: string;
+  details?: unknown;
+}
+```
+
 ## Entities
 
 ### API
@@ -44,6 +89,7 @@ Registry errors:
 For every entity create/update:
 1. `type` must exist in the resolved registry.
 2. `properties` must validate against the registry JSON Schema (if present).
+3. If no schema is defined for the type, any JSON object is allowed.
 
 Entity error codes:
 - `INVALID_TYPE`
@@ -64,6 +110,7 @@ Entity error codes:
 For every relationship create/update:
 1. `type` must exist in the resolved registry.
 2. `metadata` must validate against the registry JSON Schema (if present).
+3. If no schema is defined for the type, any JSON object is allowed.
 
 Relationship error codes:
 - `INVALID_TYPE`
@@ -113,23 +160,9 @@ Example (relationship schema):
 - JSON Schema validation is powered by Ajv.
 - Configuration is reject-only: no automatic normalization, no stripping, no default insertion.
 
-## World Graph Tool Error Payloads
-
-Handlers in `muse/convex/ai/tools/worldGraphHandlers.ts` return:
-
-```ts
-{ success: true; message: string; entityId?: string; relationshipId?: string }
-```
-
-Or, on error:
-
-```ts
-{ success: false; code: "INVALID_TYPE" | "SCHEMA_VALIDATION_FAILED" | "ACCESS_DENIED" | "NOT_FOUND" | "CONFLICT"; message: string; details?: unknown }
-```
-
 ## Approval Gating
 
-World graph tool approvals are driven by registry `riskLevel`:
+Project graph tool approvals are driven by registry `riskLevel`:
 - `low`: auto-execute, except identity changes that remain PR-gated.
 - `high`: create/update requires Knowledge PR.
 - `core`: always requires Knowledge PR.

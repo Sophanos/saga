@@ -2,10 +2,11 @@ import { useCallback, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import type { Entity } from "@mythos/core";
+import type { Entity, PropertyValue } from "@mythos/core";
 import { useMythosStore } from "../stores";
 import type { PersistenceResult } from "./usePersistence";
 import { embedTextViaEdge, deleteVectorsViaEdge, EmbeddingApiError } from "../services/ai";
+import { formatGraphErrorMessage } from "../utils";
 
 /**
  * Check if embeddings feature is enabled (Qdrant-only architecture)
@@ -70,6 +71,24 @@ export interface UseEntityPersistenceResult {
   error: string | null;
   /** Clear the current error */
   clearError: () => void;
+}
+
+function pickEntityMutationUpdates(updates: Partial<Entity>): {
+  name?: string;
+  aliases?: string[];
+  properties?: Record<string, PropertyValue>;
+  notes?: string;
+  portraitUrl?: string;
+} {
+  return {
+    ...(updates.name !== undefined ? { name: updates.name } : {}),
+    ...(updates.aliases !== undefined ? { aliases: updates.aliases } : {}),
+    ...(updates.properties !== undefined
+      ? { properties: updates.properties as Record<string, PropertyValue> }
+      : {}),
+    ...(updates.notes !== undefined ? { notes: updates.notes } : {}),
+    ...(updates.portraitUrl !== undefined ? { portraitUrl: updates.portraitUrl } : {}),
+  };
 }
 
 /**
@@ -161,22 +180,30 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
       setError(null);
 
       try {
+        const now = new Date();
         const result = await createEntityMutation({
           projectId: projectId as Id<"projects">,
           type: entity.type,
           name: entity.name,
           aliases: entity.aliases,
-          properties: entity.properties as Record<string, string | number | boolean>,
+          properties: entity.properties as Record<string, PropertyValue>,
           notes: (entity as unknown as Record<string, unknown>)["notes"] as string | undefined,
         });
 
         // Map Convex result to Entity type
-        const createdEntity: Entity = {
+        const createdEntity: Entity & { projectId?: string } = {
           id: result,
           type: entity.type,
           name: entity.name,
           aliases: entity.aliases || [],
           properties: entity.properties || {},
+          notes: entity.notes,
+          portraitUrl: entity.portraitUrl,
+          portraitAssetId: entity.portraitAssetId,
+          mentions: entity.mentions ?? [],
+          createdAt: now,
+          updatedAt: now,
+          projectId,
         };
 
         // Add to store
@@ -187,7 +214,7 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
 
         return { data: createdEntity };
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to create entity";
+        const message = formatGraphErrorMessage(err, "Failed to create entity");
         setError(message);
         return { error: message };
       } finally {
@@ -203,10 +230,11 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
       setError(null);
 
       try {
+        const now = new Date();
+        const mutationUpdates = pickEntityMutationUpdates(updates);
         await updateEntityMutation({
           id: entityId as Id<"entities">,
-          ...updates,
-          properties: updates.properties as Record<string, string | number | boolean> | undefined,
+          ...mutationUpdates,
         });
 
         // Get the updated entity from store and merge with updates
@@ -220,10 +248,11 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
         const updatedEntity: Entity = {
           ...existingEntity,
           ...updates,
+          updatedAt: now,
         };
 
         // Update store
-        updateEntityStore(entityId, updates);
+        updateEntityStore(entityId, { ...updates, updatedAt: now });
 
         // Generate embedding (fire-and-forget)
         const projectId = (updatedEntity as Entity & { projectId?: string }).projectId;
@@ -233,7 +262,7 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
 
         return { data: updatedEntity };
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to update entity";
+        const message = formatGraphErrorMessage(err, "Failed to update entity");
         setError(message);
         return { error: message };
       } finally {
@@ -261,7 +290,7 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
 
         return {};
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to delete entity";
+        const message = formatGraphErrorMessage(err, "Failed to delete entity");
         setError(message);
         return { error: message };
       } finally {

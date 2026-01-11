@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useMythosStore, useModal } from "../../stores";
 import { useEntityPersistence } from "../../hooks/useEntityPersistence";
 import { BillingSettings } from "../settings/BillingSettings";
@@ -23,7 +23,13 @@ export function ModalHost() {
   const addEntity = useMythosStore((s) => s.addEntity);
   const updateEntity = useMythosStore((s) => s.updateEntity);
 
-  const { createEntity, updateEntity: persistUpdateEntity } = useEntityPersistence();
+  const {
+    createEntity,
+    updateEntity: persistUpdateEntity,
+    isLoading: isEntitySaving,
+    error: entitySaveError,
+    clearError: clearEntityError,
+  } = useEntityPersistence();
 
   // Handle entity form save
   const handleEntitySave = useCallback(
@@ -31,6 +37,7 @@ export function ModalHost() {
       if (!project) return;
 
       const now = new Date();
+      clearEntityError();
 
       if (modal?.type === "entityForm") {
         if (modal.mode === "create") {
@@ -42,6 +49,9 @@ export function ModalHost() {
           if (result.data) {
             addEntity(result.data);
           }
+          if (result.error) {
+            return;
+          }
         } else if (modal.mode === "edit" && modal.entityId) {
           // Build partial updates using the factory
           const updates = getTypeSpecificUpdates(data);
@@ -51,13 +61,36 @@ export function ModalHost() {
           if (result.data) {
             updateEntity(modal.entityId, updates);
           }
+          if (result.error) {
+            return;
+          }
         }
       }
 
       closeModal();
     },
-    [modal, project, createEntity, persistUpdateEntity, addEntity, updateEntity, closeModal]
+    [
+      modal,
+      project,
+      createEntity,
+      persistUpdateEntity,
+      addEntity,
+      updateEntity,
+      closeModal,
+      clearEntityError,
+    ]
   );
+
+  const handleEntityClose = useCallback(() => {
+    clearEntityError();
+    closeModal();
+  }, [clearEntityError, closeModal]);
+
+  useEffect(() => {
+    if (modal?.type === "entityForm") {
+      clearEntityError();
+    }
+  }, [modal?.type, modal?.entityId, modal?.mode, clearEntityError]);
 
   // Get entity for edit mode
   const getEntityForEdit = useCallback((): Entity | undefined => {
@@ -89,7 +122,9 @@ export function ModalHost() {
           mode={modal.mode}
           entityType={modal.entityType}
           entity={getEntityForEdit()}
-          onClose={closeModal}
+          isSaving={isEntitySaving}
+          saveError={entitySaveError}
+          onClose={handleEntityClose}
           onSave={handleEntitySave}
         />
       );

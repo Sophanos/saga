@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { useQuery } from "convex/react";
 import {
   X,
   User,
@@ -11,6 +12,7 @@ import {
   Plus,
   Save,
   Loader2,
+  AlertCircle,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -38,6 +40,7 @@ import type {
   Faction,
   JungianArchetype,
   Trait,
+  PropertyValue,
 } from "@mythos/core";
 import {
   ENTITY_TYPE_CONFIG,
@@ -45,6 +48,7 @@ import {
   getEntityLabel,
   type EntityIconName,
 } from "@mythos/core";
+import { api } from "../../../../convex/_generated/api";
 import { executeNameGenerator } from "../../services/ai/sagaClient";
 import { useMythosStore } from "../../stores";
 import { useAuthStore } from "../../stores/auth";
@@ -61,6 +65,7 @@ interface EntityFormData {
   aliases: string[];
   type: EntityType;
   notes?: string;
+  properties?: Record<string, PropertyValue>;
   // Character fields
   archetype?: JungianArchetype;
   traits?: Trait[];
@@ -93,6 +98,8 @@ interface EntityFormModalProps {
   mode: FormMode;
   entityType?: EntityType;
   entity?: Entity;
+  isSaving?: boolean;
+  saveError?: string | null;
   onClose: () => void;
   onSave: (data: EntityFormData) => void;
 }
@@ -174,6 +181,88 @@ const TRAIT_TYPES: Trait["type"][] = ["strength", "weakness", "neutral", "shadow
 // ============================================================================
 // Helper Components
 // ============================================================================
+
+type JsonSchema = Record<string, unknown>;
+
+type JsonSchemaProperty = {
+  type?: string | string[];
+  title?: string;
+  description?: string;
+  enum?: unknown[];
+  items?: {
+    type?: string | string[];
+    enum?: unknown[];
+  };
+};
+
+type ObjectSchemaInfo = {
+  properties: Record<string, JsonSchemaProperty>;
+  required: string[];
+  additionalProperties?: boolean;
+};
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeSchemaType(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    const firstType = value.find((entry) => typeof entry === "string");
+    return typeof firstType === "string" ? firstType : undefined;
+  }
+  return undefined;
+}
+
+function humanizePropertyName(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getObjectSchemaInfo(schema: unknown): ObjectSchemaInfo | null {
+  if (!isPlainObject(schema)) return null;
+
+  const schemaType = normalizeSchemaType(schema["type"]);
+  const propertiesRaw = schema["properties"];
+  const properties = isPlainObject(propertiesRaw)
+    ? (propertiesRaw as Record<string, JsonSchemaProperty>)
+    : {};
+  const required = Array.isArray(schema["required"])
+    ? schema["required"].filter((key) => typeof key === "string")
+    : [];
+  const additionalProperties =
+    typeof schema["additionalProperties"] === "boolean"
+      ? schema["additionalProperties"]
+      : undefined;
+
+  if (schemaType && schemaType !== "object" && !propertiesRaw) {
+    return null;
+  }
+
+  return {
+    properties,
+    required,
+    additionalProperties,
+  };
+}
+
+function parseJsonValue(
+  raw: string
+): { ok: true; value: unknown } | { ok: false; message: string } {
+  if (!raw.trim()) {
+    return { ok: true, value: undefined };
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(raw) };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Invalid JSON value",
+    };
+  }
+}
 
 interface StringListFieldProps {
   label: string;
@@ -622,6 +711,7 @@ function getInitialFormData(mode: FormMode, entityType?: EntityType, entity?: En
       aliases: entity.aliases,
       type: entity.type,
       notes: entity.notes,
+      properties: entity.properties ?? {},
     };
 
     switch (entity.type) {
@@ -685,6 +775,7 @@ function getInitialFormData(mode: FormMode, entityType?: EntityType, entity?: En
     aliases: [],
     type: entityType || "character",
     notes: "",
+    properties: {},
     traits: [],
     goals: [],
     fears: [],
@@ -703,6 +794,8 @@ export function EntityFormModal({
   mode,
   entityType,
   entity,
+  isSaving = false,
+  saveError = null,
   onClose,
   onSave,
 }: EntityFormModalProps) {
@@ -710,21 +803,78 @@ export function EntityFormModal({
     getInitialFormData(mode, entityType, entity)
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [rawPropertiesJson, setRawPropertiesJson] = useState(() =>
+    JSON.stringify(
+      getInitialFormData(mode, entityType, entity).properties ?? {},
+      null,
+      2
+    )
+  );
+  const [isEditingRawProperties, setIsEditingRawProperties] = useState(false);
 
   // Name generation state
   const [isGeneratingNames, setIsGeneratingNames] = useState(false);
   const [generatedNames, setGeneratedNames] = useState<string[]>([]);
   const user = useAuthStore((state) => state.user);
   const currentProject = useMythosStore((state) => state.project.currentProject);
+  const projectId = currentProject?.id;
+  const registry = useQuery(
+    api.projectTypeRegistry.getResolved,
+    projectId ? { projectId } : "skip"
+  ) as { entityTypes?: Record<string, { schema?: JsonSchema }> } | undefined;
+
+  const schemaInfo = useMemo(() => {
+    const schema = registry?.entityTypes?.[formData.type]?.schema;
+    return getObjectSchemaInfo(schema);
+  }, [registry, formData.type]);
+
+  const schemaFields = useMemo(() => {
+    if (!schemaInfo) return [];
+    return Object.entries(schemaInfo.properties).map(([key, schema]) => ({
+      key,
+      schema,
+      required: schemaInfo.required.includes(key),
+    }));
+  }, [schemaInfo]);
+
+  const showSchemaFields = schemaFields.length > 0;
+  const allowRawProperties =
+    !schemaInfo || schemaInfo.additionalProperties !== false;
+  const schemaNeedsRawEditor = schemaFields.some((field) => {
+    const fieldType = normalizeSchemaType(field.schema.type);
+    const hasEnum = Array.isArray(field.schema.enum) && field.schema.enum.length > 0;
+    if (hasEnum) return false;
+    if (fieldType === "string" || fieldType === "number" || fieldType === "integer") {
+      return false;
+    }
+    if (fieldType === "boolean") return false;
+    if (fieldType === "array") {
+      const itemType = normalizeSchemaType(field.schema.items?.type);
+      return itemType !== "string" || Boolean(field.schema.items?.enum);
+    }
+    return fieldType !== undefined;
+  });
+  const showRawPropertiesEditor =
+    (!showSchemaFields && allowRawProperties) ||
+    schemaNeedsRawEditor ||
+    Boolean(schemaInfo?.additionalProperties);
 
   // Reset form when modal opens with different entity/mode
   useEffect(() => {
     if (isOpen) {
-      setFormData(getInitialFormData(mode, entityType, entity));
+      const initial = getInitialFormData(mode, entityType, entity);
+      setFormData(initial);
+      setRawPropertiesJson(JSON.stringify(initial.properties ?? {}, null, 2));
       setErrors({});
       setGeneratedNames([]);
+      setIsEditingRawProperties(false);
     }
   }, [isOpen, mode, entityType, entity]);
+
+  useEffect(() => {
+    if (!isOpen || isEditingRawProperties) return;
+    setRawPropertiesJson(JSON.stringify(formData.properties ?? {}, null, 2));
+  }, [formData.properties, isEditingRawProperties, isOpen]);
 
   // Generate names using AI
   const handleGenerateNames = useCallback(async () => {
@@ -779,6 +929,258 @@ export function EntityFormModal({
     });
   }, []);
 
+  const updatePropertyValue = useCallback(
+    (key: string, value: PropertyValue | undefined) => {
+      setFormData((prev) => {
+        const nextProperties = { ...(prev.properties ?? {}) };
+        if (value === undefined) {
+          delete nextProperties[key];
+        } else {
+          nextProperties[key] = value;
+        }
+        return { ...prev, properties: nextProperties };
+      });
+
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[`properties.${key}`];
+        delete next["properties"];
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleRawPropertiesChange = useCallback(
+    (value: string) => {
+      setRawPropertiesJson(value);
+      const parsed = parseJsonValue(value);
+      if (!parsed.ok) {
+        setErrors((prev) => ({
+          ...prev,
+          properties: parsed.message,
+        }));
+        return;
+      }
+
+      setErrors((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((key) => {
+          if (key === "properties" || key.startsWith("properties.")) {
+            delete next[key];
+          }
+        });
+        return next;
+      });
+
+      if (parsed.value === undefined) {
+        updateFormData({ properties: {} });
+        return;
+      }
+
+      if (!isPlainObject(parsed.value)) {
+        setErrors((prev) => ({
+          ...prev,
+          properties: "Properties must be a JSON object.",
+        }));
+        return;
+      }
+
+      updateFormData({ properties: parsed.value as Record<string, PropertyValue> });
+    },
+    [updateFormData]
+  );
+
+  const renderSchemaField = useCallback(
+    (field: { key: string; schema: JsonSchemaProperty; required: boolean }) => {
+      const value = formData.properties?.[field.key];
+      const label = field.schema.title ?? humanizePropertyName(field.key);
+      const description =
+        typeof field.schema.description === "string" ? field.schema.description : null;
+      const errorKey = `properties.${field.key}`;
+      const errorMessage = errors[errorKey];
+      const enumValues = Array.isArray(field.schema.enum) ? field.schema.enum : null;
+
+      if (enumValues && enumValues.length > 0) {
+        const selectedValue = enumValues.find(
+          (entry) => String(entry) === String(value)
+        );
+        return (
+          <FormField
+            key={field.key}
+            label={label}
+            required={field.required}
+            error={errorMessage}
+          >
+            <Select
+              value={selectedValue !== undefined ? String(selectedValue) : ""}
+              onChange={(next) => {
+                const matched = enumValues.find(
+                  (entry) => String(entry) === String(next)
+                );
+                updatePropertyValue(
+                  field.key,
+                  matched as PropertyValue | undefined
+                );
+              }}
+              options={enumValues.map((entry) => ({
+                value: String(entry),
+                label: String(entry),
+              }))}
+            />
+            {description && (
+              <p className="text-xs text-mythos-text-muted mt-1">{description}</p>
+            )}
+          </FormField>
+        );
+      }
+
+      const schemaType = normalizeSchemaType(field.schema.type);
+
+      if (schemaType === "boolean") {
+        return (
+          <FormField
+            key={field.key}
+            label={label}
+            required={field.required}
+            error={errorMessage}
+          >
+            <Select
+              value={
+                value === true
+                  ? "true"
+                  : value === false
+                    ? "false"
+                    : ""
+              }
+              onChange={(next) => {
+                if (next === "true") {
+                  updatePropertyValue(field.key, true);
+                } else if (next === "false") {
+                  updatePropertyValue(field.key, false);
+                } else {
+                  updatePropertyValue(field.key, undefined);
+                }
+              }}
+              options={[
+                { value: "true", label: "True" },
+                { value: "false", label: "False" },
+              ]}
+            />
+            {description && (
+              <p className="text-xs text-mythos-text-muted mt-1">{description}</p>
+            )}
+          </FormField>
+        );
+      }
+
+      if (schemaType === "number" || schemaType === "integer") {
+        const numberValue = typeof value === "number" ? value : "";
+        return (
+          <FormField
+            key={field.key}
+            label={label}
+            required={field.required}
+            error={errorMessage}
+          >
+            <Input
+              type="number"
+              step={schemaType === "integer" ? 1 : "any"}
+              value={numberValue}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw.trim() === "") {
+                  updatePropertyValue(field.key, undefined);
+                  return;
+                }
+                const parsed = Number(raw);
+                if (Number.isNaN(parsed)) return;
+                updatePropertyValue(
+                  field.key,
+                  schemaType === "integer" ? Math.trunc(parsed) : parsed
+                );
+              }}
+            />
+            {description && (
+              <p className="text-xs text-mythos-text-muted mt-1">{description}</p>
+            )}
+          </FormField>
+        );
+      }
+
+      if (schemaType === "array") {
+        const itemType = normalizeSchemaType(field.schema.items?.type);
+        const itemEnum =
+          field.schema.items && Array.isArray(field.schema.items.enum)
+            ? field.schema.items.enum
+            : null;
+        if (itemType === "string" && !itemEnum) {
+          const listValue = Array.isArray(value)
+            ? value.filter((entry) => typeof entry === "string")
+            : [];
+          return (
+            <div key={field.key} className="space-y-1">
+              <StringListField
+                label={label}
+                values={listValue}
+                onChange={(next) => updatePropertyValue(field.key, next)}
+                placeholder={`Add ${label.toLowerCase()}...`}
+              />
+              {errorMessage && (
+                <p className="text-xs text-mythos-accent-red">{errorMessage}</p>
+              )}
+              {description && (
+                <p className="text-xs text-mythos-text-muted">{description}</p>
+              )}
+            </div>
+          );
+        }
+      }
+
+      if (!schemaType || schemaType === "string") {
+        return (
+          <FormField
+            key={field.key}
+            label={label}
+            required={field.required}
+            error={errorMessage}
+          >
+            <Input
+              value={typeof value === "string" ? value : ""}
+              onChange={(e) => updatePropertyValue(field.key, e.target.value)}
+            />
+            {description && (
+              <p className="text-xs text-mythos-text-muted mt-1">{description}</p>
+            )}
+          </FormField>
+        );
+      }
+
+      return (
+        <FormField
+          key={field.key}
+          label={label}
+          required={field.required}
+          error={errorMessage}
+        >
+          <TextArea
+            value={value === undefined ? "" : JSON.stringify(value, null, 2)}
+            onChange={(_value) => {}}
+            rows={2}
+            disabled
+          />
+          {description && (
+            <p className="text-xs text-mythos-text-muted mt-1">{description}</p>
+          )}
+          <p className="text-xs text-mythos-text-muted mt-1">
+            Unsupported schema type. Use the JSON editor below.
+          </p>
+        </FormField>
+      );
+    },
+    [errors, formData.properties, updatePropertyValue]
+  );
+
   const validate = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
 
@@ -790,9 +1192,45 @@ export function EntityFormModal({
       newErrors["category"] = "Category is required for items";
     }
 
+    if (schemaInfo) {
+      for (const requiredKey of schemaInfo.required) {
+        const value = formData.properties?.[requiredKey];
+        const isMissing =
+          value === undefined ||
+          value === null ||
+          value === "" ||
+          (Array.isArray(value) && value.length === 0);
+        if (isMissing) {
+          newErrors[`properties.${requiredKey}`] = "Required";
+        }
+      }
+    }
+
+    if (!showSchemaFields && !allowRawProperties) {
+      newErrors["properties"] =
+        "Schema does not allow additional properties for this type.";
+    } else if (showRawPropertiesEditor) {
+      const parsed = parseJsonValue(rawPropertiesJson);
+      if (!parsed.ok) {
+        newErrors["properties"] = parsed.message;
+      } else if (
+        parsed.value !== undefined &&
+        !isPlainObject(parsed.value)
+      ) {
+        newErrors["properties"] = "Properties must be a JSON object.";
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [formData]);
+  }, [
+    formData,
+    schemaInfo,
+    showSchemaFields,
+    allowRawProperties,
+    rawPropertiesJson,
+    showRawPropertiesEditor,
+  ]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -864,12 +1302,22 @@ export function EntityFormModal({
           <CardContent className="flex-1 overflow-hidden py-0">
             <ScrollArea className="h-full pr-4">
               <div className="space-y-6 pb-4">
+                {saveError && (
+                  <div className="flex items-center gap-2 p-3 rounded-md bg-mythos-accent-red/10 border border-mythos-accent-red/30 text-mythos-accent-red text-sm">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{saveError}</span>
+                  </div>
+                )}
+
                 {/* Entity Type Selector (only for create mode) */}
                 {mode === "create" && (
                   <FormField label="Entity Type" required>
                     <EntityTypeSelector
                       value={formData.type}
-                      onChange={(type) => updateFormData({ type })}
+                      onChange={(type) => {
+                        updateFormData({ type, properties: {} });
+                        setRawPropertiesJson("{}");
+                      }}
                     />
                   </FormField>
                 )}
@@ -962,17 +1410,58 @@ export function EntityFormModal({
                     <FactionFields data={formData} onChange={updateFormData} />
                   )}
                 </div>
+
+                {(showSchemaFields || showRawPropertiesEditor || !schemaInfo) && (
+                  <div className="border-t border-mythos-border-default pt-4">
+                    <h3 className="text-sm font-medium text-mythos-text-secondary mb-3">
+                      Custom Properties
+                    </h3>
+
+                    {!showSchemaFields && !showRawPropertiesEditor && (
+                      <p className="text-xs text-mythos-text-muted">
+                        This type does not allow additional properties.
+                      </p>
+                    )}
+
+                    {showSchemaFields && (
+                      <div className="space-y-4">
+                        {schemaFields.map((field) => renderSchemaField(field))}
+                      </div>
+                    )}
+
+                    {showRawPropertiesEditor && (
+                      <div className={cn("space-y-2", showSchemaFields ? "mt-4" : "")}>
+                        <FormField
+                          label={showSchemaFields ? "Advanced JSON" : "Properties (JSON)"}
+                          error={errors["properties"]}
+                        >
+                          <TextArea
+                            value={rawPropertiesJson}
+                            onChange={(value) => handleRawPropertiesChange(value)}
+                            onFocus={() => setIsEditingRawProperties(true)}
+                            onBlur={() => setIsEditingRawProperties(false)}
+                            rows={6}
+                            placeholder='{"key":"value"}'
+                          />
+                        </FormField>
+                        <p className="text-xs text-mythos-text-muted">
+                          Values must be a JSON object. Invalid JSON will be rejected on save.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </ScrollArea>
           </CardContent>
 
           <CardFooter className="flex justify-between gap-2 pt-4 flex-shrink-0 border-t border-mythos-border-default">
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
               Cancel
             </Button>
-            <Button type="submit" className="gap-1.5 min-w-[120px]">
-              <Save className="w-4 h-4" />
-              {mode === "create" ? "Create" : "Save Changes"}
+            <Button type="submit" className="gap-1.5 min-w-[120px]" disabled={isSaving}>
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {isSaving ? "Saving..." : mode === "create" ? "Create" : "Save Changes"}
             </Button>
           </CardFooter>
         </form>

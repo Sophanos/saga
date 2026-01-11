@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useMutation, useQuery } from "convex/react";
 import {
   X,
   User,
@@ -15,12 +16,15 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Button, Input, FormField, Select, ScrollArea, cn } from "@mythos/ui";
+import { api } from "../../../../convex/_generated/api";
+import { useMythosStore } from "../../stores";
 import { useAuthStore } from "../../stores/auth";
 import { updateProfile, signOut } from "../../hooks/useSupabaseAuthSync";
 import { useApiKey } from "../../hooks/useApiKey";
+import { formatGraphErrorMessage } from "../../utils";
 import type { NameCulture, NameStyle, LogicStrictness, SmartModeLevel, SmartModeConfig } from "@mythos/agent-protocol";
 
-type SettingsSection = "profile" | "personalization" | "api";
+type SettingsSection = "profile" | "personalization" | "api" | "project";
 
 const GENRE_OPTIONS = [
   { value: "", label: "No preference" },
@@ -83,6 +87,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
   const user = useAuthStore((state) => state.user);
   const updateUserProfile = useAuthStore((state) => state.updateUserProfile);
   const { key, saveKey, clearKey, hasKey } = useApiKey();
+  const project = useMythosStore((state) => state.project.currentProject);
 
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
 
@@ -116,6 +121,16 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
   const [apiKeyInput, setApiKeyInput] = useState(key);
   const [showKey, setShowKey] = useState(false);
   const [isKeySaved, setIsKeySaved] = useState(false);
+
+  const registryStatus = useQuery(
+    api.projectTypeRegistry.getStatus,
+    project ? { projectId: project.id } : "skip"
+  );
+  const lockRegistry = useMutation(api.projectTypeRegistry.lock);
+  const unlockRegistry = useMutation(api.projectTypeRegistry.unlock);
+  const [isRegistryUpdating, setIsRegistryUpdating] = useState(false);
+  const [registryAction, setRegistryAction] = useState<"lock" | "unlock" | null>(null);
+  const registryLocked = registryStatus?.locked ?? false;
 
   const resetFormState = useCallback(() => {
     if (user) {
@@ -256,6 +271,42 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
       setIsAutoSaving(false);
     }
   }, [user, buildNextPreferences, updateUserProfile]);
+
+  const handleLockRegistry = useCallback(async () => {
+    if (!project) return;
+    setIsRegistryUpdating(true);
+    setRegistryAction("lock");
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      await lockRegistry({ projectId: project.id });
+      setSuccessMessage("Registry locked");
+    } catch (err) {
+      setError(formatGraphErrorMessage(err, "Failed to lock registry"));
+    } finally {
+      setIsRegistryUpdating(false);
+      setRegistryAction(null);
+    }
+  }, [project, lockRegistry]);
+
+  const handleUnlockRegistry = useCallback(async () => {
+    if (!project) return;
+    setIsRegistryUpdating(true);
+    setRegistryAction("unlock");
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      await unlockRegistry({ projectId: project.id });
+      setSuccessMessage("Registry unlocked");
+    } catch (err) {
+      setError(formatGraphErrorMessage(err, "Failed to unlock registry"));
+    } finally {
+      setIsRegistryUpdating(false);
+      setRegistryAction(null);
+    }
+  }, [project, unlockRegistry]);
 
   const handleSignOut = useCallback(async () => {
     setIsSigningOut(true);
@@ -423,6 +474,23 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
               <Key className="w-4 h-4" />
               OpenRouter
             </button>
+
+            <div className="text-xs uppercase tracking-wide text-mythos-text-muted mt-6 mb-2">
+              Project
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveSection("project")}
+              className={cn(
+                "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors",
+                activeSection === "project"
+                  ? "bg-mythos-bg-secondary text-mythos-text-primary"
+                  : "text-mythos-text-secondary hover:bg-mythos-bg-secondary/60"
+              )}
+            >
+              <Key className="w-4 h-4" />
+              Registry
+            </button>
           </aside>
 
           <div className="flex-1 flex flex-col">
@@ -432,14 +500,18 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
                   ? "Account Settings"
                   : activeSection === "personalization"
                     ? "Personalization"
-                    : "OpenRouter Configuration"}
+                    : activeSection === "api"
+                      ? "OpenRouter Configuration"
+                      : "Project Registry"}
               </div>
               <div className="text-xs text-mythos-text-muted">
                 {activeSection === "profile"
                   ? "Manage your profile and security."
                   : activeSection === "personalization"
                     ? "Shape your writing style and AI behavior."
-                    : "Use your OpenRouter key to access models."}
+                    : activeSection === "api"
+                      ? "Use your OpenRouter key to access models."
+                      : "Lock and govern the project type registry."}
               </div>
             </header>
 
@@ -822,6 +894,85 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
                       Get an API key from OpenRouter
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
+                  </section>
+                </div>
+              )}
+
+              {activeSection === "project" && (
+                <div className="space-y-6">
+                  <section className="space-y-4">
+                    <div>
+                      <div className="text-sm font-medium text-mythos-text-primary">
+                        Project Type Registry
+                      </div>
+                      <p className="text-xs text-mythos-text-muted">
+                        Lock the registry to prevent schema changes without explicit review.
+                      </p>
+                    </div>
+
+                    {!project && (
+                      <div className="rounded-lg border border-mythos-border-default bg-mythos-bg-tertiary/40 p-3 text-xs text-mythos-text-muted">
+                        Select a project to manage registry lock state.
+                      </div>
+                    )}
+
+                    {project && (
+                      <div className="rounded-xl border border-mythos-border-default bg-mythos-bg-tertiary/40 p-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-medium text-mythos-text-primary">
+                            Registry Status
+                          </div>
+                          <span
+                            className={cn(
+                              "text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-full border",
+                              registryLocked
+                                ? "border-mythos-accent-red/40 text-mythos-accent-red bg-mythos-accent-red/10"
+                                : "border-mythos-accent-green/40 text-mythos-accent-green bg-mythos-accent-green/10"
+                            )}
+                          >
+                            {registryStatus ? (registryLocked ? "Locked" : "Unlocked") : "Loading"}
+                          </span>
+                        </div>
+
+                        {registryStatus && (
+                          <div className="text-xs text-mythos-text-muted">
+                            Revision {registryStatus.revision}
+                            {registryStatus.lockedAt
+                              ? ` • Locked ${new Date(registryStatus.lockedAt).toLocaleString()}`
+                              : ""}
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            onClick={handleLockRegistry}
+                            disabled={isRegistryUpdating || registryLocked}
+                            className="gap-1.5"
+                          >
+                            {registryAction === "lock" ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : null}
+                            Lock Registry
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={handleUnlockRegistry}
+                            disabled={isRegistryUpdating || !registryLocked}
+                            className="gap-1.5"
+                          >
+                            {registryAction === "unlock" ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : null}
+                            Unlock Registry
+                          </Button>
+                        </div>
+
+                        <p className="text-xs text-mythos-text-muted">
+                          Locking verifies all existing entities and relationships are covered by
+                          the registry.
+                        </p>
+                      </div>
+                    )}
                   </section>
                 </div>
               )}

@@ -19,12 +19,12 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 
 ### Recent Updates (2026-01-11)
 
-- Template-aware Project Graph defaults (`projectTemplates`) with writer/product/engineering/design/comms templates; registry resolution keyed by `project.templateId`.
-- Projects/documents now support `templateId`, `metadata`, and `settings`; org/team schema scaffolding added for enterprise access control.
+- AI-generated Project Graph templates (no standard template list); registry resolution keyed by `project.templateId`.
+- Projects/documents now support `templateId`, `metadata`, and `settings` (template IDs reference AI-generated templates); org/team schema scaffolding added for enterprise access control.
 - Project Graph approvals now driven by registry `riskLevel` + per-type identity fields (legacy writer fields still optional).
 - AI task routing expanded with `review`/`generation` plus product/engineering/design/comms task slugs; `coach`/`creative` aliased.
 - UI updates: registry lock/unlock controls added in settings; entity create/edit now supports schema-driven properties.
-- UI gaps: no template picker yet, no org/team management UI, no registry editor UI, and relationship metadata editor still missing schema-driven forms.
+- UI gaps: no AI template generation flow yet, no org/team management UI, no registry editor UI, and relationship metadata editor still missing schema-driven forms.
 
 ### Recent Updates (2026-01-10)
 
@@ -378,7 +378,7 @@ convex/
 │       ├── ragTools.ts              # search_context, get_entity
 │       ├── ragHandlers.ts           # RAG server handlers
 │       ├── worldGraphTools.ts       # Entity/relationship CRUD ✅ NEW
-│       ├── worldGraphHandlers.ts    # World graph handlers ✅ NEW
+│       ├── worldGraphHandlers.ts    # Project graph handlers ✅ NEW
 │       └── index.ts                 # Tool exports
 ├── lib/
 │   ├── qdrant.ts                    # REST client

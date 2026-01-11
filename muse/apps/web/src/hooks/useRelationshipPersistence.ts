@@ -1,16 +1,39 @@
 import { useCallback } from "react";
-import {
-  createRelationship as dbCreateRelationship,
-  updateRelationship as dbUpdateRelationship,
-  deleteRelationship as dbDeleteRelationship,
-  getRelationshipsByEntity as dbGetRelationshipsByEntity,
-  mapCoreRelationshipToDbInsert,
-  mapCoreRelationshipToDbFullUpdate,
-  mapDbRelationshipToRelationship,
-} from "@mythos/db";
+import { useConvex, useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import type { Relationship } from "@mythos/core";
 import { useMythosStore } from "../stores";
 import { usePersistenceState, type PersistenceResult } from "./usePersistence";
+import { formatGraphErrorMessage } from "../utils";
+
+type ConvexRelationship = {
+  _id: Id<"relationships">;
+  sourceId: Id<"entities">;
+  targetId: Id<"entities">;
+  type: string;
+  bidirectional: boolean;
+  strength?: number | null;
+  metadata?: Record<string, unknown> | null;
+  notes?: string | null;
+  createdAt: number;
+};
+
+function mapConvexRelationshipToRelationship(
+  relationship: ConvexRelationship
+): Relationship {
+  return {
+    id: relationship._id,
+    sourceId: relationship.sourceId,
+    targetId: relationship.targetId,
+    type: relationship.type as Relationship["type"],
+    bidirectional: relationship.bidirectional,
+    strength: relationship.strength ?? undefined,
+    metadata: relationship.metadata ?? undefined,
+    notes: relationship.notes ?? undefined,
+    createdAt: new Date(relationship.createdAt),
+  };
+}
 
 /**
  * Return type for the useRelationshipPersistence hook
@@ -72,6 +95,11 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
   const { isLoading, error, clearError, wrapOperation } =
     usePersistenceState("Relationship");
 
+  const convex = useConvex();
+  const createRelationshipMutation = useMutation(api.relationships.create);
+  const updateRelationshipMutation = useMutation(api.relationships.update);
+  const deleteRelationshipMutation = useMutation(api.relationships.remove);
+
   // Store state and actions
   const relationships = useMythosStore((state) => state.world.relationships);
   const addRelationshipToStore = useMythosStore(
@@ -93,21 +121,41 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
       projectId: string
     ): Promise<PersistenceResult<Relationship>> =>
       wrapOperation(async () => {
-        // Map core relationship to DB insert format
-        const dbInsert = mapCoreRelationshipToDbInsert(relationship, projectId);
+        try {
+          const relationshipId = await createRelationshipMutation({
+            projectId: projectId as Id<"projects">,
+            sourceId: relationship.sourceId as Id<"entities">,
+            targetId: relationship.targetId as Id<"entities">,
+            type: relationship.type,
+            bidirectional: relationship.bidirectional ?? false,
+            strength: relationship.strength,
+            metadata: relationship.metadata,
+            notes: relationship.notes,
+          });
 
-        // Insert into database
-        const dbRelationship = await dbCreateRelationship(dbInsert);
+          const coreRelationship: Relationship = {
+            id: relationshipId,
+            sourceId: relationship.sourceId,
+            targetId: relationship.targetId,
+            type: relationship.type,
+            bidirectional: relationship.bidirectional ?? false,
+            strength: relationship.strength,
+            metadata: relationship.metadata,
+            notes: relationship.notes,
+            createdAt: new Date(),
+          };
 
-        // Map back to core relationship format
-        const coreRelationship = mapDbRelationshipToRelationship(dbRelationship);
+          // Add to store
+          addRelationshipToStore(coreRelationship);
 
-        // Add to store
-        addRelationshipToStore(coreRelationship);
-
-        return coreRelationship;
+          return coreRelationship;
+        } catch (err) {
+          throw new Error(
+            formatGraphErrorMessage(err, "Failed to create relationship")
+          );
+        }
       }, "Failed to create relationship"),
-    [addRelationshipToStore, wrapOperation]
+    [addRelationshipToStore, createRelationshipMutation, wrapOperation]
   );
 
   /**
@@ -122,38 +170,41 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
       updates: Partial<Relationship>
     ): Promise<PersistenceResult<Relationship>> =>
       wrapOperation(async () => {
-        // Get current relationship from store
-        const currentRelationship = relationships.find(
-          (r) => r.id === relationshipId
-        );
-        if (!currentRelationship) {
-          throw new Error(`Relationship ${relationshipId} not found in store`);
+        try {
+          // Get current relationship from store
+          const currentRelationship = relationships.find(
+            (r) => r.id === relationshipId
+          );
+          if (!currentRelationship) {
+            throw new Error(`Relationship ${relationshipId} not found in store`);
+          }
+
+          // Merge current relationship with updates to get complete state
+          const mergedRelationship: Relationship = {
+            ...currentRelationship,
+            ...updates,
+          };
+
+          await updateRelationshipMutation({
+            id: relationshipId as Id<"relationships">,
+            type: updates.type,
+            bidirectional: updates.bidirectional,
+            strength: updates.strength,
+            metadata: updates.metadata,
+            notes: updates.notes,
+          });
+
+          // Update in store
+          updateRelationshipInStore(relationshipId, mergedRelationship);
+
+          return mergedRelationship;
+        } catch (err) {
+          throw new Error(
+            formatGraphErrorMessage(err, "Failed to update relationship")
+          );
         }
-
-        // Merge current relationship with updates to get complete state
-        const mergedRelationship: Relationship = {
-          ...currentRelationship,
-          ...updates,
-        };
-
-        // Map complete relationship to DB update format
-        const dbUpdate = mapCoreRelationshipToDbFullUpdate(mergedRelationship);
-
-        // Update in database
-        const dbRelationship = await dbUpdateRelationship(
-          relationshipId,
-          dbUpdate
-        );
-
-        // Map back to core relationship format
-        const coreRelationship = mapDbRelationshipToRelationship(dbRelationship);
-
-        // Update in store
-        updateRelationshipInStore(relationshipId, coreRelationship);
-
-        return coreRelationship;
       }, "Failed to update relationship"),
-    [relationships, updateRelationshipInStore, wrapOperation]
+    [relationships, updateRelationshipInStore, updateRelationshipMutation, wrapOperation]
   );
 
   /**
@@ -162,13 +213,21 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
   const deleteRelationship = useCallback(
     (relationshipId: string): Promise<PersistenceResult<void>> =>
       wrapOperation(async () => {
-        // Delete from database
-        await dbDeleteRelationship(relationshipId);
+        try {
+          // Delete from database
+          await deleteRelationshipMutation({
+            id: relationshipId as Id<"relationships">,
+          });
 
-        // Remove from store
-        removeRelationshipFromStore(relationshipId);
+          // Remove from store
+          removeRelationshipFromStore(relationshipId);
+        } catch (err) {
+          throw new Error(
+            formatGraphErrorMessage(err, "Failed to delete relationship")
+          );
+        }
       }, "Failed to delete relationship"),
-    [removeRelationshipFromStore, wrapOperation]
+    [deleteRelationshipMutation, removeRelationshipFromStore, wrapOperation]
   );
 
   /**
@@ -177,20 +236,28 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
    */
   const fetchRelationshipsByEntity = useCallback(
     (
-      projectId: string,
+      _projectId: string,
       entityId: string
     ): Promise<PersistenceResult<Relationship[]>> =>
       wrapOperation(async () => {
-        // Fetch from database
-        const dbRelationships = await dbGetRelationshipsByEntity(
-          projectId,
-          entityId
-        );
+        const dbRelationships = await convex.query(api.relationships.getForEntity, {
+          entityId: entityId as Id<"entities">,
+        });
 
-        // Map to core relationship format
-        const coreRelationships = dbRelationships.map(
-          mapDbRelationshipToRelationship
-        );
+        const combined = [
+          ...(dbRelationships?.outgoing ?? []),
+          ...(dbRelationships?.incoming ?? []),
+        ];
+
+        const uniqueById = new Map<string, Relationship>();
+        for (const relationship of combined) {
+          const mapped = mapConvexRelationshipToRelationship(
+            relationship as ConvexRelationship
+          );
+          uniqueById.set(mapped.id, mapped);
+        }
+
+        const coreRelationships = Array.from(uniqueById.values());
 
         // Add each relationship to store (if not already present)
         coreRelationships.forEach((relationship) => {
@@ -202,7 +269,7 @@ export function useRelationshipPersistence(): UseRelationshipPersistenceResult {
 
         return coreRelationships;
       }, "Failed to fetch relationships by entity"),
-    [relationships, addRelationshipToStore, wrapOperation]
+    [convex, relationships, addRelationshipToStore, wrapOperation]
   );
 
   return {

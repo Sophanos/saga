@@ -33,6 +33,7 @@ export interface EntityBuildData {
   type: EntityType;
   aliases?: string[];
   notes?: string;
+  properties?: Record<string, PropertyValue>;
 
   // Character fields
   archetype?: JungianArchetype;
@@ -117,7 +118,7 @@ export function buildEntity(
     type: data.type,
     aliases: data.aliases ?? [],
     notes: data.notes,
-    properties: {},
+    properties: data.properties ?? {},
     createdAt,
     updatedAt,
     mentions: [],
@@ -219,6 +220,7 @@ export function getTypeSpecificUpdates(
     name: data.name,
     aliases: data.aliases,
     notes: data.notes,
+    properties: data.properties,
     updatedAt: new Date(),
   };
 

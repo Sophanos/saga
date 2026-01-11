@@ -1,6 +1,7 @@
 // Utility functions
 export { simpleHash } from "./hash";
 export { formatRelativeTime } from "./time";
+export { formatGraphErrorMessage, parseGraphErrorMessage } from "./graphErrors";
 
 // Entity configuration utilities
 export {
@@ -17,17 +18,3 @@ export {
   getEntityHexColor,
   type EntityIconName,
 } from "./entityConfig";
-
-// DB <-> Core type mappers (re-exported from @mythos/db)
-export {
-  mapDbProjectToProject,
-  mapDbDocumentToDocument,
-  mapDbEntityToEntity,
-  mapCoreEntityToDbInsert,
-  mapCoreEntityToDbUpdate,
-  type DbProject,
-  type DbDocument,
-  type DbEntity,
-  type DbEntityInsert,
-  type DbEntityUpdate,
-} from "@mythos/db";
