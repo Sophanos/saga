@@ -478,6 +478,13 @@ export function KnowledgeSuggestionDetails({
           <KeyValues title="New memory" values={toolArgs ?? {}} colors={colors} />
         ) : null}
 
+        {suggestion.normalizedPatch ? (
+          <View style={styles.block}>
+            <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Normalized patch</Text>
+            <Text style={[styles.code, { color: colors.text }]}>{JSON.stringify(suggestion.normalizedPatch, null, 2)}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.block}>
           <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Raw patch</Text>
           <Text style={[styles.code, { color: colors.text }]}>{JSON.stringify(suggestion.proposedPatch, null, 2)}</Text>

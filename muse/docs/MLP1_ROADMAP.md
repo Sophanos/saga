@@ -23,7 +23,8 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 - Projects/documents now support `templateId`, `metadata`, and `settings`; org/team schema scaffolding added for enterprise access control.
 - Project Graph approvals now driven by registry `riskLevel` + per-type identity fields (legacy writer fields still optional).
 - AI task routing expanded with `review`/`generation` plus product/engineering/design/comms task slugs; `coach`/`creative` aliased.
-- UI gaps: no template picker yet, no org/team management UI, no registry lock/unlock UI, and graph create/edit still missing schema-driven property editors.
+- UI updates: registry lock/unlock controls added in settings; entity create/edit now supports schema-driven properties.
+- UI gaps: no template picker yet, no org/team management UI, no registry editor UI, and relationship metadata editor still missing schema-driven forms.
 
 ### Recent Updates (2026-01-10)
 
@@ -44,7 +45,7 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 
 **Phase 1: Project Graph**
 - Project settings: type registry editor (`projectTypeRegistry`) for entity/relationship types, risk levels, and optional JSON schema.
-- Graph UI: generic node/edge create/edit that supports `type: string` + `properties`, with schema-driven forms when available.
+- Graph UI: generic node/edge create/edit that supports `type: string` + `properties`, with schema-driven forms when available. (Entity form done; relationship metadata editor pending.)
 - Approvals UX: surface risk level + approval requirement at the point of change.
 
 **Phase 2: Knowledge PRs**

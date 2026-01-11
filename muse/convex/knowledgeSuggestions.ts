@@ -130,6 +130,159 @@ function isUserRejection(
   if (toolName === "write_content" && resultRecord?.["applied"] === false) return true;
   return false;
 }
+
+type JsonPatchOperation = {
+  op: "add" | "remove" | "replace";
+  path: string;
+  value?: unknown;
+};
+
+function escapeJsonPointerSegment(segment: string): string {
+  return segment.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+function getRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function addPatchOperation(
+  ops: JsonPatchOperation[],
+  path: string,
+  value: unknown
+): void {
+  if (value === undefined) return;
+  ops.push({ op: "add", path, value });
+}
+
+function addPatchOperationsFromRecord(
+  ops: JsonPatchOperation[],
+  basePath: string,
+  record: Record<string, unknown>
+): void {
+  for (const [key, value] of Object.entries(record)) {
+    if (value === undefined) continue;
+    const path = `${basePath}/${escapeJsonPointerSegment(key)}`;
+    ops.push({ op: "add", path, value });
+  }
+}
+
+function buildNormalizedPatch(
+  toolName: string,
+  toolArgs: unknown
+): JsonPatchOperation[] | undefined {
+  const record = getRecord(toolArgs);
+  if (!record) return undefined;
+
+  const ops: JsonPatchOperation[] = [];
+
+  switch (toolName) {
+    case "create_entity": {
+      addPatchOperation(ops, "/type", record["type"]);
+      addPatchOperation(ops, "/name", record["name"]);
+      addPatchOperation(ops, "/aliases", record["aliases"]);
+      addPatchOperation(ops, "/notes", record["notes"]);
+      const propertyEntries = Object.entries(record).filter(
+        ([key, value]) =>
+          value !== undefined &&
+          key !== "type" &&
+          key !== "name" &&
+          key !== "aliases" &&
+          key !== "notes"
+      );
+      for (const [key, value] of propertyEntries) {
+        addPatchOperation(ops, `/properties/${escapeJsonPointerSegment(key)}`, value);
+      }
+      break;
+    }
+    case "update_entity": {
+      const updates = getRecord(record["updates"]);
+      if (!updates) return undefined;
+      addPatchOperation(ops, "/name", updates["name"]);
+      addPatchOperation(ops, "/aliases", updates["aliases"]);
+      addPatchOperation(ops, "/notes", updates["notes"]);
+      const propertyEntries = Object.entries(updates).filter(
+        ([key, value]) =>
+          value !== undefined && key !== "name" && key !== "aliases" && key !== "notes"
+      );
+      for (const [key, value] of propertyEntries) {
+        addPatchOperation(ops, `/properties/${escapeJsonPointerSegment(key)}`, value);
+      }
+      break;
+    }
+    case "create_node": {
+      addPatchOperation(ops, "/type", record["type"]);
+      addPatchOperation(ops, "/name", record["name"]);
+      addPatchOperation(ops, "/aliases", record["aliases"]);
+      addPatchOperation(ops, "/notes", record["notes"]);
+      const properties = getRecord(record["properties"]);
+      if (properties) {
+        addPatchOperationsFromRecord(ops, "/properties", properties);
+      }
+      break;
+    }
+    case "update_node": {
+      const updates = getRecord(record["updates"]);
+      if (!updates) return undefined;
+      addPatchOperation(ops, "/name", updates["name"]);
+      addPatchOperation(ops, "/aliases", updates["aliases"]);
+      addPatchOperation(ops, "/notes", updates["notes"]);
+      const properties = getRecord(updates["properties"]);
+      if (properties) {
+        addPatchOperationsFromRecord(ops, "/properties", properties);
+      }
+      break;
+    }
+    case "create_relationship":
+    case "create_edge": {
+      addPatchOperation(ops, "/type", record["type"]);
+      addPatchOperation(ops, "/notes", record["notes"]);
+      addPatchOperation(ops, "/strength", record["strength"]);
+      addPatchOperation(ops, "/bidirectional", record["bidirectional"]);
+      const metadata = getRecord(record["metadata"]);
+      if (metadata) {
+        addPatchOperationsFromRecord(ops, "/metadata", metadata);
+      }
+      break;
+    }
+    case "update_relationship":
+    case "update_edge": {
+      const updates = getRecord(record["updates"]);
+      if (!updates) return undefined;
+      addPatchOperation(ops, "/notes", updates["notes"]);
+      addPatchOperation(ops, "/strength", updates["strength"]);
+      addPatchOperation(ops, "/bidirectional", updates["bidirectional"]);
+      if (updates["metadata"] !== undefined) {
+        const metadata = getRecord(updates["metadata"]);
+        if (metadata) {
+          addPatchOperationsFromRecord(ops, "/metadata", metadata);
+        } else {
+          addPatchOperation(ops, "/metadata", updates["metadata"]);
+        }
+      }
+      break;
+    }
+    case "commit_decision": {
+      const decision = typeof record["decision"] === "string" ? record["decision"] : "";
+      const rationale = typeof record["rationale"] === "string" ? record["rationale"] : "";
+      const content = rationale ? `Decision: ${decision}\nRationale: ${rationale}` : decision;
+      if (content) {
+        addPatchOperation(ops, "/text", content);
+      }
+      addPatchOperation(ops, "/type", record["category"]);
+      addPatchOperation(ops, "/pinned", record["pinned"]);
+      addPatchOperation(ops, "/confidence", record["confidence"]);
+      addPatchOperation(ops, "/entityIds", record["entityIds"]);
+      addPatchOperation(ops, "/documentId", record["documentId"]);
+      break;
+    }
+    default:
+      return undefined;
+  }
+
+  return ops.length > 0 ? ops : undefined;
+}
+
 export const getInternal = internalQuery({
   args: {
     suggestionId: v.id("knowledgeSuggestions"),
@@ -173,13 +326,15 @@ export const upsertFromToolApprovalRequest = internalMutation({
 
     const now = Date.now();
     const { toolArgs, citations } = extractCitationsFromPatch(args.proposedPatch);
+    const normalizedPatch =
+      args.normalizedPatch ?? buildNormalizedPatch(args.toolName, toolArgs);
     const suggestionId = await ctx.db.insert("knowledgeSuggestions", {
       projectId: args.projectId,
       targetType: args.targetType,
       targetId: args.targetId,
       operation: args.operation,
       proposedPatch: toolArgs,
-      normalizedPatch: args.normalizedPatch,
+      normalizedPatch,
       status: "proposed",
       actorType: args.actorType,
       actorUserId: args.actorUserId,
