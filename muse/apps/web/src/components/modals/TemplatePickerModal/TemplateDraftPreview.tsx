@@ -28,7 +28,7 @@ function Section({
   title: string;
   icon: typeof Users;
   children: React.ReactNode;
-}) {
+}): JSX.Element {
   return (
     <div className="mb-4">
       <div className="flex items-center gap-2 mb-2">
@@ -48,9 +48,9 @@ export function TemplateDraftPreview({
   onAccept,
   onRefine,
   onCancel,
-}: TemplateDraftPreviewProps) {
+}: TemplateDraftPreviewProps): JSX.Element {
   return (
-    <div className="flex flex-col h-[60vh]">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="mb-4">
         <h3 className="text-lg font-medium text-mythos-text-primary">{draft.name}</h3>

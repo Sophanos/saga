@@ -1,20 +1,25 @@
-import { useState, useCallback, useRef, type KeyboardEvent } from "react";
+import { useState, useCallback, useRef, type KeyboardEvent, type RefObject } from "react";
 import { Send } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 
 interface TemplateBuilderInputProps {
   onSend: (message: string) => void;
   isStreaming: boolean;
+  placeholder?: string;
+  inputRef?: RefObject<HTMLTextAreaElement>;
   className?: string;
 }
 
 export function TemplateBuilderInput({
   onSend,
   isStreaming,
+  placeholder,
+  inputRef,
   className,
-}: TemplateBuilderInputProps) {
+}: TemplateBuilderInputProps): JSX.Element {
   const [input, setInput] = useState("");
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const localRef = useRef<HTMLTextAreaElement>(null);
+  const resolvedRef = inputRef ?? localRef;
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
@@ -37,11 +42,11 @@ export function TemplateBuilderInput({
     <div className={cn("px-3 py-2 border-t border-mythos-border-default", className)}>
       <div className="relative">
         <textarea
-          ref={inputRef}
+          ref={resolvedRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe your story idea..."
+          placeholder={placeholder ?? "Describe your project idea..."}
           disabled={isStreaming}
           rows={2}
           className={cn(

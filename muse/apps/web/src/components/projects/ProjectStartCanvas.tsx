@@ -9,6 +9,7 @@ import { CreateProjectForm } from "../modals/TemplatePickerModal/CreateProjectFo
 import { AITemplateBuilder } from "../modals/TemplatePickerModal/AITemplateBuilder";
 import { TemplateDraftPreview } from "../modals/TemplatePickerModal/TemplateDraftPreview";
 import { convertDraftToTemplate } from "../modals/TemplatePickerModal/utils/convertDraftToTemplate";
+import type { ProjectType } from "../modals/TemplatePickerModal/projectTypes";
 import {
   useRequestedProjectStartAction,
   useClearProjectStartAction,
@@ -34,6 +35,7 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
   const [creationMode, setCreationMode] = useState<"gardener" | "architect">("gardener");
   const [templateDraft, setTemplateDraft] = useState<TemplateDraft | null>(null);
   const [starterEntities, setStarterEntities] = useState<GenesisEntity[]>([]);
+  const [projectType, setProjectType] = useState<ProjectType | null>(null);
 
   const requestedAction = useRequestedProjectStartAction();
   const clearRequestedAction = useClearProjectStartAction();
@@ -60,11 +62,15 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
     setStep("create");
   }, []);
 
-  const handleAIBuilder = useCallback(() => {
+  const handleStartAI = useCallback(() => {
     setStep("ai-builder");
   }, []);
 
-  const handleTemplateGenerated = useCallback(
+  const handleSelectProjectType = useCallback((type: ProjectType) => {
+    setProjectType(type);
+  }, []);
+
+  const handleUseTemplate = useCallback(
     (draft: TemplateDraft, entities?: GenesisEntity[]) => {
       setTemplateDraft(draft);
       setStarterEntities(entities ?? []);
@@ -87,14 +93,14 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
     if (requestedAction === "start-blank") {
       handleStartBlank();
     } else if (requestedAction === "ai-builder") {
-      handleAIBuilder();
+      handleStartAI();
     }
 
     clearRequestedAction();
   }, [
     requestedAction,
     handleStartBlank,
-    handleAIBuilder,
+    handleStartAI,
     clearRequestedAction,
   ]);
 
@@ -146,14 +152,17 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
           <div className="p-4">
             {step === "start" && (
               <StartOptions
+                projectType={projectType}
+                onSelectProjectType={handleSelectProjectType}
+                onStartAI={handleStartAI}
                 onStartBlank={handleStartBlank}
-                onAIBuilder={handleAIBuilder}
               />
             )}
 
-            {step === "ai-builder" && (
+            {step === "ai-builder" && projectType && (
               <AITemplateBuilder
-                onTemplateGenerated={handleTemplateGenerated}
+                projectType={projectType}
+                onUseTemplate={handleUseTemplate}
                 onCancel={() => setStep("start")}
               />
             )}

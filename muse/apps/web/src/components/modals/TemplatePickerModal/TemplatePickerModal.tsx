@@ -7,10 +7,10 @@ import type { TemplateDraft, GenesisEntity } from "@mythos/agent-protocol";
 import { StartOptions } from "./StartOptions";
 import { CreateProjectForm } from "./CreateProjectForm";
 import { AITemplateBuilder } from "./AITemplateBuilder";
-import { TemplateDraftPreview } from "./TemplateDraftPreview";
 import { convertDraftToTemplate } from "./utils/convertDraftToTemplate";
+import type { ProjectType } from "./projectTypes";
 
-type Step = "start" | "ai-builder" | "preview" | "create";
+type Step = "start" | "ai-builder" | "create";
 
 export interface TemplatePickerModalProps {
   isOpen: boolean;
@@ -20,8 +20,7 @@ export interface TemplatePickerModalProps {
 
 const STEP_TITLES: Record<Step, string> = {
   start: "New Project",
-  "ai-builder": "Create with AI",
-  preview: "Review Template",
+  "ai-builder": "Template Builder",
   create: "Create Project",
 };
 
@@ -29,22 +28,20 @@ export function TemplatePickerModal({
   isOpen,
   onClose,
   onCreated,
-}: TemplatePickerModalProps) {
+}: TemplatePickerModalProps): JSX.Element | null {
   const [step, setStep] = useState<Step>("start");
+  const [projectType, setProjectType] = useState<ProjectType | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<ProjectTemplate | null>(null);
   const [creationMode, setCreationMode] = useState<"gardener" | "architect">("gardener");
-  const [templateDraft, setTemplateDraft] = useState<TemplateDraft | null>(null);
-  const [starterEntities, setStarterEntities] = useState<GenesisEntity[]>([]);
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Reset state when modal opens and focus the modal
   useEffect(() => {
     if (isOpen) {
       setStep("start");
+      setProjectType(null);
       setSelectedTemplate(null);
       setCreationMode("gardener");
-      setTemplateDraft(null);
-      setStarterEntities([]);
       // Focus the modal for keyboard handling
       modalRef.current?.focus();
     }
@@ -53,11 +50,9 @@ export function TemplatePickerModal({
   const handleBack = useCallback(() => {
     if (step === "ai-builder") {
       setStep("start");
-    } else if (step === "preview") {
-      setStep("ai-builder");
     } else if (step === "create") {
       if (selectedTemplate?.id?.startsWith("ai-")) {
-        setStep("preview");
+        setStep("ai-builder");
       } else {
         setStep("start");
       }
@@ -65,31 +60,26 @@ export function TemplatePickerModal({
   }, [step, selectedTemplate]);
 
   const handleStartBlank = useCallback(() => {
+    if (!projectType) return;
     setSelectedTemplate(BLANK_TEMPLATE);
     setCreationMode("gardener");
     setStep("create");
-  }, []);
+  }, [projectType]);
 
   const handleAIBuilder = useCallback(() => {
+    if (!projectType) return;
     setStep("ai-builder");
-  }, []);
+  }, [projectType]);
 
-  const handleTemplateGenerated = useCallback(
-    (draft: TemplateDraft, entities?: GenesisEntity[]) => {
-      setTemplateDraft(draft);
-      setStarterEntities(entities ?? []);
-      setStep("preview");
+  const handleUseTemplate = useCallback(
+    (draft: TemplateDraft, _entities?: GenesisEntity[]) => {
+      const generated = convertDraftToTemplate(draft);
+      setSelectedTemplate(generated);
+      setCreationMode("architect");
+      setStep("create");
     },
     []
   );
-
-  const handleAcceptTemplate = useCallback(() => {
-    if (!templateDraft) return;
-    const generated = convertDraftToTemplate(templateDraft);
-    setSelectedTemplate(generated);
-    setCreationMode("architect");
-    setStep("create");
-  }, [templateDraft]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -122,7 +112,7 @@ export function TemplatePickerModal({
       />
 
       {/* Modal */}
-      <Card className="relative z-10 w-full max-w-2xl mx-4 shadow-xl border-mythos-border-default max-h-[85vh] flex flex-col">
+      <Card className="relative z-10 w-full max-w-5xl mx-4 shadow-xl border-mythos-border-default max-h-[85vh] flex flex-col">
         <CardHeader className="pb-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -156,24 +146,17 @@ export function TemplatePickerModal({
         <CardContent className="pb-6 overflow-y-auto flex-1">
           {step === "start" && (
             <StartOptions
+              projectType={projectType}
+              onSelectProjectType={setProjectType}
+              onStartAI={handleAIBuilder}
               onStartBlank={handleStartBlank}
-              onAIBuilder={handleAIBuilder}
             />
           )}
 
-          {step === "ai-builder" && (
+          {step === "ai-builder" && projectType && (
             <AITemplateBuilder
-              onTemplateGenerated={handleTemplateGenerated}
-              onCancel={() => setStep("start")}
-            />
-          )}
-
-          {step === "preview" && templateDraft && (
-            <TemplateDraftPreview
-              draft={templateDraft}
-              starterEntities={starterEntities}
-              onAccept={handleAcceptTemplate}
-              onRefine={() => setStep("ai-builder")}
+              projectType={projectType}
+              onUseTemplate={handleUseTemplate}
               onCancel={() => setStep("start")}
             />
           )}
