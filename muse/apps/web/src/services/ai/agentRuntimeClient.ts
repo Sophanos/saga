@@ -214,9 +214,11 @@ export async function executeDetectEntities(
     throw new SagaApiError("analyze_content returned non-entities result", 500, "TOOL_EXECUTION_ERROR");
   }
 
+  const stats = result.stats as { warnings?: DetectEntitiesResult["warnings"] } | undefined;
+
   return {
     entities: result.entities ?? [],
-    warnings: result.stats?.warnings as DetectEntitiesResult["warnings"] | undefined,
+    warnings: stats?.warnings,
   };
 }
 
@@ -268,8 +270,11 @@ export async function executeClarityCheck(
     throw new SagaApiError("analyze_content returned non-clarity result", 500, "TOOL_EXECUTION_ERROR");
   }
 
+  const stats = result.stats as
+    | { readability?: ClarityCheckResult["metrics"]; rawIssues?: ClarityCheckResult["issues"] }
+    | undefined;
   const metrics =
-    (result.stats?.readability as ClarityCheckResult["metrics"] | undefined) ?? {
+    stats?.readability ?? {
       wordCount: 0,
       sentenceCount: 0,
       avgWordsPerSentence: 0,
@@ -279,7 +284,7 @@ export async function executeClarityCheck(
     };
 
   return {
-    issues: (result.stats?.rawIssues ?? []) as ClarityCheckResult["issues"],
+    issues: stats?.rawIssues ?? [],
     summary: result.summary,
     metrics,
   };
@@ -302,10 +307,14 @@ export async function executePolicyCheck(
     throw new SagaApiError("analyze_content returned non-policy result", 500, "TOOL_EXECUTION_ERROR");
   }
 
+  const stats = result.stats as
+    | { rawIssues?: PolicyCheckResult["issues"]; compliance?: PolicyCheckResult["compliance"] }
+    | undefined;
+
   return {
-    issues: (result.stats?.rawIssues ?? []) as PolicyCheckResult["issues"],
+    issues: stats?.rawIssues ?? [],
     summary: result.summary ?? "Policy check complete.",
-    compliance: result.stats?.compliance as PolicyCheckResult["compliance"],
+    compliance: stats?.compliance,
   };
 }
 
@@ -330,8 +339,10 @@ export async function executeCheckLogic(
     throw new SagaApiError("analyze_content returned non-logic result", 500, "TOOL_EXECUTION_ERROR");
   }
 
+  const stats = result.stats as { rawIssues?: CheckLogicResult["issues"] } | undefined;
+
   return {
-    issues: (result.stats?.rawIssues ?? []) as CheckLogicResult["issues"],
+    issues: stats?.rawIssues ?? [],
     summary: result.summary,
   };
 }

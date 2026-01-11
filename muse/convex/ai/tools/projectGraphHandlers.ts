@@ -390,6 +390,16 @@ type NormalizedGraphMutation = {
   kind: "entity" | "relationship";
 };
 
+function isToolFailure(result: ToolFailure | NormalizedGraphMutation): result is ToolFailure {
+  return "success" in result && result.success === false;
+}
+
+function isRelationshipMutation(
+  args: GraphMutationArgs
+): args is Extract<GraphMutationArgs, { target: "relationship" | "edge" }> {
+  return args.target === "relationship" || args.target === "edge";
+}
+
 function normalizeGraphMutationArgs(args: GraphMutationArgs): NormalizedGraphMutation | ToolFailure {
   if (args.action === "delete") {
     return fail("NOT_IMPLEMENTED", "Graph deletion is not available yet.");
@@ -433,6 +443,10 @@ function normalizeGraphMutationArgs(args: GraphMutationArgs): NormalizedGraphMut
             },
       kind: "entity",
     };
+  }
+
+  if (!isRelationshipMutation(args)) {
+    return fail("INVALID_TYPE", "Unsupported graph mutation target.");
   }
 
   if (args.action === "create") {
@@ -493,7 +507,7 @@ export const executeGraphMutation = internalAction({
     const args = toolArgs as GraphMutationArgs;
     const normalized = normalizeGraphMutationArgs(args);
 
-    if ("success" in normalized && normalized.success === false) {
+    if (isToolFailure(normalized)) {
       return normalized;
     }
 

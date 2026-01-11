@@ -36,12 +36,11 @@ export const analyzeContentExecutor: ToolDefinition<
   danger: "safe",
 
   renderSummary: (args) => {
-    const scope = args.scope ?? "document";
     const focus = args.options?.focus?.length
       ? ` (${args.options.focus.join(", ")})`
       : "";
     const label = MODE_LABELS[args.mode] ?? "Analyze";
-    return `${label} ${scope}${focus}`.trim();
+    return `${label}${focus}`.trim();
   },
 
   validate: (_args) => ({ valid: true }),
@@ -52,55 +51,14 @@ export const analyzeContentExecutor: ToolDefinition<
     }
 
     const textResult = resolveTextFromContext(
-      { text: args.text, scope: args.scope },
+      { text: args.text ?? ctx.getSelectionText?.(), scope: "document" },
       ctx,
       `${args.mode} analysis`
     );
     if (!textResult.success) {
       return { success: false, error: textResult.error };
     }
-
     const options = { ...args.options };
-
-    if (args.mode === "consistency" && !options.entities) {
-      options.entities = Array.from(ctx.entities.values()).map((e) => ({
-        id: e.id,
-        name: e.name,
-        type: e.type,
-        properties: e.properties,
-      }));
-    }
-
-    if (args.mode === "logic" && (!options.magicSystems || !options.characters)) {
-      if (!options.magicSystems) {
-        options.magicSystems = Array.from(ctx.entities.values())
-          .filter((e) => e.type === "magic_system")
-          .map((e) => {
-            const props = e.properties ?? {};
-            return {
-              id: e.id,
-              name: e.name,
-              rules: (props["rules"] as string[]) ?? [],
-              limitations: (props["limitations"] as string[]) ?? [],
-              costs: (props["costs"] as string[]) ?? [],
-            };
-          });
-      }
-
-      if (!options.characters) {
-        options.characters = Array.from(ctx.entities.values())
-          .filter((e) => e.type === "character")
-          .map((e) => {
-            const props = e.properties ?? {};
-            return {
-              id: e.id,
-              name: e.name,
-              powerLevel: (props["powerLevel"] as number) ?? undefined,
-              knowledge: (props["knowledge"] as string[]) ?? undefined,
-            };
-          });
-      }
-    }
 
     try {
       ctx.onProgress?.({ stage: "Analyzing...", pct: 20 });
@@ -109,7 +67,6 @@ export const analyzeContentExecutor: ToolDefinition<
         {
           mode: args.mode,
           text: textResult.text,
-          scope: args.scope,
           options,
         },
         { apiKey: ctx.apiKey, signal: ctx.signal, projectId: ctx.projectId }

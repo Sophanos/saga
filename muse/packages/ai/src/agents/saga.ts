@@ -956,6 +956,12 @@ const nameGeneratorParameters = z.object({
 
 export type NameGeneratorArgs = z.infer<typeof nameGeneratorParameters>;
 
+function isEntityGraphMutation(
+  args: GraphMutationArgs
+): args is Extract<GraphMutationArgs, { target: "entity" | "node" }> {
+  return args.target === "entity" || args.target === "node";
+}
+
 function describeGraphMutation(args: GraphMutationArgs): string {
   const targetLabel = args.target === "edge" ? "relationship" : args.target;
 
@@ -968,6 +974,10 @@ function describeGraphMutation(args: GraphMutationArgs): string {
       return `Proposed updating ${targetLabel}: ${relation}`;
     }
     return `Proposed deleting ${targetLabel}: ${relation}`;
+  }
+
+  if (!isEntityGraphMutation(args)) {
+    return `Proposed updating ${targetLabel}`;
   }
 
   const name = args.action === "create" ? args.name : args.entityName;

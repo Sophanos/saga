@@ -3,6 +3,7 @@
  */
 
 import type { GraphMutationArgs } from "@mythos/agent-protocol";
+import type { PropertyValue } from "@mythos/core";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 import { createEntityExecutor, type CreateEntityArgs } from "./createEntity";
 import { updateEntityExecutor, type UpdateEntityArgs } from "./updateEntity";
@@ -43,7 +44,7 @@ function resolveGraphMutationRoute(args: GraphMutationArgs): GraphMutationRoute 
           name: args.name,
           aliases: args.aliases,
           notes: args.notes,
-          properties: args.properties,
+          properties: args.properties as Record<string, PropertyValue> | undefined,
           archetype: args.archetype,
           backstory: args.backstory,
           goals: args.goals,
@@ -64,6 +65,10 @@ function resolveGraphMutationRoute(args: GraphMutationArgs): GraphMutationRoute 
     };
   }
 
+  if (args.target !== "relationship" && args.target !== "edge") {
+    return null;
+  }
+
   if (args.action === "create") {
     return {
       kind: "relationship",
@@ -76,7 +81,7 @@ function resolveGraphMutationRoute(args: GraphMutationArgs): GraphMutationRoute 
         bidirectional: args.bidirectional,
         strength: args.strength,
         notes: args.notes,
-        metadata: args.metadata,
+        metadata: args.metadata as Record<string, PropertyValue> | undefined,
       },
     };
   }
@@ -105,12 +110,14 @@ export const graphMutationExecutor: ToolDefinition<
 
   renderSummary: (args) => {
     const action = args.action;
-    const target = args.target;
-    if (target === "relationship" || target === "edge") {
-      return `${action} ${target}: ${args.sourceName} → ${args.type} → ${args.targetName}`;
+    if (args.target === "relationship" || args.target === "edge") {
+      return `${action} ${args.target}: ${args.sourceName} → ${args.type} → ${args.targetName}`;
     }
-    const name = "name" in args ? args.name : args.entityName;
-    return `${action} ${target}: ${name}`;
+    if (args.target === "entity" || args.target === "node") {
+      const name = args.action === "create" ? args.name : args.entityName;
+      return `${action} ${args.target}: ${name}`;
+    }
+    return `${action} ${args.target}`;
   },
 
   execute: async (args, ctx): Promise<ToolExecutionResult<GraphMutationExecutionResult>> => {

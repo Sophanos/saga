@@ -11,7 +11,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateEmbedding, isDeepInfraConfigured } from "../lib/embeddings";
 import { searchPoints, isQdrantConfigured, upsertPoints, type QdrantFilter } from "../lib/qdrant";
-import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
+import { fetchPinnedProjectMemories, formatMemoriesForPrompt, type DecisionCategory } from "./canon";
 import { CLARITY_CHECK_SYSTEM } from "./prompts/clarity";
 import { POLICY_CHECK_SYSTEM } from "./prompts/policy";
 import type {
@@ -445,6 +445,14 @@ async function executeCheckConsistency(input: {
   }>;
   stats: { total: number; bySeverity: Record<string, number> };
 }> {
+  type ConsistencyIssue = {
+    type: string;
+    severity: string;
+    description: string;
+    location?: string;
+    suggestion?: string;
+  };
+
   const focusAreas = input.focus?.length
     ? `Focus on: ${input.focus.join(", ")}`
     : "Check all consistency areas: timeline, character behavior, world rules, relationships";
@@ -474,11 +482,22 @@ Respond with JSON containing an "issues" array.`;
     maxTokens: 4096,
   });
 
-  const issues = parsed.issues || [];
+  const rawIssues = Array.isArray(parsed.issues) ? parsed.issues : [];
+  const issues: ConsistencyIssue[] = rawIssues.map((issue) => {
+    const record =
+      typeof issue === "object" && issue !== null ? (issue as Record<string, unknown>) : ({} as Record<string, unknown>);
+    const type = typeof record["type"] === "string" ? record["type"] : "consistency";
+    const severity = typeof record["severity"] === "string" ? record["severity"] : "warning";
+    const description = typeof record["description"] === "string" ? record["description"] : "";
+    const location = typeof record["location"] === "string" ? record["location"] : undefined;
+    const suggestion = typeof record["suggestion"] === "string" ? record["suggestion"] : undefined;
+    return { type, severity, description, location, suggestion };
+  });
 
   const bySeverity: Record<string, number> = {};
   for (const issue of issues) {
-    bySeverity[issue.severity] = (bySeverity[issue.severity] || 0) + 1;
+    const severity = issue.severity || "unknown";
+    bySeverity[severity] = (bySeverity[severity] || 0) + 1;
   }
 
   return { issues, stats: { total: issues.length, bySeverity } };
@@ -1567,7 +1586,7 @@ type PinnedPolicyContext = { text: string; count: number };
 
 async function getPinnedPoliciesForProject(
   projectId: string,
-  options?: { limit?: number; categories?: string[] }
+  options?: { limit?: number; categories?: DecisionCategory[] }
 ): Promise<PinnedPolicyContext | null> {
   try {
     const pinned = await fetchPinnedProjectMemories(projectId, {
