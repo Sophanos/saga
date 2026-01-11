@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-11 (web research tools; ask_question multi-tab UI; P0 blockers resolved)
+> Last Updated: 2026-01-11 (Flow Mode extensions; template builder enhancements; web research tools; ask_question multi-tab UI)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -34,6 +34,11 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Overall MLP 1 | In progress | 95 |
 
 ## Recent Updates (condensed)
+
+**2026-01-11 (night)**
+- Flow Mode: added FlowFocus extension (iA Writer-style sentence/paragraph dimming), TypewriterScroll extension, FlowTimerPanel with break reminders, EditorMetrics store for word count tracking.
+- Template Builder: enhanced with project type selection, PhaseIndicator for build phases, ProgressiveTemplatePreview for live preview, domain-specific questions per project type.
+- Website: removed deprecated `apps/website/` (landing page moved to `apps/web/src/pages/`).
 
 **2026-01-11 (late evening)**
 - Web Research: `web_search` + `web_extract` tools via Parallel Web SDK; auto-execute (no approval needed); agent can search web and extract full page content for research.
@@ -199,12 +204,12 @@ Goal: production-grade review surface where every PR is actionable, diffs are re
 - Priority order: Expo Web -> macOS (Tauri v2) -> iOS/iPad (Expo + WebView).
 
 **Landing Page Migration (Vite -> Expo Web)**
-1. Create `(marketing)/_layout.tsx` with minimal chrome.
-2. Port `LandingPage.tsx` to `(marketing)/index.tsx`.
+1. ✅ Create `(marketing)/_layout.tsx` with minimal chrome.
+2. ✅ Port `LandingPage.tsx` to `apps/web/src/pages/LandingPage.tsx`.
 3. Port pricing/docs routes.
 4. Update Tauri `devUrl` to Expo Web `:19006`.
 5. Update Tauri `frontendDist` to Expo export output.
-6. Delete `apps/website/` after verification; deprecate `apps/web/` routing.
+6. ✅ Deleted `apps/website/` (2026-01-11).
 
 ## Onboarding Flow (First Run)
 
@@ -270,11 +275,14 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 
 **Focus Mode (Flow)**
 - `muse/packages/state/src/flow.ts`
+- `muse/packages/state/src/editorMetrics.ts`
+- `muse/packages/editor-webview/src/extensions/flow-focus.ts`
+- `muse/packages/editor-webview/src/extensions/typewriter-scroll.ts`
+- `muse/packages/editor-webview/src/styles/flow.css`
 - `muse/apps/expo/src/components/flow/*`
 - `muse/apps/web/src/components/flow/*`
-- `muse/packages/ui/src/styles/globals.css`
+- `muse/convex/flowSessions.ts`
 - `muse/apps/web/src/hooks/useGlobalShortcuts.ts`
-- `muse/apps/expo/src/hooks/useKeyboardShortcuts.ts`
 
 **Platform shells**
 - `muse/apps/expo/`
