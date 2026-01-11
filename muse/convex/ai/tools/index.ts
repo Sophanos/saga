@@ -3,13 +3,7 @@
  */
 
 export { askQuestionTool, writeContentTool } from "./editorTools";
-export {
-  searchContextTool,
-  readDocumentTool,
-  searchChaptersTool,
-  searchWorldTool,
-  getEntityTool,
-} from "./ragTools";
+export { searchContextTool, readDocumentTool, getEntityTool } from "./ragTools";
 export {
   // Entity tools
   createEntityTool,

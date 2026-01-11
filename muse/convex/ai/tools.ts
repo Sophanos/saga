@@ -77,30 +77,6 @@ export const execute = internalAction({
       case "check_consistency":
         return executeCheckConsistency(input);
 
-      case "genesis_world":
-        return ctx.runAction((internal as any)["ai/genesis"].runGenesisLegacy, {
-          prompt: input.prompt,
-          genre: input.genre,
-          entityCount: input.entityCount,
-          detailLevel: input.detailLevel,
-        });
-
-      case "genesis_world_enhanced":
-        return ctx.runAction((internal as any)["ai/genesis"].runGenesis, {
-          prompt: input.prompt,
-          genre: input.genre,
-          entityCount: input.entityCount,
-          detailLevel: input.detailLevel,
-          includeOutline: input.includeOutline,
-        });
-
-      case "persist_genesis_world":
-        return ctx.runAction((internal as any)["ai/genesis"].persistGenesisWorld, {
-          projectId,
-          result: input.result,
-          skipEntityTypes: input.skipEntityTypes,
-        });
-
       case "project_manage":
         return executeProjectManage(ctx, input, projectId);
 
@@ -136,7 +112,7 @@ export const execute = internalAction({
 
       default:
         throw new Error(
-          `Unknown tool: ${toolName}. Supported tools: project_manage, detect_entities, check_consistency, genesis_world, genesis_world_enhanced, persist_genesis_world, generate_template, clarity_check, policy_check, name_generator, commit_decision, search_images, find_similar_images, check_logic, generate_content, analyze_image`
+          `Unknown tool: ${toolName}. Supported tools: project_manage, detect_entities, check_consistency, generate_template, clarity_check, policy_check, name_generator, commit_decision, search_images, find_similar_images, check_logic, generate_content, analyze_image`
         );
     }
   },

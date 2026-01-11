@@ -8,8 +8,6 @@ import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { retrieveRAGContext } from "../rag";
 import { fetchDocumentChunkContext } from "../ragChunkContext";
-import { searchPoints, type QdrantFilter } from "../../lib/qdrant";
-import { generateEmbedding, isDeepInfraConfigured } from "../../lib/embeddings";
 
 const DEFAULT_LIMIT = 5;
 const CHUNK_CONTEXT_BEFORE = 2;
@@ -120,85 +118,6 @@ export const executeReadDocument = internalAction({
       content: doc.contentText ?? "",
       wordCount: doc.wordCount,
     };
-  },
-});
-
-export const executeSearchChapters = internalAction({
-  args: {
-    projectId: v.string(),
-    query: v.string(),
-    type: v.optional(v.string()),
-  },
-  handler: async (_ctx, args) => {
-    const { projectId, query, type } = args;
-
-    if (!isDeepInfraConfigured()) {
-      return { error: "Embeddings not configured" };
-    }
-
-    const embedding = await generateEmbedding(query, { task: "embed_query" });
-
-    const filter: QdrantFilter = {
-      must: [
-        { key: "project_id", match: { value: projectId } },
-        { key: "type", match: { value: "document" } },
-      ],
-    };
-
-    if (type && type !== "all") {
-      filter.must!.push({ key: "document_type", match: { value: type } });
-    }
-
-    const results = await searchPoints(embedding, 10, filter);
-
-    return results.map((r) => ({
-      id: r.payload["document_id"] as string,
-      type: r.payload["document_type"] as string,
-      title: r.payload["title"] as string,
-      preview: (r.payload["preview"] as string) ?? (r.payload["text"] as string)?.slice(0, 200),
-      score: r.score,
-    }));
-  },
-});
-
-export const executeSearchWorld = internalAction({
-  args: {
-    projectId: v.string(),
-    query: v.string(),
-    category: v.optional(v.string()),
-  },
-  handler: async (_ctx, args) => {
-    const { projectId, query, category } = args;
-
-    if (!isDeepInfraConfigured()) {
-      return { error: "Embeddings not configured" };
-    }
-
-    const embedding = await generateEmbedding(query, { task: "embed_query" });
-
-    const worldTypes = ["location", "faction", "magic_system", "concept"];
-    const filter: QdrantFilter = {
-      must: [
-        { key: "project_id", match: { value: projectId } },
-        { key: "type", match: { value: "entity" } },
-      ],
-    };
-
-    if (category && category !== "all") {
-      filter.must!.push({ key: "entity_type", match: { value: category } });
-    } else {
-      filter.must!.push({ key: "entity_type", match: { any: worldTypes } });
-    }
-
-    const results = await searchPoints(embedding, 10, filter);
-
-    return results.map((r) => ({
-      id: r.payload["entity_id"] as string,
-      type: r.payload["entity_type"] as string,
-      name: r.payload["title"] as string,
-      preview: (r.payload["preview"] as string) ?? (r.payload["text"] as string)?.slice(0, 200),
-      score: r.score,
-    }));
   },
 });
 

@@ -20,13 +20,7 @@ import type {
 import { buildSystemPrompt, retrieveRAGContext, type RAGContext } from "./rag";
 import { askQuestionTool, writeContentTool } from "./tools/editorTools";
 import { commitDecisionTool } from "./tools/memoryTools";
-import {
-  searchContextTool,
-  readDocumentTool,
-  searchChaptersTool,
-  searchWorldTool,
-  getEntityTool,
-} from "./tools/ragTools";
+import { searchContextTool, readDocumentTool, getEntityTool } from "./tools/ragTools";
 import {
   createEntityTool,
   updateEntityTool,
@@ -250,8 +244,6 @@ function createSagaAgent() {
       commit_decision: commitDecisionTool,
       search_context: searchContextTool,
       read_document: readDocumentTool,
-      search_chapters: searchChaptersTool,
-      search_world: searchWorldTool,
       get_entity: getEntityTool,
       project_manage: projectManageTool,
       generate_template: generateTemplateTool,
@@ -285,8 +277,6 @@ export function setSagaTestScript(steps: SagaTestStreamStep[]) {
 const autoExecuteTools = new Set([
   "search_context",
   "read_document",
-  "search_chapters",
-  "search_world",
   "get_entity",
   "web_search",
   "web_extract",
@@ -985,18 +975,6 @@ async function executeRagTool(
       return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeReadDocument, {
         projectId,
         documentId: args["documentId"] as string,
-      });
-    case "search_chapters":
-      return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeSearchChapters, {
-        projectId,
-        query: args["query"] as string,
-        type: args["type"] as string | undefined,
-      });
-    case "search_world":
-      return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeSearchWorld, {
-        projectId,
-        query: args["query"] as string,
-        category: args["category"] as string | undefined,
       });
     case "get_entity":
       return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeGetEntity, {

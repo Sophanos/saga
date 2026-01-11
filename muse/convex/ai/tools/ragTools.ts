@@ -1,12 +1,15 @@
 /**
  * RAG Tools - Agent-invocable context retrieval
+ *
+ * Generic search tools that work across any project type.
+ * Use search_context with scope parameter instead of domain-specific tools.
  */
 
 import { tool } from "ai";
 import { z } from "zod";
 
 export const searchContextTool = tool({
-  description: "Search project documents, entities, and memories. Use when you need specific information about the story, characters, world, or past decisions.",
+  description: "Search project documents, entities, and memories. Use scope to filter by content type.",
   inputSchema: z.object({
     query: z.string().describe("What to search for"),
     scope: z.enum(["all", "documents", "entities", "memories"]).optional().describe("Limit search to specific content type"),
@@ -21,24 +24,8 @@ export const readDocumentTool = tool({
   }),
 });
 
-export const searchChaptersTool = tool({
-  description: "Search chapters and scenes in the manuscript by content or metadata.",
-  inputSchema: z.object({
-    query: z.string().describe("Search query"),
-    type: z.enum(["chapter", "scene", "note", "all"]).optional().describe("Filter by document type"),
-  }),
-});
-
-export const searchWorldTool = tool({
-  description: "Search worldbuilding content: locations, factions, magic systems, cultures.",
-  inputSchema: z.object({
-    query: z.string().describe("What to search for"),
-    category: z.enum(["location", "faction", "magic_system", "concept", "all"]).optional(),
-  }),
-});
-
 export const getEntityTool = tool({
-  description: "Get full details of a character, location, or other entity including relationships.",
+  description: "Get full details of an entity including relationships from the Project Graph.",
   inputSchema: z.object({
     entityId: z.string().describe("Entity ID"),
     includeRelationships: z.boolean().optional().describe("Include Project Graph connections"),

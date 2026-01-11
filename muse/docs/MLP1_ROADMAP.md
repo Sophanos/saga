@@ -195,42 +195,44 @@ Core deliverables:
 
 ## AI Tools Overview
 
-### Active Tools (Registered)
+### Active Tools (14 registered)
 
 | Category | Tool | Purpose | Approval |
 |----------|------|---------|----------|
 | **Human-in-the-Loop** | `ask_question` | Multi-tab question UI with rich options | User input |
 | | `write_content` | Propose content changes | User approval |
 | | `commit_decision` | Save decisions to memory | User approval |
-| **Internal Search (RAG)** | `search_context` | Search project docs/entities/memories | Auto |
-| | `read_document` | Read specific document | Auto |
-| | `search_chapters` | Search chapters | Auto |
-| | `search_world` | Search entities | Auto |
-| | `get_entity` | Get specific entity | Auto |
+| **Search (RAG)** | `search_context` | Search docs/entities/memories (use `scope` param) | Auto |
+| | `read_document` | Read full document content | Auto |
+| | `get_entity` | Get entity details + relationships | Auto |
 | **Web Research** | `web_search` | Search the internet (Parallel Web) | Auto |
 | | `web_extract` | Extract full page content from URL | Auto |
-| **Entity Management** | `create_entity` | Create character, location, item, etc. | Risk-based |
+| **Entity Management** | `create_entity` | Create typed entity | Risk-based |
 | | `update_entity` | Update entity properties | Risk-based |
 | | `create_relationship` | Connect entities | Risk-based |
 | | `update_relationship` | Modify relationship | Risk-based |
-| | `create_node` / `update_node` | Graph nodes | Risk-based |
-| | `create_edge` / `update_edge` | Graph edges | Risk-based |
-| **Project Setup** | `project_manage` | Bootstrap project (always template + seed:true/false for content) | User approval |
-| **Templates** | `generate_template` | Create template draft (used internally by `project_manage`) | User approval |
+| **Project Setup** | `project_manage` | Bootstrap project (template + seed flag) | User approval |
+| **Templates** | `generate_template` | Create template draft (internal) | User approval |
 
-### Planned Tools (Defined, Not Wired)
+### Removed Tools (Consolidated)
 
-| Tool | Purpose | Generalization Notes |
-|------|---------|---------------------|
-| `check_consistency` | Find contradictions in content | Works for any domain with structured data |
-| `detect_entities` | Extract entities from text | Already general - works for any content type |
-| `check_logic` | Validate against defined rules | Rename to `validate_constraints`? |
-| `clarity_check` | Analyze content quality | Rename to `analyze_quality`? |
-| `name_generator` | Generate contextual names | Keep for creative workflows |
-| `genesis_world` | World scaffold preview (no persistence) | Prefer `project_manage` (action: `bootstrap`) for setup |
-| `search_images` | Search project image assets | Ready to wire up |
-| `generate_image` | Generate images | Ready to wire up |
-| `delete_entity` / `delete_relationship` | Delete operations | Ready to wire up |
+| Tool | Replacement |
+|------|-------------|
+| `search_chapters` | `search_context({ scope: "documents" })` |
+| `search_world` | `search_context({ scope: "entities" })` |
+| `genesis_world` | `project_manage({ action: "bootstrap" })` |
+
+### Planned Tools (Not Wired)
+
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| `check_consistency` | Find contradictions | Works for any domain |
+| `detect_entities` | Extract entities from text | Already general |
+| `validate_rules` | Validate against rules | Renamed from `check_logic` |
+| `analyze_content` | Content quality analysis | Renamed from `clarity_check` |
+| `search_images` | Search image assets | Ready to wire |
+| `generate_image` | Generate images | Ready to wire |
+| `delete_entity` / `delete_relationship` | Delete operations | Ready to wire |
 
 ### Tool Implementation Paths
 
