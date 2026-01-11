@@ -306,6 +306,10 @@ function isHighRiskLevel(level: RiskLevel | undefined): boolean {
   return level === "high" || level === "core";
 }
 
+function getIdentityFields(def?: { approval?: { identityFields?: readonly string[] } }): readonly string[] {
+  return def?.approval?.identityFields ?? [];
+}
+
 async function resolveUniqueEntityTypeForUpdate(
   ctx: ActionCtx,
   projectId: Id<"projects">,
@@ -332,67 +336,39 @@ async function needsWorldGraphToolApproval(
   if (!registry) return true;
 
   switch (toolName) {
-    case "create_entity":
-    case "create_node": {
-      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
-      if (!type) return true;
-      const def = registry.entityTypes[type];
-      if (!def) return true;
-      return isHighRiskLevel(def.riskLevel);
-    }
-
-    case "update_entity": {
-      const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
-      const typeHint =
-        typeof args["entityType"] === "string" ? (args["entityType"] as string) : undefined;
-      const name = typeof args["entityName"] === "string" ? (args["entityName"] as string) : undefined;
-      if (!name) return true;
-
-      const resolvedType = await resolveUniqueEntityTypeForUpdate(ctx, projectId, name, typeHint);
-      if (!resolvedType) return true;
-      const def = registry.entityTypes[resolvedType];
-      if (!def) return true;
-      if (isHighRiskLevel(def.riskLevel)) return true;
-      return hasIdentityChange(updates);
-    }
-
+    case "update_entity":
     case "update_node": {
       const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
-      const typeHint = typeof args["nodeType"] === "string" ? (args["nodeType"] as string) : undefined;
-      const name = typeof args["nodeName"] === "string" ? (args["nodeName"] as string) : undefined;
+      const typeHint =
+        typeof args["entityType"] === "string"
+          ? (args["entityType"] as string)
+          : typeof args["nodeType"] === "string"
+            ? (args["nodeType"] as string)
+            : undefined;
+      const name =
+        typeof args["entityName"] === "string"
+          ? (args["entityName"] as string)
+          : typeof args["nodeName"] === "string"
+            ? (args["nodeName"] as string)
+            : undefined;
+
       if (!name) return true;
 
-      const resolvedType = await resolveUniqueEntityTypeForUpdate(ctx, projectId, name, typeHint);
+      const resolvedType =
+        typeHint ??
+        (await resolveUniqueEntityTypeForUpdate(ctx, projectId, name, typeHint));
       if (!resolvedType) return true;
-      const def = registry.entityTypes[resolvedType];
-      if (!def) return true;
-      if (isHighRiskLevel(def.riskLevel)) return true;
-      return hasIdentityChange(updates);
-    }
 
-    case "create_relationship":
-    case "create_edge": {
-      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
-      if (!type) return true;
-      const def = registry.relationshipTypes[type];
-      if (!def) return true;
-      return isHighRiskLevel(def.riskLevel);
-    }
+      const normalizedArgs =
+        toolName === "update_entity"
+          ? { ...args, entityType: resolvedType, updates }
+          : { ...args, nodeType: resolvedType, updates };
 
-    case "update_relationship":
-    case "update_edge": {
-      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
-      if (!type) return true;
-      const def = registry.relationshipTypes[type];
-      if (!def) return true;
-      if (isHighRiskLevel(def.riskLevel)) return true;
-      const updates = args["updates"] as Record<string, unknown> | undefined;
-      if (updates?.["bidirectional"] !== undefined) return true;
-      return isSignificantStrengthChange(updates?.["strength"] as number | undefined);
+      return needsToolApproval(registry, toolName, normalizedArgs);
     }
 
     default:
-      return true;
+      return needsToolApproval(registry, toolName, args);
   }
 }
 
@@ -438,7 +414,9 @@ async function resolveSuggestionRiskLevel(
       const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
       if (!type) return "high";
       const def = registry.entityTypes[type];
-      return def?.riskLevel ?? "high";
+      if (!def) return "high";
+      if (def.approval?.createRequiresApproval) return "high";
+      return def.riskLevel;
     }
     case "update_entity":
     case "update_node": {
@@ -455,16 +433,23 @@ async function resolveSuggestionRiskLevel(
           : typeof args["nodeName"] === "string"
             ? (args["nodeName"] as string)
             : undefined;
-      const resolvedType = typeHint
-        ? typeHint
-        : name
-          ? await resolveUniqueEntityTypeForUpdate(ctx, projectId, name, typeHint)
-          : null;
+
+      let resolvedType: string | null = null;
+      if (typeHint) {
+        resolvedType = typeHint;
+      } else if (name) {
+        resolvedType = await resolveUniqueEntityTypeForUpdate(ctx, projectId, name, typeHint);
+      }
+
       if (!resolvedType) return "high";
       const def = registry.entityTypes[resolvedType];
       if (!def) return "high";
       if (def.riskLevel === "core") return "core";
-      if (hasIdentityChange(updates)) return "high";
+      if (def.approval?.updateAlwaysRequiresApproval) return "high";
+      const identityFields = getIdentityFields(def);
+      if (identityFields.length > 0 && hasIdentityChange(updates, identityFields)) {
+        return "high";
+      }
       return def.riskLevel;
     }
     case "create_relationship":
@@ -1063,7 +1048,7 @@ export const runSagaAgentChatToStream = internalAction({
         // Handle other tools (ask_question, write_content)
         for (const call of otherCalls) {
           const args = call.input as Record<string, unknown>;
-          if (needsToolApproval(call.toolName, args)) {
+          if (needsToolApproval(registry, call.toolName, args)) {
             let suggestionId: string | undefined;
             const suggestion = classifyKnowledgeSuggestion(call.toolName);
             if (suggestion && !isTemplateBuilder) {
@@ -1394,7 +1379,7 @@ export const applyToolResultAndResumeToStream = internalAction({
         const requiresApproval =
           worldGraphTools.has(call.toolName)
             ? await needsWorldGraphToolApproval(ctx, projectIdValue, call.toolName, callArgs, registry)
-            : needsToolApproval(call.toolName, callArgs);
+            : needsToolApproval(registry, call.toolName, callArgs);
 
         if (requiresApproval) {
           let suggestionId: string | undefined;

@@ -151,6 +151,7 @@ export const upsertStyleMemory = internalMutation({
       source: "agent",
       documentId: args.documentId,
       pinned: false,
+      scope: "project",
       vectorId: args.vectorId,
       createdAt: now,
       updatedAt: now,

@@ -1,26 +1,21 @@
 /**
- * World Graph Tools - Entity/Relationship CRUD for the Saga agent.
+ * Project Graph Tools - Entity/Relationship CRUD for the Saga agent.
  *
- * Tools for creating and updating entities and relationships in the World Graph.
+ * Tools for creating and updating entities and relationships in the Project Graph.
  * Handlers are in worldGraphHandlers.ts - these tool definitions intentionally
  * omit handlers so the client can collect human approval before execution.
  */
 
 import { tool } from "ai";
 import { z } from "zod";
-import {
-  ENTITY_TYPES,
-  RELATION_TYPES,
-  isHighImpactEntityType,
-  isHighImpactRelationshipType,
-  isSensitiveEntityType,
-  isCoreRelationshipType,
-  hasIdentityChange,
-  isSignificantStrengthChange,
-} from "../../lib/approvalConfig";
+import { needsToolApproval } from "../../lib/approvalConfig";
+import { getWriterDefaultRegistry } from "../../lib/typeRegistry";
+import { citationSchema } from "./citations";
 
-const entityTypeSchema = z.enum(ENTITY_TYPES);
-const relationTypeSchema = z.enum(RELATION_TYPES);
+const WRITER_REGISTRY = getWriterDefaultRegistry();
+
+const entityTypeSchema = z.string();
+const relationTypeSchema = z.string();
 
 const itemCategorySchema = z.enum([
   "weapon",
@@ -53,18 +48,19 @@ export const createEntityParameters = z.object({
   factionGoals: z.array(z.string()).optional().describe("Faction's goals"),
   rules: z.array(z.string()).optional().describe("Rules of the magic system"),
   limitations: z.array(z.string()).optional().describe("Limitations and costs"),
+  citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
 });
 
 export type CreateEntityArgs = z.infer<typeof createEntityParameters>;
 
 export const createEntityTool = tool({
   description:
-    "Create a new entity (character, location, item, faction, magic system, event, or concept) in the author's world. Characters, factions, and magic systems require approval.",
+    "Create a new entity (character, location, item, faction, magic system, event, or concept) in the project graph. Some types require approval.",
   inputSchema: createEntityParameters,
 });
 
 export function createEntityNeedsApproval(args: CreateEntityArgs): boolean {
-  return isHighImpactEntityType(args.type);
+  return needsToolApproval(WRITER_REGISTRY, "create_entity", { type: args.type });
 }
 
 // =============================================================================
@@ -94,19 +90,22 @@ export const updateEntityParameters = z.object({
       limitations: z.array(z.string()).optional().describe("Updated limitations"),
     })
     .describe("Fields to update on the entity"),
+  citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
 });
 
 export type UpdateEntityArgs = z.infer<typeof updateEntityParameters>;
 
 export const updateEntityTool = tool({
   description:
-    "Update an existing entity's properties. Identify the entity by name. Name/identity changes require approval.",
+    "Update an existing entity's properties. Identify the entity by name. Identity changes require approval.",
   inputSchema: updateEntityParameters,
 });
 
 export function updateEntityNeedsApproval(args: UpdateEntityArgs): boolean {
-  const updatesRecord = args.updates as Record<string, unknown>;
-  return hasIdentityChange(updatesRecord) || isSensitiveEntityType(args.entityType);
+  return needsToolApproval(WRITER_REGISTRY, "update_entity", {
+    entityType: args.entityType,
+    updates: args.updates as Record<string, unknown>,
+  });
 }
 
 // =============================================================================
@@ -120,18 +119,19 @@ export const createRelationshipParameters = z.object({
   bidirectional: z.boolean().optional().describe("Whether the relationship goes both ways"),
   notes: z.string().optional().describe("Additional context about the relationship"),
   strength: z.number().min(0).max(1).optional().describe("Strength of the relationship (0-1)"),
+  citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
 });
 
 export type CreateRelationshipArgs = z.infer<typeof createRelationshipParameters>;
 
 export const createRelationshipTool = tool({
   description:
-    "Create a relationship between two entities. Familial and power relationships require approval.",
+    "Create a relationship between two entities in the project graph. Some relationship types require approval.",
   inputSchema: createRelationshipParameters,
 });
 
 export function createRelationshipNeedsApproval(args: CreateRelationshipArgs): boolean {
-  return isHighImpactRelationshipType(args.type);
+  return needsToolApproval(WRITER_REGISTRY, "create_relationship", { type: args.type });
 }
 
 // =============================================================================
@@ -149,6 +149,7 @@ export const updateRelationshipParameters = z.object({
       bidirectional: z.boolean().optional().describe("Whether the relationship is bidirectional"),
     })
     .describe("Fields to update on the relationship"),
+  citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
 });
 
 export type UpdateRelationshipArgs = z.infer<typeof updateRelationshipParameters>;
@@ -160,9 +161,10 @@ export const updateRelationshipTool = tool({
 });
 
 export function updateRelationshipNeedsApproval(args: UpdateRelationshipArgs): boolean {
-  if (args.updates.bidirectional !== undefined) return true;
-  if (isSignificantStrengthChange(args.updates.strength)) return true;
-  return isCoreRelationshipType(args.type);
+  return needsToolApproval(WRITER_REGISTRY, "update_relationship", {
+    type: args.type,
+    updates: args.updates as Record<string, unknown>,
+  });
 }
 
 // =============================================================================
@@ -178,6 +180,7 @@ export const createNodeParameters = z.object({
     .record(z.any())
     .optional()
     .describe("Arbitrary node properties (shallow object)"),
+  citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
 });
 
 export type CreateNodeArgs = z.infer<typeof createNodeParameters>;
@@ -200,6 +203,7 @@ export const updateNodeParameters = z.object({
       .optional()
       .describe("Properties to merge into existing properties (shallow merge)"),
   }),
+  citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
 });
 
 export type UpdateNodeArgs = z.infer<typeof updateNodeParameters>;
@@ -218,6 +222,7 @@ export const createEdgeParameters = z.object({
   notes: z.string().optional().describe("Additional context about the edge"),
   strength: z.number().min(0).max(1).optional().describe("Strength of the edge (0-1)"),
   metadata: z.record(z.any()).optional().describe("Additional edge metadata (JSON object)"),
+  citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
 });
 
 export type CreateEdgeArgs = z.infer<typeof createEdgeParameters>;
@@ -238,6 +243,7 @@ export const updateEdgeParameters = z.object({
     bidirectional: z.boolean().optional().describe("Whether the edge is bidirectional"),
     metadata: z.record(z.any()).optional().describe("Updated metadata (merged or replaced by clients)"),
   }),
+  citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
 });
 
 export type UpdateEdgeArgs = z.infer<typeof updateEdgeParameters>;

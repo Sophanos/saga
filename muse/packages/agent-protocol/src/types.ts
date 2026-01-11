@@ -178,3 +178,60 @@ export interface ProfileContext {
  * Danger level for tool execution.
  */
 export type ToolDangerLevel = "safe" | "destructive" | "costly";
+
+// =============================================================================
+// Knowledge PRs + Citations
+// =============================================================================
+
+export type RiskLevel = "low" | "high" | "core";
+
+export type KnowledgeSuggestionStatus =
+  | "proposed"
+  | "accepted"
+  | "rejected"
+  | "resolved";
+
+export type KnowledgeCitationPhase = "proposal" | "review" | "result";
+
+export type KnowledgeCitationTargetKind =
+  | "knowledgeSuggestion"
+  | "documentSuggestion"
+  | "linterIssue"
+  | "coachIssue";
+
+export type CanonCitation = {
+  memoryId: string;
+  category?: "decision" | "policy";
+  excerpt?: string;
+  reason?: string;
+  confidence?: number;
+};
+
+export type ToolResultArtifact =
+  | { kind: "entity"; id: string }
+  | { kind: "relationship"; id: string }
+  | { kind: "memory"; id: string }
+  | { kind: "document"; id: string };
+
+export type RollbackPlan =
+  | { kind: "entity.create"; entityId: string }
+  | {
+      kind: "entity.update";
+      entityId: string;
+      before: Record<string, unknown>;
+    }
+  | { kind: "relationship.create"; relationshipId: string }
+  | {
+      kind: "relationship.update";
+      relationshipId: string;
+      before: Record<string, unknown>;
+    }
+  | { kind: "memory.commit_decision"; memoryId: string };
+
+export type ToolResultEnvelope = {
+  success: boolean;
+  error?: { message: string; code?: string; details?: unknown };
+  artifacts?: ToolResultArtifact[];
+  rollback?: RollbackPlan | Record<string, unknown>;
+  citations?: Array<{ citationId: string }>;
+};

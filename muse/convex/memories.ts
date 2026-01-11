@@ -142,6 +142,7 @@ export const create = mutation({
     documentId: v.optional(v.id("documents")),
     pinned: v.optional(v.boolean()),
     expiresAt: v.optional(v.number()),
+    scope: v.optional(v.union(v.literal("project"), v.literal("private"))),
   },
   handler: async (ctx, args) => {
     const { userId } = await verifyProjectAccess(ctx, args.projectId);
@@ -158,6 +159,7 @@ export const create = mutation({
       documentId: args.documentId,
       pinned: args.pinned ?? false,
       expiresAt: args.expiresAt,
+      scope: args.scope ?? "project",
       createdAt: now,
       updatedAt: now,
     });
@@ -166,6 +168,55 @@ export const create = mutation({
     await ctx.runMutation(internal.memories.enqueueVectorSync, {
       memoryId: id,
       projectId: args.projectId,
+    });
+
+    return id;
+  },
+});
+
+export const createFromDecision = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.string(),
+    text: v.string(),
+    type: v.string(),
+    confidence: v.optional(v.number()),
+    source: v.optional(v.string()),
+    entityIds: v.optional(v.array(v.string())),
+    documentId: v.optional(v.id("documents")),
+    pinned: v.optional(v.boolean()),
+    expiresAt: v.optional(v.number()),
+    scope: v.optional(v.union(v.literal("project"), v.literal("private"))),
+    sourceSuggestionId: v.optional(v.id("knowledgeSuggestions")),
+    sourceToolCallId: v.optional(v.string()),
+    sourceStreamId: v.optional(v.string()),
+    sourceThreadId: v.optional(v.string()),
+    promptMessageId: v.optional(v.string()),
+    model: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    const id = await ctx.db.insert("memories", {
+      projectId: args.projectId,
+      userId: args.userId,
+      text: args.text,
+      type: args.type,
+      confidence: args.confidence ?? 1.0,
+      source: args.source ?? "user",
+      entityIds: args.entityIds,
+      documentId: args.documentId,
+      pinned: args.pinned ?? true,
+      expiresAt: args.expiresAt,
+      scope: args.scope ?? "project",
+      sourceSuggestionId: args.sourceSuggestionId,
+      sourceToolCallId: args.sourceToolCallId,
+      sourceStreamId: args.sourceStreamId,
+      sourceThreadId: args.sourceThreadId,
+      promptMessageId: args.promptMessageId,
+      model: args.model,
+      createdAt: now,
+      updatedAt: now,
     });
 
     return id;

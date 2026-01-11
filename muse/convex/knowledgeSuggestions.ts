@@ -29,6 +29,107 @@ const statusSchema = v.union(
   v.literal("resolved")
 );
 
+const riskLevelSchema = v.optional(
+  v.union(v.literal("low"), v.literal("high"), v.literal("core"))
+);
+
+type ToolResultArtifact = {
+  kind: "entity" | "relationship" | "memory" | "document";
+  id: string;
+};
+
+type ToolResultEnvelope = {
+  success: boolean;
+  error?: { message?: string; code?: string; details?: unknown } | string;
+  artifacts?: ToolResultArtifact[];
+  rollback?: Record<string, unknown>;
+  citations?: Array<{ citationId: string }>;
+};
+
+type CanonCitationInput = {
+  memoryId: string;
+  category?: "decision" | "policy";
+  excerpt?: string;
+  reason?: string;
+  confidence?: number;
+};
+
+type ProjectRole = "owner" | "editor" | "viewer";
+
+function extractCitationsFromPatch(
+  patch: unknown
+): { toolArgs: unknown; citations: CanonCitationInput[] } {
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+    return { toolArgs: patch, citations: [] };
+  }
+
+  const record = patch as Record<string, unknown>;
+  const citationsValue = record["citations"];
+  if (!Array.isArray(citationsValue)) {
+    return { toolArgs: patch, citations: [] };
+  }
+
+  const citations = citationsValue
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const item = entry as Record<string, unknown>;
+      if (typeof item["memoryId"] !== "string") return null;
+      const confidence =
+        typeof item["confidence"] === "number" ? item["confidence"] : undefined;
+      return {
+        memoryId: item["memoryId"] as string,
+        category:
+          item["category"] === "decision" || item["category"] === "policy"
+            ? (item["category"] as "decision" | "policy")
+            : undefined,
+        excerpt: typeof item["excerpt"] === "string" ? (item["excerpt"] as string) : undefined,
+        reason: typeof item["reason"] === "string" ? (item["reason"] as string) : undefined,
+        confidence,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 10) as CanonCitationInput[];
+
+  const { citations: _ignored, ...rest } = record;
+  return { toolArgs: rest, citations };
+}
+
+function parseToolResultEnvelope(result: Record<string, unknown> | null): ToolResultEnvelope | null {
+  if (!result) return null;
+  if (typeof result["success"] !== "boolean") return null;
+  return result as ToolResultEnvelope;
+}
+
+function resolveEnvelopeError(result: ToolResultEnvelope): string | undefined {
+  if (result.success) return undefined;
+  if (!result.error) {
+    return "Tool execution failed";
+  }
+  if (typeof result.error === "string") return result.error;
+  if (typeof result.error.message === "string") return result.error.message;
+  return "Tool execution failed";
+}
+
+function pickArtifactTargetId(artifacts: ToolResultArtifact[] | undefined): string | undefined {
+  if (!artifacts || artifacts.length === 0) return undefined;
+  const first = artifacts.find((artifact) => typeof artifact.id === "string");
+  return first?.id;
+}
+
+function isUserRejection(
+  toolName: string,
+  resultRecord: Record<string, unknown> | null,
+  envelope: ToolResultEnvelope | null
+): boolean {
+  if (envelope && typeof envelope.error === "object") {
+    const errorRecord = envelope.error as { code?: string; message?: string };
+    if (errorRecord.code === "rejected") return true;
+    if (errorRecord.message === "User rejected") return true;
+  }
+  if (envelope && envelope.error === "User rejected") return true;
+  if (toolName === "write_content" && resultRecord?.["applied"] === false) return true;
+  return false;
+}
 export const getInternal = internalQuery({
   args: {
     suggestionId: v.id("knowledgeSuggestions"),
@@ -45,10 +146,12 @@ export const upsertFromToolApprovalRequest = internalMutation({
     toolName: v.string(),
     approvalType: v.string(),
     danger: v.optional(v.string()),
+    riskLevel: riskLevelSchema,
     operation: v.string(),
     targetType: targetTypeSchema,
     targetId: v.optional(v.string()),
     proposedPatch: v.any(),
+    normalizedPatch: v.optional(v.any()),
     actorType: v.string(),
     actorUserId: v.optional(v.string()),
     actorAgentId: v.optional(v.string()),
@@ -69,12 +172,14 @@ export const upsertFromToolApprovalRequest = internalMutation({
     }
 
     const now = Date.now();
-    return ctx.db.insert("knowledgeSuggestions", {
+    const { toolArgs, citations } = extractCitationsFromPatch(args.proposedPatch);
+    const suggestionId = await ctx.db.insert("knowledgeSuggestions", {
       projectId: args.projectId,
       targetType: args.targetType,
       targetId: args.targetId,
       operation: args.operation,
-      proposedPatch: args.proposedPatch,
+      proposedPatch: toolArgs,
+      normalizedPatch: args.normalizedPatch,
       status: "proposed",
       actorType: args.actorType,
       actorUserId: args.actorUserId,
@@ -84,6 +189,7 @@ export const upsertFromToolApprovalRequest = internalMutation({
       toolCallId: args.toolCallId,
       approvalType: args.approvalType,
       danger: args.danger,
+      riskLevel: args.riskLevel,
       streamId: args.streamId,
       threadId: args.threadId,
       promptMessageId: args.promptMessageId,
@@ -91,6 +197,24 @@ export const upsertFromToolApprovalRequest = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    if (citations.length > 0) {
+      try {
+        await ctx.runMutation(internalAny.knowledgeCitations.createForSuggestion, {
+          suggestionId,
+          citations,
+          phase: "proposal",
+          actorType: args.actorType,
+          actorUserId: args.actorUserId,
+          actorAgentId: args.actorAgentId,
+          actorName: args.actorName,
+        });
+      } catch (error) {
+        console.warn("[knowledgeSuggestions] Failed to store citations:", error);
+      }
+    }
+
+    return suggestionId;
   },
 });
 
@@ -113,43 +237,40 @@ export const resolveFromToolResult = internalMutation({
     const resultRecord =
       result && typeof result === "object" ? (result as Record<string, unknown>) : null;
 
-    let status: "accepted" | "rejected" | "resolved" = "resolved";
+    let status: "accepted" | "rejected" = "rejected";
     let error: string | undefined;
     let targetId: string | undefined;
 
-    if (toolName === "write_content") {
-      const applied = resultRecord?.["applied"];
-      if (applied === true) status = "accepted";
-      if (applied === false) status = "rejected";
-    } else if (resultRecord) {
-      if (typeof resultRecord["success"] === "boolean") {
-        const success = resultRecord["success"];
-        status = success ? "accepted" : "rejected";
-        if (!success && typeof resultRecord["error"] === "string") {
-          error = resultRecord["error"] as string;
-        }
-      } else if (typeof resultRecord["error"] === "string") {
-        status = "rejected";
-        error = resultRecord["error"] as string;
-      } else if (
-        typeof resultRecord["entityId"] === "string" ||
-        typeof resultRecord["relationshipId"] === "string" ||
-        typeof resultRecord["memoryId"] === "string"
-      ) {
-        status = "accepted";
-      } else {
-        status = "accepted";
-      }
+    const envelope = parseToolResultEnvelope(resultRecord);
 
-      if (typeof resultRecord["entityId"] === "string") {
-        targetId = resultRecord["entityId"] as string;
-      } else if (typeof resultRecord["relationshipId"] === "string") {
-        targetId = resultRecord["relationshipId"] as string;
-      } else if (typeof resultRecord["memoryId"] === "string") {
-        targetId = resultRecord["memoryId"] as string;
+    if (toolName === "write_content") {
+      if (envelope) {
+        status = envelope.success ? "accepted" : "rejected";
+        error = resolveEnvelopeError(envelope);
+        targetId = pickArtifactTargetId(envelope.artifacts);
+      } else {
+        const applied = resultRecord?.["applied"];
+        if (applied === true) {
+          status = "accepted";
+        } else if (applied === false) {
+          status = "rejected";
+          if (typeof resultRecord?.["error"] === "string") {
+            error = resultRecord["error"] as string;
+          } else {
+            error = "User rejected";
+          }
+        } else {
+          status = "rejected";
+          error = "Invalid write_content result";
+        }
       }
+    } else if (envelope) {
+      status = envelope.success ? "accepted" : "rejected";
+      error = resolveEnvelopeError(envelope);
+      targetId = pickArtifactTargetId(envelope.artifacts);
     } else {
-      status = "accepted";
+      status = "rejected";
+      error = "Invalid tool result envelope";
     }
 
     await ctx.db.patch(suggestion._id, {
@@ -161,6 +282,30 @@ export const resolveFromToolResult = internalMutation({
       error,
       updatedAt: now,
     });
+
+    const rejectedByUser = isUserRejection(toolName, resultRecord, envelope);
+    if (!rejectedByUser) {
+      const action = status === "accepted" ? "knowledge_pr.executed" : "knowledge_pr.execution_failed";
+      const summary = status === "accepted" ? "Knowledge PR executed" : "Knowledge PR execution failed";
+      try {
+        await ctx.runMutation(internalAny.activity.emit, {
+          projectId: suggestion.projectId,
+          actorType: "user",
+          actorUserId: resolvedByUserId,
+          action,
+          summary,
+          metadata: {
+            suggestionId: suggestion._id,
+            toolName: suggestion.toolName,
+            toolCallId: suggestion.toolCallId,
+            status,
+            error,
+          },
+        });
+      } catch (emitError) {
+        console.warn("[knowledgeSuggestions] Failed to emit execution activity:", emitError);
+      }
+    }
 
     return suggestion._id;
   },
@@ -211,7 +356,11 @@ function requireAuthenticatedUserId(
   });
 }
 
-async function verifyProjectEditorAccess(ctx: any, projectId: Id<"projects">, userId: string): Promise<void> {
+async function requireProjectRole(
+  ctx: any,
+  projectId: Id<"projects">,
+  userId: string
+): Promise<ProjectRole> {
   const access = await ctx.runQuery(internalAny["ai/tools/worldGraphHandlers"].getProjectMemberRole, {
     projectId,
     userId,
@@ -225,16 +374,51 @@ async function verifyProjectEditorAccess(ctx: any, projectId: Id<"projects">, us
     throw new Error("Access denied");
   }
 
-  if (access.role === "viewer") {
+  return access.role as ProjectRole;
+}
+
+function assertReviewerAccess(role: ProjectRole, riskLevel: string | undefined): void {
+  if (role === "viewer") {
     throw new Error("Edit access denied");
+  }
+  if (riskLevel === "core" && role !== "owner") {
+    throw new Error("Owner approval required for core-risk changes");
   }
 }
 
-function buildRejectionResult(toolName: string): Record<string, unknown> {
-  if (toolName === "write_content") {
-    return { applied: false };
+function resolveSuggestionRiskLevelForAccess(suggestion: Record<string, unknown>): string | undefined {
+  if (typeof suggestion["riskLevel"] === "string") {
+    return suggestion["riskLevel"] as string;
   }
-  return { error: "User rejected" };
+  if (suggestion["toolName"] === "commit_decision") {
+    return "core";
+  }
+  return undefined;
+}
+
+function buildRejectionResult(toolName: string): ToolResultEnvelope {
+  if (toolName === "write_content") {
+    return { success: false, error: { message: "User rejected", code: "rejected" } };
+  }
+  return { success: false, error: { message: "User rejected", code: "rejected" } };
+}
+
+function buildErrorEnvelope(message: string): ToolResultEnvelope {
+  return { success: false, error: { message } };
+}
+
+function buildSuccessEnvelope(
+  artifact: ToolResultArtifact | undefined,
+  rollback?: Record<string, unknown>
+): ToolResultEnvelope {
+  const envelope: ToolResultEnvelope = { success: true };
+  if (artifact) {
+    envelope.artifacts = [artifact];
+  }
+  if (rollback) {
+    envelope.rollback = rollback;
+  }
+  return envelope;
 }
 
 async function resolveEntityUnique(ctx: any, projectId: Id<"projects">, name: string, type?: string): Promise<any> {
@@ -272,7 +456,11 @@ async function resolveRelationshipByNames(
   });
 }
 
-async function applySuggestionApprove(ctx: any, suggestion: any, userId: string): Promise<Record<string, unknown>> {
+async function applySuggestionApprove(
+  ctx: any,
+  suggestion: any,
+  userId: string
+): Promise<ToolResultEnvelope> {
   const projectId = suggestion.projectId as Id<"projects">;
   const actor = {
     actorType: "user",
@@ -299,12 +487,16 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
         source,
       });
       if (!result?.success) {
-        return { success: false, error: result?.message ?? "Failed to create entity" };
+        return buildErrorEnvelope(result?.message ?? "Failed to create entity");
       }
-      return {
-        ...result,
-        rollback: { kind: "entity.create", entityId: result.entityId },
-      };
+      const entityId = typeof result.entityId === "string" ? result.entityId : undefined;
+      if (!entityId) {
+        return buildErrorEnvelope("Missing entityId for create_entity");
+      }
+      return buildSuccessEnvelope(
+        { kind: "entity", id: entityId },
+        { kind: "entity.create", entityId }
+      );
     }
     case "update_entity": {
       const before = await resolveEntityUnique(ctx, projectId, String(toolArgs["entityName"] ?? ""), toolArgs["entityType"] as string | undefined);
@@ -315,13 +507,17 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
         source,
       });
       if (!result?.success) {
-        return { success: false, error: result?.message ?? "Failed to update entity" };
+        return buildErrorEnvelope(result?.message ?? "Failed to update entity");
       }
-      return {
-        ...result,
-        rollback: {
+      const entityId = typeof result.entityId === "string" ? result.entityId : undefined;
+      if (!entityId) {
+        return buildErrorEnvelope("Missing entityId for update_entity");
+      }
+      return buildSuccessEnvelope(
+        { kind: "entity", id: entityId },
+        {
           kind: "entity.update",
-          entityId: result.entityId,
+          entityId,
           before: before
             ? {
                 name: before.name,
@@ -330,8 +526,8 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
                 properties: before.properties,
               }
             : null,
-        },
-      };
+        }
+      );
     }
     case "create_node": {
       const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeCreateNode, {
@@ -341,12 +537,16 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
         source,
       });
       if (!result?.success) {
-        return { success: false, error: result?.message ?? "Failed to create node" };
+        return buildErrorEnvelope(result?.message ?? "Failed to create node");
       }
-      return {
-        ...result,
-        rollback: { kind: "entity.create", entityId: result.entityId },
-      };
+      const entityId = typeof result.entityId === "string" ? result.entityId : undefined;
+      if (!entityId) {
+        return buildErrorEnvelope("Missing entityId for create_node");
+      }
+      return buildSuccessEnvelope(
+        { kind: "entity", id: entityId },
+        { kind: "entity.create", entityId }
+      );
     }
     case "update_node": {
       const before = await resolveEntityUnique(ctx, projectId, String(toolArgs["nodeName"] ?? ""), toolArgs["nodeType"] as string | undefined);
@@ -357,13 +557,17 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
         source,
       });
       if (!result?.success) {
-        return { success: false, error: result?.message ?? "Failed to update node" };
+        return buildErrorEnvelope(result?.message ?? "Failed to update node");
       }
-      return {
-        ...result,
-        rollback: {
+      const entityId = typeof result.entityId === "string" ? result.entityId : undefined;
+      if (!entityId) {
+        return buildErrorEnvelope("Missing entityId for update_node");
+      }
+      return buildSuccessEnvelope(
+        { kind: "entity", id: entityId },
+        {
           kind: "entity.update",
-          entityId: result.entityId,
+          entityId,
           before: before
             ? {
                 name: before.name,
@@ -372,8 +576,8 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
                 properties: before.properties,
               }
             : null,
-        },
-      };
+        }
+      );
     }
     case "create_relationship": {
       const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeCreateRelationship, {
@@ -383,12 +587,16 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
         source,
       });
       if (!result?.success) {
-        return { success: false, error: result?.message ?? "Failed to create relationship" };
+        return buildErrorEnvelope(result?.message ?? "Failed to create relationship");
       }
-      return {
-        ...result,
-        rollback: { kind: "relationship.create", relationshipId: result.relationshipId },
-      };
+      const relationshipId = typeof result.relationshipId === "string" ? result.relationshipId : undefined;
+      if (!relationshipId) {
+        return buildErrorEnvelope("Missing relationshipId for create_relationship");
+      }
+      return buildSuccessEnvelope(
+        { kind: "relationship", id: relationshipId },
+        { kind: "relationship.create", relationshipId }
+      );
     }
     case "update_relationship": {
       const beforeRel = await resolveRelationshipByNames(
@@ -405,13 +613,17 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
         source,
       });
       if (!result?.success) {
-        return { success: false, error: result?.message ?? "Failed to update relationship" };
+        return buildErrorEnvelope(result?.message ?? "Failed to update relationship");
       }
-      return {
-        ...result,
-        rollback: {
+      const relationshipId = typeof result.relationshipId === "string" ? result.relationshipId : undefined;
+      if (!relationshipId) {
+        return buildErrorEnvelope("Missing relationshipId for update_relationship");
+      }
+      return buildSuccessEnvelope(
+        { kind: "relationship", id: relationshipId },
+        {
           kind: "relationship.update",
-          relationshipId: result.relationshipId,
+          relationshipId,
           before: beforeRel
             ? {
                 bidirectional: beforeRel.bidirectional ?? false,
@@ -420,8 +632,8 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
                 metadata: beforeRel.metadata,
               }
             : null,
-        },
-      };
+        }
+      );
     }
     case "create_edge": {
       const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeCreateEdge, {
@@ -431,12 +643,16 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
         source,
       });
       if (!result?.success) {
-        return { success: false, error: result?.message ?? "Failed to create edge" };
+        return buildErrorEnvelope(result?.message ?? "Failed to create edge");
       }
-      return {
-        ...result,
-        rollback: { kind: "relationship.create", relationshipId: result.relationshipId },
-      };
+      const relationshipId = typeof result.relationshipId === "string" ? result.relationshipId : undefined;
+      if (!relationshipId) {
+        return buildErrorEnvelope("Missing relationshipId for create_edge");
+      }
+      return buildSuccessEnvelope(
+        { kind: "relationship", id: relationshipId },
+        { kind: "relationship.create", relationshipId }
+      );
     }
     case "update_edge": {
       const beforeRel = await resolveRelationshipByNames(
@@ -453,13 +669,17 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
         source,
       });
       if (!result?.success) {
-        return { success: false, error: result?.message ?? "Failed to update edge" };
+        return buildErrorEnvelope(result?.message ?? "Failed to update edge");
       }
-      return {
-        ...result,
-        rollback: {
+      const relationshipId = typeof result.relationshipId === "string" ? result.relationshipId : undefined;
+      if (!relationshipId) {
+        return buildErrorEnvelope("Missing relationshipId for update_edge");
+      }
+      return buildSuccessEnvelope(
+        { kind: "relationship", id: relationshipId },
+        {
           kind: "relationship.update",
-          relationshipId: result.relationshipId,
+          relationshipId,
           before: beforeRel
             ? {
                 bidirectional: beforeRel.bidirectional ?? false,
@@ -468,8 +688,8 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
                 metadata: beforeRel.metadata,
               }
             : null,
-        },
-      };
+        }
+      );
     }
     case "commit_decision": {
       const result = await ctx.runAction(internalAny["ai/tools"].execute, {
@@ -477,29 +697,35 @@ async function applySuggestionApprove(ctx: any, suggestion: any, userId: string)
         input: toolArgs,
         projectId: projectId as string,
         userId,
+        source: {
+          suggestionId: suggestion._id,
+          toolCallId: suggestion.toolCallId,
+          streamId: suggestion.streamId,
+          threadId: suggestion.threadId,
+          promptMessageId: suggestion.promptMessageId,
+          model: suggestion.model,
+        },
       });
 
       if (!result || typeof result !== "object") {
-        return { success: false, error: "Failed to store memory" };
+        return buildErrorEnvelope("Failed to store memory");
       }
 
       const record = result as Record<string, unknown>;
       const memoryId = typeof record["memoryId"] === "string" ? (record["memoryId"] as string) : undefined;
       if (!memoryId) {
-        return { success: false, error: "Failed to store memory" };
+        return buildErrorEnvelope("Failed to store memory");
       }
 
-      return {
-        success: true,
-        memoryId,
-        content: record["content"],
-        rollback: { kind: "memory.commit_decision", memoryId },
-      };
+      return buildSuccessEnvelope(
+        { kind: "memory", id: memoryId },
+        { kind: "memory.commit_decision", memoryId }
+      );
     }
     case "write_content":
-      return { success: false, error: "Apply document changes from the editor UI." };
+      return buildErrorEnvelope("Apply document changes from the editor UI.");
     default:
-      return { success: false, error: `Unsupported tool for review: ${toolName}` };
+      return buildErrorEnvelope(`Unsupported tool for review: ${toolName}`);
   }
 }
 
@@ -521,7 +747,9 @@ export const applyDecisions = action({
       }
 
       try {
-        await verifyProjectEditorAccess(ctx, suggestion.projectId as Id<"projects">, userId);
+        const role = await requireProjectRole(ctx, suggestion.projectId as Id<"projects">, userId);
+        const riskLevel = resolveSuggestionRiskLevelForAccess(suggestion as Record<string, unknown>);
+        assertReviewerAccess(role, riskLevel);
       } catch (error) {
         results.push({
           suggestionId,
@@ -544,6 +772,22 @@ export const applyDecisions = action({
           resolvedByUserId: userId,
           result: resultPayload,
         });
+        try {
+          await ctx.runMutation(internalAny.activity.emit, {
+            projectId: suggestion.projectId,
+            actorType: "user",
+            actorUserId: userId,
+            action: "knowledge_pr.rejected",
+            summary: "Knowledge PR rejected",
+            metadata: {
+              suggestionId: suggestion._id,
+              toolName: suggestion.toolName,
+              toolCallId: suggestion.toolCallId,
+            },
+          });
+        } catch (emitError) {
+          console.warn("[knowledgeSuggestions] Failed to emit rejection activity:", emitError);
+        }
         results.push({ suggestionId, status: "rejected" });
         continue;
       }
@@ -557,6 +801,23 @@ export const applyDecisions = action({
         continue;
       }
 
+      try {
+        await ctx.runMutation(internalAny.activity.emit, {
+          projectId: suggestion.projectId,
+          actorType: "user",
+          actorUserId: userId,
+          action: "knowledge_pr.approved",
+          summary: "Knowledge PR approved",
+          metadata: {
+            suggestionId: suggestion._id,
+            toolName: suggestion.toolName,
+            toolCallId: suggestion.toolCallId,
+          },
+        });
+      } catch (emitError) {
+        console.warn("[knowledgeSuggestions] Failed to emit approval activity:", emitError);
+      }
+
       const approvedResult = await applySuggestionApprove(ctx, suggestion, userId);
       await ctx.runMutation(internalAny.knowledgeSuggestions.resolveFromToolResult, {
         toolCallId: suggestion.toolCallId,
@@ -565,11 +826,12 @@ export const applyDecisions = action({
         result: approvedResult,
       });
 
-      const success = approvedResult && typeof approvedResult === "object" && (approvedResult as any).success === true;
+      const success = approvedResult.success === true;
+      const errorMessage = success ? undefined : resolveEnvelopeError(approvedResult);
       results.push({
         suggestionId,
         status: success ? "accepted" : "rejected",
-        error: success ? undefined : String((approvedResult as any).error ?? "Failed to apply"),
+        error: success ? undefined : errorMessage ?? "Failed to apply",
       });
     }
 
@@ -611,7 +873,9 @@ export const rollbackSuggestion = action({
       throw new Error("Suggestion not found");
     }
 
-    await verifyProjectEditorAccess(ctx, suggestion.projectId as Id<"projects">, userId);
+    const role = await requireProjectRole(ctx, suggestion.projectId as Id<"projects">, userId);
+    const riskLevel = resolveSuggestionRiskLevelForAccess(suggestion as Record<string, unknown>);
+    assertReviewerAccess(role, riskLevel);
 
     const resultRecord =
       suggestion.result && typeof suggestion.result === "object"
@@ -664,10 +928,10 @@ export const rollbackSuggestion = action({
     } else if (kind === "memory.commit_decision") {
       const memoryId = String(rollback["memoryId"] ?? "");
       if (!memoryId) throw new Error("Missing memoryId for rollback");
-      if (!isQdrantConfigured()) {
-        throw new Error("Vector store not configured");
+      await ctx.runMutation(apiAny.memories.remove, { id: memoryId });
+      if (isQdrantConfigured()) {
+        await deletePoints([memoryId], { collection: "saga_vectors" });
       }
-      await deletePoints([memoryId], { collection: "saga_vectors" });
     } else {
       throw new Error(`Rollback not supported for: ${kind}`);
     }

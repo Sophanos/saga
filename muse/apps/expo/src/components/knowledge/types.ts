@@ -2,6 +2,26 @@ import { Platform } from 'react-native';
 
 export type KnowledgeTargetType = 'document' | 'entity' | 'relationship' | 'memory';
 export type KnowledgeStatus = 'proposed' | 'accepted' | 'rejected' | 'resolved';
+export type KnowledgeRiskLevel = 'low' | 'high' | 'core';
+export type KnowledgeCitationVisibility = 'project' | 'private' | 'redacted';
+
+export interface KnowledgeCitation {
+  _id: string;
+  projectId: string;
+  targetKind: string;
+  targetId: string;
+  phase: string;
+  memoryId: string;
+  memoryCategory?: string;
+  excerpt?: string;
+  reason?: string;
+  confidence?: number;
+  visibility: KnowledgeCitationVisibility;
+  redactionReason?: string;
+  memoryText?: string;
+  memoryType?: string;
+  createdAt: number;
+}
 
 export interface KnowledgeSuggestion {
   _id: string;
@@ -10,6 +30,7 @@ export interface KnowledgeSuggestion {
   targetId?: string;
   operation: string;
   proposedPatch: unknown;
+  normalizedPatch?: unknown;
   status: KnowledgeStatus;
   actorType: string;
   actorUserId?: string;
@@ -19,6 +40,7 @@ export interface KnowledgeSuggestion {
   toolCallId: string;
   approvalType: string;
   danger?: string;
+  riskLevel?: KnowledgeRiskLevel;
   streamId?: string;
   threadId?: string;
   promptMessageId?: string;
@@ -66,4 +88,3 @@ export async function copyToClipboard(value: string): Promise<void> {
     // Ignore copy failures (permissions / unsupported browser).
   }
 }
-

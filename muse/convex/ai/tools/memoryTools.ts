@@ -7,6 +7,7 @@
 
 import { tool } from "ai";
 import { z } from "zod";
+import { citationSchema } from "./citations";
 
 export const commitDecisionTool = tool({
   description: "Propose a canon decision to store in project memory (requires approval).",
@@ -18,6 +19,6 @@ export const commitDecisionTool = tool({
     documentId: z.string().optional().describe("Source document ID"),
     confidence: z.number().min(0).max(1).optional().describe("Confidence score (0-1)"),
     pinned: z.boolean().optional().describe("Pin decision as canon (default true on server)"),
+    citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
   }),
 });
-

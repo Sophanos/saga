@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { useQuery } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { useTheme, spacing, radii, typography } from '@/design-system';
-import type { KnowledgeSuggestion } from './types';
+import type { KnowledgeCitation, KnowledgeSuggestion } from './types';
 import { canonicalizeName, copyToClipboard, formatRelativeTime, titleCase } from './types';
 
 type ApplyDecision = 'approve' | 'reject';
@@ -113,6 +113,11 @@ export function KnowledgeSuggestionDetails({
     if (!suggestion || !suggestion.proposedPatch || typeof suggestion.proposedPatch !== 'object') return null;
     return suggestion.proposedPatch as Record<string, unknown>;
   }, [suggestion]);
+
+  const citations = useQuery(
+    apiAny.knowledgeCitations.listBySuggestion as any,
+    suggestion ? { suggestionId: suggestion._id } : ('skip' as any)
+  ) as KnowledgeCitation[] | undefined;
 
   const entitySearchName = useMemo((): string | null => {
     if (!suggestion || !toolArgs) return null;
@@ -438,31 +443,32 @@ export function KnowledgeSuggestionDetails({
       <View style={[styles.metaCard, { borderColor: colors.border, backgroundColor: colors.bgSurface }]}>
         <MetaRow label="Status" value={titleCase(suggestion.status)} colors={colors} />
         <MetaRow label="Created" value={created} colors={colors} />
+        {suggestion.riskLevel ? <MetaRow label="Risk" value={titleCase(suggestion.riskLevel)} colors={colors} /> : null}
         {suggestion.actorName ? <MetaRow label="Actor" value={suggestion.actorName} colors={colors} /> : null}
         <MetaRow label="Tool" value={suggestion.toolName} colors={colors} mono />
         {suggestion.model ? <MetaRow label="Model" value={suggestion.model} colors={colors} mono /> : null}
         {suggestion.threadId ? <MetaRow label="Thread" value={suggestion.threadId} colors={colors} mono /> : null}
       </View>
 
-	      <View style={[styles.previewCard, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
-	        <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Preview</Text>
+      <View style={[styles.previewCard, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Preview</Text>
 
-	        {suggestion.toolName === 'create_entity' || suggestion.toolName === 'create_node' ? (
-	          <KeyValues title="New entity" values={toolArgs ?? {}} colors={colors} />
-	        ) : null}
+        {suggestion.toolName === 'create_entity' || suggestion.toolName === 'create_node' ? (
+          <KeyValues title="New entity" values={toolArgs ?? {}} colors={colors} />
+        ) : null}
 
-	        {renderEntityUpdatePreview()}
+        {renderEntityUpdatePreview()}
 
-	        {suggestion.toolName === 'create_relationship' || suggestion.toolName === 'create_edge' ? (
-	          <KeyValues title="New relationship" values={toolArgs ?? {}} colors={colors} />
-	        ) : null}
+        {suggestion.toolName === 'create_relationship' || suggestion.toolName === 'create_edge' ? (
+          <KeyValues title="New relationship" values={toolArgs ?? {}} colors={colors} />
+        ) : null}
 
-	        {renderRelationshipUpdatePreview()}
+        {renderRelationshipUpdatePreview()}
 
-	        {suggestion.toolName === 'write_content' ? (
-	          <View style={styles.block}>
-	            <Text style={[styles.helperText, { color: colors.textMuted }]}>
-	              Apply or reject this suggestion from the editor UI.
+        {suggestion.toolName === 'write_content' ? (
+          <View style={styles.block}>
+            <Text style={[styles.helperText, { color: colors.textMuted }]}>
+              Apply or reject this suggestion from the editor UI.
             </Text>
             <Text style={[styles.code, { color: colors.text }]}>{formatValue(toolArgs)}</Text>
           </View>
@@ -477,6 +483,45 @@ export function KnowledgeSuggestionDetails({
           <Text style={[styles.code, { color: colors.text }]}>{JSON.stringify(suggestion.proposedPatch, null, 2)}</Text>
         </View>
       </View>
+
+      {citations && citations.length > 0 ? (
+        <View style={[styles.previewCard, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Citations</Text>
+          <View style={styles.citationList}>
+            {citations.map((citation) => {
+              const heading = citation.memoryCategory ? titleCase(citation.memoryCategory) : 'Canon memory';
+              const redacted = citation.visibility === 'redacted';
+              return (
+                <View key={citation._id} style={[styles.citationRow, { borderColor: colors.border }]}>
+                  <View style={styles.citationHeader}>
+                    <Text style={[styles.citationTitle, { color: colors.text }]}>{heading}</Text>
+                    <Text style={[styles.citationMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                      {citation.memoryId}
+                    </Text>
+                  </View>
+                  {redacted ? (
+                    <Text style={[styles.helperText, { color: colors.textMuted }]}>
+                      Citation redacted{citation.redactionReason ? ` (${citation.redactionReason})` : ''}.
+                    </Text>
+                  ) : (
+                    <>
+                      <Text style={[styles.citationText, { color: colors.text }]} numberOfLines={4}>
+                        {citation.memoryText ?? 'Memory content unavailable.'}
+                      </Text>
+                      {citation.reason ? (
+                        <Text style={[styles.helperText, { color: colors.textMuted }]}>{citation.reason}</Text>
+                      ) : null}
+                      {citation.excerpt ? (
+                        <Text style={[styles.helperText, { color: colors.textMuted }]}>{citation.excerpt}</Text>
+                      ) : null}
+                    </>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       {relatedActivity.length > 0 ? (
         <View style={[styles.previewCard, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
@@ -746,6 +791,37 @@ const styles = StyleSheet.create({
   },
   diffArrow: {
     fontSize: typography.xs,
+  },
+  citationList: {
+    gap: spacing[2],
+    paddingTop: spacing[2],
+  },
+  citationRow: {
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    padding: spacing[3],
+    gap: spacing[2],
+  },
+  citationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing[2],
+  },
+  citationTitle: {
+    fontSize: typography.xs,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  citationMeta: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: typography.xs,
+  },
+  citationText: {
+    fontSize: typography.sm,
+    lineHeight: 20,
   },
   activityList: {
     gap: spacing[2],

@@ -7,6 +7,7 @@
 
 import { tool } from "ai";
 import { z } from "zod";
+import { citationSchema } from "./citations";
 
 export const askQuestionTool = tool({
   description: "Ask the user a specific question to continue the task.",
@@ -25,5 +26,6 @@ export const writeContentTool = tool({
     content: z.string().describe("The proposed content to insert"),
     format: z.enum(["plain", "markdown"]).optional(),
     rationale: z.string().optional().describe("Why this change improves the draft"),
+    citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
   }),
 });

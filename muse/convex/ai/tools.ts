@@ -6,8 +6,9 @@
  */
 
 import { v } from "convex/values";
-import { internalAction } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { generateEmbedding, isDeepInfraConfigured } from "../lib/embeddings";
 import { searchPoints, isQdrantConfigured, upsertPoints, type QdrantFilter } from "../lib/qdrant";
 
@@ -32,9 +33,19 @@ export const execute = internalAction({
     input: v.any(),
     projectId: v.string(),
     userId: v.string(),
+    source: v.optional(
+      v.object({
+        suggestionId: v.optional(v.string()),
+        toolCallId: v.optional(v.string()),
+        streamId: v.optional(v.string()),
+        threadId: v.optional(v.string()),
+        promptMessageId: v.optional(v.string()),
+        model: v.optional(v.string()),
+      })
+    ),
   },
   handler: async (ctx, args): Promise<unknown> => {
-    const { toolName, input, projectId, userId } = args;
+    const { toolName, input, projectId, userId, source } = args;
 
     console.log(`[tools.execute] ${toolName}`, { projectId, userId });
 
@@ -85,7 +96,7 @@ export const execute = internalAction({
         return executeNameGenerator(input);
 
       case "commit_decision":
-        return executeCommitDecision(input, projectId, userId);
+        return executeCommitDecision(ctx, input, projectId, userId, source ?? undefined);
 
       case "search_images":
         return executeSearchImages(input, projectId);
@@ -395,9 +406,18 @@ interface CommitDecisionResult {
 }
 
 async function executeCommitDecision(
+  ctx: ActionCtx,
   input: CommitDecisionInput,
   projectId: string,
-  _userId: string
+  userId: string,
+  source?: {
+    suggestionId?: string;
+    toolCallId?: string;
+    streamId?: string;
+    threadId?: string;
+    promptMessageId?: string;
+    model?: string;
+  }
 ): Promise<CommitDecisionResult> {
   // Validate input
   const decision = input.decision?.trim();
@@ -431,14 +451,40 @@ async function executeCommitDecision(
     : content;
 
   const embedding = await generateEmbedding(embeddingText, { task: "embed_document" });
-  const memoryId = crypto.randomUUID();
   const now = Date.now();
   const isoNow = new Date(now).toISOString();
 
   // Calculate expiry (decisions expire in 1 year by default if not pinned)
-  const expiresAt = input.pinned !== false
-    ? null // Pinned decisions don't expire
-    : new Date(now + 365 * 24 * 60 * 60 * 1000).toISOString();
+  const expiresAtMs =
+    input.pinned !== false ? undefined : now + 365 * 24 * 60 * 60 * 1000;
+  const expiresAtIso = expiresAtMs ? new Date(expiresAtMs).toISOString() : null;
+
+  const memoryId = await ctx.runMutation(
+    (internal as any).memories.createFromDecision,
+    {
+      projectId: projectId as Id<"projects">,
+      userId,
+      text: content,
+      type: input.category ?? "decision",
+      confidence: input.confidence ?? 1.0,
+      source: "user",
+      entityIds: input.entityIds,
+      documentId: input.documentId
+        ? (input.documentId as Id<"documents">)
+        : undefined,
+      pinned: input.pinned ?? true,
+      expiresAt: expiresAtMs,
+      scope: "project",
+      sourceSuggestionId: source?.suggestionId
+        ? (source.suggestionId as Id<"knowledgeSuggestions">)
+        : undefined,
+      sourceToolCallId: source?.toolCallId,
+      sourceStreamId: source?.streamId,
+      sourceThreadId: source?.threadId,
+      promptMessageId: source?.promptMessageId,
+      model: source?.model,
+    }
+  );
 
   // Build Qdrant payload
   const payload: Record<string, unknown> = {
@@ -456,7 +502,7 @@ async function executeCommitDecision(
     pinned: input.pinned ?? true,
     created_at: isoNow,
     created_at_ts: now,
-    expires_at: expiresAt,
+    expires_at: expiresAtIso,
   };
 
   // Upsert to Qdrant
@@ -471,9 +517,16 @@ async function executeCommitDecision(
         { collection: SAGA_VECTORS_COLLECTION }
       );
       console.log(`[tools.commit_decision] Stored memory ${memoryId} in Qdrant`);
+      await ctx.runMutation((internal as any).memories.updateVectorStatus, {
+        memoryId,
+        vectorId: memoryId,
+      });
     } catch (error) {
       console.error("[tools.commit_decision] Qdrant upsert failed:", error);
-      // Continue - memory is still valid even without vector storage
+      await ctx.runMutation((internal as any).memories.enqueueVectorSync, {
+        memoryId,
+        projectId: projectId as Id<"projects">,
+      });
     }
   }
 

@@ -15,6 +15,7 @@ import type {
   LogicStrictness,
   NameCulture,
   NameStyle,
+  CanonCitation,
   ToolDangerLevel,
 } from "./types";
 
@@ -173,6 +174,7 @@ export interface CreateEntityArgs {
   // Magic System-specific
   rules?: string[];
   limitations?: string[];
+  citations?: CanonCitation[];
 }
 
 /**
@@ -184,7 +186,8 @@ export interface UpdateEntityArgs {
   /** Optional type for disambiguation */
   entityType?: EntityType;
   /** Fields to update */
-  updates: Partial<Omit<CreateEntityArgs, "type">>;
+  updates: Partial<Omit<CreateEntityArgs, "type" | "citations">>;
+  citations?: CanonCitation[];
 }
 
 /**
@@ -206,6 +209,7 @@ export interface CreateRelationshipArgs {
   bidirectional?: boolean;
   notes?: string;
   strength?: number; // 0-1
+  citations?: CanonCitation[];
 }
 
 /**
@@ -217,6 +221,7 @@ export interface CreateNodeArgs {
   aliases?: string[];
   notes?: string;
   properties?: Record<string, unknown>;
+  citations?: CanonCitation[];
 }
 
 /**
@@ -231,6 +236,7 @@ export interface UpdateNodeArgs {
     notes?: string;
     properties?: Record<string, unknown>;
   };
+  citations?: CanonCitation[];
 }
 
 /**
@@ -245,6 +251,7 @@ export interface UpdateRelationshipArgs {
     strength?: number;
     bidirectional?: boolean;
   };
+  citations?: CanonCitation[];
 }
 
 /**
@@ -258,6 +265,7 @@ export interface CreateEdgeArgs {
   notes?: string;
   strength?: number; // 0-1
   metadata?: Record<string, unknown>;
+  citations?: CanonCitation[];
 }
 
 /**
@@ -273,6 +281,7 @@ export interface UpdateEdgeArgs {
     bidirectional?: boolean;
     metadata?: Record<string, unknown>;
   };
+  citations?: CanonCitation[];
 }
 
 /**
@@ -513,6 +522,7 @@ export interface WriteContentArgs {
   content: string;
   format?: "plain" | "markdown";
   rationale?: string;
+  citations?: CanonCitation[];
 }
 
 export interface WriteContentResult {
@@ -600,6 +610,7 @@ export interface CommitDecisionArgs {
   confidence?: number;
   /** Pin decision as canon (default true on server) */
   pinned?: boolean;
+  citations?: CanonCitation[];
 }
 
 // =============================================================================

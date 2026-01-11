@@ -40,18 +40,69 @@ export default defineSchema({
     supabaseId: v.optional(v.string()), // Legacy migration field (deprecated)
     name: v.string(),
     description: v.optional(v.string()),
-    templateId: v.optional(v.string()),
+    templateId: v.optional(v.string()), // "writer" | "product" | "engineering" | "design" | "comms" | "custom"
     templateOverrides: v.optional(v.any()),
-    genre: v.optional(v.string()),
-    styleConfig: v.optional(v.any()), // Writing style preferences
-    linterConfig: v.optional(v.any()), // Consistency linter rules
+    metadata: v.optional(v.any()), // Project metadata (domain-specific)
+    settings: v.optional(v.any()), // Runtime settings (AI, review, etc.)
+    orgId: v.optional(v.id("organizations")),
+    teamId: v.optional(v.id("teams")),
+    genre: v.optional(v.string()), // Deprecated (writer template only)
+    styleConfig: v.optional(v.any()), // Deprecated (writer template only)
+    linterConfig: v.optional(v.any()), // Deprecated (writer template only)
     ownerId: v.string(), // Better Auth user ID
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_owner", ["ownerId"])
+    .index("by_template", ["templateId"])
+    .index("by_org", ["orgId"])
+    .index("by_team", ["teamId"])
     .index("by_supabase_id", ["supabaseId"])
     .index("by_updated", ["updatedAt"]),
+
+  // ============================================================
+  // ORGANIZATIONS & TEAMS
+  // ============================================================
+  organizations: defineTable({
+    name: v.string(),
+    ownerId: v.string(), // Better Auth user ID
+    slug: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_slug", ["slug"]),
+
+  organizationMembers: defineTable({
+    orgId: v.id("organizations"),
+    userId: v.string(),
+    role: v.union(v.literal("owner"), v.literal("admin"), v.literal("member")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_user", ["userId"])
+    .index("by_org_user", ["orgId", "userId"]),
+
+  teams: defineTable({
+    orgId: v.id("organizations"),
+    name: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_org", ["orgId"]),
+
+  teamMembers: defineTable({
+    teamId: v.id("teams"),
+    userId: v.string(),
+    role: v.union(v.literal("lead"), v.literal("member")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_user", ["userId"])
+    .index("by_team_user", ["teamId", "userId"]),
 
   // ============================================================
   // PROJECT TYPE REGISTRY (Project Graph schema + approval policy)
@@ -95,15 +146,17 @@ export default defineSchema({
     projectId: v.id("projects"),
     supabaseId: v.optional(v.string()), // Legacy migration field (deprecated)
     parentId: v.optional(v.id("documents")), // Hierarchical structure
-    type: v.string(), // "chapter", "scene", "note", "outline", "worldbuilding"
+    type: v.string(), // Document kind (scene, chapter, note, outline, worldbuilding, spec, brief)
+    kind: v.optional(v.string()), // Optional alias for type (future)
     title: v.optional(v.string()),
     content: v.optional(v.any()), // ProseMirror JSON
     contentText: v.optional(v.string()), // Plain text for search
     orderIndex: v.number(),
     wordCount: v.number(),
-    // Metadata
-    beat: v.optional(v.string()), // Narrative beat
-    tensionLevel: v.optional(v.number()), // 1-10
+    metadata: v.optional(v.any()), // Document metadata (template-specific)
+    // Deprecated writer-only metadata
+    beat: v.optional(v.string()),
+    tensionLevel: v.optional(v.number()),
     povCharacterId: v.optional(v.id("entities")),
     locationId: v.optional(v.id("entities")),
     // Timestamps
@@ -300,7 +353,7 @@ export default defineSchema({
     }),
 
   // ============================================================
-  // RELATIONSHIPS (World Graph edges)
+  // RELATIONSHIPS (Project Graph edges)
   // ============================================================
   relationships: defineTable({
     projectId: v.id("projects"),
