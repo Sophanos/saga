@@ -2,36 +2,71 @@
  * FlowHeader - Minimal header for flow mode (Expo)
  *
  * Clean, distraction-free header with:
+ * - Timer display (left) - clickable to open timer panel
  * - Word count (center)
- * - Focus level toggle
- * - Exit button
- *
- * Timer is now rendered separately in the left side rail.
+ * - Focus level toggle + Exit (right)
  */
 
 import { useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  withSequence,
+} from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, radii, typography } from '@/design-system';
 import {
   useFlowStore,
+  useFlowTimer,
   useFocusLevel,
   useSessionWordsWritten,
   useFlowPreferences,
+  useShouldAutoReveal,
+  formatFlowTime,
   type FocusLevel,
 } from '@mythos/state';
+import { useEffect } from 'react';
 
 interface FlowHeaderProps {
   onExit: () => void;
+  onTimerPress: () => void;
 }
 
-export function FlowHeader({ onExit }: FlowHeaderProps) {
+export function FlowHeader({ onExit, onTimerPress }: FlowHeaderProps) {
   const { colors, isDark } = useTheme();
+  const timer = useFlowTimer();
   const focusLevel = useFocusLevel();
   const wordsWritten = useSessionWordsWritten();
   const preferences = useFlowPreferences();
+  const shouldAutoReveal = useShouldAutoReveal();
   const setFocusLevel = useFlowStore((s) => s.setFocusLevel);
+
+  // Pulsing animation for auto-reveal indicator
+  const pulseOpacity = useSharedValue(1);
+
+  useEffect(() => {
+    if (shouldAutoReveal && (timer.state === 'running' || timer.state === 'break')) {
+      pulseOpacity.value = withRepeat(
+        withSequence(
+          withTiming(0.3, { duration: 600 }),
+          withTiming(1, { duration: 600 })
+        ),
+        -1, // infinite
+        false
+      );
+    } else {
+      pulseOpacity.value = 1;
+    }
+  }, [shouldAutoReveal, timer.state, pulseOpacity]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    opacity: pulseOpacity.value,
+  }));
 
   // Focus level cycling
   const cycleFocusLevel = useCallback(() => {
@@ -60,14 +95,62 @@ export function FlowHeader({ onExit }: FlowHeaderProps) {
     ? Math.min(100, (wordsWritten / preferences.sessionWordGoal) * 100)
     : null;
 
+  // Timer display text
+  const getTimerDisplay = () => {
+    if (timer.state === 'idle') {
+      return `${timer.selectedDurationMin}m`;
+    }
+    return formatFlowTime(timer.remainingSeconds);
+  };
+
+  // Timer color
+  const getTimerColor = () => {
+    if (timer.state === 'running') return '#22c55e';
+    if (timer.state === 'break') return '#f59e0b';
+    if (timer.state === 'paused') return '#f59e0b';
+    return colors.textSecondary;
+  };
+
   return (
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(150)}
       style={[styles.container, { borderBottomColor: colors.borderSubtle }]}
     >
-      {/* Left: Spacer for balance */}
-      <View style={styles.leftSection} />
+      {/* Left: Timer display (clickable) */}
+      <View style={styles.leftSection}>
+        <Pressable
+          onPress={onTimerPress}
+          style={({ pressed, hovered }) => [
+            styles.timerButton,
+            {
+              backgroundColor: hovered || pressed
+                ? isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+                : 'transparent',
+            },
+          ]}
+        >
+          <Feather
+            name="clock"
+            size={14}
+            color={getTimerColor()}
+          />
+          <Text style={[styles.timerText, { color: getTimerColor() }]}>
+            {getTimerDisplay()}
+          </Text>
+          {(timer.state === 'running' || timer.state === 'break') && (
+            <Animated.View
+              style={[
+                styles.runningDot,
+                shouldAutoReveal && pulseStyle,
+                {
+                  backgroundColor: timer.state === 'break' ? '#f59e0b' : '#22c55e',
+                },
+              ]}
+            />
+          )}
+        </Pressable>
+      </View>
 
       {/* Center: Word count */}
       <View style={styles.centerSection}>
@@ -145,6 +228,26 @@ const styles = StyleSheet.create({
   },
   leftSection: {
     flex: 1,
+    alignItems: 'flex-start',
+  },
+  timerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1.5],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1.5],
+    borderRadius: radii.sm,
+  },
+  timerText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  runningDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#22c55e',
   },
   centerSection: {
     alignItems: 'center',

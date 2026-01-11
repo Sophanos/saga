@@ -32,3 +32,20 @@ export type {
 // Collaboration
 export { RemoteCursorExtension, updateRemoteCursors } from './remote-cursor';
 export type { RemoteCursorUser } from './remote-cursor';
+
+// Flow Mode Extensions
+export {
+  FlowFocusExtension,
+  flowFocusPluginKey,
+  getFlowFocusState,
+  updateFlowFocusFromStore,
+} from './flow-focus';
+export type { FocusLevel, FlowFocusState, FlowFocusOptions } from './flow-focus';
+
+export {
+  TypewriterScrollExtension,
+  typewriterScrollPluginKey,
+  getTypewriterScrollState,
+  updateTypewriterScrollFromStore,
+} from './typewriter-scroll';
+export type { TypewriterScrollState, TypewriterScrollOptions } from './typewriter-scroll';

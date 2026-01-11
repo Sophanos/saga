@@ -59,13 +59,10 @@ export function FlowTimerVisual({ height = 280 }: FlowTimerVisualProps) {
   const resetTimer = useFlowStore((s) => s.resetTimer);
   const setSelectedDuration = useFlowStore((s) => s.setSelectedDuration);
   const setRevealThreshold = useFlowStore((s) => s.setRevealThreshold);
-  const setTimerVisible = useFlowStore((s) => s.setTimerVisible);
-  const toggleTimerVisible = useFlowStore((s) => s.toggleTimerVisible);
 
   const [showThresholdPicker, setShowThresholdPicker] = useState(false);
 
   // Animation values
-  const railOpacity = useSharedValue(1);
   const indicatorY = useSharedValue(0);
 
   // Calculate Y position from duration
@@ -141,10 +138,6 @@ export function FlowTimerVisual({ height = 280 }: FlowTimerVisualProps) {
   const handleReset = useCallback(() => {
     resetTimer();
   }, [resetTimer]);
-
-  const handleReveal = useCallback(() => {
-    toggleTimerVisible();
-  }, [toggleTimerVisible]);
 
   const handleSetThreshold = useCallback(
     (threshold: number) => {
@@ -245,22 +238,6 @@ export function FlowTimerVisual({ height = 280 }: FlowTimerVisualProps) {
         />
       );
     }
-  }
-
-  // If hidden during running, show minimal reveal button
-  if (!timer.isVisible && timer.state === 'running') {
-    return (
-      <Pressable onPress={handleReveal} style={styles.hiddenTrigger}>
-        <View
-          style={[
-            styles.hiddenIndicator,
-            { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' },
-          ]}
-        >
-          <View style={[styles.hiddenDot, { backgroundColor: '#22c55e' }]} />
-        </View>
-      </Pressable>
-    );
   }
 
   return (
@@ -440,7 +417,7 @@ export function FlowTimerVisual({ height = 280 }: FlowTimerVisualProps) {
           style={[
             styles.thresholdPicker,
             {
-              backgroundColor: isDark ? colors.bgCard : '#fff',
+              backgroundColor: isDark ? colors.bgSurface : '#fff',
               borderColor: colors.border,
             },
           ]}
@@ -658,23 +635,5 @@ const styles = StyleSheet.create({
     marginTop: spacing[1],
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(128,128,128,0.2)',
-  },
-  hiddenTrigger: {
-    width: 24,
-    height: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  hiddenIndicator: {
-    width: 8,
-    height: 40,
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hiddenDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
   },
 });

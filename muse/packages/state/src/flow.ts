@@ -39,8 +39,8 @@ export interface FlowPreferences {
 }
 
 export interface FlowSession {
-  /** Session start time */
-  startedAt: Date;
+  /** Session start time (epoch ms) */
+  startedAtMs: number;
   /** Words at session start */
   startingWordCount: number;
   /** Current word count */
@@ -60,15 +60,19 @@ export interface FlowTimerData {
   isBreak: boolean;
   /** User's selected duration in minutes */
   selectedDurationMin: number;
-  /** Whether timer UI is visible (auto-hides when running) */
-  isVisible: boolean;
+  /** Domain flag: true when threshold reached, UI decides what to show */
+  shouldAutoReveal: boolean;
   /** Auto-reveal threshold in minutes (2/5/10) */
   revealThresholdMin: number;
+  /** Last tick timestamp for drift correction (epoch ms) */
+  lastTickAtMs: number | null;
 }
 
 export interface SessionStats {
-  /** Session date */
-  date: Date;
+  /** Session start time (epoch ms) */
+  startedAtMs: number;
+  /** Session end time (epoch ms) */
+  endedAtMs: number;
   /** Total duration in seconds */
   durationSeconds: number;
   /** Words written during session */
@@ -108,8 +112,6 @@ interface FlowState {
   skipBreak: () => void;
   setSelectedDuration: (minutes: number) => void;
   setRevealThreshold: (minutes: number) => void;
-  setTimerVisible: (visible: boolean) => void;
-  toggleTimerVisible: () => void;
 
   // Actions - Session
   updateWordCount: (count: number) => void;
@@ -140,8 +142,9 @@ const DEFAULT_TIMER: FlowTimerData = {
   remainingSeconds: 0,
   isBreak: false,
   selectedDurationMin: 25,
-  isVisible: true,
+  shouldAutoReveal: false,
   revealThresholdMin: 5,
+  lastTickAtMs: null,
 };
 
 const initialState = {
@@ -170,7 +173,7 @@ export const useFlowStore = create<FlowState>()(
         set({
           enabled: true,
           session: {
-            startedAt: new Date(),
+            startedAtMs: Date.now(),
             startingWordCount,
             currentWordCount: startingWordCount,
             completedPomodoros: 0,
@@ -182,8 +185,9 @@ export const useFlowStore = create<FlowState>()(
             remainingSeconds: timer.selectedDurationMin * 60,
             isBreak: false,
             selectedDurationMin: timer.selectedDurationMin,
-            isVisible: true,
+            shouldAutoReveal: false,
             revealThresholdMin: timer.revealThresholdMin,
+            lastTickAtMs: null,
           },
         });
       },
@@ -194,12 +198,12 @@ export const useFlowStore = create<FlowState>()(
         let stats: SessionStats | null = null;
 
         if (session) {
-          const durationSeconds = Math.floor(
-            (Date.now() - new Date(session.startedAt).getTime()) / 1000
-          );
+          const now = Date.now();
+          const durationSeconds = Math.floor((now - session.startedAtMs) / 1000);
 
           stats = {
-            date: new Date(),
+            startedAtMs: session.startedAtMs,
+            endedAtMs: now,
             durationSeconds,
             wordsWritten: session.currentWordCount - session.startingWordCount,
             completedPomodoros: session.completedPomodoros,
@@ -275,19 +279,20 @@ export const useFlowStore = create<FlowState>()(
             state: 'running',
             remainingSeconds: timer.state === 'paused' ? timer.remainingSeconds : timer.selectedDurationMin * 60,
             isBreak: false,
-            isVisible: false, // Hide when running
+            shouldAutoReveal: false,
+            lastTickAtMs: Date.now(),
           },
         });
       },
 
       pauseTimer: () =>
         set((s) => ({
-          timer: { ...s.timer, state: 'paused' },
+          timer: { ...s.timer, state: 'paused', lastTickAtMs: null },
         })),
 
       resumeTimer: () =>
         set((s) => ({
-          timer: { ...s.timer, state: 'running' },
+          timer: { ...s.timer, state: 'running', lastTickAtMs: Date.now() },
         })),
 
       resetTimer: () => {
@@ -299,7 +304,8 @@ export const useFlowStore = create<FlowState>()(
             state: 'idle',
             remainingSeconds: timer.selectedDurationMin * 60,
             isBreak: false,
-            isVisible: true,
+            shouldAutoReveal: false,
+            lastTickAtMs: null,
           },
         });
       },
@@ -307,13 +313,22 @@ export const useFlowStore = create<FlowState>()(
       tickTimer: () => {
         const { timer, session, preferences } = get();
 
-        if (timer.state !== 'running' || timer.remainingSeconds <= 0) return;
+        // FIX: Allow both 'running' AND 'break' states to countdown
+        const isCountingDown = timer.state === 'running' || timer.state === 'break';
+        if (!isCountingDown || timer.remainingSeconds <= 0) return;
 
-        const newRemaining = timer.remainingSeconds - 1;
+        // FIX: Calculate actual elapsed time to handle background tab drift
+        const now = Date.now();
+        const deltaSec = timer.lastTickAtMs
+          ? Math.max(1, Math.floor((now - timer.lastTickAtMs) / 1000))
+          : 1;
+
+        const newRemaining = Math.max(0, timer.remainingSeconds - deltaSec);
         const thresholdSeconds = timer.revealThresholdMin * 60;
 
-        // Auto-reveal when threshold reached
-        const shouldAutoReveal = !timer.isVisible && newRemaining <= thresholdSeconds && newRemaining > 0;
+        // Set shouldAutoReveal when threshold is reached (domain flag)
+        const newShouldAutoReveal = timer.shouldAutoReveal ||
+          (newRemaining <= thresholdSeconds && newRemaining > 0);
 
         // Timer completed
         if (newRemaining <= 0) {
@@ -325,11 +340,12 @@ export const useFlowStore = create<FlowState>()(
                 state: 'idle',
                 remainingSeconds: timer.selectedDurationMin * 60,
                 isBreak: false,
-                isVisible: true,
+                shouldAutoReveal: false,
+                lastTickAtMs: null,
               },
             });
           } else {
-            // Work period ended, start break
+            // Work period ended, start break (auto-starts countdown)
             const newPomodoros = (session?.completedPomodoros ?? 0) + 1;
             set({
               timer: {
@@ -337,7 +353,8 @@ export const useFlowStore = create<FlowState>()(
                 state: 'break',
                 remainingSeconds: preferences.breakDurationMin * 60,
                 isBreak: true,
-                isVisible: true,
+                shouldAutoReveal: true, // Always reveal at break start
+                lastTickAtMs: now,
               },
               session: session ? {
                 ...session,
@@ -351,7 +368,8 @@ export const useFlowStore = create<FlowState>()(
             timer: {
               ...timer,
               remainingSeconds: newRemaining,
-              isVisible: shouldAutoReveal ? true : timer.isVisible,
+              shouldAutoReveal: newShouldAutoReveal,
+              lastTickAtMs: now,
             },
           });
         }
@@ -366,7 +384,8 @@ export const useFlowStore = create<FlowState>()(
             state: 'break',
             remainingSeconds: preferences.breakDurationMin * 60,
             isBreak: true,
-            isVisible: true,
+            shouldAutoReveal: true,
+            lastTickAtMs: Date.now(),
           },
           session: session ? {
             ...session,
@@ -384,7 +403,8 @@ export const useFlowStore = create<FlowState>()(
             state: 'idle',
             remainingSeconds: timer.selectedDurationMin * 60,
             isBreak: false,
-            isVisible: true,
+            shouldAutoReveal: false,
+            lastTickAtMs: null,
           },
         });
       },
@@ -405,18 +425,6 @@ export const useFlowStore = create<FlowState>()(
             ...s.timer,
             revealThresholdMin: minutes,
           },
-        }));
-      },
-
-      setTimerVisible: (visible) => {
-        set((s) => ({
-          timer: { ...s.timer, isVisible: visible },
-        }));
-      },
-
-      toggleTimerVisible: () => {
-        set((s) => ({
-          timer: { ...s.timer, isVisible: !s.timer.isVisible },
         }));
       },
 
@@ -471,18 +479,18 @@ export const useSessionWordsWritten = () =>
 export const useSessionDuration = () =>
   useFlowStore((s) => {
     if (!s.session) return 0;
-    return Math.floor((Date.now() - new Date(s.session.startedAt).getTime()) / 1000);
+    return Math.floor((Date.now() - s.session.startedAtMs) / 1000);
   });
 
-/** Check if timer is active (running or paused) */
+/** Check if timer is active (running, paused, or on break) */
 export const useIsTimerActive = () =>
-  useFlowStore((s) => s.timer.state === 'running' || s.timer.state === 'paused');
+  useFlowStore((s) => s.timer.state === 'running' || s.timer.state === 'paused' || s.timer.state === 'break');
 
 /** Check if currently in break */
 export const useIsBreak = () => useFlowStore((s) => s.timer.isBreak);
 
-/** Check if timer UI is visible */
-export const useIsTimerVisible = () => useFlowStore((s) => s.timer.isVisible);
+/** Check if timer has reached auto-reveal threshold */
+export const useShouldAutoReveal = () => useFlowStore((s) => s.timer.shouldAutoReveal);
 
 /** Get selected duration in minutes */
 export const useSelectedDuration = () => useFlowStore((s) => s.timer.selectedDurationMin);

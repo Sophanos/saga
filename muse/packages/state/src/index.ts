@@ -303,6 +303,9 @@ export {
   useSessionDuration,
   useIsTimerActive,
   useIsBreak,
+  useShouldAutoReveal,
+  useRevealThreshold,
+  useSelectedDuration,
   formatFlowTime,
   formatFlowDuration,
 } from "./flow";
@@ -315,6 +318,18 @@ export type {
   FlowTimerData,
   SessionStats,
 } from "./flow";
+
+// ============================================================
+// EDITOR METRICS STORE
+// ============================================================
+export {
+  useEditorMetricsStore,
+  useEditorWordCount,
+  useEditorCharacterCount,
+  useEditorDocumentId,
+  useEditorMetricsLastUpdated,
+} from "./editorMetrics";
+export type { EditorMetricsState } from "./editorMetrics";
 
 // ============================================================
 // RESET UTILITIES

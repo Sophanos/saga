@@ -2,24 +2,29 @@
  * FlowOverlay - Distraction-free writing overlay (Expo)
  *
  * Layout:
- * - Header: Word count, focus toggle, exit button
- * - Left edge: Vertical timer rail (hides when running)
+ * - Header: Timer (clickable), Word count, Focus toggle, Exit
+ * - Timer Panel: Opens from left when timer in header is clicked
  * - Main: Editor content
  */
 
-import { useEffect, useState, useCallback, type ReactNode } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
+import { View, StyleSheet, Platform, Pressable } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { useTheme, spacing } from '@/design-system';
+import { useTheme, spacing, useCurrentProjectId } from '@/design-system';
 import {
   useFlowStore,
   useFlowEnabled,
   useFlowPreferences,
   useFlowTimer,
+  useFlowSession,
+  useShouldAutoReveal,
   type SessionStats,
 } from '@mythos/state';
+import { useMutation } from 'convex/react';
+import { api } from '../../../../../convex/_generated/api';
+import type { Id } from '../../../../../convex/_generated/dataModel';
 import { FlowHeader } from './FlowHeader';
-import { FlowTimerVisual } from './FlowTimerVisual';
+import { FlowTimerPanel } from './FlowTimerPanel';
 import { FlowSummaryModal } from './FlowSummaryModal';
 
 interface FlowOverlayProps {
@@ -27,19 +32,32 @@ interface FlowOverlayProps {
   children?: ReactNode;
   /** Current word count from editor */
   wordCount?: number;
+  /** Current document ID (for session tracking) */
+  documentId?: string;
 }
 
-export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
-  const { colors } = useTheme();
+export function FlowOverlay({ children, wordCount = 0, documentId }: FlowOverlayProps) {
+  const { colors, isDark } = useTheme();
   const enabled = useFlowEnabled();
   const preferences = useFlowPreferences();
   const timer = useFlowTimer();
+  const session = useFlowSession();
+  const shouldAutoReveal = useShouldAutoReveal();
+  const projectId = useCurrentProjectId();
   const exitFlowMode = useFlowStore((s) => s.exitFlowMode);
   const updateWordCount = useFlowStore((s) => s.updateWordCount);
   const tickTimer = useFlowStore((s) => s.tickTimer);
 
+  // Convex mutation for persisting sessions
+  const recordFlowSession = useMutation(api.flowSessions.record);
+
+  // Component-local UI state for timer panel visibility
   const [showSummary, setShowSummary] = useState(false);
+  const [showTimerPanel, setShowTimerPanel] = useState(false);
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
+
+  // Track if we've already notified about auto-reveal (to avoid repeated opens)
+  const hasNotifiedAutoReveal = useRef(false);
 
   // Update word count in store when it changes
   useEffect(() => {
@@ -48,9 +66,11 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
     }
   }, [enabled, wordCount, updateWordCount]);
 
-  // Timer tick interval
+  // Timer tick interval - runs for both 'running' and 'break' states
   useEffect(() => {
-    if (!enabled || timer.state !== 'running') return;
+    if (!enabled) return;
+    const isCountingDown = timer.state === 'running' || timer.state === 'break';
+    if (!isCountingDown) return;
 
     const interval = setInterval(() => {
       tickTimer();
@@ -59,15 +79,61 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
     return () => clearInterval(interval);
   }, [enabled, timer.state, tickTimer]);
 
-  // Handle exit
-  const handleExit = useCallback(() => {
+  // Reset auto-reveal notification when timer restarts
+  useEffect(() => {
+    if (timer.state === 'idle') {
+      hasNotifiedAutoReveal.current = false;
+    }
+  }, [timer.state]);
+
+  // NOTE: We intentionally do NOT auto-open the panel when shouldAutoReveal becomes true.
+  // Instead, FlowHeader shows a subtle indicator dot. User can tap to open panel manually.
+
+  // Handle exit - persist session to Convex and show summary
+  const handleExit = useCallback(async () => {
+    // Capture session data before exiting (session will be null after exit)
+    const currentSession = session;
     const stats = exitFlowMode();
     setSessionStats(stats);
+
+    // Persist to Convex if we have a project and valid session
+    if (projectId && stats && currentSession) {
+      try {
+        await recordFlowSession({
+          projectId: projectId as Id<'projects'>,
+          documentId: documentId as Id<'documents'> | undefined,
+          startedAtMs: stats.startedAtMs,
+          endedAtMs: stats.endedAtMs,
+          durationSeconds: stats.durationSeconds,
+          startingWordCount: currentSession.startingWordCount,
+          endingWordCount: currentSession.currentWordCount,
+          wordsWritten: stats.wordsWritten,
+          completedPomodoros: stats.completedPomodoros,
+          totalFocusedSeconds: currentSession.totalFocusedSeconds,
+          focusLevel: preferences.focusLevel,
+          typewriterScrolling: preferences.typewriterScrolling,
+          timerMode: timer.mode,
+        });
+      } catch (error) {
+        // Silently fail - local session is still saved
+        console.warn('Failed to persist flow session to Convex:', error);
+      }
+    }
 
     if (preferences.showSummaryOnExit && stats && stats.wordsWritten > 0) {
       setShowSummary(true);
     }
-  }, [exitFlowMode, preferences.showSummaryOnExit]);
+  }, [session, exitFlowMode, projectId, documentId, preferences, timer.mode, recordFlowSession]);
+
+  // Handle timer press in header
+  const handleTimerPress = useCallback(() => {
+    setShowTimerPanel((prev) => !prev);
+  }, []);
+
+  // Handle timer panel close
+  const handleTimerPanelClose = useCallback(() => {
+    setShowTimerPanel(false);
+  }, []);
 
   // Handle escape key (web only)
   useEffect(() => {
@@ -76,13 +142,17 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        handleExit();
+        if (showTimerPanel) {
+          setShowTimerPanel(false);
+        } else {
+          handleExit();
+        }
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [enabled, handleExit]);
+  }, [enabled, handleExit, showTimerPanel]);
 
   // Close summary modal
   const handleCloseSummary = useCallback(() => {
@@ -100,21 +170,34 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
     );
   }
 
-  // Flow mode: show header + side timer + children (editor)
+  // Flow mode: show header + optional timer panel + children (editor)
   if (enabled) {
     return (
       <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
-        {/* Flow header with word count, focus toggle, exit */}
+        {/* Flow header with timer, word count, focus toggle, exit */}
         <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
-          <FlowHeader onExit={handleExit} />
+          <FlowHeader onExit={handleExit} onTimerPress={handleTimerPress} />
         </Animated.View>
 
-        {/* Main content area with side timer */}
+        {/* Main content area */}
         <View style={styles.mainArea}>
-          {/* Left side: Timer rail */}
-          <View style={styles.timerSide}>
-            <FlowTimerVisual height={240} />
-          </View>
+          {/* Timer panel (slides from left when open) */}
+          {showTimerPanel && (
+            <>
+              {/* Backdrop to close panel */}
+              <Animated.View
+                entering={FadeIn.duration(100)}
+                exiting={FadeOut.duration(80)}
+                style={[
+                  styles.backdrop,
+                  { backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.1)' },
+                ]}
+              >
+                <Pressable style={StyleSheet.absoluteFill} onPress={handleTimerPanelClose} />
+              </Animated.View>
+              <FlowTimerPanel onClose={handleTimerPanelClose} />
+            </>
+          )}
 
           {/* Editor content */}
           <View style={styles.content}>
@@ -135,12 +218,15 @@ const styles = StyleSheet.create({
   },
   mainArea: {
     flex: 1,
-    flexDirection: 'row',
+    position: 'relative',
   },
-  timerSide: {
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[4],
-    justifyContent: 'center',
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 50,
   },
   content: {
     flex: 1,

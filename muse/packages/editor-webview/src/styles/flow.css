@@ -1,0 +1,151 @@
+/**
+ * Flow Mode Styles - Focus dimming and typewriter mode
+ *
+ * iA Writer-inspired focus effects for distraction-free writing.
+ * Uses CSS custom properties for theme integration.
+ */
+
+/* =============================================================================
+   Flow Focus - Text Dimming
+   ============================================================================= */
+
+/**
+ * Dimmed text - non-active sentences/paragraphs
+ * The opacity is set inline by the extension for dynamic control
+ */
+.flow-dimmed {
+  /* Fallback opacity - actual value set inline */
+  opacity: var(--flow-dim-opacity, 0.3);
+  transition: opacity 150ms ease;
+}
+
+/**
+ * Focused text - active sentence/paragraph (not dimmed)
+ * Applied for explicit focus states if needed
+ */
+.flow-focused {
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+
+/**
+ * When focus mode is active, slightly increase letter spacing
+ * for better readability of the focused content
+ */
+.ProseMirror.flow-active {
+  --flow-letter-spacing: 0.01em;
+}
+
+.ProseMirror.flow-active p,
+.ProseMirror.flow-active h1,
+.ProseMirror.flow-active h2,
+.ProseMirror.flow-active h3,
+.ProseMirror.flow-active h4,
+.ProseMirror.flow-active h5,
+.ProseMirror.flow-active h6 {
+  letter-spacing: var(--flow-letter-spacing);
+}
+
+/* =============================================================================
+   Typewriter Mode
+   ============================================================================= */
+
+/**
+ * When typewriter mode is active, add extra padding at the bottom
+ * to allow the cursor to reach the target position
+ */
+.ProseMirror.typewriter-active {
+  padding-bottom: 60vh;
+}
+
+/**
+ * Smooth scroll behavior for the editor container
+ */
+.typewriter-scroll-container {
+  scroll-behavior: smooth;
+}
+
+/* =============================================================================
+   Focus Mode Visual Indicators
+   ============================================================================= */
+
+/**
+ * Subtle border glow when focus mode is active
+ * Provides visual feedback that focus mode is engaged
+ */
+.flow-mode-active .ProseMirror {
+  box-shadow: inset 0 0 0 1px var(--color-accent-subtle, rgba(46, 170, 220, 0.1));
+  border-radius: var(--radius-md, 8px);
+  transition: box-shadow 200ms ease;
+}
+
+/* =============================================================================
+   Dark Mode Adjustments
+   ============================================================================= */
+
+@media (prefers-color-scheme: dark) {
+  .flow-dimmed {
+    /* In dark mode, dimmed text should be even more muted */
+    color: var(--color-text-muted, rgba(255, 255, 255, 0.36));
+  }
+
+  .flow-mode-active .ProseMirror {
+    box-shadow: inset 0 0 0 1px var(--color-accent-subtle, rgba(82, 156, 202, 0.15));
+  }
+}
+
+/* =============================================================================
+   Animation States
+   ============================================================================= */
+
+/**
+ * Entrance animation when focus mode activates
+ */
+@keyframes flow-focus-enter {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: var(--flow-dim-opacity, 0.3);
+  }
+}
+
+/**
+ * Exit animation when focus mode deactivates
+ */
+@keyframes flow-focus-exit {
+  from {
+    opacity: var(--flow-dim-opacity, 0.3);
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/**
+ * Apply entrance animation to dimmed content
+ */
+.flow-dimmed.flow-entering {
+  animation: flow-focus-enter 150ms ease forwards;
+}
+
+/**
+ * Apply exit animation when un-dimming
+ */
+.flow-dimmed.flow-exiting {
+  animation: flow-focus-exit 150ms ease forwards;
+}
+
+/* =============================================================================
+   Print Styles
+   ============================================================================= */
+
+@media print {
+  .flow-dimmed {
+    opacity: 1 !important;
+  }
+
+  .typewriter-active {
+    padding-bottom: 0 !important;
+  }
+}
