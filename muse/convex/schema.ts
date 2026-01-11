@@ -228,6 +228,15 @@ export default defineSchema({
     operation: v.string(),
     proposedPatch: v.any(),
     normalizedPatch: v.optional(v.any()),
+    editorContext: v.optional(
+      v.object({
+        documentId: v.optional(v.string()),
+        documentTitle: v.optional(v.string()),
+        documentExcerpt: v.optional(v.string()),
+        selectionText: v.optional(v.string()),
+        selectionContext: v.optional(v.string()),
+      })
+    ),
     status: v.union(
       v.literal("proposed"),
       v.literal("accepted"),

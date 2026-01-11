@@ -5,6 +5,14 @@ export type KnowledgeStatus = 'proposed' | 'accepted' | 'rejected' | 'resolved';
 export type KnowledgeRiskLevel = 'low' | 'high' | 'core';
 export type KnowledgeCitationVisibility = 'project' | 'private' | 'redacted';
 
+export interface KnowledgeEditorContext {
+  documentId?: string;
+  documentTitle?: string;
+  documentExcerpt?: string;
+  selectionText?: string;
+  selectionContext?: string;
+}
+
 export interface KnowledgeCitation {
   _id: string;
   projectId: string;
@@ -31,6 +39,7 @@ export interface KnowledgeSuggestion {
   operation: string;
   proposedPatch: unknown;
   normalizedPatch?: unknown;
+  editorContext?: KnowledgeEditorContext;
   status: KnowledgeStatus;
   actorType: string;
   actorUserId?: string;

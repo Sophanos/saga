@@ -4,9 +4,18 @@ import { useAction, useQuery } from "convex/react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
 import { api } from "../../../../../convex/_generated/api";
 import { useMythosStore } from "../../stores";
+import { DiffView } from "./DiffViews";
 
 type KnowledgeStatus = "proposed" | "accepted" | "rejected" | "resolved";
 type KnowledgeRiskLevel = "low" | "high" | "core";
+
+interface KnowledgeEditorContext {
+  documentId?: string;
+  documentTitle?: string;
+  documentExcerpt?: string;
+  selectionText?: string;
+  selectionContext?: string;
+}
 
 interface KnowledgeSuggestion {
   _id: string;
@@ -16,6 +25,7 @@ interface KnowledgeSuggestion {
   operation: string;
   proposedPatch: unknown;
   normalizedPatch?: unknown;
+  editorContext?: KnowledgeEditorContext;
   status: KnowledgeStatus;
   actorType: string;
   actorUserId?: string;
@@ -122,6 +132,91 @@ function titleCase(input: string): string {
     .join(" ");
 }
 
+type WriteContentOperation = "replace_selection" | "insert_at_cursor" | "append_document";
+
+type WriteContentDiffBlock = {
+  label: string;
+  before: string;
+  after: string;
+};
+
+type WriteContentDiff = {
+  operation: WriteContentOperation;
+  blocks: WriteContentDiffBlock[];
+  rationale?: string;
+  note?: string;
+  documentTitle?: string;
+  documentExcerpt?: string;
+};
+
+function getRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function replaceFirst(haystack: string, needle: string, replacement: string): string {
+  const index = haystack.indexOf(needle);
+  if (index === -1) return haystack;
+  return `${haystack.slice(0, index)}${replacement}${haystack.slice(index + needle.length)}`;
+}
+
+function parseWriteContentOperation(value: unknown): WriteContentOperation {
+  if (value === "replace_selection" || value === "insert_at_cursor" || value === "append_document") {
+    return value;
+  }
+  return "insert_at_cursor";
+}
+
+function parseWriteContentArgs(
+  patch: unknown
+): { operation: WriteContentOperation; content: string; rationale?: string } | null {
+  const record = getRecord(patch);
+  if (!record) return null;
+  const content = typeof record.content === "string" ? record.content : "";
+  if (!content) return null;
+  const operation = parseWriteContentOperation(record.operation);
+  const rationale = typeof record.rationale === "string" ? record.rationale : undefined;
+  return { operation, content, rationale };
+}
+
+function buildWriteContentDiff(
+  patch: unknown,
+  editorContext?: KnowledgeEditorContext
+): WriteContentDiff | null {
+  const parsed = parseWriteContentArgs(patch);
+  if (!parsed) return null;
+
+  const selectionText = editorContext?.selectionText;
+  const selectionContext = editorContext?.selectionContext;
+  const blocks: WriteContentDiffBlock[] = [];
+  let note: string | undefined;
+
+  if (selectionText) {
+    blocks.push({ label: "Selection", before: selectionText, after: parsed.content });
+    if (selectionContext) {
+      const contextAfter = replaceFirst(selectionContext, selectionText, parsed.content);
+      if (contextAfter !== selectionContext) {
+        blocks.push({ label: "Context", before: selectionContext, after: contextAfter });
+      }
+    }
+  } else {
+    if (parsed.operation === "replace_selection") {
+      note = "Selection text unavailable for this proposal.";
+    }
+    const label = parsed.operation === "append_document" ? "Append" : "Insert";
+    blocks.push({ label, before: "", after: parsed.content });
+  }
+
+  return {
+    operation: parsed.operation,
+    blocks,
+    rationale: parsed.rationale,
+    note,
+    documentTitle: editorContext?.documentTitle,
+    documentExcerpt: editorContext?.documentExcerpt,
+  };
+}
+
 export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
   const projectId = useMythosStore((s) => s.project.currentProject?.id);
   const apiAny: any = api;
@@ -186,6 +281,11 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
     apiAny.knowledgeCitations.listBySuggestion as any,
     selected ? { suggestionId: selected._id } : ("skip" as any)
   ) as KnowledgeCitation[] | undefined;
+
+  const writeContentDiff = useMemo((): WriteContentDiff | null => {
+    if (!selected || selected.toolName !== "write_content") return null;
+    return buildWriteContentDiff(selected.proposedPatch, selected.editorContext);
+  }, [selected]);
 
   const metaLabel = useMemo((): string => {
     if (!projectId) return "No project selected";
@@ -396,6 +496,51 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
                 </Button>
               ) : null}
             </div>
+
+            {writeContentDiff ? (
+              <div className="rounded-md border border-mythos-border-default bg-mythos-bg-secondary/40 p-3 space-y-3">
+                <div className="text-[10px] uppercase tracking-wider text-mythos-text-muted">
+                  Document diff
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-mythos-text-muted">
+                  <span>Operation: {titleCase(writeContentDiff.operation)}</span>
+                  {writeContentDiff.documentTitle ? (
+                    <span>Document: {writeContentDiff.documentTitle}</span>
+                  ) : null}
+                  {selected.targetId ? (
+                    <span className="truncate">Doc ID: {selected.targetId}</span>
+                  ) : null}
+                </div>
+                {writeContentDiff.rationale ? (
+                  <div className="text-xs text-mythos-text-muted">
+                    Rationale: {writeContentDiff.rationale}
+                  </div>
+                ) : null}
+                {writeContentDiff.note ? (
+                  <div className="text-xs text-mythos-text-muted">{writeContentDiff.note}</div>
+                ) : null}
+                {writeContentDiff.documentExcerpt ? (
+                  <div className="rounded-md border border-mythos-border-default bg-mythos-bg-tertiary/30 p-3">
+                    <div className="text-[10px] uppercase tracking-wider text-mythos-text-muted">
+                      Document excerpt
+                    </div>
+                    <pre className="mt-2 text-xs text-mythos-text-primary whitespace-pre-wrap">
+                      {writeContentDiff.documentExcerpt}
+                    </pre>
+                  </div>
+                ) : null}
+                <div className="space-y-3">
+                  {writeContentDiff.blocks.map((block, index) => (
+                    <div key={`${block.label}-${index}`} className="space-y-2">
+                      <div className="text-[10px] uppercase tracking-wider text-mythos-text-muted">
+                        {block.label}
+                      </div>
+                      <DiffView before={block.before || "—"} after={block.after || "—"} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-md border border-mythos-border-default bg-mythos-bg-secondary/40 p-3 space-y-3">
               <div>

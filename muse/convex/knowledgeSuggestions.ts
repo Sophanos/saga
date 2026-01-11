@@ -305,6 +305,15 @@ export const upsertFromToolApprovalRequest = internalMutation({
     targetId: v.optional(v.string()),
     proposedPatch: v.any(),
     normalizedPatch: v.optional(v.any()),
+    editorContext: v.optional(
+      v.object({
+        documentId: v.optional(v.string()),
+        documentTitle: v.optional(v.string()),
+        documentExcerpt: v.optional(v.string()),
+        selectionText: v.optional(v.string()),
+        selectionContext: v.optional(v.string()),
+      })
+    ),
     actorType: v.string(),
     actorUserId: v.optional(v.string()),
     actorAgentId: v.optional(v.string()),
@@ -335,6 +344,7 @@ export const upsertFromToolApprovalRequest = internalMutation({
       operation: args.operation,
       proposedPatch: toolArgs,
       normalizedPatch,
+      editorContext: args.editorContext,
       status: "proposed",
       actorType: args.actorType,
       actorUserId: args.actorUserId,

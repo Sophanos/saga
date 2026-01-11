@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { useQuery } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { useTheme, spacing, radii, typography } from '@/design-system';
-import type { KnowledgeCitation, KnowledgeSuggestion } from './types';
+import type { KnowledgeCitation, KnowledgeEditorContext, KnowledgeSuggestion } from './types';
 import { canonicalizeName, copyToClipboard, formatRelativeTime, titleCase } from './types';
 
 type ApplyDecision = 'approve' | 'reject';
@@ -53,6 +53,23 @@ interface DiffRow {
   to: unknown;
 }
 
+type WriteContentOperation = 'replace_selection' | 'insert_at_cursor' | 'append_document';
+
+interface WriteContentDiffBlock {
+  label: string;
+  before: string;
+  after: string;
+}
+
+interface WriteContentDiff {
+  operation: WriteContentOperation;
+  blocks: WriteContentDiffBlock[];
+  rationale?: string;
+  note?: string;
+  documentTitle?: string;
+  documentExcerpt?: string;
+}
+
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'string') return value;
@@ -62,6 +79,60 @@ function formatValue(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function replaceFirst(haystack: string, needle: string, replacement: string): string {
+  const index = haystack.indexOf(needle);
+  if (index === -1) return haystack;
+  return `${haystack.slice(0, index)}${replacement}${haystack.slice(index + needle.length)}`;
+}
+
+function parseWriteContentOperation(value: unknown): WriteContentOperation {
+  if (value === 'replace_selection' || value === 'insert_at_cursor' || value === 'append_document') {
+    return value;
+  }
+  return 'insert_at_cursor';
+}
+
+function buildWriteContentDiff(
+  toolArgs: Record<string, unknown>,
+  editorContext?: KnowledgeEditorContext
+): WriteContentDiff | null {
+  const content = typeof toolArgs.content === 'string' ? toolArgs.content : '';
+  if (!content) return null;
+
+  const operation = parseWriteContentOperation(toolArgs.operation);
+  const rationale = typeof toolArgs.rationale === 'string' ? toolArgs.rationale : undefined;
+  const selectionText = editorContext?.selectionText;
+  const selectionContext = editorContext?.selectionContext;
+
+  const blocks: WriteContentDiffBlock[] = [];
+  let note: string | undefined;
+
+  if (selectionText) {
+    blocks.push({ label: 'Selection', before: selectionText, after: content });
+    if (selectionContext) {
+      const contextAfter = replaceFirst(selectionContext, selectionText, content);
+      if (contextAfter !== selectionContext) {
+        blocks.push({ label: 'Context', before: selectionContext, after: contextAfter });
+      }
+    }
+  } else {
+    if (operation === 'replace_selection') {
+      note = 'Selection text unavailable for this proposal.';
+    }
+    const label = operation === 'append_document' ? 'Append' : 'Insert';
+    blocks.push({ label, before: '', after: content });
+  }
+
+  return {
+    operation,
+    blocks,
+    rationale,
+    note,
+    documentTitle: editorContext?.documentTitle,
+    documentExcerpt: editorContext?.documentExcerpt,
+  };
 }
 
 function pickBestEntityMatch(name: string, candidates: EntityDoc[] | undefined): EntityDoc | null {
@@ -284,6 +355,11 @@ export function KnowledgeSuggestionDetails({
     return [];
   }, [relationshipByTypeBetween, resolvedEntity, suggestion, toolArgs]);
 
+  const writeContentDiff = useMemo((): WriteContentDiff | null => {
+    if (!suggestion || suggestion.toolName !== 'write_content' || !toolArgs) return null;
+    return buildWriteContentDiff(toolArgs, suggestion.editorContext);
+  }, [suggestion, toolArgs]);
+
   const renderEntityUpdatePreview = (): JSX.Element | null => {
     if (!suggestion) return null;
     if (suggestion.toolName !== 'update_entity' && suggestion.toolName !== 'update_node') return null;
@@ -308,6 +384,24 @@ export function KnowledgeSuggestionDetails({
         {relationshipByTypeBetween ? 'No field changes found.' : 'Unable to resolve the relationship for a diff.'}
       </Text>
     );
+  };
+
+  const renderWriteContentPreview = (): JSX.Element | null => {
+    if (!suggestion) return null;
+    if (suggestion.toolName !== 'write_content') return null;
+
+    if (!writeContentDiff) {
+      return (
+        <View style={styles.block}>
+          <Text style={[styles.helperText, { color: colors.textMuted }]}>
+            Apply or reject this suggestion from the editor UI.
+          </Text>
+          <Text style={[styles.code, { color: colors.text }]}>{formatValue(toolArgs)}</Text>
+        </View>
+      );
+    }
+
+    return <DocumentDiff diff={writeContentDiff} colors={colors} />;
   };
 
   const canApprove = suggestion?.status === 'proposed';
@@ -465,14 +559,7 @@ export function KnowledgeSuggestionDetails({
 
         {renderRelationshipUpdatePreview()}
 
-        {suggestion.toolName === 'write_content' ? (
-          <View style={styles.block}>
-            <Text style={[styles.helperText, { color: colors.textMuted }]}>
-              Apply or reject this suggestion from the editor UI.
-            </Text>
-            <Text style={[styles.code, { color: colors.text }]}>{formatValue(toolArgs)}</Text>
-          </View>
-        ) : null}
+        {renderWriteContentPreview()}
 
         {suggestion.toolName === 'commit_decision' ? (
           <KeyValues title="New memory" values={toolArgs ?? {}} colors={colors} />
@@ -603,6 +690,48 @@ function DiffList({ rows, colors }: { rows: DiffRow[]; colors: any }): JSX.Eleme
               {formatValue(row.to)}
             </Text>
           </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function DocumentDiff({ diff, colors }: { diff: WriteContentDiff; colors: any }): JSX.Element {
+  return (
+    <View style={styles.block}>
+      <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Document diff</Text>
+      <Text style={[styles.docDiffMeta, { color: colors.textMuted }]}>
+        Operation: {titleCase(diff.operation)}
+      </Text>
+      {diff.documentTitle ? (
+        <Text style={[styles.docDiffMeta, { color: colors.textMuted }]}>
+          Document: {diff.documentTitle}
+        </Text>
+      ) : null}
+      {diff.rationale ? (
+        <Text style={[styles.docDiffMeta, { color: colors.textMuted }]}>
+          Rationale: {diff.rationale}
+        </Text>
+      ) : null}
+      {diff.note ? (
+        <Text style={[styles.docDiffMeta, { color: colors.textMuted }]}>{diff.note}</Text>
+      ) : null}
+      {diff.documentExcerpt ? (
+        <View style={[styles.docDiffBlock, { borderColor: colors.border, backgroundColor: colors.bgHover }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Document excerpt</Text>
+          <Text style={[styles.code, { color: colors.text }]}>{diff.documentExcerpt}</Text>
+        </View>
+      ) : null}
+      {diff.blocks.map((block, index) => (
+        <View
+          key={`${block.label}-${index}`}
+          style={[styles.docDiffBlock, { borderColor: colors.border, backgroundColor: colors.bgHover }]}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>{block.label}</Text>
+          <Text style={[styles.docDiffMeta, { color: colors.textMuted }]}>Before</Text>
+          <Text style={[styles.code, { color: colors.text }]}>{block.before || '—'}</Text>
+          <Text style={[styles.docDiffMeta, { color: colors.textMuted }]}>After</Text>
+          <Text style={[styles.code, { color: colors.text }]}>{block.after || '—'}</Text>
         </View>
       ))}
     </View>
@@ -746,9 +875,19 @@ const styles = StyleSheet.create({
     fontSize: typography.sm,
     lineHeight: 20,
   },
+  docDiffMeta: {
+    fontSize: typography.xs,
+    lineHeight: 16,
+  },
   block: {
     gap: spacing[2],
     paddingTop: spacing[2],
+  },
+  docDiffBlock: {
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    padding: spacing[3],
+    gap: spacing[2],
   },
   code: {
     fontSize: typography.xs,

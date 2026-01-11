@@ -985,7 +985,7 @@ embeddingJobs: defineTable({
 | Project Type Registry screen | 🔲 | Manage types, risk levels, optional JSON schema; drives create/edit and approvals |
 | Project Graph editor UX | 🔲 | Node/edge create/edit for `type` + `properties` (schema-driven when available) |
 | Knowledge PRs inbox UX | ✅ (MVP, not production-ready) | Expo Web right-panel (“Changes to review”) + web console view; filters, selection, batch approve/reject |
-| Knowledge PR diff/preview components | ✅ (MVP, not production-ready) | Entity/relationship diffs + memory preview + raw + normalized JSON Patch; document diff still TBD |
+| Knowledge PR diff/preview components | ✅ (MVP, not production-ready) | Entity/relationship diffs + memory preview + raw + normalized JSON Patch; write_content diff (selection/context excerpt) |
 | Knowledge history + rollback UX | ✅ (MVP, not production-ready) | Undo supported for accepted suggestions with rollback metadata (graph/memory) |
 | Integrations settings UX | 🔲 | Connections, scopes, status, and audit trail for external sources |
 | Evidence + citations UX | 🔲 | Knowledge PR detail shows citations (Expo + web console); jump-to-canon from lint/coach still missing |
