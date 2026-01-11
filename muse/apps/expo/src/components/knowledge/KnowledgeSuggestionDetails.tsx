@@ -38,6 +38,12 @@ interface RelationshipDoc {
   metadata?: unknown;
 }
 
+interface DocumentDoc {
+  _id: string;
+  title?: string;
+  contentText?: string;
+}
+
 interface ActivityLogEntry {
   _id: string;
   action: string;
@@ -94,9 +100,47 @@ function parseWriteContentOperation(value: unknown): WriteContentOperation {
   return 'insert_at_cursor';
 }
 
+function buildDocumentExcerpt(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
+}
+
+function buildTailExcerpt(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `...${text.slice(text.length - maxLength)}`;
+}
+
+function findSelectionContext(
+  documentText: string,
+  selectionText: string,
+  radius: number
+): { context: string; matchCount: number } | null {
+  if (!selectionText) return null;
+
+  const firstIndex = documentText.indexOf(selectionText);
+  if (firstIndex === -1) return null;
+
+  let matchCount = 0;
+  let searchIndex = firstIndex;
+  while (searchIndex !== -1) {
+    matchCount += 1;
+    searchIndex = documentText.indexOf(selectionText, searchIndex + selectionText.length);
+  }
+
+  const start = Math.max(0, firstIndex - radius);
+  const end = Math.min(documentText.length, firstIndex + selectionText.length + radius);
+  let context = documentText.slice(start, end);
+  if (start > 0) context = `...${context}`;
+  if (end < documentText.length) context = `${context}...`;
+
+  return { context, matchCount };
+}
+
 function buildWriteContentDiff(
   toolArgs: Record<string, unknown>,
-  editorContext?: KnowledgeEditorContext
+  editorContext?: KnowledgeEditorContext,
+  documentText?: string,
+  documentTitle?: string
 ): WriteContentDiff | null {
   const content = typeof toolArgs.content === 'string' ? toolArgs.content : '';
   if (!content) return null;
@@ -104,10 +148,27 @@ function buildWriteContentDiff(
   const operation = parseWriteContentOperation(toolArgs.operation);
   const rationale = typeof toolArgs.rationale === 'string' ? toolArgs.rationale : undefined;
   const selectionText = editorContext?.selectionText;
-  const selectionContext = editorContext?.selectionContext;
+  let selectionContext = editorContext?.selectionContext;
+  let note = '';
+
+  if (!selectionContext && selectionText && documentText) {
+    const match = findSelectionContext(documentText, selectionText, 240);
+    if (match) {
+      selectionContext = match.context;
+      if (match.matchCount > 1) {
+        note = 'Multiple matches found; showing the first occurrence.';
+      }
+    } else {
+      note = 'Selection not found in document text.';
+    }
+  }
+
+  const resolvedDocumentTitle = editorContext?.documentTitle ?? documentTitle;
+  const resolvedDocumentExcerpt =
+    editorContext?.documentExcerpt ??
+    (documentText ? buildDocumentExcerpt(documentText, 420) : undefined);
 
   const blocks: WriteContentDiffBlock[] = [];
-  let note: string | undefined;
 
   if (selectionText) {
     blocks.push({ label: 'Selection', before: selectionText, after: content });
@@ -119,19 +180,34 @@ function buildWriteContentDiff(
     }
   } else {
     if (operation === 'replace_selection') {
-      note = 'Selection text unavailable for this proposal.';
+      note = note || 'Selection text unavailable for this proposal.';
     }
-    const label = operation === 'append_document' ? 'Append' : 'Insert';
-    blocks.push({ label, before: '', after: content });
+    if (documentText && operation === 'append_document') {
+      const tail = buildTailExcerpt(documentText, 240);
+      blocks.push({ label: 'Document end', before: tail, after: `${tail}${content}` });
+    } else if (resolvedDocumentExcerpt) {
+      const label = operation === 'append_document' ? 'Append' : 'Insert';
+      if (!note) {
+        note = 'Cursor position unavailable; showing excerpt with appended change.';
+      }
+      blocks.push({
+        label,
+        before: resolvedDocumentExcerpt,
+        after: `${resolvedDocumentExcerpt}${content}`,
+      });
+    } else {
+      const label = operation === 'append_document' ? 'Append' : 'Insert';
+      blocks.push({ label, before: '', after: content });
+    }
   }
 
   return {
     operation,
     blocks,
     rationale,
-    note,
-    documentTitle: editorContext?.documentTitle,
-    documentExcerpt: editorContext?.documentExcerpt,
+    note: note || undefined,
+    documentTitle: resolvedDocumentTitle,
+    documentExcerpt: resolvedDocumentExcerpt,
   };
 }
 
@@ -184,6 +260,17 @@ export function KnowledgeSuggestionDetails({
     if (!suggestion || !suggestion.proposedPatch || typeof suggestion.proposedPatch !== 'object') return null;
     return suggestion.proposedPatch as Record<string, unknown>;
   }, [suggestion]);
+
+  const documentId =
+    suggestion?.targetType === 'document'
+      ? suggestion.editorContext?.documentId ?? suggestion.targetId ?? null
+      : null;
+  const documentRecord = useQuery(
+    apiAny.documents.get as any,
+    documentId ? { id: documentId } : ('skip' as any)
+  ) as DocumentDoc | null | undefined;
+  const documentText =
+    typeof documentRecord?.contentText === 'string' ? documentRecord.contentText : undefined;
 
   const citations = useQuery(
     apiAny.knowledgeCitations.listBySuggestion as any,
@@ -357,8 +444,8 @@ export function KnowledgeSuggestionDetails({
 
   const writeContentDiff = useMemo((): WriteContentDiff | null => {
     if (!suggestion || suggestion.toolName !== 'write_content' || !toolArgs) return null;
-    return buildWriteContentDiff(toolArgs, suggestion.editorContext);
-  }, [suggestion, toolArgs]);
+    return buildWriteContentDiff(toolArgs, suggestion.editorContext, documentText, documentRecord?.title);
+  }, [documentRecord?.title, documentText, suggestion, toolArgs]);
 
   const renderEntityUpdatePreview = (): JSX.Element | null => {
     if (!suggestion) return null;

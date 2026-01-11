@@ -57,6 +57,38 @@ function resolveEditorDocumentId(editorContext: unknown): string | undefined {
   return typeof maybe === "string" && maybe.length > 0 ? maybe : undefined;
 }
 
+type SuggestionEditorContext = {
+  documentId?: string;
+  documentTitle?: string;
+  documentExcerpt?: string;
+  selectionText?: string;
+  selectionContext?: string;
+};
+
+function resolveSuggestionEditorContext(
+  toolName: string,
+  editorContext: unknown
+): SuggestionEditorContext | undefined {
+  if (toolName !== "write_content") return undefined;
+  if (!editorContext || typeof editorContext !== "object") return undefined;
+  const record = editorContext as Record<string, unknown>;
+  const context: SuggestionEditorContext = {
+    documentId: typeof record["documentId"] === "string" ? (record["documentId"] as string) : undefined,
+    documentTitle:
+      typeof record["documentTitle"] === "string" ? (record["documentTitle"] as string) : undefined,
+    documentExcerpt:
+      typeof record["documentExcerpt"] === "string" ? (record["documentExcerpt"] as string) : undefined,
+    selectionText:
+      typeof record["selectionText"] === "string" ? (record["selectionText"] as string) : undefined,
+    selectionContext:
+      typeof record["selectionContext"] === "string" ? (record["selectionContext"] as string) : undefined,
+  };
+  const hasValue = Object.values(context).some(
+    (value) => typeof value === "string" && value.length > 0
+  );
+  return hasValue ? context : undefined;
+}
+
 async function setAiPresence(
   ctx: ActionCtx,
   projectId: string,
@@ -982,6 +1014,10 @@ export const runSagaAgentChatToStream = internalAction({
           const suggestion = classifyKnowledgeSuggestion(call.toolName);
           if (suggestion && !isTemplateBuilder) {
             try {
+              const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
+
+              const suggestionTargetId = suggestionEditorContext?.documentId;
+
               const riskLevel = await resolveSuggestionRiskLevel(
                 ctx,
                 projectIdValue,
@@ -1000,7 +1036,9 @@ export const runSagaAgentChatToStream = internalAction({
                   riskLevel,
                   operation: suggestion.operation,
                   targetType: suggestion.targetType,
+                  targetId: suggestionTargetId,
                   proposedPatch: call.input,
+                  editorContext: suggestionEditorContext,
                   actorType: aiActor.actorType,
                   actorUserId: aiActor.actorUserId,
                   actorAgentId: aiActor.actorAgentId,
@@ -1055,6 +1093,10 @@ export const runSagaAgentChatToStream = internalAction({
             const suggestion = classifyKnowledgeSuggestion(call.toolName);
             if (suggestion && !isTemplateBuilder) {
               try {
+                const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
+
+                const suggestionTargetId = suggestionEditorContext?.documentId;
+
                 const riskLevel = await resolveSuggestionRiskLevel(
                   ctx,
                   projectIdValue,
@@ -1073,7 +1115,9 @@ export const runSagaAgentChatToStream = internalAction({
                     riskLevel,
                     operation: suggestion.operation,
                     targetType: suggestion.targetType,
+                    targetId: suggestionTargetId,
                     proposedPatch: call.input,
+                    editorContext: suggestionEditorContext,
                     actorType: aiActor.actorType,
                     actorUserId: aiActor.actorUserId,
                     actorAgentId: aiActor.actorAgentId,
@@ -1388,6 +1432,10 @@ export const applyToolResultAndResumeToStream = internalAction({
           const suggestion = classifyKnowledgeSuggestion(call.toolName);
           if (suggestion && !isTemplateBuilder) {
             try {
+              const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
+
+              const suggestionTargetId = suggestionEditorContext?.documentId;
+
               const riskLevel = await resolveSuggestionRiskLevel(
                 ctx,
                 projectIdValue,
@@ -1406,7 +1454,9 @@ export const applyToolResultAndResumeToStream = internalAction({
                   riskLevel,
                   operation: suggestion.operation,
                   targetType: suggestion.targetType,
+                  targetId: suggestionTargetId,
                   proposedPatch: call.input,
+                  editorContext: suggestionEditorContext,
                   actorType: aiActor.actorType,
                   actorUserId: aiActor.actorUserId,
                   actorAgentId: aiActor.actorAgentId,

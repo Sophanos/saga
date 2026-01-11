@@ -62,6 +62,12 @@ interface KnowledgeCitation {
   createdAt: number;
 }
 
+interface DocumentDoc {
+  _id: string;
+  title?: string;
+  contentText?: string;
+}
+
 interface KnowledgePRsViewProps {}
 
 function formatRelativeTime(timestampMs: number): string {
@@ -149,6 +155,11 @@ type WriteContentDiff = {
   documentExcerpt?: string;
 };
 
+type SelectionContextMatch = {
+  context: string;
+  matchCount: number;
+};
+
 function getRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
@@ -167,6 +178,42 @@ function parseWriteContentOperation(value: unknown): WriteContentOperation {
   return "insert_at_cursor";
 }
 
+function buildDocumentExcerpt(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
+}
+
+function buildTailExcerpt(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `...${text.slice(text.length - maxLength)}`;
+}
+
+function findSelectionContext(
+  documentText: string,
+  selectionText: string,
+  radius: number
+): SelectionContextMatch | null {
+  if (!selectionText) return null;
+
+  const firstIndex = documentText.indexOf(selectionText);
+  if (firstIndex === -1) return null;
+
+  let matchCount = 0;
+  let searchIndex = firstIndex;
+  while (searchIndex !== -1) {
+    matchCount += 1;
+    searchIndex = documentText.indexOf(selectionText, searchIndex + selectionText.length);
+  }
+
+  const start = Math.max(0, firstIndex - radius);
+  const end = Math.min(documentText.length, firstIndex + selectionText.length + radius);
+  let context = documentText.slice(start, end);
+  if (start > 0) context = `...${context}`;
+  if (end < documentText.length) context = `${context}...`;
+
+  return { context, matchCount };
+}
+
 function parseWriteContentArgs(
   patch: unknown
 ): { operation: WriteContentOperation; content: string; rationale?: string } | null {
@@ -181,15 +228,35 @@ function parseWriteContentArgs(
 
 function buildWriteContentDiff(
   patch: unknown,
-  editorContext?: KnowledgeEditorContext
+  editorContext?: KnowledgeEditorContext,
+  documentText?: string,
+  documentTitle?: string
 ): WriteContentDiff | null {
   const parsed = parseWriteContentArgs(patch);
   if (!parsed) return null;
 
   const selectionText = editorContext?.selectionText;
-  const selectionContext = editorContext?.selectionContext;
+  let selectionContext = editorContext?.selectionContext;
+  let note = "";
+
+  if (!selectionContext && selectionText && documentText) {
+    const match = findSelectionContext(documentText, selectionText, 240);
+    if (match) {
+      selectionContext = match.context;
+      if (match.matchCount > 1) {
+        note = "Multiple matches found; showing the first occurrence.";
+      }
+    } else {
+      note = "Selection not found in document text.";
+    }
+  }
+
+  const resolvedDocumentTitle = editorContext?.documentTitle ?? documentTitle;
+  const resolvedDocumentExcerpt =
+    editorContext?.documentExcerpt ??
+    (documentText ? buildDocumentExcerpt(documentText, 420) : undefined);
+
   const blocks: WriteContentDiffBlock[] = [];
-  let note: string | undefined;
 
   if (selectionText) {
     blocks.push({ label: "Selection", before: selectionText, after: parsed.content });
@@ -201,19 +268,39 @@ function buildWriteContentDiff(
     }
   } else {
     if (parsed.operation === "replace_selection") {
-      note = "Selection text unavailable for this proposal.";
+      note = note || "Selection text unavailable for this proposal.";
     }
-    const label = parsed.operation === "append_document" ? "Append" : "Insert";
-    blocks.push({ label, before: "", after: parsed.content });
+    if (documentText && parsed.operation === "append_document") {
+      const tail = buildTailExcerpt(documentText, 240);
+      blocks.push({
+        label: "Document end",
+        before: tail,
+        after: `${tail}${parsed.content}`,
+      });
+    } else if (resolvedDocumentExcerpt) {
+      const label = parsed.operation === "append_document" ? "Append" : "Insert";
+      if (!note) {
+        note = "Cursor position unavailable; showing excerpt with appended change.";
+      }
+      blocks.push({
+        label,
+        before: resolvedDocumentExcerpt,
+        after: `${resolvedDocumentExcerpt}${parsed.content}`,
+      });
+    } else {
+      const label = parsed.operation === "append_document" ? "Append" : "Insert";
+      blocks.push({ label, before: "", after: parsed.content });
+    }
   }
 
+  const resolvedNote = note || undefined;
   return {
     operation: parsed.operation,
     blocks,
     rationale: parsed.rationale,
-    note,
-    documentTitle: editorContext?.documentTitle,
-    documentExcerpt: editorContext?.documentExcerpt,
+    note: resolvedNote,
+    documentTitle: resolvedDocumentTitle,
+    documentExcerpt: resolvedDocumentExcerpt,
   };
 }
 
@@ -282,10 +369,28 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
     selected ? { suggestionId: selected._id } : ("skip" as any)
   ) as KnowledgeCitation[] | undefined;
 
+  const documentId =
+    selected?.targetType === "document"
+      ? selected.editorContext?.documentId ?? selected.targetId
+      : undefined;
+  const documentRecord = useQuery(
+    apiAny.documents.get as any,
+    documentId ? { id: documentId } : ("skip" as any)
+  ) as DocumentDoc | undefined;
+  const documentText =
+    typeof documentRecord?.contentText === "string"
+      ? documentRecord.contentText
+      : undefined;
+
   const writeContentDiff = useMemo((): WriteContentDiff | null => {
     if (!selected || selected.toolName !== "write_content") return null;
-    return buildWriteContentDiff(selected.proposedPatch, selected.editorContext);
-  }, [selected]);
+    return buildWriteContentDiff(
+      selected.proposedPatch,
+      selected.editorContext,
+      documentText,
+      documentRecord?.title
+    );
+  }, [documentRecord?.title, documentText, selected]);
 
   const metaLabel = useMemo((): string => {
     if (!projectId) return "No project selected";
