@@ -18,6 +18,7 @@ import {
   useFlowTimer,
   useFlowSession,
   useShouldAutoReveal,
+  useEditorWordCount,
   type SessionStats,
 } from '@mythos/state';
 import { useMutation } from 'convex/react';
@@ -36,7 +37,7 @@ interface FlowOverlayProps {
   documentId?: string;
 }
 
-export function FlowOverlay({ children, wordCount = 0, documentId }: FlowOverlayProps) {
+export function FlowOverlay({ children, wordCount: propWordCount = 0, documentId }: FlowOverlayProps) {
   const { colors, isDark } = useTheme();
   const enabled = useFlowEnabled();
   const preferences = useFlowPreferences();
@@ -47,6 +48,10 @@ export function FlowOverlay({ children, wordCount = 0, documentId }: FlowOverlay
   const exitFlowMode = useFlowStore((s) => s.exitFlowMode);
   const updateWordCount = useFlowStore((s) => s.updateWordCount);
   const tickTimer = useFlowStore((s) => s.tickTimer);
+
+  // Get word count from shared editor metrics store (preferred) or prop fallback
+  const editorWordCount = useEditorWordCount();
+  const wordCount = editorWordCount > 0 ? editorWordCount : propWordCount;
 
   // Convex mutation for persisting sessions
   const recordFlowSession = useMutation(api.flowSessions.record);
@@ -160,56 +165,49 @@ export function FlowOverlay({ children, wordCount = 0, documentId }: FlowOverlay
     setSessionStats(null);
   }, []);
 
-  // Summary modal (shown after exit)
-  if (showSummary && sessionStats) {
-    return (
-      <>
-        {children}
-        <FlowSummaryModal stats={sessionStats} onClose={handleCloseSummary} />
-      </>
-    );
-  }
-
-  // Flow mode: show header + optional timer panel + children (editor)
-  if (enabled) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
-        {/* Flow header with timer, word count, focus toggle, exit */}
+  // IMPORTANT: Always render the same component structure to prevent children remounting.
+  // Use visibility/opacity instead of conditional rendering for the overlay elements.
+  return (
+    <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
+      {/* Flow header - only visible when enabled */}
+      {enabled && (
         <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
           <FlowHeader onExit={handleExit} onTimerPress={handleTimerPress} />
         </Animated.View>
+      )}
 
-        {/* Main content area */}
-        <View style={styles.mainArea}>
-          {/* Timer panel (slides from left when open) */}
-          {showTimerPanel && (
-            <>
-              {/* Backdrop to close panel */}
-              <Animated.View
-                entering={FadeIn.duration(100)}
-                exiting={FadeOut.duration(80)}
-                style={[
-                  styles.backdrop,
-                  { backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.1)' },
-                ]}
-              >
-                <Pressable style={StyleSheet.absoluteFill} onPress={handleTimerPanelClose} />
-              </Animated.View>
-              <FlowTimerPanel onClose={handleTimerPanelClose} />
-            </>
-          )}
+      {/* Main content area - ALWAYS rendered to preserve children */}
+      <View style={styles.mainArea}>
+        {/* Timer panel (slides from left when open) */}
+        {enabled && showTimerPanel && (
+          <>
+            {/* Backdrop to close panel */}
+            <Animated.View
+              entering={FadeIn.duration(100)}
+              exiting={FadeOut.duration(80)}
+              style={[
+                styles.backdrop,
+                { backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.1)' },
+              ]}
+            >
+              <Pressable style={StyleSheet.absoluteFill} onPress={handleTimerPanelClose} />
+            </Animated.View>
+            <FlowTimerPanel onClose={handleTimerPanelClose} />
+          </>
+        )}
 
-          {/* Editor content */}
-          <View style={styles.content}>
-            {children}
-          </View>
+        {/* Editor content - ALWAYS in the same position in component tree */}
+        <View style={styles.content}>
+          {children}
         </View>
       </View>
-    );
-  }
 
-  // Normal mode: just render children
-  return <>{children}</>;
+      {/* Summary modal (shown after exit) */}
+      {showSummary && sessionStats && (
+        <FlowSummaryModal stats={sessionStats} onClose={handleCloseSummary} />
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

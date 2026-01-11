@@ -68,7 +68,6 @@ export function FlowHeader({ onExit, onTimerPress }: FlowHeaderProps) {
     opacity: pulseOpacity.value,
   }));
 
-  // Focus level cycling
   const cycleFocusLevel = useCallback(() => {
     const levels: FocusLevel[] = ['none', 'sentence', 'paragraph'];
     const currentIdx = levels.indexOf(focusLevel);

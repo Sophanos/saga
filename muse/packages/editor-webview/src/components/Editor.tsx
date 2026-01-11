@@ -3,6 +3,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { WriterKit, SlashCommand } from '@mythos/editor';
 import { type AnyExtension, type Content } from '@tiptap/core';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEditorMetricsStore } from '@mythos/state';
 import { createSlashCommandSuggestion } from './suggestion';
 import { BubbleMenu } from './BubbleMenu';
 import { AICommandPalette, type AIQuickAction, type SelectionVirtualElement } from './AICommandPalette';
@@ -185,6 +186,9 @@ export function Editor({
     extraExtensions,
   ]);
 
+  // Get metrics store updater for word count tracking
+  const updateMetrics = useEditorMetricsStore((s) => s.updateMetrics);
+
   const editor = useEditor({
     extensions: editorExtensions,
     content,
@@ -196,6 +200,11 @@ export function Editor({
       const text = editor.getText();
       const json = editor.getJSON();
       onChange?.(html);
+
+      // Update word count in shared metrics store
+      const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+      updateMetrics({ wordCount });
+
       if (_enableBridge && bridgeSendRef.current) {
         bridgeSendRef.current({
           type: 'contentChange',
@@ -226,7 +235,12 @@ export function Editor({
   useEffect(() => {
     if (!editor) return;
     onEditorReady?.(editor);
-  }, [editor, onEditorReady]);
+
+    // Set initial word count when editor is ready
+    const text = editor.getText();
+    const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+    updateMetrics({ wordCount });
+  }, [editor, onEditorReady, updateMetrics]);
 
   // Bridge for WebView communication (Tauri/React Native)
   const { send: sendBridgeMessage } = useEditorBridge(

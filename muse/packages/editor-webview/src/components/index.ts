@@ -8,6 +8,7 @@ export {
   EditorShell,
   type DocumentState,
   type EditorShellProps,
+  type FlowModeSettings,
   type PendingWriteContentProp,
   type WriteContentApplyResult,
 } from './EditorShell';
