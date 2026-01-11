@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-11 (Onboarding flow spec; Landing page -> Expo web migration plan; Expo web <-> Tauri v2 strategy)
+> Last Updated: 2026-01-11 (P0 blocker fixes: rollback modal + pagination; flow timer enhancements; auth/marketing scaffolding)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -33,14 +33,19 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 
 ## Recent Updates (condensed)
 
-**2026-01-11**
+**2026-01-11 (evening)**
+- P0 fix: Rollback confirmation modal added for Web + Expo; queries `getRollbackImpact`, shows cascade warnings, displays affected relationships.
+- P0 fix: Cursor-based pagination for Knowledge PRs (PAGE_SIZE=50); Web uses "Load more" button, Expo uses FlatList with `onEndReached`.
+- Flow Mode: timer visibility controls, auto-hide when running, reveal at threshold, selectedDurationMin/revealThresholdMin state.
+- Auth: Tauri OAuth adapter (`tauriAuth.ts`), variable shadowing fixes in AuthScreen.
+- Expo: marketing routes + web auth redirects (`(marketing)/`, `sign-in.web.tsx`, `sign-up.web.tsx`).
+- Config: Tauri now points to apps/web (port 3005); env vars for Expo web redirects.
+
+**2026-01-11 (earlier)**
 - Project Graph templates: registry resolution keyed by `project.templateId`; projects/documents support `templateId`, `metadata`, and `settings`; org/team schema scaffolding added.
-- Approvals + routing: approvals driven by registry `riskLevel` + per-type identity fields; AI task routing expanded with `review`/`generation` plus product/engineering/design/comms slugs; `coach`/`creative` aliased.
-- UI updates: registry lock/unlock in settings; entity create/edit supports schema-driven properties.
-- UI gaps: no AI template generation flow, no org/team UI, no registry editor; property/relationship metadata editors and universal entity profile page still missing.
-- MCP citations: citations schema added to mutating tools; memories/citations resources via `saga://projects/{id}/memories` and `saga://projects/{id}/citations`; proposal-first routing for governed tool calls.
-- Knowledge PRs hardening: `rerunPreflight`, `getRollbackImpact`, `cascadeRelationships`, editor resolve path for write_content, conflict recheck UI, `PendingWriteContent` state + EditorShell props, typecheck fixes.
-- Clarity/Policy Coach fully implemented (see 2026-01-10 for feature list).
+- Approvals + routing: approvals driven by registry `riskLevel` + per-type identity fields; AI task routing expanded with `review`/`generation` plus product/engineering/design/comms slugs.
+- Knowledge PRs hardening: `rerunPreflight`, `getRollbackImpact`, `cascadeRelationships`, editor resolve path for write_content, conflict recheck UI.
+- Clarity/Policy Coach fully implemented.
 
 **2026-01-10**
 - Phase 1: Project Graph (`projectTypeRegistry` + `create_node`/`update_node`/`create_edge`/`update_edge` + registry-aware approvals).
@@ -60,31 +65,29 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 
 ## UI Integration Analysis (MLP1 Phase 1)
 
-Overall completion: ~65% - core features done, advanced features pending.
+Overall completion: ~75% - core features done, P0 blockers resolved.
 
-**Done (11 items)**
+**Done (13 items)**
 - EntityFormModal, RelationshipFormModal, JsonSchemaObjectEditor
 - Project Graph CRUD: create/edit entity, create/edit relationship
 - "Open Project Graph" in editor + command palette
-- Registry-driven type selector
+- Registry-driven type selector + lock/unlock in settings
 - Client-side Convex error parser
-- Registry lock/unlock in settings
 - Expo Web Project Graph components
-- Knowledge PRs inbox (Web + Expo)
+- Knowledge PRs inbox (Web + Expo) with cursor-based pagination
+- Rollback confirmation modal (Web + Expo) with impact analysis
 - Coach mode selector + PolicyCompliancePanel
 
-**Missing (4 items)**
+**Missing (3 items)**
 - Registry editor UI - no UI to edit types/schemas
 - Graph delete with confirmation - optional but recommended
 - Universal entity profile page - spec exists, no implementation
-- Rollback confirmation modal - explicitly noted as not implemented
 
-**Partial (5 items)**
+**Partial (4 items)**
 - Relationship filters on graph (only entity type filters exist)
 - Focus mode / depth-based neighborhood
 - Icon/color defaults for non-writer templates
 - Approvals UI diffs + risk rationale
-- Cursor-based pagination (still using limit=200)
 
 ## Phase 1: Project Graph UX Plan
 
@@ -104,10 +107,10 @@ Goal: production-grade review surface where every PR is actionable, diffs are re
 
 ### P0 Blockers (ship before beta)
 
-| # | Item | Status | Action Needed |
-|---|------|--------|--------------|
-| 1 | Rollback Confirmation Modal | Backend ready | Add modal UI in Web + Expo, call `getRollbackImpact`, show cascade warnings, then call `rollbackSuggestion` |
-| 2 | Server-side Pagination | Backend ready | Replace `limit: 200` with cursor-based pagination from `listByProject` |
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Rollback Confirmation Modal | ✅ Done | `RollbackConfirmModal.tsx` in Web + Expo; queries `getRollbackImpact`, shows cascade warnings |
+| 2 | Server-side Pagination | ✅ Done | PAGE_SIZE=50; Web "Load more" button, Expo FlatList `onEndReached` |
 
 ### P1 Important (post-beta)
 
@@ -229,7 +232,6 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 
 - Registry editor UI missing; blocks non-writer template management.
 - Relationship metadata editor pending; limits schema-complete graphs.
-- Cursor-based pagination still using `limit=200` for Knowledge PRs.
-- Rollback confirmation modal missing; rollback safety UX incomplete.
 - Universal entity profile page not implemented.
 - Template icon/color defaults incomplete for non-writer templates.
+- Web entity/relationship diffs missing (Expo has them).
