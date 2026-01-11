@@ -42,7 +42,7 @@ export function ReceiptsBlock({
 }: ReceiptsBlockProps): JSX.Element {
   const project = useCurrentProject();
   const projectId = project?.id ?? null;
-  const updateSources = useMutation(api.artifacts.updateSources);
+  const updateSources = useMutation((api as any).artifacts.updateSources);
 
   const [sources, setSources] = useState<ArtifactSourceRef[]>(manifest?.sources ?? []);
   const [isPickerOpen, setIsPickerOpen] = useState(false);

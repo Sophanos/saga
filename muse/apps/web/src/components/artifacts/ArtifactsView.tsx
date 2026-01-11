@@ -39,7 +39,7 @@ export function ArtifactsView(): JSX.Element {
   const setCanvasView = useMythosStore((s) => s.setCanvasView);
 
   const artifacts = useQuery(
-    api.artifacts.list,
+    (api as any).artifacts.list,
     projectId ? { projectId: projectId as Id<"projects">, limit: 200 } : "skip"
   ) as ArtifactDoc[] | undefined;
 
@@ -87,7 +87,7 @@ export function ArtifactsView(): JSX.Element {
   }, [filteredArtifacts, selectedId]);
 
   const staleness = useQuery(
-    api.artifacts.checkStaleness,
+    (api as any).artifacts.checkStaleness,
     selectedArtifact ? { artifactId: selectedArtifact._id } : "skip"
   );
 

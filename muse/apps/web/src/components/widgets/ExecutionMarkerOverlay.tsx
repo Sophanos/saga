@@ -34,7 +34,7 @@ function findExecutionMarkerRange(
   doc.nodesBetween(0, doc.content.size, (node, pos) => {
     if (!node.isText || node.marks.length === 0) return;
     const hasMarker = node.marks.some(
-      (mark) => mark.type.name === "executionMarker" && mark.attrs?.executionId === executionId
+      (mark) => mark.type.name === "executionMarker" && mark.attrs?.["executionId"] === executionId
     );
     if (!hasMarker) return;
 

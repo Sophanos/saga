@@ -151,7 +151,7 @@ export const useCommandPaletteStore = create<CommandPaletteStore>()(
         }
         return persistedState as CommandPaletteState;
       },
-      partialize: (state) => ({
+      partialize: (state): Pick<CommandPaletteState, "recentByProjectId" | "legacyRecentCommandIds"> => ({
         recentByProjectId: state.recentByProjectId,
         legacyRecentCommandIds: state.legacyRecentCommandIds,
       }),

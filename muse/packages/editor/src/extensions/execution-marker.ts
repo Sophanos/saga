@@ -39,7 +39,7 @@ function stripExecutionMarkersFromNode(
   if (node.isText) {
     const nextMarks = node.marks.filter((mark) => {
       if (mark.type !== markType) return true;
-      return mark.attrs?.projectId === projectId;
+      return mark.attrs?.["projectId"] === projectId;
     });
     if (nextMarks.length === node.marks.length) {
       return node;
@@ -173,7 +173,7 @@ export const ExecutionMarker = Mark.create<ExecutionMarkerOptions>({
       setExecutionMarkerProjectId:
         (projectId) =>
         ({ editor }) => {
-          editor.storage.executionMarker.projectId = projectId;
+          editor.storage["executionMarker"].projectId = projectId;
           return true;
         },
       setExecutionMarker:
@@ -202,7 +202,7 @@ export const ExecutionMarker = Mark.create<ExecutionMarkerOptions>({
             const hasMarker = node.marks.some(
               (mark) =>
                 mark.type === markType &&
-                mark.attrs?.executionId === executionId
+                mark.attrs?.["executionId"] === executionId
             );
             if (!hasMarker) return;
 
@@ -228,7 +228,7 @@ export const ExecutionMarker = Mark.create<ExecutionMarkerOptions>({
         key: executionMarkerPluginKey,
         props: {
           transformPasted: (slice) => {
-            const currentProjectId = editor.storage.executionMarker?.projectId;
+            const currentProjectId = editor.storage["executionMarker"]?.projectId;
             if (!currentProjectId || !markType) {
               return slice;
             }

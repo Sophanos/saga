@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useMythosStore } from "../stores";
-import { exportStory, type ExportOptions } from "../services/export";
+import { exportStory, type ExportOptions, type ExportStoryParams } from "../services/export";
 import type { Editor } from "@mythos/editor";
 
 // ============================================================================
@@ -72,7 +72,7 @@ export function useStoryExporter(): UseStoryExporterResult {
         }
 
         await exportStory({
-          project,
+          project: project as ExportStoryParams["project"],
           documents,
           entities,
           options,

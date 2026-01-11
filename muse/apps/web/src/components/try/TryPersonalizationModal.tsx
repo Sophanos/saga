@@ -136,7 +136,7 @@ export function TryPersonalizationModal() {
     if (currentProject) {
       const nextStyleMode = resolveProjectStyleMode(
         next.styleMode,
-        currentProject.config.styleMode
+        currentProject.config.styleMode ?? "tolkien"
       );
       const nextGenre = resolveProjectGenre(next.genre, currentProject.config.genre);
       const nextGuardrails = next.guardrails

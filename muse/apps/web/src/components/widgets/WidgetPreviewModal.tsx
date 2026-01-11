@@ -37,7 +37,7 @@ export function WidgetPreviewModal() {
 
   const editorInstance = useMythosStore((s) => s.editor.editorInstance) as Editor | null;
   const projectId = useMythosStore((s) => s.project.currentProject?.id);
-  const createArtifact = useMutation(api.artifacts.createFromExecution);
+  const createArtifact = useMutation((api as any).artifacts.createFromExecution);
   const recordInlineApply = useMutation((api as any).widgetExecutions.recordInlineApply);
 
   const [isSubmitting, setIsSubmitting] = useState(false);

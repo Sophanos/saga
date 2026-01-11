@@ -4,8 +4,10 @@ import type {
   ArtifactManifestDraft,
   WidgetExecutionStatus,
   WidgetInvokeRequest,
-  WidgetType,
+  WidgetExecutionResult,
 } from "@mythos/agent-protocol";
+
+type WidgetType = WidgetExecutionResult["widgetType"];
 import type { Editor } from "@mythos/editor";
 import { sendWidgetRunStreaming } from "../services/ai/widgetClient";
 import { applyInlineWidget } from "../lib/widgets/applyInlineWidget";
@@ -101,14 +103,14 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
           onContext: (data) => {
             if (!data || typeof data !== "object") return;
             const payload = data as Record<string, unknown>;
-            const stage = payload.stage;
+            const stage = payload["stage"];
             if (typeof stage === "string") {
               set((state) => {
                 state.status = stage as WidgetExecutionStatus;
               });
             }
 
-            const result = payload.result as {
+            const result = payload["result"] as {
               executionId?: string;
               widgetType?: WidgetType;
               titleSuggestion?: string;
