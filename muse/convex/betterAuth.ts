@@ -109,8 +109,8 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     plugins: [
       // Expo support for mobile
       expo(),
-      // Convex integration
-      convex({ authConfig }),
+      // Convex integration (set JWKS env var to use static keys)
+      convex({ authConfig, jwks: process.env["JWKS"] }),
       // Cross-domain support for Tauri/Web
       crossDomain({ siteUrl }),
     ],

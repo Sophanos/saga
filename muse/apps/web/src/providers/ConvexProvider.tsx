@@ -5,7 +5,7 @@
  * Uses Better Auth tokens for Convex authentication.
  */
 
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { ConvexReactClient } from "convex/react";
 import { ConvexOfflineProvider } from "@mythos/convex-client";
 import { authClient } from "../lib/auth";
@@ -29,16 +29,21 @@ function getConvexClient(): ConvexReactClient {
 function useConvexAuth() {
   const { data: session, isPending } = authClient.useSession();
 
+  const userId = session?.user?.id;
+  const isAuthenticated = !!userId;
+
+  const fetchAccessToken = useCallback(async () => {
+    if (!userId) return null;
+    return getConvexToken();
+  }, [userId]);
+
   return useMemo(
     () => ({
       isLoading: isPending,
-      isAuthenticated: !!session?.user,
-      fetchAccessToken: async () => {
-        if (!session?.user) return null;
-        return getConvexToken();
-      },
+      isAuthenticated,
+      fetchAccessToken,
     }),
-    [session, isPending]
+    [isPending, isAuthenticated, fetchAccessToken]
   );
 }
 
