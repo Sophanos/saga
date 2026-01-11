@@ -87,6 +87,9 @@ Always put shared logic in `packages/`, then thin wrappers in `apps/`.
 
 **Constraints:** keep files under 800 LOC. No AI slop; concise code.
 
+## Git Commits
+Never `git add -A`; always `git add <specific files>` grouped by feature.
+
 ## Convex AI (high level)
 - Core modules: `agentRuntime`, `coach`, `dynamics`, `genesis`, `image`, `lint`, `style`, `rag`, `saga`
 - Tools: `editorTools.ts`, `ragTools.ts`, `projectGraphTools.ts`
