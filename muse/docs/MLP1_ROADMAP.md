@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-11 (Schema alignment: Convex ↔ @mythos/core Project type; shared mapper; Expo `as any` hacks removed)
+> Last Updated: 2026-01-11 (AI centralization: @mythos/ai/client + hooks; platform adapter pattern)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -37,6 +37,12 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Overall MLP 1 | In progress | 95 |
 
 ## Recent Updates (condensed)
+
+**2026-01-11 (AI centralization)**
+- `@mythos/ai/client`: shared streaming, SSE parsing, tool execution
+- `@mythos/ai/hooks`: useApiKey (adapter pattern), useTemplateBuilderAgent
+- Platform wrappers: Expo AsyncStorage, Web localStorage
+- AITemplateBuilder added to Expo workspace wizard
 
 **2026-01-11 (schema alignment)**
 - Schema alignment: `@mythos/core` Project schema now matches Convex template IDs (`writer`, `product`, `engineering`, `design`, `comms`, `custom`).

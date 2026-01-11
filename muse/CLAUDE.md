@@ -70,8 +70,14 @@ const { colors, isDark } = useTheme();
 - Theme/tokens: `@mythos/theme`
 - Entity config: `@mythos/core/entities/config.ts`
 - Prompts: `@mythos/prompts`
+- AI client/hooks: `@mythos/ai/client`, `@mythos/ai/hooks`
 - Tier limits: `convex/lib/tierConfig.ts`
 - Provider registry: `convex/lib/providers/`
+
+## Platform Code: Centralize First
+Always put shared logic in `packages/`, then thin wrappers in `apps/`.
+- ❌ Don't duplicate code across expo/web/tauri
+- ✅ Shared package + platform adapters (storage, auth, baseUrl)
 
 ## Docs of Record
 - Roadmap: `docs/MLP1_ROADMAP.md`
