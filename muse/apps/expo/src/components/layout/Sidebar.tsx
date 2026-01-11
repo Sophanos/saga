@@ -5,6 +5,7 @@
  * Uses @mythos/manifest for tree logic
  */
 
+import { useState, useCallback } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -24,6 +25,7 @@ import {
 } from '@mythos/manifest';
 import type { Entity } from '@mythos/core';
 import type { Document } from '@mythos/core/schema';
+import { ProjectPickerDropdown, CreateWorkspaceWizard } from '../projects';
 
 export function Sidebar() {
   const { colors } = useTheme();
@@ -31,8 +33,33 @@ export function Sidebar() {
   const { open: openCommandPalette } = useCommandPaletteStore();
   const router = useRouter();
   const currentProject = useProjectStore((s) => s.project);
-  const projectName = currentProject?.title || currentProject?.name || 'Select Project';
+  const projectName = currentProject?.name || 'Select Project';
   const projectInitial = projectName.charAt(0).toUpperCase();
+
+  // Dropdown and wizard state
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+
+  const handleOpenDropdown = useCallback(() => {
+    setIsDropdownOpen(true);
+  }, []);
+
+  const handleCloseDropdown = useCallback(() => {
+    setIsDropdownOpen(false);
+  }, []);
+
+  const handleOpenWizard = useCallback(() => {
+    setIsWizardOpen(true);
+  }, []);
+
+  const handleCloseWizard = useCallback(() => {
+    setIsWizardOpen(false);
+  }, []);
+
+  const handleProjectCreated = useCallback((projectId: string) => {
+    // Project is already set in the wizard, just close
+    console.log('[Sidebar] Project created:', projectId);
+  }, []);
 
   return (
     <View style={[styles.container, { borderRightColor: colors.border }]}>
@@ -53,8 +80,14 @@ export function Sidebar() {
       {/* Project Picker */}
       <View style={styles.projectRow}>
         <Pressable
-          style={[styles.projectPicker, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}
-          onPress={() => router.push('/projects')}
+          style={({ pressed, hovered }) => [
+            styles.projectPicker,
+            {
+              backgroundColor: pressed || hovered ? colors.bgHover : colors.bgElevated,
+              borderColor: colors.border,
+            },
+          ]}
+          onPress={handleOpenDropdown}
         >
           <View style={[styles.projectInitial, { backgroundColor: colors.bgHover }]}>
             <Text style={[styles.projectInitialText, { color: colors.text }]}>{projectInitial}</Text>
@@ -62,14 +95,37 @@ export function Sidebar() {
           <Text style={[styles.projectName, { color: colors.text }]} numberOfLines={1}>
             {projectName}
           </Text>
-          <Text style={{ color: colors.textMuted }}>▾</Text>
+          <Feather name="chevron-down" size={14} color={colors.textMuted} />
         </Pressable>
 
-        {/* New Chapter */}
-        <Pressable style={[styles.iconBtn, { borderColor: colors.border }]}>
-          <Text style={{ color: colors.textMuted }}>+</Text>
+        {/* New Workspace (shortcut) */}
+        <Pressable
+          style={({ pressed, hovered }) => [
+            styles.iconBtn,
+            {
+              borderColor: colors.border,
+              backgroundColor: pressed || hovered ? colors.bgHover : 'transparent',
+            },
+          ]}
+          onPress={handleOpenWizard}
+        >
+          <Feather name="plus" size={16} color={colors.textMuted} />
         </Pressable>
       </View>
+
+      {/* Project Picker Dropdown */}
+      <ProjectPickerDropdown
+        visible={isDropdownOpen}
+        onClose={handleCloseDropdown}
+        onCreateNew={handleOpenWizard}
+      />
+
+      {/* Create Workspace Wizard */}
+      <CreateWorkspaceWizard
+        visible={isWizardOpen}
+        onClose={handleCloseWizard}
+        onCreated={handleProjectCreated}
+      />
 
       {/* Quick Search */}
       <Pressable
