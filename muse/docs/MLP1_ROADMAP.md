@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-11 (Flow Mode extensions; template builder enhancements; web research tools; ask_question multi-tab UI)
+> Last Updated: 2026-01-11 (Flow Mode extensions; template builder enhancements; web research tools; ask_question multi-tab UI; Widgets MVP1 plan; async notifications plan)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -14,6 +14,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 
 - Project Knowledge System: templates, registries, Project Graph, and schema validation.
 - AI co-author with explicit approvals; Focus Mode keeps AI silent unless invoked.
+- Widgets & Artifacts (MVP1): command → preview → confirm → inline insert or saved artifact, with receipts by default.
 - Knowledge PRs: review queue, diffs, approvals, and rollback.
 - Web Research: `web_search` + `web_extract` for real-world reference lookup (Parallel Web SDK).
 - MCP integrations and citations for external tool access and evidence.
@@ -31,6 +32,8 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Web Research Tools | Done | 100 |
 | Supabase -> Convex Migration | Done | 100 |
 | Real-Time Collaboration | In progress | 80 |
+| Widgets & Artifacts (MVP1) | Planned | 0 |
+| Async Jobs + Notifications (MVP1.5) | Planned | 0 |
 | Overall MLP 1 | In progress | 95 |
 
 ## Recent Updates (condensed)
@@ -39,6 +42,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 - Flow Mode: added FlowFocus extension (iA Writer-style sentence/paragraph dimming), TypewriterScroll extension, FlowTimerPanel with break reminders, EditorMetrics store for word count tracking.
 - Template Builder: enhanced with project type selection, PhaseIndicator for build phases, ProgressiveTemplatePreview for live preview, domain-specific questions per project type.
 - Website: removed deprecated `apps/website/` (landing page moved to `apps/web/src/pages/`).
+- Widgets: added MVP1 execution-ready plan + MVP1.5 async notifications plan (`WIDGETS_MVP1_IMPLEMENTATION_PLAN.md`).
 
 **2026-01-11 (late evening)**
 - Web Research: `web_search` + `web_extract` tools via Parallel Web SDK; auto-execute (no approval needed); agent can search web and extract full page content for research.
@@ -72,9 +76,11 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Phase | Goal | Status | Link |
 |------|------|--------|------|
 | 1 | Project Graph UX (Expo Web + Tauri v2) | In progress | [Phase 1](#phase-1-project-graph-ux-plan) |
+| 1.5 | Async Jobs + Notifications | Planned | [Phase 1.5](#phase-15-async--notifications) |
 | 2 | Knowledge PRs review surface + hardening | In progress | [Phase 2](#phase-2-knowledge-prs-hardening) |
 | 3 | Integrations + Citations (MCP) | Planned | [Phase 3](#phase-3-integrations--citations) |
 | 4 | Clarity/Policy Coach | Complete | [Phase 4](#phase-4-claritypolicy-coach) |
+| 5 | Widgets & Artifacts (MVP1) | Planned | [Phase 5](#phase-5-widgets--artifacts-mvp1) |
 
 ## UI Integration Analysis (MLP1 Phase 1)
 
@@ -114,6 +120,24 @@ Goal: editable Project Graph with registry-enforced validation and risk-aware ap
 - Expo Web + Tauri v2: bundle compatibility (ELK layout + ReactFlow), Tauri v2 shell points to Expo Web.
 - E2E testability: add stable `data-testid` coverage for modals, registry editor, approvals, create/delete.
 
+## Phase 1.5: Async + Notifications
+
+Goal: durable async work (long-running widget jobs + scheduled runs) with consistent notifications across **Expo**, **Web**, and **Tauri**.
+
+Docs:
+- `muse/docs/WIDGETS_MVP1_IMPLEMENTATION_PLAN.md` (Section 8)
+- Convex components: `@convex-dev/workpool`, `@convex-dev/workflow`, `@convex-dev/expo-push-notifications`
+
+Implementation milestones (ship “slowly”):
+1. In-app inbox (`notificationInbox`) + local toasts only (all platforms).
+2. Expo push notifications (use `@convex-dev/expo-push-notifications`).
+3. Web push (VAPID Web Push; optionally OneSignal/FCM).
+4. Tauri OS notifications driven by inbox subscription/polling.
+
+Integration points:
+- Artifact creation / regeneration completion → enqueue notification sender + write inbox row.
+- Workpool/Workflow status is queryable to power “job running / completed / failed” UI.
+
 ## Phase 2: Knowledge PRs Hardening
 
 Goal: production-grade review surface where every PR is actionable, diffs are readable, approvals are safe, rollbacks are reliable, and provenance is navigable.
@@ -151,6 +175,21 @@ Goal: production-grade review surface where every PR is actionable, diffs are re
 
 - Coach mode selector (Writing / Clarity / Policy) with taxonomy-aware labels.
 - Issue UI: ambiguity/unverifiable/not-testable/policy-conflict categories while preserving the "issue + suggested fix" structure.
+
+## Phase 5: Widgets & Artifacts (MVP1)
+
+Goal: keyboard-first widget execution pipeline: **command → preview → confirm → inline insert or saved artifact**, with **receipts by default** and **no entity mutations**.
+
+Docs:
+- Spec: `muse/docs/WIDGETS.md`, `muse/docs/WIDGETS_UX_FLOW.md`
+- Execution-ready plan: `muse/docs/WIDGETS_MVP1_IMPLEMENTATION_PLAN.md`
+
+Core deliverables:
+- Shared: add `widget` capability kind + `slash_menu` surface; add `agent-protocol` widget execution contract.
+- Backend: `widgetExecutions`, `artifacts`, `artifactVersions`; `runWidgetToStream` + confirm mutations; manual source tagging + staleness.
+- Web: `widget` filter in Cmd+K, per-project recents, progress tile, preview modal, receipts block + source picker.
+- Slash menu: recent widgets, Widgets/Create sections, “Ask AI: {query}” fallback.
+- Expo: artifact widgets first (create/list/view) + receipts; inline widgets follow once selection replacement is stable.
 
 ## AI Tools Overview
 
