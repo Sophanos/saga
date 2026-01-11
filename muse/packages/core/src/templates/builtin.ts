@@ -272,7 +272,7 @@ const WRITER_UI_MODULES: UIModuleConfig[] = [
   { module: "coach", enabled: true, order: 7 },
   { module: "history", enabled: true, order: 8 },
   { module: "editor", enabled: true, order: 9 },
-  { module: "world_graph", enabled: true, order: 10 },
+  { module: "project_graph", enabled: true, order: 10 },
   { module: "timeline", enabled: true, order: 11 },
   { module: "codex", enabled: true, order: 12 },
   { module: "outline", enabled: true, order: 13 },

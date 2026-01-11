@@ -58,7 +58,7 @@ as a human-readable message.
 
 ### Project Graph tool handlers
 
-Handlers in `muse/convex/ai/tools/worldGraphHandlers.ts` return:
+Handlers in `muse/convex/ai/tools/projectGraphHandlers.ts` return:
 
 ```ts
 { success: true; message: string; entityId?: string; relationshipId?: string }

@@ -12,7 +12,7 @@
  */
 
 import type { ClarityCheckArgs } from "@mythos/agent-protocol";
-import { executeClarityCheck } from "../../services/ai/sagaClient";
+import { executeClarityCheck } from "../../services/ai/agentRuntimeClient";
 import {
   resolveTextFromContext,
   type ToolDefinition,

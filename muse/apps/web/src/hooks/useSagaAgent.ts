@@ -32,7 +32,7 @@ import {
   type SagaMode,
   type EditorContext,
   type ToolApprovalRequest,
-} from "../services/ai/sagaClient";
+} from "../services/ai/agentRuntimeClient";
 import { useEditorChatContext } from "./useEditorChatContext";
 import { useApiKey } from "./useApiKey";
 import type { ToolName, ToolApprovalType } from "@mythos/agent-protocol";

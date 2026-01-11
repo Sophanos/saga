@@ -15,11 +15,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
-  type EntityType,
+  type GraphEntityType,
+  type WriterEntityType,
   type EntityIconName,
-  ENTITY_TYPE_CONFIG,
-  ENTITY_TYPES,
-  ENTITY_HEX_COLORS,
+  WRITER_ENTITY_TYPE_CONFIG,
+  WRITER_ENTITY_TYPES,
+  WRITER_ENTITY_HEX_COLORS,
   getEntityIcon,
   getEntityLabel,
   getEntityHexColor,
@@ -43,7 +44,7 @@ const ICON_COMPONENTS: Record<EntityIconName, LucideIcon> = {
  * @param type - The entity type
  * @returns Lucide React icon component
  */
-export function getEntityIconComponent(type: EntityType): LucideIcon {
+export function getEntityIconComponent(type: GraphEntityType): LucideIcon {
   const iconName = getEntityIcon(type);
   return ICON_COMPONENTS[iconName] ?? Sparkles;
 }
@@ -62,7 +63,7 @@ export function getIconByName(name: EntityIconName): LucideIcon {
  * Combines type, icon component, label, and color
  */
 export interface EntityTypeButtonConfig {
-  type: EntityType;
+  type: WriterEntityType;
   icon: LucideIcon;
   label: string;
   color: string;
@@ -73,19 +74,19 @@ export interface EntityTypeButtonConfig {
  * @returns Array of button configs with icon components
  */
 export function getEntityTypeButtons(): EntityTypeButtonConfig[] {
-  return ENTITY_TYPES.map((type) => ({
+  return WRITER_ENTITY_TYPES.map((type) => ({
     type,
     icon: getEntityIconComponent(type),
-    label: ENTITY_TYPE_CONFIG[type].label,
-    color: ENTITY_HEX_COLORS[type],
+    label: WRITER_ENTITY_TYPE_CONFIG[type].label,
+    color: WRITER_ENTITY_HEX_COLORS[type],
   }));
 }
 
 // Re-export core utilities for convenience
 export {
-  ENTITY_TYPE_CONFIG,
-  ENTITY_TYPES,
-  ENTITY_HEX_COLORS,
+  WRITER_ENTITY_TYPE_CONFIG,
+  WRITER_ENTITY_TYPES,
+  WRITER_ENTITY_HEX_COLORS,
   getEntityIcon,
   getEntityLabel,
   getEntityHexColor,

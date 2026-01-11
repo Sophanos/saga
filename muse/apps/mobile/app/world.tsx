@@ -9,7 +9,7 @@ import { useSupabaseAuthSync } from "../lib/useSupabaseAuthSync";
 import type { LucideIcon } from "lucide-react-native";
 
 // ============================================
-// WORLD GRAPH SCREEN
+// PROJECT GRAPH SCREEN
 // ============================================
 
 type Entity = Database["public"]["Tables"]["entities"]["Row"];
@@ -148,7 +148,7 @@ export default function WorldScreen() {
             <ArrowLeft size={20} color="#a1a1aa" />
           </Pressable>
           <Text className="text-lg font-semibold text-mythos-text-primary">
-            World Graph
+            Project Graph
           </Text>
         </View>
         <View className="flex-1 items-center justify-center">
@@ -171,7 +171,7 @@ export default function WorldScreen() {
             <ArrowLeft size={20} color="#a1a1aa" />
           </Pressable>
           <Text className="text-lg font-semibold text-mythos-text-primary">
-            World Graph
+            Project Graph
           </Text>
         </View>
         <View className="flex-1 items-center justify-center px-6">
@@ -207,7 +207,7 @@ export default function WorldScreen() {
         </Pressable>
         <View>
           <Text className="text-lg font-semibold text-mythos-text-primary">
-            World Graph
+            Project Graph
           </Text>
           <Text className="text-xs text-mythos-text-muted">
             {projectName ? projectName : `${entities.length} entities tracked`}

@@ -5,7 +5,7 @@
  */
 
 import type { NameGeneratorArgs, NameGeneratorResult } from "@mythos/agent-protocol";
-import { executeNameGenerator } from "../../services/ai/sagaClient";
+import { executeNameGenerator } from "../../services/ai/agentRuntimeClient";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 
 export interface NameGeneratorExecutionResult {

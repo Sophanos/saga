@@ -173,7 +173,7 @@ export const getByCanonical = query({
 });
 
 /**
- * Get entities with their relationships (for World Graph)
+ * Get entities with their relationships (for Project Graph)
  */
 export const listWithRelationships = query({
   args: {

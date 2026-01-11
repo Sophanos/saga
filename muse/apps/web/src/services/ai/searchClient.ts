@@ -1,5 +1,5 @@
 /**
- * Search API Client - Calls Supabase edge function /functions/v1/ai-search
+ * Search API Client - Calls Convex HTTP action /api/ai/search
  *
  * Performs semantic search using DeepInfra embeddings + Qdrant vector search.
  * Optionally reranks results using DeepInfra reranker.
@@ -111,7 +111,7 @@ export async function searchViaEdge(
 
   try {
     const result = await callEdgeFunction<SearchEdgeRequest, SearchEdgeResponse>(
-      "ai-search",
+      "ai/search",
       {
         query: payload.query,
         projectId: payload.projectId,

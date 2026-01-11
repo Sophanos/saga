@@ -526,7 +526,7 @@ async function requireProjectRole(
   projectId: Id<"projects">,
   userId: string
 ): Promise<ProjectRole> {
-  const access = await ctx.runQuery(internalAny["ai/tools/worldGraphHandlers"].getProjectMemberRole, {
+  const access = await ctx.runQuery(internalAny["ai/tools/projectGraphHandlers"].getProjectMemberRole, {
     projectId,
     userId,
   });
@@ -587,7 +587,7 @@ function buildSuccessEnvelope(
 }
 
 async function resolveEntityUnique(ctx: any, projectId: Id<"projects">, name: string, type?: string): Promise<any> {
-  const matches = (await ctx.runQuery(internalAny["ai/tools/worldGraphHandlers"].findEntityByCanonical, {
+  const matches = (await ctx.runQuery(internalAny["ai/tools/projectGraphHandlers"].findEntityByCanonical, {
     projectId,
     name,
     type,
@@ -613,7 +613,7 @@ async function resolveRelationshipByNames(
   const target = await resolveEntityUnique(ctx, projectId, targetName);
   if (!target) return null;
 
-  return ctx.runQuery(internalAny["ai/tools/worldGraphHandlers"].findRelationship, {
+  return ctx.runQuery(internalAny["ai/tools/projectGraphHandlers"].findRelationship, {
     projectId,
     sourceId: source._id,
     targetId: target._id,
@@ -645,7 +645,7 @@ async function applySuggestionApprove(
 
   switch (toolName) {
     case "create_entity": {
-      const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeCreateEntity, {
+      const result = await ctx.runAction(internalAny["ai/tools/projectGraphHandlers"].executeCreateEntity, {
         projectId: projectId as string,
         toolArgs,
         actor,
@@ -665,7 +665,7 @@ async function applySuggestionApprove(
     }
     case "update_entity": {
       const before = await resolveEntityUnique(ctx, projectId, String(toolArgs["entityName"] ?? ""), toolArgs["entityType"] as string | undefined);
-      const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeUpdateEntity, {
+      const result = await ctx.runAction(internalAny["ai/tools/projectGraphHandlers"].executeUpdateEntity, {
         projectId: projectId as string,
         toolArgs,
         actor,
@@ -695,7 +695,7 @@ async function applySuggestionApprove(
       );
     }
     case "create_node": {
-      const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeCreateNode, {
+      const result = await ctx.runAction(internalAny["ai/tools/projectGraphHandlers"].executeCreateNode, {
         projectId: projectId as string,
         toolArgs,
         actor,
@@ -715,7 +715,7 @@ async function applySuggestionApprove(
     }
     case "update_node": {
       const before = await resolveEntityUnique(ctx, projectId, String(toolArgs["nodeName"] ?? ""), toolArgs["nodeType"] as string | undefined);
-      const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeUpdateNode, {
+      const result = await ctx.runAction(internalAny["ai/tools/projectGraphHandlers"].executeUpdateNode, {
         projectId: projectId as string,
         toolArgs,
         actor,
@@ -745,7 +745,7 @@ async function applySuggestionApprove(
       );
     }
     case "create_relationship": {
-      const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeCreateRelationship, {
+      const result = await ctx.runAction(internalAny["ai/tools/projectGraphHandlers"].executeCreateRelationship, {
         projectId: projectId as string,
         toolArgs,
         actor,
@@ -771,7 +771,7 @@ async function applySuggestionApprove(
         String(toolArgs["targetName"] ?? ""),
         String(toolArgs["type"] ?? "")
       );
-      const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeUpdateRelationship, {
+      const result = await ctx.runAction(internalAny["ai/tools/projectGraphHandlers"].executeUpdateRelationship, {
         projectId: projectId as string,
         toolArgs,
         actor,
@@ -801,7 +801,7 @@ async function applySuggestionApprove(
       );
     }
     case "create_edge": {
-      const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeCreateEdge, {
+      const result = await ctx.runAction(internalAny["ai/tools/projectGraphHandlers"].executeCreateEdge, {
         projectId: projectId as string,
         toolArgs,
         actor,
@@ -827,7 +827,7 @@ async function applySuggestionApprove(
         String(toolArgs["targetName"] ?? ""),
         String(toolArgs["type"] ?? "")
       );
-      const result = await ctx.runAction(internalAny["ai/tools/worldGraphHandlers"].executeUpdateEdge, {
+      const result = await ctx.runAction(internalAny["ai/tools/projectGraphHandlers"].executeUpdateEdge, {
         projectId: projectId as string,
         toolArgs,
         actor,

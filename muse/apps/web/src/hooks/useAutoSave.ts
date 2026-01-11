@@ -5,36 +5,12 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { useMythosStore } from "../stores";
 import { simpleHash } from "../utils/hash";
-import { embedTextViaEdge, EmbeddingApiError } from "../services/ai";
 
 /**
  * Default debounce delay in milliseconds before auto-saving
  */
 const DEFAULT_DEBOUNCE_MS = 2000;
 
-/**
- * Debounce delay for embedding generation (longer than save debounce)
- */
-const EMBEDDING_DEBOUNCE_MS = 10000;
-
-/**
- * Minimum content length for embedding generation
- */
-const MIN_EMBEDDING_TEXT_LENGTH = 50;
-
-/**
- * E2E mode flag for disabling flaky side effects.
- */
-const E2E_MODE =
-  import.meta.env["VITE_E2E"] === "true" ||
-  import.meta.env["EXPO_PUBLIC_E2E"] === "true";
-
-/**
- * Check if embeddings feature is enabled (Qdrant-only architecture)
- * Embeddings are enabled by default - set VITE_EMBEDDINGS_ENABLED=false to disable
- */
-const EMBEDDINGS_ENABLED =
-  import.meta.env["VITE_EMBEDDINGS_ENABLED"] !== "false" && !E2E_MODE;
 
 /**
  * Options for the useAutoSave hook
@@ -110,8 +86,6 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
   // Store state and actions
   const isDirty = useMythosStore((state) => state.editor.isDirty);
   const setDirty = useMythosStore((state) => state.setDirty);
-  const currentProjectId = useMythosStore((state) => state.project.currentProject?.id);
-  const currentDocumentTitle = useMythosStore((state) => state.document.currentDocument?.title);
 
   // Refs for tracking and debouncing
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -123,11 +97,6 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
   // Keep mutation ref updated
   updateDocumentRef.current = updateDocumentMutation;
 
-  // Embedding generation refs
-  const embedDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const embedAbortRef = useRef<AbortController | null>(null);
-  const lastEmbeddedTextHashRef = useRef<string>("");
-  const pendingEmbedRef = useRef<{ text: string; updatedAt: string; projectId: string; docTitle: string | undefined } | null>(null);
 
   /**
    * Get content hash from editor JSON structure
@@ -146,101 +115,6 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
     const json = editor.getJSON();
     return simpleHash(JSON.stringify(json));
   }, [editor]);
-
-  /**
-   * Generate document embedding and index to Qdrant
-   * Fire-and-forget: errors are logged but don't affect save state
-   *
-   * Qdrant-only architecture: embeddings stored in Qdrant with 4096 dimensions
-   * for best quality with Qwen3-Embedding-8B model.
-   */
-  const generateAndPersistEmbedding = useCallback(
-    async (text: string, updatedAt: string, textHash: string, projectId: string, docTitle: string | undefined) => {
-      if (!documentId) return;
-
-      // Abort any in-flight embedding request
-      embedAbortRef.current?.abort();
-      const abortController = new AbortController();
-      embedAbortRef.current = abortController;
-
-      try {
-        // Generate embedding and index to Qdrant in one call
-        await embedTextViaEdge(text, {
-          signal: abortController.signal,
-          qdrant: {
-            enabled: true,
-            pointId: `doc_${documentId}`,
-            payload: {
-              project_id: projectId,
-              type: "document",
-              document_id: documentId,
-              title: docTitle || "Untitled",
-              content_preview: text.slice(0, 500),
-              updated_at: updatedAt,
-            },
-          },
-        });
-
-        // Successfully indexed - update hash ref
-        lastEmbeddedTextHashRef.current = textHash;
-        console.debug("[useAutoSave] Document embedding generated and indexed to Qdrant");
-      } catch (error) {
-        // Ignore aborted requests
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-
-        // Log but don't propagate - embedding failures must not affect saves
-        if (error instanceof EmbeddingApiError) {
-          console.warn("[useAutoSave] Embedding generation failed:", error.message);
-        } else {
-          console.warn("[useAutoSave] Embedding generation failed:", error);
-        }
-      }
-    },
-    [documentId]
-  );
-
-  /**
-   * Schedule embedding generation with debounce
-   */
-  const scheduleEmbeddingGeneration = useCallback(
-    (text: string, updatedAt: string, projectId: string, docTitle: string | undefined) => {
-      // Skip if embeddings are disabled
-      if (!EMBEDDINGS_ENABLED) {
-        return;
-      }
-
-      // Skip if content is too short
-      if (text.length < MIN_EMBEDDING_TEXT_LENGTH) {
-        return;
-      }
-
-      // Skip if content hash hasn't changed since last embedding
-      const textHash = simpleHash(text);
-      if (textHash === lastEmbeddedTextHashRef.current) {
-        return;
-      }
-
-      // Store pending embed data
-      pendingEmbedRef.current = { text, updatedAt, projectId, docTitle };
-
-      // Clear existing debounce timer
-      if (embedDebounceTimerRef.current) {
-        clearTimeout(embedDebounceTimerRef.current);
-      }
-
-      // Set new debounce timer
-      embedDebounceTimerRef.current = setTimeout(() => {
-        const pending = pendingEmbedRef.current;
-        if (pending) {
-          pendingEmbedRef.current = null;
-          void generateAndPersistEmbedding(pending.text, pending.updatedAt, textHash, pending.projectId, pending.docTitle);
-        }
-      }, EMBEDDING_DEBOUNCE_MS);
-    },
-    [generateAndPersistEmbedding]
-  );
 
   /**
    * Core save function
@@ -290,12 +164,6 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
         setLastSavedAt(new Date());
         setDirty(false);
         setError(null);
-
-        // Schedule embedding generation (async, non-blocking)
-        if (currentProjectId) {
-          const savedUpdatedAt = new Date().toISOString();
-          scheduleEmbeddingGeneration(textContent, savedUpdatedAt, currentProjectId, currentDocumentTitle);
-        }
       }
     } catch (err) {
       // Only update error state if component is still mounted
@@ -316,7 +184,7 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
         }
       }
     }
-  }, [editor, documentId, isSaving, getContentHash, setDirty, currentProjectId, currentDocumentTitle, scheduleEmbeddingGeneration, updateDocumentMutation]);
+  }, [editor, documentId, isSaving, getContentHash, setDirty, updateDocumentMutation]);
 
   /**
    * Public save function - saves immediately
@@ -378,17 +246,8 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
   useEffect(() => {
     // When documentId changes, reset the saved hash to trigger initial comparison
     lastSavedHashRef.current = "";
-    lastEmbeddedTextHashRef.current = "";
     setLastSavedAt(null);
     setError(null);
-
-    // Cancel any pending embedding work for the previous document
-    if (embedDebounceTimerRef.current) {
-      clearTimeout(embedDebounceTimerRef.current);
-      embedDebounceTimerRef.current = null;
-    }
-    embedAbortRef.current?.abort();
-    pendingEmbedRef.current = null;
   }, [documentId]);
 
   /**
@@ -404,12 +263,6 @@ export function useAutoSave(options: UseAutoSaveOptions): UseAutoSaveResult {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
-
-      // Clear any pending embedding timer and abort in-flight requests
-      if (embedDebounceTimerRef.current) {
-        clearTimeout(embedDebounceTimerRef.current);
-      }
-      embedAbortRef.current?.abort();
 
       // Attempt final save if there are unsaved changes
       // Note: This is a best-effort save on unmount

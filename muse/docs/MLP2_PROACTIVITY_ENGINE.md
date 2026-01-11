@@ -8,7 +8,7 @@ MLP2 adds **proactivity without interruptions**: Muse runs background analysis a
 
 ## Product promise (keep it honest)
 
-- **Focus Mode stays distraction-free.** Muse can be proactive in the background, but it must not interrupt the writer.
+- **Flow Mode stays distraction-free.** Muse can be proactive in the background, but it must not interrupt the writer.
 - **Proactivity never means silent mutation.** The default output is: *signals + reviewable PRs*.
 - **Users stay in control.** All proactive actions should be pausable, scoped (document/project), and budgeted.
 - **Strategic bet:** be the “compiler for project truth” (types, invariants, diffs, review, provenance, deterministic gates). Avoid competing as “enterprise search with connectors”; connectors are evidence/ingest, not the moat.
@@ -44,7 +44,7 @@ Use these as explicit research spikes to validate demand, UX, and operational co
 ## Proactivity modes (per project + per user)
 
 1. **Off**: no background analysis; only manual tools.
-2. **Silent** (default for writers / Focus Mode): background jobs run, results go to Pulse/Inbox only.
+2. **Silent** (default for writers / Flow Mode): background jobs run, results go to Pulse/Inbox only.
 3. **Assistive**: lightweight inline affordances (badges/counters), still no popups.
 4. **Active** (opt-in): prompts the user when critical issues are found (never writes without approval).
 
@@ -54,11 +54,11 @@ Implementation note: these modes are UI policy; the backend always produces the 
 
 ## User journeys
 
-### Writer (Focus Mode, “proactive but silent”)
+### Writer (Flow Mode, “proactive but silent”)
 
 - Writer types for a while → on idle/save, Muse runs background checks.
 - Pulse counter increments quietly (no popups).
-- When the writer exits Focus Mode (or opens Pulse / Cmd+K), they see:
+- When the writer exits Flow Mode (or opens Pulse / Cmd+K), they see:
   - “New entities detected (3)”
   - “Possible canon contradiction (1)”
   - “Clarity issues (5)”
@@ -231,7 +231,7 @@ Implementation direction (MLP2):
 
 ## Quick wins (MLP2, low risk)
 
-These upgrades increase “proactive feel” without breaking Focus Mode or requiring deep connectors:
+These upgrades increase “proactive feel” without breaking Flow Mode or requiring deep connectors:
 
 - **Pulse counter + inbox**: one quiet indicator + a single review surface (no popups).
 - **Idle-on-save jobs**: schedule proactivity runs after saves (2–5s debounce), using `ctx.scheduler.runAfter` + a cron backstop (`muse/convex/crons.ts`).
@@ -243,7 +243,7 @@ These upgrades increase “proactive feel” without breaking Focus Mode or requ
 ## Who to target (MLP1 → MLP2)
 
 MLP1 wedge (best fit):
-- **Writers** (web + macOS): Focus Mode, World/Project Graph, governed AI edits, canon decisions with citations.
+- **Writers** (web + macOS): Flow Mode, World/Project Graph, governed AI edits, canon decisions with citations.
 
 MLP2 expansion (best fit):
 - **Agencies/consulting + product teams (startups → mid-sized)** who suffer from spec/runbook/policy drift and need reviewable “truth updates” more than they need a giant connector catalog.

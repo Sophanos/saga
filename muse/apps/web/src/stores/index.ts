@@ -97,8 +97,8 @@ interface LinterState {
 // Console tab type - shared between UIState and setActiveTab action
 export type ConsoleTab = "chat" | "search" | "linter" | "activity" | "dynamics" | "coach" | "history";
 
-// Canvas view type for switching between editor and world graph
-export type CanvasView = "editor" | "worldGraph";
+// Canvas view type for switching between editor and project graph
+export type CanvasView = "editor" | "projectGraph";
 
 // Chat mode type for floating vs docked AI chat panel
 export type ChatMode = "docked" | "floating";
@@ -1425,7 +1425,7 @@ export const useSessionsError = () =>
 // ============================================================================
 
 /**
- * Get current canvas view (editor or worldGraph)
+ * Get current canvas view (editor or projectGraph)
  */
 export const useCanvasView = () =>
   useMythosStore((s) => s.ui.canvasView);

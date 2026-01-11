@@ -2,7 +2,7 @@
 
 > **Last Updated:** 2026-01-10
 >
-> **Goal:** Turn “what the project knows” into a first-class, reviewable system: documents + world graph + pinned memories, with approval-based changes (“Knowledge PRs”) and clear provenance.
+> **Goal:** Turn “what the project knows” into a first-class, reviewable system: documents + project graph + pinned memories, with approval-based changes (“Knowledge PRs”) and clear provenance.
 
 ## What this is
 

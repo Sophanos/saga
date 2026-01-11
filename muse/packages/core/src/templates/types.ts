@@ -185,7 +185,7 @@ export type UIModuleId =
   | "history" // Analysis history
   // Canvas views
   | "editor" // Main text editor
-  | "world_graph" // Relationship graph view
+  | "project_graph" // Relationship graph view
   | "map" // Spatial map view
   | "timeline" // Timeline view
   | "codex" // Encyclopedia view

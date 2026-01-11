@@ -437,7 +437,7 @@ export const persistGenesisWorld = internalAction({
       try {
         // Check if entity already exists
         const matches = await ctx.runQuery(
-          (internal as any)["ai/tools/worldGraphHandlers"].findEntityByCanonical,
+          (internal as any)["ai/tools/projectGraphHandlers"].findEntityByCanonical,
           { projectId, name: entity.name, type: entity.type }
         );
         const existing = matches?.[0] ?? null;
@@ -456,7 +456,7 @@ export const persistGenesisWorld = internalAction({
 
         // Create entity
         const entityId = await ctx.runMutation(
-          (internal as any)["ai/tools/worldGraphHandlers"].createEntityMutation,
+          (internal as any)["ai/tools/projectGraphHandlers"].createEntityMutation,
           {
             projectId,
             type: entity.type,
@@ -497,7 +497,7 @@ export const persistGenesisWorld = internalAction({
         try {
           // Check if relationship exists
           const existing = await ctx.runQuery(
-            (internal as any)["ai/tools/worldGraphHandlers"].findRelationship,
+            (internal as any)["ai/tools/projectGraphHandlers"].findRelationship,
             {
               projectId,
               sourceId: sourceId as Id<"entities">,
@@ -514,7 +514,7 @@ export const persistGenesisWorld = internalAction({
           }
 
           await ctx.runMutation(
-            (internal as any)["ai/tools/worldGraphHandlers"].createRelationshipMutation,
+            (internal as any)["ai/tools/projectGraphHandlers"].createRelationshipMutation,
             {
               projectId,
               sourceId: sourceId as Id<"entities">,

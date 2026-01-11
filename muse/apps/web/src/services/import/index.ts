@@ -345,6 +345,7 @@ async function detectEntitiesForImportedDocs(
 
   const response = await detectEntitiesViaEdge(
     {
+      projectId,
       text: combinedText,
       existingEntities: existingEntities.map((e) => ({
         id: e.id,

@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Mythos IDE: AI-powered creative writing environment. "Story as code" with entity tracking, World Graph, and AI agents.
+Mythos IDE: AI-powered creative writing environment. "Story as code" with entity tracking, Project Graph, and AI agents.
 
 ## Quick Commands (run from `muse/`)
 ```bash
@@ -30,7 +30,7 @@ packages/
   analytics/      # Typed event tracking
   consent/        # GDPR consent + Clarity
   theme/          # Design tokens
-  core/           # Domain types, World Graph, Zod schemas
+  core/           # Domain types, Project Graph, Zod schemas
   manifest/       # Project tree logic
   prompts/        # AI prompts
 convex/           # Backend + AI modules
@@ -83,11 +83,11 @@ const { colors, isDark } = useTheme();
 
 ## Convex AI (high level)
 - Core modules: `agentRuntime`, `coach`, `dynamics`, `genesis`, `image`, `lint`, `style`, `rag`, `saga`
-- Tools: `editorTools.ts`, `ragTools.ts`, `worldGraphTools.ts`
+- Tools: `editorTools.ts`, `ragTools.ts`, `projectGraphTools.ts`
 
 ## Roadmap Snapshot (MLP1)
 - Priority: Web → macOS (Tauri) → iOS/iPad (Expo)
-- Focus Mode + writer tools are P1/P2 (AI silent unless invoked)
+- Flow Mode + writer tools are P1/P2 (AI silent unless invoked)
 - Export/Import centralization into `@mythos/io` (P2)
 - Platform capability layer in `@mythos/platform` (no `.tauri.ts` sprawl)
 - Full details: `docs/MLP1_ROADMAP.md`

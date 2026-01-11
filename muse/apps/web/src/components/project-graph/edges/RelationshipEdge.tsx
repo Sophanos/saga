@@ -6,7 +6,7 @@ import {
   type EdgeProps,
   type Edge,
 } from "@xyflow/react";
-import type { RelationType } from "@mythos/core";
+import type { GraphRelationType } from "@mythos/core";
 import {
   RELATIONSHIP_CATEGORY_COLORS,
   type RelationshipCategory,
@@ -14,7 +14,7 @@ import {
 
 export interface RelationshipEdgeData extends Record<string, unknown> {
   relationshipId: string;
-  relationType: RelationType;
+  relationType: GraphRelationType;
   label: string;
   category: RelationshipCategory;
   bidirectional?: boolean;
@@ -75,7 +75,7 @@ function RelationshipEdgeComponent({
               color: color,
               border: `1px solid ${color}40`,
             }}
-            data-testid={`wg-edge-${id}`}
+            data-testid={`pg-edge-${id}`}
           >
             {label}
           </div>

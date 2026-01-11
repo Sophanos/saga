@@ -5,7 +5,7 @@
  * Supports chapters/scenes, entities, and Story Bible (memories).
  */
 
-import type { EntityType, Entity } from "@mythos/core";
+import type { GraphEntityType, Entity } from "@mythos/core";
 import type { Document, DocumentType } from "@mythos/core/schema";
 
 /**
@@ -55,7 +55,7 @@ export interface TreeNode {
   type: TreeNodeType;
 
   /** Entity type (when type === 'entity') */
-  entityType?: EntityType;
+  entityType?: GraphEntityType;
   /** Document type (when type is a document-based node) */
   documentType?: DocumentType;
   /** Memory category (when type === 'memory') */
@@ -139,7 +139,7 @@ export interface ManifestFilters {
   /** Filter by document types */
   documentTypes?: DocumentType[];
   /** Filter by entity types */
-  entityTypes?: EntityType[];
+  entityTypes?: GraphEntityType[];
   /** Filter by memory categories */
   memoryCategories?: MemoryCategory[];
 }

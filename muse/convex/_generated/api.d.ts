@@ -10,6 +10,7 @@
 
 import type * as account from "../account.js";
 import type * as activity from "../activity.js";
+import type * as analysis from "../analysis.js";
 import type * as ai_agentRuntime from "../ai/agentRuntime.js";
 import type * as ai_canon from "../ai/canon.js";
 import type * as ai_coach from "../ai/coach.js";
@@ -38,12 +39,13 @@ import type * as ai_tools_index from "../ai/tools/index.js";
 import type * as ai_tools_memoryTools from "../ai/tools/memoryTools.js";
 import type * as ai_tools_ragHandlers from "../ai/tools/ragHandlers.js";
 import type * as ai_tools_ragTools from "../ai/tools/ragTools.js";
-import type * as ai_tools_worldGraphHandlers from "../ai/tools/worldGraphHandlers.js";
-import type * as ai_tools_worldGraphTools from "../ai/tools/worldGraphTools.js";
+import type * as ai_tools_projectGraphHandlers from "../ai/tools/projectGraphHandlers.js";
+import type * as ai_tools_projectGraphTools from "../ai/tools/projectGraphTools.js";
 import type * as aiUsage from "../aiUsage.js";
 import type * as betterAuth from "../betterAuth.js";
 import type * as billing from "../billing.js";
 import type * as collaboration from "../collaboration.js";
+import type * as chatSessions from "../chatSessions.js";
 import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
 import type * as e2e from "../e2e.js";
@@ -82,6 +84,7 @@ import type * as migrations_index from "../migrations/index.js";
 import type * as migrations_types from "../migrations/types.js";
 import type * as presence from "../presence.js";
 import type * as projectAssets from "../projectAssets.js";
+import type * as projectBootstrap from "../projectBootstrap.js";
 import type * as projectTypeRegistry from "../projectTypeRegistry.js";
 import type * as projects from "../projects.js";
 import type * as prosemirrorSync from "../prosemirrorSync.js";
@@ -100,6 +103,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   account: typeof account;
   activity: typeof activity;
+  analysis: typeof analysis;
   "ai/agentRuntime": typeof ai_agentRuntime;
   "ai/canon": typeof ai_canon;
   "ai/coach": typeof ai_coach;
@@ -128,12 +132,13 @@ declare const fullApi: ApiFromModules<{
   "ai/tools/memoryTools": typeof ai_tools_memoryTools;
   "ai/tools/ragHandlers": typeof ai_tools_ragHandlers;
   "ai/tools/ragTools": typeof ai_tools_ragTools;
-  "ai/tools/worldGraphHandlers": typeof ai_tools_worldGraphHandlers;
-  "ai/tools/worldGraphTools": typeof ai_tools_worldGraphTools;
+  "ai/tools/projectGraphHandlers": typeof ai_tools_projectGraphHandlers;
+  "ai/tools/projectGraphTools": typeof ai_tools_projectGraphTools;
   aiUsage: typeof aiUsage;
   betterAuth: typeof betterAuth;
   billing: typeof billing;
   collaboration: typeof collaboration;
+  chatSessions: typeof chatSessions;
   crons: typeof crons;
   documents: typeof documents;
   e2e: typeof e2e;
@@ -172,6 +177,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/types": typeof migrations_types;
   presence: typeof presence;
   projectAssets: typeof projectAssets;
+  projectBootstrap: typeof projectBootstrap;
   projectTypeRegistry: typeof projectTypeRegistry;
   projects: typeof projects;
   prosemirrorSync: typeof prosemirrorSync;

@@ -2,7 +2,7 @@
  * create_entity_from_image tool executor
  *
  * Composite operation: upload → analyze → create entity + set portrait.
- * Calls ai-image-analyze with entityId after creating the entity locally.
+ * Calls the Convex HTTP action /api/ai/image-analyze with entityId after creating the entity locally.
  */
 
 import { buildEntity, type EntityBuildData } from "@mythos/core";
@@ -173,7 +173,7 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
       let analysisResponse: AIImageAnalyzeResponse;
       try {
         analysisResponse = await callEdgeFunction<AIImageAnalyzeRequest, AIImageAnalyzeResponse>(
-          "ai-image-analyze",
+          "ai/image-analyze",
           analysisRequest,
           {
             apiKey: ctx.apiKey,

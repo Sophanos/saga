@@ -16,9 +16,9 @@
       "types": "./src/schema/index.ts",
       "default": "./src/schema/index.ts"
     },
-    "./world-graph": {
-      "types": "./src/world-graph/index.ts",
-      "default": "./src/world-graph/index.ts"
+    "./project-graph": {
+      "types": "./src/project-graph/index.ts",
+      "default": "./src/project-graph/index.ts"
     },
     "./analysis": {
       "types": "./src/analysis/index.ts",

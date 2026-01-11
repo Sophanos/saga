@@ -3,8 +3,8 @@ export * from "./entities";
 export * from "./schema";
 export * from "./story";
 export * from "./dynamics";
-export { WorldGraph } from "./world-graph";
-export type { Conflict } from "./world-graph";
+export { ProjectGraph } from "./project-graph";
+export type { Conflict } from "./project-graph";
 
 // Analysis module
 export * from "./analysis";

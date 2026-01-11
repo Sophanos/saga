@@ -12,7 +12,7 @@ import {
   SagaApiError,
   type SagaChatPayload,
   type ToolCallResult,
-} from "../../../../services/ai/sagaClient";
+} from "../../../../services/ai/agentRuntimeClient";
 import { useApiKey } from "../../../../hooks/useApiKey";
 import type {
   ToolName,

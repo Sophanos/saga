@@ -36,7 +36,7 @@ import {
   updateNodeTool,
   createEdgeTool,
   updateEdgeTool,
-} from "./tools/worldGraphTools";
+} from "./tools/projectGraphTools";
 import { getEmbeddingModelForTask } from "../lib/embeddings";
 import { ServerAgentEvents } from "../lib/analytics";
 import {
@@ -282,7 +282,7 @@ const autoExecuteTools = new Set([
   "search_world",
   "get_entity",
 ]);
-const worldGraphTools = new Set([
+const projectGraphTools = new Set([
   "create_entity",
   "update_entity",
   "create_relationship",
@@ -350,7 +350,7 @@ async function resolveUniqueEntityTypeForUpdate(
 ): Promise<string | null> {
   const matches = (await ctx.runQuery(
     // @ts-expect-error Deep types
-    internal["ai/tools/worldGraphHandlers"].findEntityByCanonical,
+    internal["ai/tools/projectGraphHandlers"].findEntityByCanonical,
     { projectId, name, type: typeHint }
   )) as Array<{ type: string }> | null;
 
@@ -358,7 +358,7 @@ async function resolveUniqueEntityTypeForUpdate(
   return matches[0]?.type ?? null;
 }
 
-async function needsWorldGraphToolApproval(
+async function needsProjectGraphToolApproval(
   ctx: ActionCtx,
   projectId: Id<"projects">,
   toolName: string,
@@ -421,7 +421,7 @@ function resolveApprovalDanger(toolName: string, args: Record<string, unknown>):
     }
     return "safe";
   }
-  if (worldGraphTools.has(toolName)) return "destructive";
+  if (projectGraphTools.has(toolName)) return "destructive";
   return "safe";
 }
 
@@ -554,7 +554,7 @@ async function executeRagTool(
   }
 }
 
-async function executeWorldGraphTool(
+async function executeProjectGraphTool(
   ctx: ActionCtx,
   toolName: string,
   args: Record<string, unknown>,
@@ -564,63 +564,63 @@ async function executeWorldGraphTool(
 ): Promise<unknown> {
   switch (toolName) {
     case "create_entity":
-      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeCreateEntity, {
+      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateEntity, {
         projectId,
         toolArgs: args,
         actor,
         source,
       });
     case "update_entity":
-      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeUpdateEntity, {
+      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateEntity, {
         projectId,
         toolArgs: args,
         actor,
         source,
       });
     case "create_relationship":
-      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeCreateRelationship, {
+      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateRelationship, {
         projectId,
         toolArgs: args,
         actor,
         source,
       });
     case "update_relationship":
-      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeUpdateRelationship, {
+      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateRelationship, {
         projectId,
         toolArgs: args,
         actor,
         source,
       });
     case "create_node":
-      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeCreateNode, {
+      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateNode, {
         projectId,
         toolArgs: args,
         actor,
         source,
       });
     case "update_node":
-      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeUpdateNode, {
+      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateNode, {
         projectId,
         toolArgs: args,
         actor,
         source,
       });
     case "create_edge":
-      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeCreateEdge, {
+      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateEdge, {
         projectId,
         toolArgs: args,
         actor,
         source,
       });
     case "update_edge":
-      return ctx.runAction((internal as any)["ai/tools/worldGraphHandlers"].executeUpdateEdge, {
+      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateEdge, {
         projectId,
         toolArgs: args,
         actor,
         source,
       });
     default:
-      throw new Error(`Unknown world graph tool: ${toolName}`);
+      throw new Error(`Unknown project graph tool: ${toolName}`);
   }
 }
 
@@ -888,9 +888,9 @@ export const runSagaAgentChatToStream = internalAction({
 
       while (toolCalls.length > 0) {
         const ragCalls = toolCalls.filter((c) => autoExecuteTools.has(c.toolName));
-        const worldGraphCalls = toolCalls.filter((c) => worldGraphTools.has(c.toolName));
+        const projectGraphCalls = toolCalls.filter((c) => projectGraphTools.has(c.toolName));
         const otherCalls = toolCalls.filter(
-          (c) => !autoExecuteTools.has(c.toolName) && !worldGraphTools.has(c.toolName)
+          (c) => !autoExecuteTools.has(c.toolName) && !projectGraphTools.has(c.toolName)
         );
 
         // Execute RAG tools (always auto)
@@ -934,13 +934,13 @@ export const runSagaAgentChatToStream = internalAction({
           }
         }
 
-        // Process world graph tools - auto-execute or request approval based on impact
-        const autoWorldGraphCalls: typeof worldGraphCalls = [];
-        const pendingWorldGraphCalls: typeof worldGraphCalls = [];
+        // Process project graph tools - auto-execute or request approval based on impact
+        const autoProjectGraphCalls: typeof projectGraphCalls = [];
+        const pendingProjectGraphCalls: typeof projectGraphCalls = [];
 
-        for (const call of worldGraphCalls) {
+        for (const call of projectGraphCalls) {
           const args = call.input as Record<string, unknown>;
-          const requiresApproval = await needsWorldGraphToolApproval(
+          const requiresApproval = await needsProjectGraphToolApproval(
             ctx,
             projectIdValue,
             call.toolName,
@@ -948,15 +948,15 @@ export const runSagaAgentChatToStream = internalAction({
             registry
           );
           if (requiresApproval) {
-            pendingWorldGraphCalls.push(call);
+            pendingProjectGraphCalls.push(call);
           } else {
-            autoWorldGraphCalls.push(call);
+            autoProjectGraphCalls.push(call);
           }
         }
 
-        // Auto-execute low-impact world graph tools
-        for (const call of autoWorldGraphCalls) {
-          const toolResult = await executeWorldGraphTool(
+        // Auto-execute low-impact project graph tools
+        for (const call of autoProjectGraphCalls) {
+          const toolResult = await executeProjectGraphTool(
             ctx,
             call.toolName,
             call.input as Record<string, unknown>,
@@ -1007,17 +1007,15 @@ export const runSagaAgentChatToStream = internalAction({
           }
         }
 
-        // Request approval for high-impact world graph tools
-        for (const call of pendingWorldGraphCalls) {
+        // Request approval for high-impact project graph tools
+        for (const call of pendingProjectGraphCalls) {
           const approvalArgs = call.input as Record<string, unknown>;
           let suggestionId: string | undefined;
           const suggestion = classifyKnowledgeSuggestion(call.toolName);
           if (suggestion && !isTemplateBuilder) {
             try {
               const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
-
               const suggestionTargetId = suggestionEditorContext?.documentId;
-
               const riskLevel = await resolveSuggestionRiskLevel(
                 ctx,
                 projectIdValue,
@@ -1091,37 +1089,35 @@ export const runSagaAgentChatToStream = internalAction({
           if (needsToolApproval(registry, call.toolName, args)) {
             let suggestionId: string | undefined;
             const suggestion = classifyKnowledgeSuggestion(call.toolName);
-            if (suggestion && !isTemplateBuilder) {
-              try {
-                const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
-
-                const suggestionTargetId = suggestionEditorContext?.documentId;
-
-                const riskLevel = await resolveSuggestionRiskLevel(
-                  ctx,
-                  projectIdValue,
-                  call.toolName,
-                  args,
-                  registry
-                );
-                suggestionId = (await ctx.runMutation(
-                  (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
-                  {
-                    projectId: projectIdValue,
-                    toolCallId: call.toolCallId,
-                    toolName: call.toolName,
-                    approvalType: resolveApprovalType(call.toolName),
-                    danger: resolveApprovalDanger(call.toolName, args),
-                    riskLevel,
-                    operation: suggestion.operation,
-                    targetType: suggestion.targetType,
-                    targetId: suggestionTargetId,
-                    proposedPatch: call.input,
-                    editorContext: suggestionEditorContext,
-                    actorType: aiActor.actorType,
-                    actorUserId: aiActor.actorUserId,
-                    actorAgentId: aiActor.actorAgentId,
-                    actorName: aiActor.actorName,
+          if (suggestion && !isTemplateBuilder) {
+            try {
+              const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
+              const suggestionTargetId = suggestionEditorContext?.documentId;
+              const riskLevel = await resolveSuggestionRiskLevel(
+                ctx,
+                projectIdValue,
+                call.toolName,
+                args,
+                registry
+              );
+              suggestionId = (await ctx.runMutation(
+                (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
+                {
+                  projectId: projectIdValue,
+                  toolCallId: call.toolCallId,
+                  toolName: call.toolName,
+                  approvalType: resolveApprovalType(call.toolName),
+                  danger: resolveApprovalDanger(call.toolName, args),
+                  riskLevel,
+                  operation: suggestion.operation,
+                  targetType: suggestion.targetType,
+                  targetId: suggestionTargetId,
+                  proposedPatch: call.input,
+                  editorContext: suggestionEditorContext,
+                  actorType: aiActor.actorType,
+                  actorUserId: aiActor.actorUserId,
+                  actorAgentId: aiActor.actorAgentId,
+                  actorName: aiActor.actorName,
                     streamId,
                     threadId,
                     promptMessageId: currentPromptMessageId,
@@ -1193,8 +1189,8 @@ export const runSagaAgentChatToStream = internalAction({
         }
 
         // Stop if there are pending approvals
-        const pendingCalls = [...pendingWorldGraphCalls, ...otherCalls];
-        const autoExecutedCalls = [...ragCalls, ...autoWorldGraphCalls];
+        const pendingCalls = [...pendingProjectGraphCalls, ...otherCalls];
+        const autoExecutedCalls = [...ragCalls, ...autoProjectGraphCalls];
         if (pendingCalls.length > 0 || autoExecutedCalls.length === 0) {
           break;
         }
@@ -1423,8 +1419,8 @@ export const applyToolResultAndResumeToStream = internalAction({
       for (const call of toolCalls) {
         const callArgs = call.input as Record<string, unknown>;
         const requiresApproval =
-          worldGraphTools.has(call.toolName)
-            ? await needsWorldGraphToolApproval(ctx, projectIdValue, call.toolName, callArgs, registry)
+          projectGraphTools.has(call.toolName)
+            ? await needsProjectGraphToolApproval(ctx, projectIdValue, call.toolName, callArgs, registry)
             : needsToolApproval(registry, call.toolName, callArgs);
 
         if (requiresApproval) {
@@ -1433,9 +1429,7 @@ export const applyToolResultAndResumeToStream = internalAction({
           if (suggestion && !isTemplateBuilder) {
             try {
               const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
-
               const suggestionTargetId = suggestionEditorContext?.documentId;
-
               const riskLevel = await resolveSuggestionRiskLevel(
                 ctx,
                 projectIdValue,

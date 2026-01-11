@@ -7,7 +7,7 @@ import { SensoryHeatmap } from "./SensoryHeatmap";
 import { ShowDontTellMeter } from "./ShowDontTellMeter";
 import { StyleIssuesList } from "./StyleIssuesList";
 import { StyleFixPreviewModal } from "./StyleFixPreviewModal";
-import { useAnalysisData } from "../../hooks/useWritingAnalysis";
+import { useAnalysisData } from "../../hooks/useContentAnalysis";
 import { useEditorNavigation } from "../../hooks/useEditorNavigation";
 import { useToolRuntime } from "../../hooks/useToolRuntime";
 import { getTool, type ToolDefinition } from "../../tools";

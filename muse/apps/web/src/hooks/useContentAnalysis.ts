@@ -6,7 +6,7 @@ import { useHistoryStore } from "../stores/history";
 import { useMythosStore } from "../stores";
 import { simpleHash } from "../utils/hash";
 import { getAnalysisPersistenceQueue, type PersistenceQueueState } from "../services/analysis";
-import { executeClarityCheck } from "../services/ai/sagaClient";
+import { executeClarityCheck } from "../services/ai/agentRuntimeClient";
 import { useApiKey } from "./useApiKey";
 
 /**
@@ -20,9 +20,9 @@ const DEBOUNCE_DELAY = 1000;
 const MIN_CONTENT_LENGTH = 50;
 
 /**
- * Options for the useWritingAnalysis hook
+ * Options for the useContentAnalysis hook
  */
-interface UseWritingAnalysisOptions {
+interface UseContentAnalysisOptions {
   /** Content to analyze */
   content: string;
   /** Whether auto-analysis is enabled */
@@ -50,9 +50,9 @@ interface PersistenceStatus {
 }
 
 /**
- * Return type for the useWritingAnalysis hook
+ * Return type for the useContentAnalysis hook
  */
-interface UseWritingAnalysisResult {
+interface UseContentAnalysisResult {
   /** Whether analysis is currently running */
   isAnalyzing: boolean;
   /** Current scene metrics */
@@ -78,7 +78,7 @@ interface UseWritingAnalysisResult {
 }
 
 /**
- * Hook for managing writing analysis with the Writing Coach AI
+ * Hook for managing content analysis with the Writing Coach AI
  *
  * Features:
  * - Debounced auto-analysis after typing stops
@@ -89,9 +89,9 @@ interface UseWritingAnalysisResult {
  * @param options - Hook configuration options
  * @returns Analysis state and controls
  */
-export function useWritingAnalysis(
-  options: UseWritingAnalysisOptions
-): UseWritingAnalysisResult {
+export function useContentAnalysis(
+  options: UseContentAnalysisOptions
+): UseContentAnalysisResult {
   const { content, autoAnalyze = true, debounceMs = DEBOUNCE_DELAY, enabled = true } = options;
 
   const { key: apiKey } = useApiKey();
@@ -160,7 +160,7 @@ export function useWritingAnalysis(
   }, [updatePersistenceState]);
 
   /**
-   * Run the writing analysis
+   * Run the content analysis
    */
   const runAnalysis = useCallback(async () => {
     // Don't analyze if disabled or content is too short
@@ -260,7 +260,7 @@ export function useWritingAnalysis(
         setClarityIssues(clarityIssues);
         setReadabilityMetrics(clarityResult.metrics);
       } else if (claritySettled.status === "rejected") {
-        console.warn("[useWritingAnalysis] Clarity check failed:", claritySettled.reason);
+        console.warn("[useContentAnalysis] Clarity check failed:", claritySettled.reason);
         setReadabilityMetrics(null);
         setClarityIssues([]);
       } else {
@@ -276,7 +276,7 @@ export function useWritingAnalysis(
 
       const message = err instanceof Error ? err.message : "Analysis failed";
       setError(message);
-      console.error("[useWritingAnalysis] Error:", err);
+      console.error("[useContentAnalysis] Error:", err);
     } finally {
       setAnalyzing(false);
     }

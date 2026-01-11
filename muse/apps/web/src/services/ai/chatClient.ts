@@ -1,14 +1,14 @@
 /**
- * Chat API Client - Calls Supabase edge function /functions/v1/ai-chat
+ * Chat API Client - Calls Convex HTTP action /api/ai/chat
  *
  * Provides RAG-powered chat with streaming support.
  * Handles SSE streaming responses for real-time text generation.
  */
 
 import { ApiError, type ApiErrorCode } from "../api-client";
+import { getAIEndpoint } from "../config";
+import { authClient } from "../../lib/auth";
 import type { ChatContext, ChatMention } from "../../stores";
-
-const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "";
 
 /**
  * Chat message for API
@@ -67,6 +67,7 @@ export interface ChatStreamEvent {
 export interface ChatRequestOptions {
   signal?: AbortSignal;
   apiKey?: string;
+  authToken?: string;
 }
 
 /**
@@ -111,6 +112,21 @@ function parseSSELine(line: string): ChatStreamEvent | null {
   }
 }
 
+async function resolveAuthHeader(authToken?: string): Promise<string | null> {
+  if (authToken) {
+    return authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`;
+  }
+
+  try {
+    const token = await authClient.$fetch("/api/auth/convex-token", {
+      method: "GET",
+    });
+    return token?.data?.token ? `Bearer ${token.data.token}` : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Send chat message with streaming response
  *
@@ -122,17 +138,10 @@ export async function sendChatMessageStreaming(
   payload: ChatRequestPayload,
   opts?: ChatStreamOptions
 ): Promise<void> {
-  const { signal, apiKey, onContext, onDelta, onTool, onDone, onError } = opts ?? {};
+  const { signal, apiKey, authToken, onContext, onDelta, onTool, onDone, onError } = opts ?? {};
 
-  if (!SUPABASE_URL) {
-    throw new ChatApiError(
-      "VITE_SUPABASE_URL not configured",
-      500,
-      "CONFIGURATION_ERROR"
-    );
-  }
-
-  const url = `${SUPABASE_URL}/functions/v1/ai-chat`;
+  const url = getAIEndpoint("/ai/chat");
+  const resolvedAuthHeader = await resolveAuthHeader(authToken);
 
   try {
     const response = await fetch(url, {
@@ -140,6 +149,7 @@ export async function sendChatMessageStreaming(
       headers: {
         "Content-Type": "application/json",
         ...(apiKey && { "x-openrouter-key": apiKey }),
+        ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
       },
       body: JSON.stringify({
         ...payload,
@@ -265,17 +275,10 @@ export async function sendChatMessage(
   payload: ChatRequestPayload,
   opts?: ChatRequestOptions
 ): Promise<ChatResponsePayload> {
-  const { signal, apiKey } = opts ?? {};
+  const { signal, apiKey, authToken } = opts ?? {};
 
-  if (!SUPABASE_URL) {
-    throw new ChatApiError(
-      "VITE_SUPABASE_URL not configured",
-      500,
-      "CONFIGURATION_ERROR"
-    );
-  }
-
-  const url = `${SUPABASE_URL}/functions/v1/ai-chat`;
+  const url = getAIEndpoint("/ai/chat");
+  const resolvedAuthHeader = await resolveAuthHeader(authToken);
 
   try {
     const response = await fetch(url, {
@@ -283,6 +286,7 @@ export async function sendChatMessage(
       headers: {
         "Content-Type": "application/json",
         ...(apiKey && { "x-openrouter-key": apiKey }),
+        ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
       },
       body: JSON.stringify({
         ...payload,

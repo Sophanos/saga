@@ -1,37 +1,45 @@
 import { RotateCcw } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
-import type { EntityType } from "@mythos/core";
-import { getEntityTypeButtons } from "../../utils/entityConfig";
+import type { GraphEntityType } from "@mythos/core";
+import { resolveLucideIcon } from "../../utils/iconResolver";
 
-interface WorldGraphControlsProps {
-  visibleTypes: Set<EntityType>;
-  onToggleType: (type: EntityType) => void;
+export interface ProjectGraphTypeOption {
+  type: GraphEntityType;
+  label: string;
+  iconName?: string;
+  color?: string;
+}
+
+interface ProjectGraphControlsProps {
+  visibleTypes: Set<GraphEntityType>;
+  onToggleType: (type: GraphEntityType) => void;
   onResetLayout: () => void;
   entityCount: number;
   relationshipCount: number;
+  typeOptions: ProjectGraphTypeOption[];
 }
 
-const ENTITY_TYPE_BUTTONS = getEntityTypeButtons();
-
-export function WorldGraphControls({
+export function ProjectGraphControls({
   visibleTypes,
   onToggleType,
   onResetLayout,
   entityCount,
   relationshipCount,
-}: WorldGraphControlsProps) {
+  typeOptions,
+}: ProjectGraphControlsProps) {
   return (
     <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10 pointer-events-none">
       {/* Entity type filters */}
       <div className="flex items-center gap-1 bg-mythos-bg-secondary/90 backdrop-blur-sm rounded-lg p-1 border border-mythos-border-default pointer-events-auto">
-        {ENTITY_TYPE_BUTTONS.map(({ type, icon: Icon, label, color }) => {
+        {typeOptions.map(({ type, label, iconName, color }) => {
           const isVisible = visibleTypes.has(type);
+          const Icon = resolveLucideIcon(iconName);
           return (
             <button
               key={type}
               onClick={() => onToggleType(type)}
               title={label}
-              data-testid={`world-graph-toggle-${type}`}
+              data-testid={`project-graph-toggle-${type}`}
               className={cn(
                 "p-2 rounded-md transition-all",
                 isVisible
@@ -53,7 +61,7 @@ export function WorldGraphControls({
         <div className="text-xs text-mythos-text-muted bg-mythos-bg-secondary/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-mythos-border-default">
           <span
             className="text-mythos-text-secondary font-medium"
-            data-testid="wg-entity-count"
+            data-testid="pg-entity-count"
           >
             {entityCount}
           </span>{" "}
@@ -61,7 +69,7 @@ export function WorldGraphControls({
           <span className="mx-2">·</span>
           <span
             className="text-mythos-text-secondary font-medium"
-            data-testid="wg-relationship-count"
+            data-testid="pg-relationship-count"
           >
             {relationshipCount}
           </span>{" "}
@@ -72,7 +80,7 @@ export function WorldGraphControls({
           size="sm"
           onClick={onResetLayout}
           className="gap-1.5 bg-mythos-bg-secondary/90 backdrop-blur-sm"
-          data-testid="world-graph-reset-layout"
+          data-testid="project-graph-reset-layout"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           Layout

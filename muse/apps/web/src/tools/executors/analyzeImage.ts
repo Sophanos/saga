@@ -2,7 +2,7 @@
  * analyze_image tool executor
  *
  * Analyzes an uploaded/reference image to extract visual details.
- * Calls the ai-image-analyze edge function.
+ * Calls the Convex HTTP action /api/ai/image-analyze.
  */
 
 import type {
@@ -123,7 +123,7 @@ export const analyzeImageExecutor: ToolDefinition<AnalyzeImageArgs, AnalyzeImage
       let response: AIImageAnalyzeResponse;
       try {
         response = await callEdgeFunction<AIImageAnalyzeRequest, AIImageAnalyzeResponse>(
-          "ai-image-analyze",
+          "ai/image-analyze",
           request,
           {
             apiKey: ctx.apiKey,

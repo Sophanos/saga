@@ -26,7 +26,7 @@ import {
 } from "../../../stores";
 import { useToolRuntime } from "../../../hooks/useToolRuntime";
 import { generateMessageId } from "../../../hooks/createAgentHook";
-import { sendToolResultStreaming, type ToolCallResult, type ToolApprovalRequest } from "../../../services/ai/sagaClient";
+import { sendToolResultStreaming, type ToolCallResult, type ToolApprovalRequest } from "../../../services/ai/agentRuntimeClient";
 import { useApiKey } from "../../../hooks/useApiKey";
 import { getToolLabel, getToolDanger, renderToolSummary } from "../../../tools";
 import { getEntityIconComponent } from "../../../utils/entityConfig";

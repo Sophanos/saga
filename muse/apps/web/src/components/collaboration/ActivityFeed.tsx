@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useConvex } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import {
   Activity,
   FileText,
@@ -21,10 +24,6 @@ import {
   type ActivityLogEntry,
   type ActivityType,
 } from "@mythos/state";
-import {
-  getProjectActivityWithActors,
-  mapDbActivityToActivityLogEntry,
-} from "@mythos/db";
 import { formatRelativeTime, formatTime, getTimeGroupLabel } from "@mythos/core";
 import { useCurrentProject } from "../../stores";
 
@@ -53,6 +52,38 @@ interface ActivityItemProps {
 interface TimeGroupProps {
   label: string;
   children: React.ReactNode;
+}
+
+type ActivityRecord = {
+  _id: Id<"activityLog">;
+  projectId: Id<"projects">;
+  documentId?: Id<"documents">;
+  actorType?: string;
+  actorUserId?: string;
+  actorAgentId?: string;
+  actorName?: string;
+  action: string;
+  summary?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: number;
+};
+
+function mapActivityToEntry(activity: ActivityRecord): ActivityLogEntry {
+  return {
+    id: activity._id,
+    type: activity.action as ActivityLogEntry["type"],
+    projectId: activity.projectId,
+    documentId: activity.documentId,
+    actorType: activity.actorType as ActivityLogEntry["actorType"],
+    actorUserId: activity.actorUserId,
+    actorAgentId: activity.actorAgentId,
+    actorName: activity.actorName,
+    userId: activity.actorUserId,
+    userName: activity.actorName,
+    summary: activity.summary,
+    details: activity.metadata,
+    createdAt: new Date(activity.createdAt).toISOString(),
+  };
 }
 
 // ============================================================================
@@ -249,12 +280,13 @@ export function ActivityFeed({
   compact = false,
 }: ActivityFeedProps) {
   const project = useCurrentProject();
+  const convex = useConvex();
   const storeActivity = useActivityLog();
 
   const [activities, setActivities] = useState<ActivityLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [offset, setOffset] = useState(0);
+  const [cursor, setCursor] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isMountedRef = useRef(true);
@@ -295,27 +327,34 @@ export function ActivityFeed({
 
       setIsLoading(true);
       try {
-        const currentOffset = reset ? 0 : offset;
-        const data = await getProjectActivityWithActors(project.id, {
+        const currentCursor = reset ? null : cursor;
+        const data = await convex.query(api.activity.listByProject, {
+          projectId: project.id as Id<"projects">,
           limit: pageSize,
-          offset: currentOffset,
+          cursor: currentCursor ?? undefined,
         });
 
         // Check if component is still mounted before updating state
         if (!isMountedRef.current) return;
 
         // Map DB activity to state activity format using shared mapper
-        const mappedActivities: ActivityLogEntry[] = data.map(mapDbActivityToActivityLogEntry);
+        const mappedActivities: ActivityLogEntry[] = (data ?? []).map((entry) =>
+          mapActivityToEntry(entry as ActivityRecord)
+        );
+        const nextCursor =
+          mappedActivities.length > 0
+            ? new Date(mappedActivities[mappedActivities.length - 1]!.createdAt).getTime()
+            : null;
 
         if (reset) {
           setActivities(mappedActivities);
-          setOffset(pageSize);
+          setCursor(nextCursor);
         } else {
           setActivities((prev) => [...prev, ...mappedActivities]);
-          setOffset((prev) => prev + pageSize);
+          setCursor(nextCursor);
         }
 
-        setHasMore(data.length === pageSize);
+        setHasMore(mappedActivities.length === pageSize);
       } catch (error) {
         // Check mounted state before logging error
         if (!isMountedRef.current) return;
@@ -327,7 +366,7 @@ export function ActivityFeed({
         }
       }
     },
-    [project?.id, offset, pageSize, isLoading]
+    [convex, project?.id, cursor, pageSize, isLoading]
   );
 
   // Keep ref updated with latest loadActivities function

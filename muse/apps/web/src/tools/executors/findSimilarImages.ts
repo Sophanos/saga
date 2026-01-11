@@ -2,7 +2,7 @@
  * find_similar_images tool executor
  *
  * Finds visually similar images using CLIP embeddings.
- * Calls the ai-saga edge function with kind: "execute_tool".
+ * Calls the Convex HTTP action /api/ai/saga with kind: "execute_tool".
  */
 
 import type {
@@ -141,7 +141,7 @@ export const findSimilarImagesExecutor: ToolDefinition<FindSimilarImagesArgs, Fi
       let response: SagaExecuteToolResponse;
       try {
         response = await callEdgeFunction<SagaExecuteToolRequest, SagaExecuteToolResponse>(
-          "ai-saga",
+          "ai/saga",
           request,
           {
             apiKey: ctx.apiKey,

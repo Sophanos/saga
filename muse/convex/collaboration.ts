@@ -13,7 +13,7 @@ import {
   internalMutation,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { getAuthUserId, verifyProjectAccess, verifyProjectEditor } from "./lib/auth";
+import { getAuthUserId, verifyProjectAccess, verifyProjectEditor, verifyProjectOwner } from "./lib/auth";
 
 // ============================================================
 // INTERNAL PERMISSION HELPERS
@@ -168,6 +168,47 @@ export const listProjectInvitations = query({
         q.eq("projectId", projectId).eq("status", "pending")
       )
       .collect();
+  },
+});
+
+export const listProjectInvitationsWithInviter = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }) => {
+    await verifyProjectAccess(ctx, projectId);
+
+    const invitations = await ctx.db
+      .query("projectInvitations")
+      .withIndex("by_project_status", (q) =>
+        q.eq("projectId", projectId).eq("status", "pending")
+      )
+      .collect();
+
+    const inviterIds = Array.from(new Set(invitations.map((inv) => inv.invitedBy)));
+    const inviters = await Promise.all(
+      inviterIds.map(async (userId) =>
+        ctx.db
+          .query("users" as any)
+          .filter((q: any) => q.eq(q.field("id"), userId))
+          .first()
+      )
+    );
+
+    const inviterById = new Map<string, any>();
+    for (const inviter of inviters) {
+      if (inviter?.id) {
+        inviterById.set(inviter.id, inviter);
+      }
+    }
+
+    return invitations.map((inv) => {
+      const inviter = inviterById.get(inv.invitedBy);
+      return {
+        ...inv,
+        inviterName: inviter?.name ?? inviter?.email ?? null,
+        inviterEmail: inviter?.email ?? null,
+        inviterAvatarUrl: inviter?.image ?? inviter?.avatarUrl ?? null,
+      };
+    });
   },
 });
 
@@ -358,6 +399,76 @@ export const removeProjectMember = mutation({
         userId,
       },
     });
+  },
+});
+
+export const transferProjectOwnership = mutation({
+  args: {
+    projectId: v.id("projects"),
+    currentOwnerId: v.string(),
+    newOwnerId: v.string(),
+  },
+  handler: async (ctx, { projectId, currentOwnerId, newOwnerId }) => {
+    const actorUserId = await verifyProjectOwner(ctx, projectId);
+
+    if (actorUserId !== currentOwnerId) {
+      throw new Error("Current owner mismatch");
+    }
+
+    if (currentOwnerId === newOwnerId) {
+      throw new Error("New owner must be different");
+    }
+
+    const currentOwnerMember = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_user", (q) =>
+        q.eq("projectId", projectId).eq("userId", currentOwnerId)
+      )
+      .unique();
+
+    const newOwnerMember = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_user", (q) =>
+        q.eq("projectId", projectId).eq("userId", newOwnerId)
+      )
+      .unique();
+
+    if (!currentOwnerMember || !newOwnerMember) {
+      throw new Error("Both users must be project members");
+    }
+
+    const now = Date.now();
+
+    await ctx.db.patch(currentOwnerMember._id, {
+      role: "editor",
+      isOwner: false,
+      updatedAt: now,
+    });
+
+    await ctx.db.patch(newOwnerMember._id, {
+      role: "owner",
+      isOwner: true,
+      updatedAt: now,
+    });
+
+    await ctx.db.patch(projectId, {
+      ownerId: newOwnerId,
+      updatedAt: now,
+    });
+
+    await ctx.runMutation((internal as any).activity.emit, {
+      projectId,
+      actorType: "user",
+      actorUserId,
+      action: "member_role_changed",
+      summary: "Transferred project ownership",
+      metadata: {
+        from: currentOwnerId,
+        to: newOwnerId,
+      },
+    });
+
+    return { projectId };
   },
 });
 

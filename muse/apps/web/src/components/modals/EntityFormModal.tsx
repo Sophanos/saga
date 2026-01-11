@@ -32,7 +32,7 @@ import {
 } from "@mythos/ui";
 import type {
   Entity,
-  EntityType,
+  GraphEntityType,
   Character,
   Location,
   Item,
@@ -43,13 +43,14 @@ import type {
   PropertyValue,
 } from "@mythos/core";
 import {
-  ENTITY_TYPE_CONFIG,
+  WRITER_ENTITY_TYPE_CONFIG,
+  WRITER_ENTITY_TYPES,
   getEntityColor,
   getEntityLabel,
   type EntityIconName,
 } from "@mythos/core";
 import { api } from "../../../../convex/_generated/api";
-import { executeNameGenerator } from "../../services/ai/sagaClient";
+import { executeNameGenerator } from "../../services/ai/agentRuntimeClient";
 import { useMythosStore } from "../../stores";
 import { useAuthStore } from "../../stores/auth";
 import type { NameCulture, NameStyle } from "@mythos/agent-protocol";
@@ -63,7 +64,7 @@ type FormMode = "create" | "edit";
 interface EntityFormData {
   name: string;
   aliases: string[];
-  type: EntityType;
+  type: GraphEntityType;
   notes?: string;
   properties?: Record<string, PropertyValue>;
   // Character fields
@@ -96,7 +97,7 @@ interface EntityFormData {
 interface EntityFormModalProps {
   isOpen: boolean;
   mode: FormMode;
-  entityType?: EntityType;
+  entityType?: GraphEntityType;
   entity?: Entity;
   isSaving?: boolean;
   saveError?: string | null;
@@ -111,13 +112,9 @@ interface EntityFormModalProps {
 /**
  * Entity types available for form selection (excludes event/concept)
  */
-const ENTITY_TYPES: EntityType[] = [
-  "character",
-  "location",
-  "item",
-  "magic_system",
-  "faction",
-];
+const ENTITY_TYPES: GraphEntityType[] = WRITER_ENTITY_TYPES.filter(
+  (type) => type !== "event" && type !== "concept"
+);
 
 /**
  * Map icon names to React components
@@ -135,8 +132,9 @@ const ENTITY_ICONS: Record<EntityIconName, LucideIcon> = {
 /**
  * Get the icon component for an entity type
  */
-function getEntityIconComponent(type: EntityType): LucideIcon {
-  const iconName = ENTITY_TYPE_CONFIG[type]?.icon ?? "User";
+function getEntityIconComponent(type: GraphEntityType): LucideIcon {
+  const iconName =
+    WRITER_ENTITY_TYPE_CONFIG[type as keyof typeof WRITER_ENTITY_TYPE_CONFIG]?.icon ?? "User";
   return ENTITY_ICONS[iconName] ?? User;
 }
 
@@ -439,8 +437,8 @@ function TraitListField({ traits, onChange }: TraitListFieldProps) {
 // ============================================================================
 
 interface EntityTypeSelectorProps {
-  value: EntityType;
-  onChange: (type: EntityType) => void;
+  value: GraphEntityType;
+  onChange: (type: GraphEntityType) => void;
   disabled?: boolean;
 }
 
@@ -704,7 +702,7 @@ function FactionFields({ data, onChange }: FactionFieldsProps) {
 // Main Modal Component
 // ============================================================================
 
-function getInitialFormData(mode: FormMode, entityType?: EntityType, entity?: Entity): EntityFormData {
+function getInitialFormData(mode: FormMode, entityType?: GraphEntityType, entity?: Entity): EntityFormData {
   if (mode === "edit" && entity) {
     const base: EntityFormData = {
       name: entity.name,

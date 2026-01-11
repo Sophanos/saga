@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Interaction } from "@mythos/core";
 import { useDynamicsStore } from "../stores/dynamics";
+import { useMythosStore } from "../stores";
 import { useApiKey } from "./useApiKey";
 import { extractDynamicsViaEdge, DynamicsApiError } from "../services/ai";
 import { simpleHash } from "../utils/hash";
@@ -90,6 +91,8 @@ export function useDynamicsExtraction(
   const setError = useDynamicsStore((state) => state.setError);
   const clearInteractions = useDynamicsStore((state) => state.clearInteractions);
 
+  const currentProjectId = useMythosStore((state) => state.project.currentProject?.id);
+
   // Refs for debouncing and deduplication
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastContentRef = useRef<string>("");
@@ -102,6 +105,11 @@ export function useDynamicsExtraction(
   const runExtraction = useCallback(async () => {
     // Don't extract if disabled or content is too short
     if (!enabled || content.length < MIN_CONTENT_LENGTH) {
+      return;
+    }
+
+    if (!currentProjectId) {
+      console.warn("[useDynamicsExtraction] Missing project context");
       return;
     }
 
@@ -126,6 +134,7 @@ export function useDynamicsExtraction(
       // Call the edge function
       const result = await extractDynamicsViaEdge(
         {
+          projectId: currentProjectId,
           content,
           documentId,
           sceneMarker,
@@ -212,6 +221,7 @@ export function useDynamicsExtraction(
     setError,
     addInteraction,
     enabled,
+    currentProjectId,
   ]);
 
   /**

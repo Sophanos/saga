@@ -5,7 +5,7 @@
  */
 
 import type { CheckConsistencyArgs } from "@mythos/agent-protocol";
-import { executeCheckConsistency } from "../../services/ai/sagaClient";
+import { executeCheckConsistency } from "../../services/ai/agentRuntimeClient";
 import { resolveTextFromContext, type ToolDefinition, type ToolExecutionResult } from "../types";
 
 export interface CheckConsistencyExecutionResult {

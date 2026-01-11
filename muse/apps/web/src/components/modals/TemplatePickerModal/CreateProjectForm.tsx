@@ -1,11 +1,11 @@
 import { useState, useCallback } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../../../../../convex/_generated/api";
 import { FolderPlus, Feather, Building2, ChevronDown, ChevronUp } from "lucide-react";
 import { Button, Input, FormField, TextArea } from "@mythos/ui";
-import { createProject, createDocument } from "@mythos/db";
 import { useProgressiveStore } from "@mythos/state";
 import type { ProjectTemplate } from "@mythos/core";
 import { getTemplateIcon } from "../../../utils/templateIcons";
-import { createSeedWorldbuildingDoc, embedSeedWorldbuildingDoc, WORLD_SEED_TITLE } from "../../../services/projects/seedWorldbuilding";
 import { useAuthStore } from "../../../stores/auth";
 
 interface CreateProjectFormProps {
@@ -14,8 +14,6 @@ interface CreateProjectFormProps {
   onCreated: (projectId: string) => void;
   onClose: () => void;
 }
-
-const EMPTY_TIPTAP_DOC = { type: "doc", content: [{ type: "paragraph" }] };
 
 export function CreateProjectForm({
   template,
@@ -30,6 +28,7 @@ export function CreateProjectForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const userId = useAuthStore((state) => state.user?.id);
+  const bootstrapProject = useMutation(api.projectBootstrap.bootstrap);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -44,78 +43,52 @@ export function CreateProjectForm({
           throw new Error("Please sign in to create a project.");
         }
 
-        // Create the project with template config
-        // Cast to Record<string, unknown>[] to match DB type
-        const project = await createProject({
+        const result = await bootstrapProject({
           name: name.trim(),
-          description: description.trim() || null,
+          description: description.trim() || undefined,
           genre: template.defaultGenre,
-          template_id: template.id,
-          entity_kinds_config: template.entityKinds as unknown as Record<string, unknown>[],
-          relationship_kinds_config: template.relationshipKinds as unknown as Record<string, unknown>[],
-          user_id: userId,
+          templateId: template.id,
+          initialDocumentType: template.defaultDocumentKind || "chapter",
+          initialDocumentTitle: "Chapter 1",
+          seed: {
+            kind: "template",
+            projectName: name.trim(),
+            projectDescription: description.trim() || undefined,
+            templateId: template.id,
+            templateName: template.name,
+            templateDescription: template.description,
+            entityKinds: template.entityKinds.map((kind) => kind.label),
+            relationshipKinds: template.relationshipKinds.map((kind) => kind.label),
+            genre: template.defaultGenre,
+          },
+          templateEntityKinds: template.entityKinds,
+          templateRelationshipKinds: template.relationshipKinds,
         });
-
-        // Create an initial empty document
-        await createDocument({
-          project_id: project.id,
-          type: template.defaultDocumentKind || "chapter",
-          title: "Chapter 1",
-          content: EMPTY_TIPTAP_DOC,
-          content_text: "",
-          order_index: 0,
-          word_count: 0,
-        });
-
-        try {
-          const seed = await createSeedWorldbuildingDoc({
-            projectId: project.id,
-            source: {
-              kind: "template",
-              projectName: name.trim(),
-              projectDescription: description.trim() || undefined,
-              templateId: template.id,
-              templateName: template.name,
-              templateDescription: template.description,
-              entityKinds: template.entityKinds.map((kind) => kind.label),
-              relationshipKinds: template.relationshipKinds.map((kind) => kind.label),
-              genre: template.defaultGenre,
-            },
-          });
-
-          void embedSeedWorldbuildingDoc({
-            projectId: project.id,
-            documentId: seed.documentId,
-            title: WORLD_SEED_TITLE,
-            contentText: seed.contentText,
-          });
-        } catch (seedError) {
-          console.warn("[CreateProjectForm] Failed to create world seed:", seedError);
-        }
 
         // Initialize progressive state
         const progressive = useProgressiveStore.getState();
-        progressive.ensureProject(project.id, {
+        progressive.ensureProject(result.projectId, {
           creationMode,
           phase: creationMode === "gardener" ? 1 : 4,
           entityMentionCounts: {},
           unlockedModules:
             creationMode === "gardener"
               ? { editor: true }
-              : { editor: true, manifest: true, console: true, world_graph: true },
+              : { editor: true, manifest: true, console: true, project_graph: true },
           totalWritingTimeSec: 0,
           neverAsk: {},
         });
 
-        progressive.setActiveProject(project.id);
-        onCreated(project.id);
+        progressive.setActiveProject(result.projectId);
+        onCreated(result.projectId);
       } catch (err) {
         console.error("Failed to create project:", err);
         setError(err instanceof Error ? err.message : "Failed to create project");
+      } finally {
         setIsSubmitting(false);
       }
     },
-    [name, description, template, creationMode, isSubmitting, onCreated, userId]
+    [name, description, template, creationMode, isSubmitting, onCreated, userId, bootstrapProject]
   );
 
   const isBlank = template.id === "blank";

@@ -16,9 +16,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@mythos/ui";
-import type { Entity, EntityType } from "@mythos/core";
+import type { Entity, GraphEntityType } from "@mythos/core";
 import {
-  ENTITY_TYPE_CONFIG,
+  WRITER_ENTITY_TYPE_CONFIG,
   getEntityColor,
   type EntityIconName,
 } from "@mythos/core";
@@ -39,8 +39,8 @@ const ENTITY_ICONS: Record<EntityIconName, LucideIcon> = {
 /**
  * Get the icon component for an entity type
  */
-function getEntityIconComponent(type: EntityType): LucideIcon {
-  const iconName = ENTITY_TYPE_CONFIG[type]?.icon ?? "User";
+function getEntityIconComponent(type: GraphEntityType): LucideIcon {
+  const iconName = WRITER_ENTITY_TYPE_CONFIG[type as keyof typeof WRITER_ENTITY_TYPE_CONFIG]?.icon ?? "User";
   return ENTITY_ICONS[iconName] ?? User;
 }
 

@@ -1,5 +1,5 @@
 /**
- * Linter API Client - Calls Supabase edge function /functions/v1/ai-lint
+ * Linter API Client - Calls Convex HTTP action /api/ai/lint
  */
 
 import type { ConsistencyIssue } from "@mythos/ai";
@@ -78,7 +78,7 @@ export async function lintDocumentViaEdge(
 
   try {
     const result = await callEdgeFunction<LintEdgeRequest, LintEdgeResponse>(
-      "ai-lint",
+      "ai/lint",
       {
         projectId: payload.projectId,
         documentId: payload.documentId,

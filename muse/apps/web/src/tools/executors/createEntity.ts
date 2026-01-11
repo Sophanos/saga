@@ -2,7 +2,7 @@
  * create_entity tool executor
  */
 
-import type { EntityType } from "@mythos/core";
+import type { EntityType, PropertyValue } from "@mythos/core";
 import { buildEntity, type EntityBuildData } from "@mythos/core";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 
@@ -11,6 +11,7 @@ export interface CreateEntityArgs {
   name: string;
   aliases?: string[];
   notes?: string;
+  properties?: Record<string, PropertyValue>;
   // Character-specific
   archetype?: string;
   backstory?: string;
@@ -53,6 +54,7 @@ export const createEntityExecutor: ToolDefinition<CreateEntityArgs, CreateEntity
         type: args.type,
         aliases: args.aliases,
         notes: args.notes,
+        properties: args.properties,
         // Character fields
         archetype: args.archetype as EntityBuildData["archetype"],
         backstory: args.backstory,

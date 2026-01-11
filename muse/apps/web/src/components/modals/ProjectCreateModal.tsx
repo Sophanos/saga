@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
 import { X, FolderPlus, Feather, Building2, Sparkles } from "lucide-react";
 import {
   Button,
@@ -13,10 +15,7 @@ import {
   Select,
   TextArea,
 } from "@mythos/ui";
-import { createProject, createDocument, createEntity, createRelationship } from "@mythos/db";
 import { useProgressiveStore } from "@mythos/state";
-import { runGenesisViaEdge } from "../../services/ai";
-import { createSeedWorldbuildingDoc, embedSeedWorldbuildingDoc, WORLD_SEED_TITLE } from "../../services/projects/seedWorldbuilding";
 import { useAuthStore } from "../../stores/auth";
 
 // ============================================================================
@@ -54,8 +53,6 @@ const GENRE_OPTIONS: { value: Genre; label: string }[] = [
   { value: "thriller", label: "Thriller" },
 ];
 
-const EMPTY_TIPTAP_DOC = { type: "doc", content: [{ type: "paragraph" }] };
-
 // ============================================================================
 // Main Modal Component
 // ============================================================================
@@ -79,6 +76,7 @@ export function ProjectCreateModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const userId = useAuthStore((state) => state.user?.id);
+  const bootstrapProject = useMutation(api.projectBootstrap.bootstrap);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -123,179 +121,64 @@ export function ProjectCreateModal({
           throw new Error("Please sign in to create a project.");
         }
 
-        // Create the project
-        const project = await createProject({
-          name: formData.name.trim(),
-          description: formData.description.trim() || null,
-          genre: formData.genre || null,
-          user_id: userId,
-        });
+        const shouldRunGenesis =
+          formData.creationMode === "architect" && formData.genesisPrompt.trim().length > 0;
 
-        // Create an initial empty document
-        await createDocument({
-          project_id: project.id,
-          type: "chapter",
-          title: "Chapter 1",
-          content: EMPTY_TIPTAP_DOC,
-          content_text: "",
-          order_index: 0,
-          word_count: 0,
-        });
-
-        try {
-          const seed = await createSeedWorldbuildingDoc({
-            projectId: project.id,
-            source: {
-              kind: "blank",
-              projectName: formData.name.trim(),
-              projectDescription: formData.description.trim() || undefined,
-              genre: formData.genre || undefined,
-              genesisPrompt:
-                formData.creationMode === "architect"
-                  ? formData.genesisPrompt.trim() || undefined
-                  : undefined,
-            },
-          });
-
-          void embedSeedWorldbuildingDoc({
-            projectId: project.id,
-            documentId: seed.documentId,
-            title: WORLD_SEED_TITLE,
-            contentText: seed.contentText,
-          });
-        } catch (seedError) {
-          console.warn("[ProjectCreateModal] Failed to create world seed:", seedError);
+        if (shouldRunGenesis) {
+          setIsGenerating(true);
+          setGenerationStatus("Generating world...");
         }
+
+        const result = await bootstrapProject({
+          name: formData.name.trim(),
+          description: formData.description.trim() || undefined,
+          genre: formData.genre || undefined,
+          initialDocumentType: "chapter",
+          initialDocumentTitle: "Chapter 1",
+          seed: {
+            kind: "blank",
+            projectName: formData.name.trim(),
+            projectDescription: formData.description.trim() || undefined,
+            genre: formData.genre || undefined,
+            genesisPrompt: shouldRunGenesis ? formData.genesisPrompt.trim() : undefined,
+          },
+          genesis: shouldRunGenesis
+            ? {
+                prompt: formData.genesisPrompt.trim(),
+                entityCount: 10,
+                includeOutline: true,
+                detailLevel: "standard",
+              }
+            : undefined,
+        });
 
         // Initialize progressive state for this project
         const progressive = useProgressiveStore.getState();
-        progressive.ensureProject(project.id, {
+        progressive.ensureProject(result.projectId, {
           creationMode: formData.creationMode,
           phase: formData.creationMode === "gardener" ? 1 : 4,
           entityMentionCounts: {},
           unlockedModules: formData.creationMode === "gardener"
             ? { editor: true }
-            : { editor: true, manifest: true, console: true, world_graph: true },
+            : { editor: true, manifest: true, console: true, project_graph: true },
           totalWritingTimeSec: 0,
           neverAsk: {},
         });
 
-        // Architect mode: Run genesis if prompt provided
-        if (formData.creationMode === "architect" && formData.genesisPrompt.trim()) {
-          setIsGenerating(true);
-          setGenerationStatus("Generating world...");
-
-          try {
-            const genesis = await runGenesisViaEdge({
-              prompt: formData.genesisPrompt,
-              genre: formData.genre || undefined,
-              preferences: {
-                entityCount: 10,
-                includeOutline: true,
-                detailLevel: "standard",
-              },
-            });
-
-            // Create entities from genesis result
-            setGenerationStatus(`Creating ${genesis.entities.length} entities...`);
-            const entityIdMap = new Map<string, string>();
-
-            for (const genEntity of genesis.entities) {
-              try {
-                const entity = await createEntity({
-                  project_id: project.id,
-                  name: genEntity.name,
-                  type: genEntity.type === "magic_system" ? "item" : genEntity.type,
-                  properties: {
-                    ...(genEntity.properties || {}),
-                    ...(genEntity.description ? { description: genEntity.description } : {}),
-                  },
-                  aliases: [],
-                });
-                entityIdMap.set(genEntity.name, entity.id);
-              } catch (entityError) {
-                console.warn(`Failed to create entity ${genEntity.name}:`, entityError);
-              }
-            }
-
-            // Create relationships
-            setGenerationStatus("Creating relationships...");
-            for (const genEntity of genesis.entities) {
-              if (!genEntity.relationships) continue;
-
-              const sourceId = entityIdMap.get(genEntity.name);
-              if (!sourceId) continue;
-
-              for (const rel of genEntity.relationships) {
-                const targetId = entityIdMap.get(rel.targetName);
-                if (!targetId) continue;
-
-                try {
-                  await createRelationship({
-                    project_id: project.id,
-                    source_id: sourceId,
-                    target_id: targetId,
-                    type: rel.type,
-                    metadata: rel.description ? { description: rel.description } : {},
-                  });
-                } catch (relError) {
-                  console.warn(`Failed to create relationship:`, relError);
-                }
-              }
-            }
-
-            // Create outline documents if provided
-            if (genesis.outline && genesis.outline.length > 0) {
-              setGenerationStatus("Creating story outline...");
-              for (let i = 0; i < genesis.outline.length; i++) {
-                const chapter = genesis.outline[i];
-                try {
-                  await createDocument({
-                    project_id: project.id,
-                    type: "chapter",
-                    title: chapter.title,
-                    content: {
-                      type: "doc",
-                      content: [
-                        {
-                          type: "paragraph",
-                          content: [{ type: "text", text: `// ${chapter.summary}` }],
-                        },
-                      ],
-                    },
-                    content_text: `// ${chapter.summary}`,
-                    order_index: i + 1,
-                    word_count: chapter.summary.split(/\s+/).length,
-                  });
-                } catch (docError) {
-                  console.warn(`Failed to create outline doc:`, docError);
-                }
-              }
-            }
-
-            console.log(
-              `[Genesis] Created ${entityIdMap.size} entities from genesis`
-            );
-          } catch (genesisError) {
-            console.error("Genesis failed, continuing with empty project:", genesisError);
-            // Don't fail project creation if genesis fails
-          } finally {
-            setIsGenerating(false);
-            setGenerationStatus(null);
-          }
-        }
-
-        progressive.setActiveProject(project.id);
-        onCreated(project.id);
+        progressive.setActiveProject(result.projectId);
+        onCreated(result.projectId);
       } catch (error) {
         console.error("Failed to create project:", error);
         setErrors({
           submit: error instanceof Error ? error.message : "Failed to create project",
         });
+      } finally {
         setIsSubmitting(false);
+        setIsGenerating(false);
+        setGenerationStatus(null);
       }
     },
-    [formData, validate, isSubmitting, onCreated, userId]
+    [formData, validate, isSubmitting, onCreated, userId, bootstrapProject]
   );
 
   const handleKeyDown = useCallback(

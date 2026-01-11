@@ -5,43 +5,9 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import type { Entity, PropertyValue } from "@mythos/core";
 import { useMythosStore } from "../stores";
 import type { PersistenceResult } from "./usePersistence";
-import { embedTextViaEdge, deleteVectorsViaEdge, EmbeddingApiError } from "../services/ai";
+import { deleteVectorsViaEdge } from "../services/ai";
 import { formatGraphErrorMessage } from "../utils";
 
-/**
- * Check if embeddings feature is enabled (Qdrant-only architecture)
- * Embeddings are enabled by default - set VITE_EMBEDDINGS_ENABLED=false to disable
- */
-const EMBEDDINGS_ENABLED = import.meta.env["VITE_EMBEDDINGS_ENABLED"] !== "false";
-
-/**
- * Format entity data for embedding generation
- * Creates a deterministic text representation of the entity
- */
-function formatEntityForEmbedding(entity: Entity): string {
-  const parts: string[] = [
-    `type: ${entity.type}`,
-    `name: ${entity.name}`,
-  ];
-
-  if (entity.aliases && entity.aliases.length > 0) {
-    parts.push(`aliases: ${entity.aliases.join(", ")}`);
-  }
-
-  // Add notes/description if available
-  const entityRecord = entity as unknown as Record<string, unknown>;
-  const notes = entityRecord["notes"];
-  if (typeof notes === "string" && notes.trim()) {
-    parts.push(`notes: ${notes}`);
-  }
-
-  // Add properties
-  if (entity.properties && Object.keys(entity.properties).length > 0) {
-    parts.push(`properties: ${JSON.stringify(entity.properties)}`);
-  }
-
-  return parts.join("\n");
-}
 
 /**
  * Result type for entity persistence operations
@@ -131,48 +97,6 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
 
   const clearError = useCallback(() => setError(null), []);
 
-  /**
-   * Generate entity embedding and index to Qdrant
-   * Fire-and-forget: errors are logged but don't affect the main operation
-   */
-  const generateEntityEmbedding = useCallback(
-    async (entity: Entity, projectId: string) => {
-      if (!EMBEDDINGS_ENABLED) {
-        return;
-      }
-
-      const text = formatEntityForEmbedding(entity);
-      if (!text.trim()) {
-        return;
-      }
-
-      try {
-        await embedTextViaEdge(text, {
-          qdrant: {
-            enabled: true,
-            pointId: `ent_${entity.id}`,
-            payload: {
-              project_id: projectId,
-              type: "entity",
-              entity_id: entity.id,
-              entity_type: entity.type,
-              title: entity.name,
-              content_preview: text.slice(0, 500),
-            },
-          },
-        });
-
-        console.debug("[useEntityPersistence] Entity embedding generated and indexed to Qdrant");
-      } catch (error) {
-        if (error instanceof EmbeddingApiError) {
-          console.warn("[useEntityPersistence] Embedding generation failed:", error.message);
-        } else {
-          console.warn("[useEntityPersistence] Embedding generation failed:", error);
-        }
-      }
-    },
-    []
-  );
 
   const createEntity = useCallback(
     async (entity: Entity, projectId: string): Promise<EntityPersistenceResult<Entity>> => {
@@ -209,9 +133,6 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
         // Add to store
         addEntity(createdEntity);
 
-        // Generate embedding (fire-and-forget)
-        void generateEntityEmbedding(createdEntity, projectId);
-
         return { data: createdEntity };
       } catch (err) {
         const message = formatGraphErrorMessage(err, "Failed to create entity");
@@ -221,7 +142,7 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
         setIsLoading(false);
       }
     },
-    [createEntityMutation, addEntity, generateEntityEmbedding]
+    [createEntityMutation, addEntity]
   );
 
   const updateEntity = useCallback(
@@ -254,12 +175,6 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
         // Update store
         updateEntityStore(entityId, { ...updates, updatedAt: now });
 
-        // Generate embedding (fire-and-forget)
-        const projectId = (updatedEntity as Entity & { projectId?: string }).projectId;
-        if (projectId) {
-          void generateEntityEmbedding(updatedEntity, projectId);
-        }
-
         return { data: updatedEntity };
       } catch (err) {
         const message = formatGraphErrorMessage(err, "Failed to update entity");
@@ -269,7 +184,7 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
         setIsLoading(false);
       }
     },
-    [updateEntityMutation, updateEntityStore, generateEntityEmbedding]
+    [updateEntityMutation, updateEntityStore]
   );
 
   const deleteEntity = useCallback(
@@ -278,6 +193,10 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
       setError(null);
 
       try {
+        const existingEntity = useMythosStore.getState().world.entities.get(entityId);
+        const projectId = (existingEntity as Entity & { projectId?: string } | undefined)
+          ?.projectId;
+
         await deleteEntityMutation({
           id: entityId as Id<"entities">,
         });
@@ -286,7 +205,13 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
         removeEntity(entityId);
 
         // Delete vector from Qdrant (fire-and-forget)
-        void deleteVectorsViaEdge([`ent_${entityId}`]);
+        if (projectId) {
+          void deleteVectorsViaEdge({
+            projectId,
+            type: "entity",
+            targetId: entityId,
+          });
+        }
 
         return {};
       } catch (err) {

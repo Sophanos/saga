@@ -2,17 +2,13 @@
  * Project Graph Tools - Entity/Relationship CRUD for the Saga agent.
  *
  * Tools for creating and updating entities and relationships in the Project Graph.
- * Handlers are in worldGraphHandlers.ts - these tool definitions intentionally
+ * Handlers are in projectGraphHandlers.ts - these tool definitions intentionally
  * omit handlers so the client can collect human approval before execution.
  */
 
 import { tool } from "ai";
 import { z } from "zod";
-import { needsToolApproval } from "../../lib/approvalConfig";
-import { getWriterDefaultRegistry } from "../../lib/typeRegistry";
 import { citationSchema } from "./citations";
-
-const WRITER_REGISTRY = getWriterDefaultRegistry();
 
 const entityTypeSchema = z.string();
 const relationTypeSchema = z.string();
@@ -35,6 +31,10 @@ export const createEntityParameters = z.object({
   name: z.string().describe("The name of the entity"),
   aliases: z.array(z.string()).optional().describe("Alternative names or nicknames"),
   notes: z.string().optional().describe("General notes about the entity"),
+  properties: z
+    .record(z.any())
+    .optional()
+    .describe("Template-specific properties (shallow object)"),
   archetype: z.string().optional().describe("Character archetype (hero, mentor, shadow, etc.)"),
   backstory: z.string().optional().describe("Character's background story"),
   goals: z.array(z.string()).optional().describe("Character's goals and motivations"),
@@ -59,10 +59,6 @@ export const createEntityTool = tool({
   inputSchema: createEntityParameters,
 });
 
-export function createEntityNeedsApproval(args: CreateEntityArgs): boolean {
-  return needsToolApproval(WRITER_REGISTRY, "create_entity", { type: args.type });
-}
-
 // =============================================================================
 // Update Entity Tool
 // =============================================================================
@@ -75,6 +71,10 @@ export const updateEntityParameters = z.object({
       name: z.string().optional().describe("New name for the entity"),
       aliases: z.array(z.string()).optional().describe("Updated alternative names"),
       notes: z.string().optional().describe("Updated notes"),
+      properties: z
+        .record(z.any())
+        .optional()
+        .describe("Properties to merge into existing properties (shallow merge)"),
       archetype: z.string().optional().describe("Updated archetype"),
       backstory: z.string().optional().describe("Updated backstory"),
       goals: z.array(z.string()).optional().describe("Updated goals"),
@@ -101,13 +101,6 @@ export const updateEntityTool = tool({
   inputSchema: updateEntityParameters,
 });
 
-export function updateEntityNeedsApproval(args: UpdateEntityArgs): boolean {
-  return needsToolApproval(WRITER_REGISTRY, "update_entity", {
-    entityType: args.entityType,
-    updates: args.updates as Record<string, unknown>,
-  });
-}
-
 // =============================================================================
 // Create Relationship Tool
 // =============================================================================
@@ -119,6 +112,7 @@ export const createRelationshipParameters = z.object({
   bidirectional: z.boolean().optional().describe("Whether the relationship goes both ways"),
   notes: z.string().optional().describe("Additional context about the relationship"),
   strength: z.number().min(0).max(1).optional().describe("Strength of the relationship (0-1)"),
+  metadata: z.record(z.any()).optional().describe("Additional relationship metadata (JSON object)"),
   citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
 });
 
@@ -129,10 +123,6 @@ export const createRelationshipTool = tool({
     "Create a relationship between two entities in the project graph. Some relationship types require approval.",
   inputSchema: createRelationshipParameters,
 });
-
-export function createRelationshipNeedsApproval(args: CreateRelationshipArgs): boolean {
-  return needsToolApproval(WRITER_REGISTRY, "create_relationship", { type: args.type });
-}
 
 // =============================================================================
 // Update Relationship Tool
@@ -147,6 +137,7 @@ export const updateRelationshipParameters = z.object({
       notes: z.string().optional().describe("Updated notes about the relationship"),
       strength: z.number().min(0).max(1).optional().describe("Updated strength (0-1)"),
       bidirectional: z.boolean().optional().describe("Whether the relationship is bidirectional"),
+      metadata: z.record(z.any()).optional().describe("Updated metadata (merged or replaced by clients)"),
     })
     .describe("Fields to update on the relationship"),
   citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
@@ -159,13 +150,6 @@ export const updateRelationshipTool = tool({
     "Update an existing relationship between two entities. Significant changes require approval.",
   inputSchema: updateRelationshipParameters,
 });
-
-export function updateRelationshipNeedsApproval(args: UpdateRelationshipArgs): boolean {
-  return needsToolApproval(WRITER_REGISTRY, "update_relationship", {
-    type: args.type,
-    updates: args.updates as Record<string, unknown>,
-  });
-}
 
 // =============================================================================
 // Project Graph (Generic) Tools

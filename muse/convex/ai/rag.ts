@@ -298,6 +298,8 @@ export async function retrieveRAGContext(
     scope?: "all" | "documents" | "entities" | "memories";
     lexical?: { documents: LexicalHit[]; entities: LexicalHit[] };
     chunkContext?: ChunkContextOptions;
+    rerank?: boolean;
+    rerankTopK?: number;
     telemetry?: { distinctId: string };
   }
 ): Promise<RAGContext> {
@@ -406,10 +408,16 @@ export async function retrieveRAGContext(
     let topCandidates = pickTopCandidates(candidates);
     fusedCandidatesCount = topCandidates.length;
 
-    if (isRerankConfigured() && topCandidates.length > 0) {
+    const rerankEnabled = options?.rerank !== false;
+    const rerankLimit = Math.min(
+      options?.rerankTopK ?? RERANK_LIMIT,
+      topCandidates.length
+    );
+
+    if (rerankEnabled && rerankLimit > 0 && isRerankConfigured() && topCandidates.length > 0) {
       try {
         const rerankStart = Date.now();
-        const rerankCandidates = topCandidates.slice(0, RERANK_LIMIT);
+        const rerankCandidates = topCandidates.slice(0, rerankLimit);
         rerankCandidatesCount = rerankCandidates.length;
         const texts = rerankCandidates.map(
           (candidate) => candidate.rerankText ?? candidate.preview

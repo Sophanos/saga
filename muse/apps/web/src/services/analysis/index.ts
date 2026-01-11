@@ -3,7 +3,7 @@ export {
   fetchDocumentAnalysisHistory,
   persistAnalysisRecord,
   type PersistAnalysisInput,
-} from "./analysisRepository";
+} from "./contentAnalysisRepository";
 
 export {
   getAnalysisPersistenceQueue,

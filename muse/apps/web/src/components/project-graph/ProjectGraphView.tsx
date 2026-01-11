@@ -1,39 +1,75 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { FileText, Network } from "lucide-react";
 import { Button } from "@mythos/ui";
 import { useMythosStore } from "../../stores";
-import { useWorldGraph } from "../../hooks/useWorldGraph";
-import { WorldGraphCanvas } from "./WorldGraphCanvas";
-import { WorldGraphControls } from "./WorldGraphControls";
-import type { EntityType } from "@mythos/core";
+import { useProjectGraph } from "../../hooks/useProjectGraph";
+import { useProjectTypeRegistry } from "../../hooks/useProjectTypeRegistry";
+import { ProjectGraphCanvas } from "./ProjectGraphCanvas";
+import {
+  ProjectGraphControls,
+  type ProjectGraphTypeOption,
+} from "./ProjectGraphControls";
+import {
+  getGraphEntityLabel,
+  getRegistryEntityHexColor,
+  type GraphEntityType,
+} from "@mythos/core";
 
-// All entity types for the filter
-const ALL_ENTITY_TYPES: EntityType[] = [
-  "character",
-  "location",
-  "item",
-  "magic_system",
-  "faction",
-  "event",
-  "concept",
-];
-
-export function WorldGraphView() {
+export function ProjectGraphView() {
   const setCanvasView = useMythosStore((s) => s.setCanvasView);
+  const registry = useProjectTypeRegistry();
+
+  const allEntityTypes = useMemo(
+    () => Object.keys(registry?.entityTypes ?? {}) as GraphEntityType[],
+    [registry]
+  );
+  const allEntityTypesKey = useMemo(
+    () => allEntityTypes.slice().sort().join(","),
+    [allEntityTypes]
+  );
   
   // Filter state - all visible by default
-  const [visibleTypes, setVisibleTypes] = useState<Set<EntityType>>(
-    new Set(ALL_ENTITY_TYPES)
-  );
+  const [visibleTypes, setVisibleTypes] = useState<Set<GraphEntityType>>(new Set());
+
+  useEffect(() => {
+    if (allEntityTypes.length === 0) return;
+    setVisibleTypes((prev) => {
+      if (prev.size === 0) {
+        return new Set(allEntityTypes);
+      }
+      const next = new Set(prev);
+      allEntityTypes.forEach((type) => {
+        if (!next.has(type)) next.add(type);
+      });
+      return next;
+    });
+  }, [allEntityTypesKey, allEntityTypes]);
 
   // Layout reset key - increment to trigger re-layout
   const [layoutKey, setLayoutKey] = useState(0);
 
   // Get counts
-  const { visibleEntityCount, visibleRelationshipCount } = useWorldGraph({ visibleTypes });
+  const { visibleEntityCount, visibleRelationshipCount } = useProjectGraph({
+    visibleTypes,
+    registry,
+  });
 
-  const handleToggleType = useCallback((type: EntityType) => {
+  const typeOptions = useMemo<ProjectGraphTypeOption[]>(
+    () =>
+      allEntityTypes.map((type) => {
+        const def = registry?.entityTypes[type];
+        return {
+          type,
+          label: getGraphEntityLabel(registry, type),
+          iconName: def?.icon,
+          color: getRegistryEntityHexColor(registry, type),
+        };
+      }),
+    [allEntityTypesKey, registry, allEntityTypes]
+  );
+
+  const handleToggleType = useCallback((type: GraphEntityType) => {
     setVisibleTypes((prev) => {
       const next = new Set(prev);
       if (next.has(type)) {
@@ -56,14 +92,14 @@ export function WorldGraphView() {
   return (
     <div
       className="h-full flex flex-col bg-mythos-bg-primary relative"
-      data-testid="world-graph-view"
+      data-testid="project-graph-view"
     >
       {/* Header bar */}
       <div className="h-10 border-b border-mythos-border-default bg-mythos-bg-secondary flex items-center justify-between px-3">
         <div className="flex items-center gap-2">
           <Network className="w-4 h-4 text-mythos-accent-primary" />
           <span className="text-sm font-medium text-mythos-text-primary">
-            World Graph
+            Project Graph
           </span>
         </div>
         <Button
@@ -71,7 +107,7 @@ export function WorldGraphView() {
           size="sm"
           onClick={handleBackToEditor}
           className="gap-1.5 text-xs"
-          data-testid="world-graph-back-to-editor"
+          data-testid="project-graph-back-to-editor"
         >
           <FileText className="w-3.5 h-3.5" />
           Editor
@@ -81,19 +117,21 @@ export function WorldGraphView() {
       {/* Graph container */}
       <div className="flex-1 relative">
         <ReactFlowProvider>
-          <WorldGraphCanvas
+          <ProjectGraphCanvas
             key={layoutKey}
             visibleTypes={visibleTypes}
+            registry={registry}
           />
         </ReactFlowProvider>
 
         {/* Controls overlay */}
-        <WorldGraphControls
+        <ProjectGraphControls
           visibleTypes={visibleTypes}
           onToggleType={handleToggleType}
           onResetLayout={handleResetLayout}
           entityCount={visibleEntityCount}
           relationshipCount={visibleRelationshipCount}
+          typeOptions={typeOptions}
         />
       </div>
 
@@ -103,10 +141,10 @@ export function WorldGraphView() {
           <div className="text-center">
             <Network className="w-12 h-12 text-mythos-text-muted/30 mx-auto mb-3" />
             <p className="text-sm text-mythos-text-muted">
-              No entities in your world yet.
+              No entities in your project yet.
             </p>
             <p className="text-xs text-mythos-text-muted/70 mt-1">
-              Create characters, locations, and items to see them here.
+              Create entities to see them here.
             </p>
           </div>
         </div>

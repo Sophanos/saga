@@ -87,7 +87,7 @@ export {
 } from "./agentClient";
 
 export {
-  runGenesisViaEdge,
+  generateProjectSeed,
   GenesisApiError,
   isGenesisApiError,
   type GenesisRequestPayload,
@@ -95,9 +95,9 @@ export {
   type GeneratedEntity,
   type GenesisRequestOptions,
   type GenesisApiErrorCode,
-} from "./genesisClient";
+} from "./projectSeedClient";
 
-// Saga unified AI agent
+// Agent runtime unified AI agent
 export {
   sendSagaChatStreaming,
   executeGenesisWorld,
@@ -115,4 +115,4 @@ export {
   type ToolCallResult as SagaToolCallResult,
   type EditorContext as SagaEditorContext,
   type ExecuteToolOptions,
-} from "./sagaClient";
+} from "./agentRuntimeClient";

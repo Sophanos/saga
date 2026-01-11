@@ -72,7 +72,7 @@ export const entityDetailsTemplate: ResourceTemplate = {
 export const projectRelationshipsTemplate: ResourceTemplate = {
   uriTemplate: "saga://projects/{projectId}/relationships",
   name: "Project Relationships",
-  description: "All relationships between entities in a project (the world graph)",
+  description: "All relationships between entities in a project (the project graph)",
   mimeType: "application/json",
 };
 
@@ -97,11 +97,11 @@ export const documentContentTemplate: ResourceTemplate = {
 };
 
 /**
- * Resource template for world graph visualization.
+ * Resource template for project graph visualization.
  */
-export const worldGraphTemplate: ResourceTemplate = {
+export const projectGraphTemplate: ResourceTemplate = {
   uriTemplate: "saga://projects/{projectId}/graph",
-  name: "World Graph",
+  name: "Project Graph",
   description: "The entity relationship graph in a visualization-friendly format",
   mimeType: "application/json",
 };
@@ -118,7 +118,7 @@ export const RESOURCE_TEMPLATES: ResourceTemplate[] = [
   projectRelationshipsTemplate,
   projectDocumentsTemplate,
   documentContentTemplate,
-  worldGraphTemplate,
+  projectGraphTemplate,
 ];
 
 // =============================================================================
@@ -181,7 +181,7 @@ export function parseResourceUri(
 
   // saga://projects/{projectId}/graph
   if (parts.length === 3 && parts[0] === "projects" && parts[2] === "graph") {
-    return { type: "world_graph", params: { projectId: parts[1] } };
+    return { type: "project_graph", params: { projectId: parts[1] } };
   }
 
   return null;
@@ -225,8 +225,8 @@ export async function fetchResource(
           params.documentId,
           config
         );
-      case "world_graph":
-        return await fetchWorldGraph(params.projectId, config);
+      case "project_graph":
+        return await fetchProjectGraph(params.projectId, config);
       default:
         return null;
     }
@@ -419,7 +419,7 @@ async function fetchDocumentContent(
   };
 }
 
-async function fetchWorldGraph(
+async function fetchProjectGraph(
   projectId: string,
   config: SagaApiConfig
 ): Promise<ResourceWithContent> {
@@ -467,7 +467,7 @@ async function fetchWorldGraph(
 
   return {
     uri: `saga://projects/${projectId}/graph`,
-    name: "World Graph",
+    name: "Project Graph",
     description: `Entity relationship graph for project ${projectId}`,
     mimeType: "application/json",
     text: JSON.stringify(graph, null, 2),
@@ -515,7 +515,7 @@ export async function listProjectResources(
 
     resources.push({
       uri: `saga://projects/${projectId}/graph`,
-      name: "World Graph",
+      name: "Project Graph",
       mimeType: "application/json",
     });
 

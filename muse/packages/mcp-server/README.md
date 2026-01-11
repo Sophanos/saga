@@ -20,7 +20,7 @@ The server exposes the following worldbuilding tools:
 | `search_entities` | Semantic search for entities in your project |
 | `generate_content` | Generate descriptions, backstories, dialogue, or scenes |
 | `genesis_world` | Generate a complete world scaffold from a concept |
-| `generate_template` | Create a custom project template for your genre |
+| `generate_template` | Create an AI-generated project template for your genre |
 | `detect_entities` | Extract entities from narrative text |
 | `check_consistency` | Find contradictions, plot holes, and timeline errors |
 | `clarity_check` | Analyze prose for readability and clarity issues |
@@ -37,10 +37,10 @@ Access your Saga project data via resources:
 | `saga://projects/{id}` | Project details with entity counts |
 | `saga://projects/{id}/entities` | All entities in a project |
 | `saga://projects/{id}/entities/{entityId}` | Entity details with relationships |
-| `saga://projects/{id}/relationships` | All relationships (world graph) |
+| `saga://projects/{id}/relationships` | All relationships (project graph) |
 | `saga://projects/{id}/documents` | All documents in a project |
 | `saga://projects/{id}/documents/{docId}` | Document content |
-| `saga://projects/{id}/graph` | World graph in visualization format |
+| `saga://projects/{id}/graph` | Project graph in visualization format |
 
 ### Prompts
 

@@ -29,11 +29,11 @@ import {
 import type {
   DetectedEntity,
   DetectionWarning,
-  EntityType,
+  GraphEntityType,
 } from "@mythos/core";
 import {
-  ENTITY_TYPE_CONFIG,
-  ENTITY_TYPES,
+  WRITER_ENTITY_TYPE_CONFIG,
+  WRITER_ENTITY_TYPES,
   getEntityColor,
   getEntityLabel,
   type EntityIconName,
@@ -64,8 +64,8 @@ const ENTITY_ICONS: Record<EntityIconName, LucideIcon> = {
 /**
  * Get the icon component for an entity type
  */
-function getEntityIconComponent(type: EntityType): LucideIcon {
-  const iconName = ENTITY_TYPE_CONFIG[type]?.icon ?? "User";
+function getEntityIconComponent(type: GraphEntityType): LucideIcon {
+  const iconName = WRITER_ENTITY_TYPE_CONFIG[type as keyof typeof WRITER_ENTITY_TYPE_CONFIG]?.icon ?? "User";
   return ENTITY_ICONS[iconName] ?? User;
 }
 
@@ -99,7 +99,7 @@ function EntityTypeIcon({
   type,
   className,
 }: {
-  type: EntityType;
+  type: GraphEntityType;
   className?: string;
 }) {
   const Icon = getEntityIconComponent(type);
@@ -113,14 +113,14 @@ function TypeSelector({
   onChange,
   disabled,
 }: {
-  value: EntityType;
-  onChange: (type: EntityType) => void;
+  value: GraphEntityType;
+  onChange: (type: GraphEntityType) => void;
   disabled?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleSelect = useCallback(
-    (type: EntityType) => {
+    (type: GraphEntityType) => {
       onChange(type);
       setIsOpen(false);
     },
@@ -164,7 +164,7 @@ function TypeSelector({
               "shadow-lg shadow-black/20"
             )}
           >
-            {ENTITY_TYPES.map((type) => (
+            {WRITER_ENTITY_TYPES.map((type) => (
               <li
                 key={type}
                 role="option"
@@ -206,7 +206,7 @@ function EntityRow({
   isExpanded: boolean;
   onToggleSelect: () => void;
   onToggleExpand: () => void;
-  onTypeChange: (type: EntityType) => void;
+  onTypeChange: (type: GraphEntityType) => void;
   disabled?: boolean;
 }) {
   const hasOccurrences = entity.occurrences.length > 0;
@@ -436,7 +436,7 @@ export function EntitySuggestionModal({
 
   // Track type overrides by tempId
   const [typeOverrides, setTypeOverrides] = useState<
-    Record<string, EntityType>
+    Record<string, GraphEntityType>
   >({});
 
   // Auto-select high-confidence entities on mount or when entities change
@@ -451,23 +451,25 @@ export function EntitySuggestionModal({
 
   // Group entities by type
   const groupedEntities = useMemo(() => {
-    const groups: Record<EntityType, DetectedEntity[]> = {
-      character: [],
-      location: [],
-      item: [],
-      magic_system: [],
-      faction: [],
-      event: [],
-      concept: [],
-    };
-
+    const groups: Record<string, DetectedEntity[]> = {};
     entities.forEach((entity) => {
       const effectiveType = typeOverrides[entity.tempId] || entity.type;
+      if (!groups[effectiveType]) {
+        groups[effectiveType] = [];
+      }
       groups[effectiveType].push(entity);
     });
 
     return groups;
   }, [entities, typeOverrides]);
+
+  const orderedTypes = useMemo(() => {
+    const known = new Set(WRITER_ENTITY_TYPES);
+    const extras = Object.keys(groupedEntities)
+      .filter((type) => !known.has(type as GraphEntityType))
+      .sort();
+    return [...WRITER_ENTITY_TYPES, ...extras];
+  }, [groupedEntities]);
 
   // Get selected entities with type overrides applied
   const selectedEntities = useMemo(() => {
@@ -506,7 +508,7 @@ export function EntitySuggestionModal({
   }, []);
 
   // Change entity type
-  const changeType = useCallback((tempId: string, type: EntityType) => {
+  const changeType = useCallback((tempId: string, type: GraphEntityType) => {
     setTypeOverrides((prev) => ({
       ...prev,
       [tempId]: type,
@@ -582,7 +584,7 @@ export function EntitySuggestionModal({
           </div>
           <CardDescription className="pt-1">
             {totalCount} entities detected in your text. Review and select the
-            ones you want to add to your world.
+            ones you want to add to your project.
           </CardDescription>
         </CardHeader>
 
@@ -620,8 +622,8 @@ export function EntitySuggestionModal({
           {/* Entity list */}
           <ScrollArea className="h-[calc(100%-60px)]" data-testid="entity-detect-results">
             <div className="space-y-4 pr-4 pb-4">
-              {ENTITY_TYPES.map((type) => {
-                const typeEntities = groupedEntities[type];
+              {orderedTypes.map((type) => {
+                const typeEntities = groupedEntities[type] ?? [];
                 if (typeEntities.length === 0) return null;
 
                 return (

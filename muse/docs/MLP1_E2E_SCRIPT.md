@@ -88,25 +88,25 @@ Notes from local runs:
 - Autosave selectors: `autosave-status` (text + `data-status`), `autosave-error`.
 - Prefer verifying persistence by polling Convex (`e2e.getDocumentForE2E`) rather than relying on timeouts.
 
-## E2E-04: Entity Detection + World Graph
+## E2E-04: Entity Detection + Project Graph
 ### Scenarios
 1. Provide text containing entities (“Elena walked to the Citadel.”)
 2. Trigger detection via the detect-and-persist action
 3. Persist detected entities into Convex `entities`
 4. Run detection again with an alias variant; assert idempotency + alias merge
-5. Open World Graph and verify entity nodes + counts
+5. Open Project Graph and verify entity nodes + counts
 6. Toggle a type filter and verify counts + visibility update
 7. Verify at least one relationship edge label renders
 
 ### Artifacts
 - `muse/e2e/entities.spec.ts`
 - `muse/convex/e2e.ts` (detection fixtures)
-- `muse/apps/web/src/components/world-graph/*` (test ids)
+- `muse/apps/web/src/components/project-graph/*` (test ids)
 
 ### Dependencies / Notes
 - Detection uses deterministic fixtures in E2E mode (`E2E_TEST_MODE=true`).
-- World Graph selectors: `world-graph-view`, `wg-node-<entityId>`, `wg-edge-<relationshipId>`, `wg-entity-count`, `wg-relationship-count`, `world-graph-toggle-<type>`.
-- Run on `tauri-web` (web app); Expo does not include World Graph yet.
+- Project Graph selectors: `project-graph-view`, `pg-node-<entityId>`, `pg-edge-<relationshipId>`, `pg-entity-count`, `pg-relationship-count`, `project-graph-toggle-<type>`.
+- Run on `tauri-web` (web app); Expo does not include Project Graph yet.
 
 ---
 

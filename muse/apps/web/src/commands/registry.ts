@@ -16,7 +16,7 @@ export interface CommandContext {
   openModal: (modal: ModalState) => void;
   closeModal: () => void;
   setActiveTab: (tab: string) => void;
-  setCanvasView: (view: "editor" | "worldGraph") => void;
+  setCanvasView: (view: "editor" | "projectGraph") => void;
 }
 
 // Command definition
@@ -55,8 +55,8 @@ export function getUnlockHint(module: UIModuleId): string {
       return "Track entities in your story to unlock the Manifest";
     case "console":
       return "Resolve a consistency issue to unlock the Console";
-    case "world_graph":
-      return "Add 5+ characters to unlock the World Graph";
+    case "project_graph":
+      return "Add 5+ entities to unlock the Project Graph";
     case "timeline":
       return "Continue writing to unlock the Timeline";
     case "hud":

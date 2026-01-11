@@ -20,7 +20,7 @@ export type WriterEntityType =
   | "event"
   | "concept";
 
-export type EntityType = WriterEntityType;
+export type EntityType = GraphEntityType;
 
 // Jungian Archetypes
 export type JungianArchetype =
@@ -64,7 +64,7 @@ export type WriterRelationType =
   | "rules"
   | "serves";
 
-export type RelationType = WriterRelationType;
+export type RelationType = GraphRelationType;
 
 // Property Value Types
 export type PropertyValue =
@@ -120,7 +120,7 @@ export interface Entity {
   id: string;
   name: string;
   aliases: string[];
-  type: EntityType;
+  type: GraphEntityType;
   properties: Record<string, PropertyValue>;
   mentions: Mention[];
   createdAt: Date;
@@ -195,7 +195,7 @@ export interface Relationship {
   id: string;
   sourceId: string;
   targetId: string;
-  type: RelationType;
+  type: GraphRelationType;
   bidirectional: boolean;
   strength?: number; // 1-10
   metadata?: Record<string, PropertyValue>;

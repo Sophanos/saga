@@ -13,6 +13,7 @@ export interface UpdateEntityArgs {
     name?: string;
     aliases?: string[];
     notes?: string;
+    properties?: Record<string, unknown>;
     archetype?: string;
     backstory?: string;
     goals?: string[];
@@ -83,8 +84,16 @@ export const updateEntityExecutor: ToolDefinition<UpdateEntityArgs, UpdateEntity
       }
 
       // Handle type-specific fields via properties
-      const propertyUpdates = { ...entity.properties };
-      let hasPropertyUpdates = false;
+      const propertyUpdates = {
+        ...(entity.properties ?? {}),
+        ...(args.updates.properties ?? {}),
+      };
+      let hasPropertyUpdates =
+        args.updates.properties !== undefined &&
+        Object.keys(args.updates.properties).length > 0;
+      if (hasPropertyUpdates) {
+        updatedFields.push("properties");
+      }
 
       const propertyFields = [
         "archetype", "backstory", "goals", "fears",

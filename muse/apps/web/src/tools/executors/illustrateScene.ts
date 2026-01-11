@@ -160,7 +160,7 @@ export const illustrateSceneExecutor: ToolDefinition<IllustrateSceneArgs, Illust
       let response: AIImageSceneResponse;
       try {
         response = await callEdgeFunction<AIImageSceneRequest, AIImageSceneResponse>(
-          "ai-image",
+          "ai/image",
           request,
           {
             apiKey: ctx.apiKey,

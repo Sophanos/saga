@@ -6,7 +6,7 @@
  */
 
 import { authClient } from "../lib/auth";
-import { RETRY_CONFIG } from "./config";
+import { CONVEX_SITE_URL, RETRY_CONFIG } from "./config";
 
 // =============================================================================
 // Retry Configuration
@@ -67,8 +67,6 @@ export interface EdgeFunctionOptions {
   authToken?: string;
   retry?: RetryConfig | false;
 }
-
-const CONVEX_SITE_URL = import.meta.env["VITE_CONVEX_SITE_URL"] || "https://cascada.vision";
 
 // =============================================================================
 // Helper Functions

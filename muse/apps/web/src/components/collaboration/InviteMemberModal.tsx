@@ -1,4 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
+import { useConvex, useMutation } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { X, UserPlus, Mail, Trash2, Clock, Send, AlertCircle, CheckCircle } from "lucide-react";
 import {
   Button,
@@ -13,15 +16,10 @@ import {
   Select,
   ScrollArea,
 } from "@mythos/ui";
-import {
-  inviteProjectMember,
-  deleteInvitation,
-  getProjectInvitationsWithInviter,
-  type ProjectInvitationWithInviter,
-} from "@mythos/db";
 import { useCurrentProject } from "../../stores";
 import type { ProjectRole } from "@mythos/state";
 import { isValidEmail } from "@mythos/core";
+import { useAuthStore } from "../../stores/auth";
 
 // ============================================================================
 // Types
@@ -58,6 +56,13 @@ const ROLE_OPTIONS: { value: ProjectRole; label: string }[] = [
 // Pending Invitation Item
 // ============================================================================
 
+interface ProjectInvitationWithInviter {
+  id: string;
+  email: string;
+  role: ProjectRole;
+  expiresAt: string;
+}
+
 interface PendingInvitationItemProps {
   invitation: ProjectInvitationWithInviter;
   onDelete: (id: string) => void;
@@ -75,7 +80,7 @@ function PendingInvitationItem({
     viewer: "Viewer",
   };
 
-  const expiresAt = new Date(invitation.expires_at);
+  const expiresAt = new Date(invitation.expiresAt);
   const isExpired = expiresAt < new Date();
   const daysUntilExpiry = Math.ceil(
     (expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -138,6 +143,10 @@ export function InviteMemberModal({
   onInvited,
 }: InviteMemberModalProps) {
   const project = useCurrentProject();
+  const currentUser = useAuthStore((s) => s.user);
+  const convex = useConvex();
+  const createInvitation = useMutation(api.collaboration.createInvitation);
+  const revokeInvitation = useMutation(api.collaboration.revokeInvitation);
 
   const [formData, setFormData] = useState<InviteFormData>(initialFormData);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -179,14 +188,22 @@ export function InviteMemberModal({
 
     setIsLoadingInvitations(true);
     try {
-      const invitations = await getProjectInvitationsWithInviter(project.id);
-      setPendingInvitations(invitations);
+      const invitations = await convex.query(api.collaboration.listProjectInvitationsWithInviter, {
+        projectId: project.id as Id<"projects">,
+      });
+      const mapped = (invitations ?? []).map((invitation) => ({
+        id: invitation._id,
+        email: invitation.email,
+        role: invitation.role as ProjectRole,
+        expiresAt: new Date(invitation.expiresAt).toISOString(),
+      }));
+      setPendingInvitations(mapped);
     } catch (error) {
       console.error("[Collaboration] Failed to load invitations:", error);
     } finally {
       setIsLoadingInvitations(false);
     }
-  }, [project?.id]);
+  }, [convex, project?.id]);
 
   const updateFormData = useCallback((updates: Partial<InviteFormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }));
@@ -224,16 +241,17 @@ export function InviteMemberModal({
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!validate() || isSubmitting || !project?.id) return;
+      if (!validate() || isSubmitting || !project?.id || !currentUser?.id) return;
 
       setIsSubmitting(true);
       setFeedback(null);
 
       try {
-        await inviteProjectMember({
-          projectId: project.id,
+        await createInvitation({
+          projectId: project.id as Id<"projects">,
           email: formData.email.trim().toLowerCase(),
           role: formData.role,
+          invitedBy: currentUser.id,
         });
 
         setFeedback({
@@ -256,14 +274,16 @@ export function InviteMemberModal({
         setIsSubmitting(false);
       }
     },
-    [formData, validate, isSubmitting, project?.id, loadPendingInvitations, onInvited]
+    [formData, validate, isSubmitting, project?.id, currentUser?.id, loadPendingInvitations, onInvited, createInvitation]
   );
 
   const handleDeleteInvitation = useCallback(
     async (invitationId: string) => {
       setDeletingId(invitationId);
       try {
-        await deleteInvitation(invitationId);
+        await revokeInvitation({
+          invitationId: invitationId as Id<"projectInvitations">,
+        });
         setPendingInvitations((prev) =>
           prev.filter((inv) => inv.id !== invitationId)
         );
@@ -281,7 +301,7 @@ export function InviteMemberModal({
         setDeletingId(null);
       }
     },
-    []
+    [revokeInvitation]
   );
 
   const handleKeyDown = useCallback(

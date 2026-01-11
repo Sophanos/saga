@@ -39,10 +39,20 @@ export type UIModuleId =
   | "editor"
   | "manifest"
   | "console"
-  | "world_graph"
+  | "project_graph"
   | "timeline"
   | "hud"
   | "entity_mentions";
+
+type LegacyUIModuleId = "world_graph";
+
+const LEGACY_MODULE_MAP: Record<LegacyUIModuleId, UIModuleId> = {
+  world_graph: "project_graph",
+};
+
+function normalizeModuleId(id: UIModuleId | LegacyUIModuleId): UIModuleId {
+  return LEGACY_MODULE_MAP[id as LegacyUIModuleId] ?? id;
+}
 
 /**
  * Nudge types for progressive disclosure
@@ -156,9 +166,19 @@ export type MilestoneType =
   | "first_capture"
   | "first_entity"
   | "first_chapter"
-  | "world_graph_explored"
+  | "project_graph_explored"
   | "ai_chat_used"
   | "custom";
+
+type LegacyMilestoneType = "world_graph_explored";
+
+const LEGACY_MILESTONE_MAP: Record<LegacyMilestoneType, MilestoneType> = {
+  world_graph_explored: "project_graph_explored",
+};
+
+function normalizeMilestoneType(type: MilestoneType | LegacyMilestoneType): MilestoneType {
+  return LEGACY_MILESTONE_MAP[type as LegacyMilestoneType] ?? type;
+}
 
 /**
  * A milestone achievement
@@ -184,16 +204,26 @@ export type OnboardingStep =
   | "project_setup"
   | "first_document"
   | "entity_intro"
-  | "world_graph_intro"
+  | "project_graph_intro"
   | "capture_intro"
   | "complete";
+
+type LegacyOnboardingStep = "world_graph_intro";
+
+const LEGACY_ONBOARDING_MAP: Record<LegacyOnboardingStep, OnboardingStep> = {
+  world_graph_intro: "project_graph_intro",
+};
+
+function normalizeOnboardingStep(step: OnboardingStep | LegacyOnboardingStep): OnboardingStep {
+  return LEGACY_ONBOARDING_MAP[step as LegacyOnboardingStep] ?? step;
+}
 
 /**
  * UI visibility state for progressive disclosure
  */
 export interface UIVisibility {
   // Core features
-  showWorldGraph: boolean;
+  showProjectGraph: boolean;
   showEntityPanel: boolean;
   showAnalysisPanel: boolean;
   showCapturesInbox: boolean;
@@ -321,7 +351,7 @@ export interface ProgressiveState {
 
 const defaultUIVisibility: UIVisibility = {
   // Core features - visible by default
-  showWorldGraph: true,
+  showProjectGraph: true,
   showEntityPanel: true,
   showAnalysisPanel: true,
   showCapturesInbox: true,
@@ -379,7 +409,7 @@ const defaultProgressiveProjectState: ProgressiveProjectState = {
   creationMode: "architect",
   phase: 4,
   entityMentionCounts: {},
-  unlockedModules: { editor: true, manifest: true, console: true, world_graph: true },
+  unlockedModules: { editor: true, manifest: true, console: true, project_graph: true },
   totalWritingTimeSec: 0,
   neverAsk: {},
 };
@@ -457,6 +487,49 @@ const partialize = (state: ProgressiveState): PersistedProgressiveState => ({
   ),
 });
 
+function normalizeUnlockedModules(
+  modules: Partial<Record<UIModuleId, true>> | undefined
+): Partial<Record<UIModuleId, true>> {
+  const normalized: Partial<Record<UIModuleId, true>> = {};
+  if (!modules) return normalized;
+
+  for (const [module, enabled] of Object.entries(modules)) {
+    if (!enabled) continue;
+    const normalizedId = normalizeModuleId(module as UIModuleId | LegacyUIModuleId);
+    normalized[normalizedId] = true;
+  }
+
+  return normalized;
+}
+
+function normalizeMilestones(milestones: Milestone[] | undefined): Milestone[] | undefined {
+  if (!milestones) return milestones;
+  return milestones.map((milestone) => ({
+    ...milestone,
+    type: normalizeMilestoneType(milestone.type as MilestoneType | LegacyMilestoneType),
+  }));
+}
+
+function normalizeOnboardingSteps(
+  steps: OnboardingStep[] | undefined
+): OnboardingStep[] | undefined {
+  if (!steps) return steps;
+  return steps.map((step) =>
+    normalizeOnboardingStep(step as OnboardingStep | LegacyOnboardingStep)
+  );
+}
+
+function normalizeUIVisibility(
+  visibility: UIVisibility | undefined
+): UIVisibility | undefined {
+  if (!visibility) return visibility;
+  const overrides: Record<string, unknown> = { ...visibility };
+  if (overrides["showWorldGraph"] !== undefined && overrides["showProjectGraph"] === undefined) {
+    overrides["showProjectGraph"] = overrides["showWorldGraph"];
+  }
+  return overrides as UIVisibility;
+}
+
 /**
  * Merge function - safely merges persisted state with defaults
  * Ensures nested objects have required default values to prevent runtime errors
@@ -477,6 +550,7 @@ const merge = (
       mergedProjects[projectId] = {
         ...defaultProgressiveProjectState,
         ...persistedProject,
+        unlockedModules: normalizeUnlockedModules(persistedProject.unlockedModules),
         // Always ensure entityMentionCounts exists (not persisted)
         entityMentionCounts: {},
       };
@@ -488,11 +562,18 @@ const merge = (
     // Merge persisted user-level state
     archetype: persisted.archetype ?? currentState.archetype,
     archetypeSelectedAt: persisted.archetypeSelectedAt ?? currentState.archetypeSelectedAt,
-    completedOnboardingSteps: persisted.completedOnboardingSteps ?? currentState.completedOnboardingSteps,
+    completedOnboardingSteps:
+      normalizeOnboardingSteps(persisted.completedOnboardingSteps) ??
+      currentState.completedOnboardingSteps,
     onboardingCompletedAt: persisted.onboardingCompletedAt ?? currentState.onboardingCompletedAt,
-    currentOnboardingStep: persisted.currentOnboardingStep ?? currentState.currentOnboardingStep,
-    milestones: persisted.milestones ?? currentState.milestones,
-    uiVisibility: { ...defaultUIVisibility, ...persisted.uiVisibility },
+    currentOnboardingStep:
+      normalizeOnboardingStep(
+        (persisted.currentOnboardingStep ?? currentState.currentOnboardingStep) as
+          | OnboardingStep
+          | LegacyOnboardingStep
+      ),
+    milestones: normalizeMilestones(persisted.milestones) ?? currentState.milestones,
+    uiVisibility: { ...defaultUIVisibility, ...normalizeUIVisibility(persisted.uiVisibility) },
     activeProjectId: persisted.activeProjectId ?? currentState.activeProjectId,
     projects: mergedProjects,
   };
@@ -770,7 +851,7 @@ export const useProgressiveStore = create<ProgressiveState>()(
             editor: true,
             manifest: true,
             console: true,
-            world_graph: true,
+            project_graph: true,
           };
         }
       }),
@@ -1387,7 +1468,7 @@ export const useProgressivePanelVisibility = () =>
       const defaultVisibility = {
         showManifest: true,
         showConsole: true,
-        showWorldGraph: true,
+        showProjectGraph: true,
       };
 
       if (!s.activeProjectId) return defaultVisibility;
@@ -1402,7 +1483,7 @@ export const useProgressivePanelVisibility = () =>
       return {
         showManifest: projectState.unlockedModules.manifest === true,
         showConsole: projectState.unlockedModules.console === true,
-        showWorldGraph: projectState.unlockedModules.world_graph === true,
+        showProjectGraph: projectState.unlockedModules.project_graph === true,
       };
     })
   );

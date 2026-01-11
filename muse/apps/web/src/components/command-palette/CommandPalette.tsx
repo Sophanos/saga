@@ -205,9 +205,9 @@ export function CommandPalette() {
     (entityId: string) => {
       const entity = entities.get(entityId);
       setSelectedEntity(entityId);
-      // Show entity in world graph or open edit modal
+      // Show entity in project graph or open edit modal
       if (entity) {
-        setCanvasView("worldGraph");
+        setCanvasView("projectGraph");
       }
       close();
     },

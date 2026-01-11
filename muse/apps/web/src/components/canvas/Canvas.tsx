@@ -24,7 +24,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useEntityClick } from "../../hooks/useEntityClick";
-import { useWritingAnalysis } from "../../hooks/useWritingAnalysis";
+import { useContentAnalysis } from "../../hooks/useContentAnalysis";
 import { useLinterFixes } from "../../hooks/useLinterFixes";
 import { useEntityDetection } from "../../hooks/useEntityDetection";
 import { useDynamicsExtraction } from "../../hooks/useDynamicsExtraction";
@@ -48,7 +48,7 @@ import {
   type SlashCommandListRef,
 } from "../editor/SlashCommandList";
 import { SceneListBlock } from "../editor/SceneListBlock";
-import { WorldGraphView } from "../world-graph";
+import { ProjectGraphView } from "../project-graph";
 import { ProjectStartCanvas } from "../projects";
 
 /**
@@ -78,9 +78,9 @@ export function Canvas({
     return <ProjectStartCanvas onProjectCreated={onProjectCreated} />;
   }
 
-  // Render World Graph if that view is selected
-  if (canvasView === "worldGraph") {
-    return <WorldGraphView />;
+  // Render Project Graph if that view is selected
+  if (canvasView === "projectGraph") {
+    return <ProjectGraphView />;
   }
 
   // Otherwise render the editor
@@ -554,7 +554,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   }, [editor?.state?.doc?.content]);
 
   // Wire up Writing Analysis hook (disabled when no document selected)
-  const { isAnalyzing, metrics } = useWritingAnalysis({
+  const { isAnalyzing, metrics } = useContentAnalysis({
     content,
     autoAnalyze: autoAnalysis,
     debounceMs: 1500,

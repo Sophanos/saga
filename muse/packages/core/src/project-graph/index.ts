@@ -6,7 +6,7 @@ import type {
   Character,
 } from "../entities/types";
 
-// Conflict detected by the world graph
+// Conflict detected by the project graph
 export interface Conflict {
   id: string;
   type:
@@ -22,8 +22,8 @@ export interface Conflict {
   suggestion?: string;
 }
 
-// World Graph implementation
-export class WorldGraph {
+// Project Graph implementation
+export class ProjectGraph {
   private nodes: Map<string, Entity> = new Map();
   private edges: Map<string, Relationship> = new Map();
   private adjacency: Map<string, Set<string>> = new Map();
@@ -315,8 +315,8 @@ export class WorldGraph {
   static fromJSON(data: {
     entities: Entity[];
     relationships: Relationship[];
-  }): WorldGraph {
-    return new WorldGraph(data.entities, data.relationships);
+  }): ProjectGraph {
+    return new ProjectGraph(data.entities, data.relationships);
   }
 
   // Stats

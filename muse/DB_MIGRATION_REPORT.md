@@ -21,9 +21,9 @@ Generated: 2026-01-09T15:04:01.464Z
 - `apps/web/src/components/projects/ProjectPickerSidebar.tsx` (2 imports)
 
 ### Low Priority (Services/Utils)
-- `apps/web/src/services/ai/sagaClient.ts` (2 imports)
-- `apps/web/src/services/analysis/analysisRepository.ts` (2 imports)
-- `apps/web/src/services/projects/seedWorldbuilding.ts` (1 imports)
+- `apps/web/src/services/ai/agentRuntimeClient.ts` (2 imports)
+- `apps/web/src/services/analysis/contentAnalysisRepository.ts` (2 imports)
+- `apps/web/src/services/projects/seedProjectContext.ts` (1 imports)
 
 ### Other
 - `apps/mobile/lib/useProgressiveSync.ts` (1 imports)
@@ -167,7 +167,7 @@ import { createDocument, mapDbDocumentToDocument } from "@mythos/db";
 - `mapDbDocumentToDocument` → **REMOVE**
   - Remove - Convex returns proper types directly
 
-### `apps/web/src/services/ai/sagaClient.ts`
+### `apps/web/src/services/ai/agentRuntimeClient.ts`
 
 **Current imports:**
 ```typescript
@@ -182,7 +182,7 @@ import { getSupabaseClient, isSupabaseInitialized } from "@mythos/db";
 - `isSupabaseInitialized` → **MANUAL REVIEW REQUIRED**
   - REMOVE - Convex is always available via provider
 
-### `apps/web/src/services/analysis/analysisRepository.ts`
+### `apps/web/src/services/analysis/contentAnalysisRepository.ts`
 
 **Current imports:**
 ```typescript
@@ -197,7 +197,7 @@ import { getSupabaseClient, type Database } from "@mythos/db";
 - `Database` → **MANUAL REVIEW REQUIRED**
   - Use types from convex/_generated/dataModel instead
 
-### `apps/web/src/services/projects/seedWorldbuilding.ts`
+### `apps/web/src/services/projects/seedProjectContext.ts`
 
 **Current imports:**
 ```typescript

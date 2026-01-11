@@ -4,12 +4,12 @@ An AI-powered creative writing environment for fiction authors that treats **sto
 
 ## Overview
 
-Mythos IDE tracks narrative entities (characters, locations, items, magic systems, factions) like programming variables, with a **World Graph** maintaining relationships and detecting logical inconsistencies. AI agents provide real-time writing feedback including consistency checking, prose quality analysis, and style coaching.
+Mythos IDE tracks narrative entities (characters, locations, items, magic systems, factions) like programming variables, with a **Project Graph** maintaining relationships and detecting logical inconsistencies. AI agents provide real-time writing feedback including consistency checking, prose quality analysis, and style coaching.
 
 ## Features
 
 - **Entity System** - Track characters, locations, items, magic systems, factions, and events with rich metadata
-- **World Graph** - Relationship tracking with conflict detection (genealogy, timeline, contradictions)
+- **Project Graph** - Relationship tracking with conflict detection (genealogy, timeline, contradictions)
 - **Writer/DM Mode** - Toggle between narrative focus and mechanical/stats view
 - **AI Writing Coach** - Tension analysis, sensory heatmap, show-don't-tell scoring, style feedback
 - **Consistency Linter** - AI-powered narrative consistency checking with auto-fix suggestions
@@ -38,7 +38,7 @@ muse/
 │   └── web/                  # React SPA
 ├── packages/
 │   ├── ai/                   # AI agents (Linter, Coach, Detector)
-│   ├── core/                 # Domain types, World Graph, schemas
+│   ├── core/                 # Domain types, Project Graph, schemas
 │   ├── db/                   # Supabase client, queries, migrations
 │   ├── editor/               # Tiptap extensions
 │   └── ui/                   # Shared UI components

@@ -1,4 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { X, Settings, Trash2, Crown, AlertTriangle, CheckCircle, AlertCircle } from "lucide-react";
 import {
   Button,
@@ -11,11 +14,6 @@ import {
   Select,
   ScrollArea,
 } from "@mythos/ui";
-import {
-  updateProjectMember,
-  removeProjectMember,
-  transferProjectOwnership,
-} from "@mythos/db";
 import {
   useProjectMembers,
   useMyRole,
@@ -319,6 +317,9 @@ export function MemberManagementModal({
   const members = useProjectMembers();
   const myRole = useMyRole();
   const currentUser = useAuthStore((s) => s.user);
+  const updateMemberRole = useMutation(api.collaboration.updateMemberRole);
+  const removeProjectMember = useMutation(api.collaboration.removeProjectMember);
+  const transferProjectOwnership = useMutation(api.collaboration.transferProjectOwnership);
 
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
@@ -360,7 +361,11 @@ export function MemberManagementModal({
       setFeedback(null);
 
       try {
-        await updateProjectMember(project.id, userId, { role: newRole });
+        await updateMemberRole({
+          projectId: project.id as Id<"projects">,
+          userId,
+          role: newRole,
+        });
         setFeedback({ type: "success", message: "Role updated" });
         onMembersChanged?.();
       } catch (error) {
@@ -384,7 +389,10 @@ export function MemberManagementModal({
       setFeedback(null);
 
       try {
-        await removeProjectMember(project.id, userId);
+        await removeProjectMember({
+          projectId: project.id as Id<"projects">,
+          userId,
+        });
         setFeedback({ type: "success", message: "Member removed" });
         setConfirmingRemoveId(null);
         onMembersChanged?.();
@@ -409,7 +417,11 @@ export function MemberManagementModal({
       setFeedback(null);
 
       try {
-        await transferProjectOwnership(project.id, currentUserId, newOwnerId);
+        await transferProjectOwnership({
+          projectId: project.id as Id<"projects">,
+          currentOwnerId: currentUserId,
+          newOwnerId,
+        });
         setFeedback({ type: "success", message: "Ownership transferred" });
         onMembersChanged?.();
       } catch (error) {

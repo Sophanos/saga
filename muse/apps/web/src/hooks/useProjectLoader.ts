@@ -1,18 +1,136 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useConvex } from "convex/react";
 import { useProgressiveStore } from "@mythos/state";
-import {
-  getProject,
-  getDocuments,
-  getEntities,
-  getRelationships,
-  mapDbProjectToProject,
-  mapDbDocumentToDocument,
-  mapDbEntityToEntity,
-  mapDbRelationshipToRelationship,
-} from "@mythos/db";
-import type { Project, Document } from "@mythos/core";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
+import type { Project, Document, Entity, Relationship } from "@mythos/core";
 import { LAST_DOCUMENT_KEY } from "../constants/storageKeys";
 import { useMythosStore } from "../stores";
+
+const EMPTY_TIPTAP_DOC = { type: "doc", content: [{ type: "paragraph" }] };
+const ENTITY_LIST_LIMIT = 10000;
+
+type ConvexProject = {
+  _id: Id<"projects">;
+  name: string;
+  description?: string | null;
+  genre?: string | null;
+  styleConfig?: Record<string, unknown> | null;
+  linterConfig?: Record<string, unknown> | null;
+  templateId?: string | null;
+  templateOverrides?: Record<string, unknown> | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type ConvexDocument = {
+  _id: Id<"documents">;
+  projectId: Id<"projects">;
+  parentId?: Id<"documents"> | null;
+  type: string;
+  title?: string | null;
+  content?: Record<string, unknown> | null;
+  orderIndex: number;
+  wordCount: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type ConvexEntity = {
+  _id: Id<"entities">;
+  projectId: Id<"projects">;
+  type: string;
+  name: string;
+  aliases: string[];
+  properties: Record<string, unknown>;
+  notes?: string | null;
+  portraitUrl?: string | null;
+  portraitAssetId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type ConvexRelationship = {
+  _id: Id<"relationships">;
+  sourceId: Id<"entities">;
+  targetId: Id<"entities">;
+  type: string;
+  bidirectional: boolean;
+  strength?: number | null;
+  metadata?: Record<string, unknown> | null;
+  notes?: string | null;
+  createdAt: number;
+};
+
+function mapConvexProjectToProject(project: ConvexProject): Project {
+  const styleConfig =
+    project.styleConfig && typeof project.styleConfig === "object"
+      ? (project.styleConfig as Project["config"])
+      : ({} as Project["config"]);
+
+  const config = {
+    ...styleConfig,
+    ...(project.genre ? { genre: project.genre as Project["config"]["genre"] } : {}),
+    ...(project.linterConfig ? { linterConfig: project.linterConfig as Project["config"]["linterConfig"] } : {}),
+  };
+
+  return {
+    id: project._id,
+    name: project.name,
+    description: project.description ?? undefined,
+    templateId: project.templateId ?? undefined,
+    templateOverrides: project.templateOverrides as Project["templateOverrides"] | undefined,
+    config,
+    createdAt: new Date(project.createdAt),
+    updatedAt: new Date(project.updatedAt),
+  };
+}
+
+function mapConvexDocumentToDocument(document: ConvexDocument): Document {
+  return {
+    id: document._id,
+    projectId: document.projectId,
+    parentId: document.parentId ?? undefined,
+    type: document.type as Document["type"],
+    title: document.title ?? undefined,
+    content: document.content ?? EMPTY_TIPTAP_DOC,
+    orderIndex: document.orderIndex ?? 0,
+    wordCount: document.wordCount ?? 0,
+    createdAt: new Date(document.createdAt),
+    updatedAt: new Date(document.updatedAt),
+  };
+}
+
+function mapConvexEntityToEntity(entity: ConvexEntity): Entity {
+  return {
+    id: entity._id,
+    name: entity.name,
+    aliases: entity.aliases ?? [],
+    type: entity.type as Entity["type"],
+    properties: (entity.properties ?? {}) as Entity["properties"],
+    mentions: [],
+    createdAt: new Date(entity.createdAt),
+    updatedAt: new Date(entity.updatedAt),
+    notes: entity.notes ?? undefined,
+    portraitUrl: entity.portraitUrl ?? undefined,
+    portraitAssetId: entity.portraitAssetId ?? undefined,
+    projectId: entity.projectId,
+  } as Entity & { projectId?: string };
+}
+
+function mapConvexRelationshipToRelationship(relationship: ConvexRelationship): Relationship {
+  return {
+    id: relationship._id,
+    sourceId: relationship.sourceId,
+    targetId: relationship.targetId,
+    type: relationship.type as Relationship["type"],
+    bidirectional: relationship.bidirectional,
+    strength: relationship.strength ?? undefined,
+    metadata: relationship.metadata ?? undefined,
+    notes: relationship.notes ?? undefined,
+    createdAt: new Date(relationship.createdAt),
+  };
+}
 
 /**
  * Options for the useProjectLoader hook
@@ -97,6 +215,7 @@ export function useProjectLoader(
 
   // Store the currently loaded project ID to handle reloading
   const loadedProjectIdRef = useRef<string | null>(null);
+  const convex = useConvex();
 
   // Store actions
   const setCurrentProject = useMythosStore((state) => state.setCurrentProject);
@@ -139,24 +258,39 @@ export function useProjectLoader(
 
       try {
         // Load project metadata
-        const dbProject = await getProject(id);
+        const dbProject = await convex.query(api.projects.get, {
+          id: id as Id<"projects">,
+        });
         if (!dbProject) {
           throw new Error(`Project not found: ${id}`);
         }
 
-        const project = mapDbProjectToProject(dbProject);
+        const project = mapConvexProjectToProject(dbProject as ConvexProject);
 
         // Load documents, entities, and relationships in parallel
         const [dbDocuments, dbEntities, dbRelationships] = await Promise.all([
-          getDocuments(id),
-          getEntities(id),
-          getRelationships(id),
+          convex.query(api.documents.list, {
+            projectId: id as Id<"projects">,
+          }),
+          convex.query(api.entities.list, {
+            projectId: id as Id<"projects">,
+            limit: ENTITY_LIST_LIMIT,
+          }),
+          convex.query(api.relationships.list, {
+            projectId: id as Id<"projects">,
+          }),
         ]);
 
         // Convert database types to core types and batch update stores
-        const documents = dbDocuments.data.map(mapDbDocumentToDocument);
-        const entities = dbEntities.data.map(mapDbEntityToEntity);
-        const relationships = dbRelationships.map(mapDbRelationshipToRelationship);
+        const documents = (dbDocuments ?? []).map((doc) =>
+          mapConvexDocumentToDocument(doc as ConvexDocument)
+        );
+        const entities = (dbEntities ?? []).map((entity) =>
+          mapConvexEntityToEntity(entity as ConvexEntity)
+        );
+        const relationships = (dbRelationships ?? []).map((relationship) =>
+          mapConvexRelationshipToRelationship(relationship as ConvexRelationship)
+        );
 
         // Hydrate the store with project
         setCurrentProject(project);
@@ -187,7 +321,7 @@ export function useProjectLoader(
           creationMode: "architect",
           phase: 4,
           entityMentionCounts: {},
-          unlockedModules: { editor: true, manifest: true, console: true, world_graph: true },
+          unlockedModules: { editor: true, manifest: true, console: true, project_graph: true },
           totalWritingTimeSec: 0,
           neverAsk: {},
         });
@@ -204,6 +338,7 @@ export function useProjectLoader(
       }
     },
     [
+      convex,
       setProjectLoading,
       setProjectError,
       resetForProjectSwitch,

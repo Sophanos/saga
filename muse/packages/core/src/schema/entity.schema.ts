@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  graphEntitySchema,
+  graphRelationshipSchema,
+  propertyValueSchema,
+} from "./graph.schema";
 
 // Enums as Zod schemas
 export const entityTypeSchema = z.enum([
@@ -51,18 +56,6 @@ export const relationTypeSchema = z.enum([
   "serves",
 ]);
 
-// Property value schema (recursive)
-const literalSchema = z.union([z.string(), z.number(), z.boolean()]);
-type Literal = z.infer<typeof literalSchema>;
-type PropertyValue = Literal | Literal[] | { [key: string]: PropertyValue };
-export const propertyValueSchema: z.ZodType<PropertyValue> = z.lazy(() =>
-  z.union([
-    literalSchema,
-    z.array(z.string()),
-    z.record(propertyValueSchema),
-  ])
-);
-
 // Visual Description
 export const visualDescriptionSchema = z.object({
   height: z.string().optional(),
@@ -96,27 +89,9 @@ export const traitSchema = z.object({
   isHidden: z.boolean().optional(),
 });
 
-// Mention
-export const mentionSchema = z.object({
-  id: z.string(),
-  documentId: z.string(),
-  positionStart: z.number().int().min(0),
-  positionEnd: z.number().int().min(0),
-  context: z.string(),
-  timestamp: z.coerce.date(),
-});
-
 // Base Entity
-export const entitySchema = z.object({
-  id: z.string(),
-  name: z.string().min(1, "Entity name is required"),
-  aliases: z.array(z.string()).default([]),
+export const entitySchema = graphEntitySchema.extend({
   type: entityTypeSchema,
-  properties: z.record(propertyValueSchema).default({}),
-  mentions: z.array(mentionSchema).default([]),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-  notes: z.string().optional(),
 });
 
 // Character Entity
@@ -192,16 +167,8 @@ export const factionSchema = entitySchema.extend({
 });
 
 // Relationship
-export const relationshipSchema = z.object({
-  id: z.string(),
-  sourceId: z.string(),
-  targetId: z.string(),
+export const relationshipSchema = graphRelationshipSchema.extend({
   type: relationTypeSchema,
-  bidirectional: z.boolean().default(false),
-  strength: z.number().min(1).max(10).optional(),
-  metadata: z.record(propertyValueSchema).optional(),
-  notes: z.string().optional(),
-  createdAt: z.coerce.date(),
 });
 
 // Create entity schemas (for new entities)

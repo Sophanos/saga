@@ -10,7 +10,7 @@ Mythos IDE is an **AI-powered creative writing environment** that treats **"stor
 - Entities as variables (Characters, Locations, Items, Magic Systems, Factions)
 - Relationships as dependencies (18 typed relationship categories)
 - Consistency as type checking (AI linter catches contradictions)
-- Genre-agnostic (14 templates, expandable to 30+)
+- Genre-agnostic (AI-generated templates, no fixed list)
 
 ---
 
@@ -40,7 +40,7 @@ Mythos IDE is an **AI-powered creative writing environment** that treats **"stor
 
 **Gaps for MLP:**
 - Onboarding flow (guided tour, sample project)
-- Template picker UI (14 templates defined, no selector)
+- Template generation UI (AI-generated templates; no selector yet)
 - Usage dashboard (word count, AI calls, billing)
 - Collaboration UI wiring (backend 100% done)
 
@@ -57,7 +57,7 @@ saga/muse/
 │   ├── mobile/        # Expo React Native (partial)
 │   └── website/       # Marketing landing page
 ├── packages/
-│   ├── core/          # Domain types, World Graph, templates, schemas
+│   ├── core/          # Domain types, Project Graph, templates, schemas
 │   ├── editor/        # Tiptap extensions (EntityMark, SceneBlock, Linter)
 │   ├── ai/            # AI agents (Linter, Coach, Detector, Dynamics)
 │   ├── db/            # Supabase client, queries, migrations, mappers
@@ -129,7 +129,7 @@ Interpersonal (knows, loves, hates, married_to, allied_with, enemy_of), Familial
 - Vector DB: Qdrant (saga_vectors collection on Hetzner)
 - Reranking: Qwen3-Reranker-4B (optional)
 
-### 3.3 World Graph
+### 3.3 Project Graph
 
 In-memory graph structure with:
 - `nodes: Map<string, Entity>`
@@ -286,9 +286,9 @@ Current landing page (`apps/website/src/pages/LandingPage.tsx`) aligns well:
    - Real-time prose quality feedback
    - Letter grades (A-F) with specific fixes
 
-6. **Genre-Aware Templates**
-   - Epic Fantasy, D&D Campaign, Manga Novel, Visual Novel
-   - Each customizes entity types, linter rules, UI
+6. **AI-Generated Templates**
+   - AI derives entity types, linter rules, and UI defaults per project
+   - No fixed template list; templates are generated and refined over time
 
 ### 4.2 Comparison to Competitors
 
@@ -298,7 +298,7 @@ Current landing page (`apps/website/src/pages/LandingPage.tsx`) aligns well:
 | Relationship tracking | Manual | None | **18 types + graph** |
 | AI writing feedback | None | None | **Coach + Linter** |
 | Consistency checking | None | None | **Auto-detection** |
-| Genre templates | None | Basic | **14 specialized** |
+| Genre templates | None | Basic | **AI-generated per project** |
 | DM/hidden info layer | None | None | **Built-in** |
 
 ---
@@ -310,7 +310,7 @@ Current landing page (`apps/website/src/pages/LandingPage.tsx`) aligns well:
 | Priority | Feature | Effort | Impact |
 |----------|---------|--------|--------|
 | P0 | Onboarding flow (3-step wizard) | 2 days | High |
-| P0 | Template picker UI | 1 day | High |
+| P0 | AI template generation UI | 1 day | High |
 | P0 | Usage dashboard (word count, AI calls) | 2 days | High |
 | P1 | Wire collaboration UI | 1 day | Medium |
 | P1 | Subscription billing (Stripe) | 3 days | Critical |
@@ -319,7 +319,7 @@ Current landing page (`apps/website/src/pages/LandingPage.tsx`) aligns well:
 
 | Priority | Feature | Effort | Impact |
 |----------|---------|--------|--------|
-| P1 | **World Graph Visualization** | 1 week | Very High |
+| P1 | **Project Graph Visualization** | 1 week | Very High |
 | P1 | **Cmd+K Command Palette** | 3 days | High |
 | P2 | Timeline View | 1 week | High |
 | P2 | Map Integration | 2 weeks | Medium |
@@ -425,8 +425,8 @@ The progressive disclosure system (Gardener/Architect modes) is implemented. Rem
 | Purpose | Location |
 |---------|----------|
 | Entity types | `packages/core/src/entities/types.ts` |
-| World Graph | `packages/core/src/world-graph/index.ts` |
-| Template definitions | `packages/core/src/templates/builtin.ts` |
+| Project Graph | `packages/core/src/project-graph/index.ts` |
+| Template generation | AI-generated templates (no fixed list) |
 | AI prompts | `packages/prompts/src/*.ts` |
 | Edge functions | `supabase/functions/*/index.ts` |
 | Main app | `apps/web/src/App.tsx` |

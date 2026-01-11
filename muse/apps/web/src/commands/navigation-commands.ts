@@ -39,17 +39,17 @@ export const navigationCommands: Command[] = [
     },
   },
   {
-    id: "nav.world-graph",
-    label: "Open World Graph",
+    id: "nav.project-graph",
+    label: "Open Project Graph",
     description: "Visualize entity relationships in a graph view",
     icon: Network,
     category: "navigation",
-    keywords: ["graph", "world", "visualization", "relationships", "network"],
+    keywords: ["graph", "project", "visualization", "relationships", "network"],
     shortcut: "⌘G",
-    requiredModule: "world_graph",
+    requiredModule: "project_graph",
     when: (ctx) => ctx.state.project.currentProject !== null,
     execute: (ctx) => {
-      ctx.setCanvasView("worldGraph");
+      ctx.setCanvasView("projectGraph");
     },
   },
   {

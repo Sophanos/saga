@@ -146,7 +146,7 @@ export const uiModuleSchema = z.enum([
   "coach",
   "history",
   "editor",
-  "world_graph",
+  "project_graph",
   "map",
   "timeline",
   "codex",

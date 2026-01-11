@@ -24,7 +24,7 @@ interface UseGlobalShortcutsOptions {
  * - Cmd/Ctrl+Shift+L: Run linter
  * - Cmd/Ctrl+Shift+F: Search everything
  * - Cmd/Ctrl+Shift+E: Export
- * - Cmd/Ctrl+G: Open world graph
+ * - Cmd/Ctrl+G: Open project graph
  * - Cmd/Ctrl+/: Ask AI (focus chat)
  * - Cmd/Ctrl+M: Toggle mode
  * - Cmd/Ctrl+,: Settings
@@ -170,7 +170,7 @@ export function useGlobalShortcuts(options?: UseGlobalShortcutsOptions): void {
             commandId = "general.new-project";
             break;
           case "g":
-            commandId = "nav.world-graph";
+            commandId = "nav.project-graph";
             break;
           case "m":
             commandId = "general.toggle-mode";

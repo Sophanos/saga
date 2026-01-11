@@ -5,7 +5,12 @@
  * colors, and labels. Icons are specified as string names (not React components)
  * so this can be used in the core package without React dependencies.
  */
-import type { EntityType, RelationType } from "./types";
+import type {
+  GraphEntityType,
+  GraphRelationType,
+  WriterEntityType,
+  WriterRelationType,
+} from "./types";
 
 /**
  * Icon names that map to lucide-react icons.
@@ -48,7 +53,7 @@ export interface ProjectGraphRegistryDisplay {
  * Hex colors for entity types (for inline styles, canvas, etc.)
  * These are the canonical color values; Tailwind classes derive from these.
  */
-export const ENTITY_HEX_COLORS: Record<EntityType, string> = {
+export const WRITER_ENTITY_HEX_COLORS: Record<WriterEntityType, string> = {
   character: "#22d3ee", // cyan
   location: "#22c55e",  // green
   item: "#f59e0b",      // amber
@@ -61,7 +66,7 @@ export const ENTITY_HEX_COLORS: Record<EntityType, string> = {
 /**
  * Complete configuration for all entity types
  */
-export const ENTITY_TYPE_CONFIG: Record<EntityType, EntityTypeConfig> = {
+export const WRITER_ENTITY_TYPE_CONFIG: Record<WriterEntityType, EntityTypeConfig> = {
   character: {
     icon: "User",
     label: "Character",
@@ -102,7 +107,7 @@ export const ENTITY_TYPE_CONFIG: Record<EntityType, EntityTypeConfig> = {
 /**
  * All entity types in display order
  */
-export const ENTITY_TYPES: EntityType[] = [
+export const WRITER_ENTITY_TYPES: WriterEntityType[] = [
   "character",
   "location",
   "item",
@@ -117,8 +122,8 @@ export const ENTITY_TYPES: EntityType[] = [
  * @param type - The entity type
  * @returns Tailwind CSS color class
  */
-export function getEntityColor(type: EntityType): string {
-  return ENTITY_TYPE_CONFIG[type]?.color ?? "text-mythos-text-muted";
+export function getEntityColor(type: GraphEntityType): string {
+  return WRITER_ENTITY_TYPE_CONFIG[type as WriterEntityType]?.color ?? "text-mythos-text-muted";
 }
 
 /**
@@ -126,8 +131,8 @@ export function getEntityColor(type: EntityType): string {
  * @param type - The entity type
  * @returns Human-readable label
  */
-export function getEntityLabel(type: EntityType): string {
-  return ENTITY_TYPE_CONFIG[type]?.label ?? type.replace("_", " ");
+export function getEntityLabel(type: GraphEntityType): string {
+  return WRITER_ENTITY_TYPE_CONFIG[type as WriterEntityType]?.label ?? type.replace("_", " ");
 }
 
 /**
@@ -135,8 +140,8 @@ export function getEntityLabel(type: EntityType): string {
  * @param type - The entity type
  * @returns Icon name from lucide-react
  */
-export function getEntityIcon(type: EntityType): EntityIconName {
-  return ENTITY_TYPE_CONFIG[type]?.icon ?? "Sparkles";
+export function getEntityIcon(type: GraphEntityType): EntityIconName {
+  return WRITER_ENTITY_TYPE_CONFIG[type as WriterEntityType]?.icon ?? "Sparkles";
 }
 
 /**
@@ -144,35 +149,44 @@ export function getEntityIcon(type: EntityType): EntityIconName {
  * @param type - The entity type
  * @returns Hex color string (e.g., "#22d3ee")
  */
-export function getEntityHexColor(type: EntityType): string {
-  return ENTITY_HEX_COLORS[type] ?? "#64748b";
+export function getEntityHexColor(type: GraphEntityType): string {
+  return WRITER_ENTITY_HEX_COLORS[type as WriterEntityType] ?? "#64748b";
 }
 
 export function getGraphEntityLabel(
-  registry: ProjectGraphRegistryDisplay,
-  type: string
+  registry: ProjectGraphRegistryDisplay | null,
+  type: GraphEntityType
 ): string {
-  const def = registry.entityTypes[type];
+  const def = registry?.entityTypes[type];
   if (def?.displayName) return def.displayName;
-  return getEntityLabel(type as EntityType);
+  return getEntityLabel(type);
 }
 
 export function getGraphEntityIcon(
-  registry: ProjectGraphRegistryDisplay,
-  type: string
+  registry: ProjectGraphRegistryDisplay | null,
+  type: GraphEntityType
 ): EntityIconName {
-  const def = registry.entityTypes[type];
+  const def = registry?.entityTypes[type];
   if (def?.icon) return def.icon as EntityIconName;
-  return getEntityIcon(type as EntityType);
+  return getEntityIcon(type);
 }
 
 export function getGraphEntityColor(
-  registry: ProjectGraphRegistryDisplay,
-  type: string
+  registry: ProjectGraphRegistryDisplay | null,
+  type: GraphEntityType
 ): string {
-  const def = registry.entityTypes[type];
+  const def = registry?.entityTypes[type];
   if (def?.color) return def.color;
-  return getEntityColor(type as EntityType);
+  return getEntityColor(type);
+}
+
+export function getRegistryEntityHexColor(
+  registry: ProjectGraphRegistryDisplay | null,
+  type: GraphEntityType
+): string {
+  const def = registry?.entityTypes[type];
+  if (def?.color) return def.color;
+  return getEntityHexColor(type);
 }
 
 // ============================================================================
@@ -209,7 +223,7 @@ export interface RelationTypeConfig {
 /**
  * Complete configuration for all relationship types
  */
-export const RELATION_TYPE_CONFIG: Record<RelationType, RelationTypeConfig> = {
+export const WRITER_RELATION_TYPE_CONFIG: Record<WriterRelationType, RelationTypeConfig> = {
   // Familial
   parent_of: {
     label: "Parent Of",
@@ -320,8 +334,8 @@ export const RELATION_TYPE_CONFIG: Record<RelationType, RelationTypeConfig> = {
  * @param type - The relationship type
  * @returns Human-readable label
  */
-export function getRelationLabel(type: RelationType): string {
-  return RELATION_TYPE_CONFIG[type]?.label ?? type.replace("_", " ");
+export function getRelationLabel(type: GraphRelationType): string {
+  return WRITER_RELATION_TYPE_CONFIG[type as WriterRelationType]?.label ?? type.replace("_", " ");
 }
 
 /**
@@ -329,8 +343,8 @@ export function getRelationLabel(type: RelationType): string {
  * @param type - The relationship type
  * @returns Relationship category
  */
-export function getRelationCategory(type: RelationType): RelationshipCategory {
-  return RELATION_TYPE_CONFIG[type]?.category ?? "social";
+export function getRelationCategory(type: GraphRelationType): RelationshipCategory {
+  return WRITER_RELATION_TYPE_CONFIG[type as WriterRelationType]?.category ?? "social";
 }
 
 /**
@@ -338,8 +352,8 @@ export function getRelationCategory(type: RelationType): RelationshipCategory {
  * @param type - The relationship type
  * @returns Tailwind CSS color class
  */
-export function getRelationColor(type: RelationType): string {
-  return RELATION_TYPE_CONFIG[type]?.color ?? "text-slate-400";
+export function getRelationColor(type: GraphRelationType): string {
+  return WRITER_RELATION_TYPE_CONFIG[type as WriterRelationType]?.color ?? "text-slate-400";
 }
 
 /**

@@ -1,4 +1,4 @@
-import { persistAnalysisRecord, type PersistAnalysisInput } from "./analysisRepository";
+import { persistAnalysisRecord, type PersistAnalysisInput } from "./contentAnalysisRepository";
 
 /**
  * Status of a queued persistence operation

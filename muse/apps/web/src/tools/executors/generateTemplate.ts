@@ -5,7 +5,7 @@
  */
 
 import type { GenerateTemplateArgs } from "@mythos/agent-protocol";
-import { executeGenerateTemplate } from "../../services/ai/sagaClient";
+import { executeGenerateTemplate } from "../../services/ai/agentRuntimeClient";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 
 export interface GenerateTemplateExecutionResult {

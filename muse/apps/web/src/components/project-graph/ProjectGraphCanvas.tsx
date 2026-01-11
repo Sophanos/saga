@@ -10,12 +10,11 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useMythosStore } from "../../stores";
-import { useWorldGraph } from "../../hooks/useWorldGraph";
+import { useProjectGraph } from "../../hooks/useProjectGraph";
 import { useGraphLayout } from "../../hooks/useGraphLayout";
 import { EntityNode, type EntityNodeData, type EntityNodeType } from "./nodes/EntityNode";
 import { RelationshipEdge, type RelationshipEdgeType } from "./edges/RelationshipEdge";
-import { getEntityHexColor } from "../../utils/entityConfig";
-import type { EntityType } from "@mythos/core";
+import type { GraphEntityType, ProjectGraphRegistryDisplay } from "@mythos/core";
 
 // Custom node and edge types
 const nodeTypes = {
@@ -30,16 +29,18 @@ const ONLY_RENDER_VISIBLE_THRESHOLD = 200;
 const MINIMAP_THRESHOLD = 300;
 const EDGE_ANIMATION_THRESHOLD = 300;
 
-interface WorldGraphCanvasProps {
-  visibleTypes: Set<EntityType>;
+interface ProjectGraphCanvasProps {
+  visibleTypes: Set<GraphEntityType>;
+  registry?: ProjectGraphRegistryDisplay | null;
   onLayoutComplete?: () => void;
 }
 
-export function WorldGraphCanvas({
+export function ProjectGraphCanvas({
   visibleTypes,
+  registry,
   onLayoutComplete,
-}: WorldGraphCanvasProps) {
-  const { nodes: graphNodes, edges: graphEdges } = useWorldGraph({ visibleTypes });
+}: ProjectGraphCanvasProps) {
+  const { nodes: graphNodes, edges: graphEdges } = useProjectGraph({ visibleTypes, registry });
   const { layout } = useGraphLayout({ algorithm: "layered", direction: "DOWN" });
 
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityNodeType>([]);
@@ -140,7 +141,7 @@ export function WorldGraphCanvas({
       }}
       proOptions={{ hideAttribution: true }}
       className="bg-mythos-bg-primary"
-      data-testid="world-graph-canvas"
+      data-testid="project-graph-canvas"
     >
       <Background
         color="#334155"
@@ -155,7 +156,7 @@ export function WorldGraphCanvas({
           className="!bg-mythos-bg-secondary !border-mythos-border-default !rounded-lg"
           nodeColor={(node) => {
             const data = node.data as EntityNodeData;
-            return getEntityHexColor(data.type);
+            return data.color;
           }}
           maskColor="rgba(7, 7, 10, 0.7)"
         />

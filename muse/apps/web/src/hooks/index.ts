@@ -44,8 +44,8 @@ export { useApiKey } from "./useApiKey";
 export { useAutoSave, useAutoSaveStatus } from "./useAutoSave";
 export type { UseAutoSaveOptions, UseAutoSaveResult } from "./useAutoSave";
 
-// Writing analysis
-export { useWritingAnalysis } from "./useWritingAnalysis";
+// Content analysis
+export { useContentAnalysis } from "./useContentAnalysis";
 
 // Dynamics extraction
 export { useDynamicsExtraction } from "./useDynamicsExtraction";
@@ -128,7 +128,8 @@ export {
 } from "./useEditorChatContext";
 export type { EditorChatContext } from "./useEditorChatContext";
 
-export { useWorldGraph } from "./useWorldGraph";
+export { useProjectGraph } from "./useProjectGraph";
+export { useProjectTypeRegistry } from "./useProjectTypeRegistry";
 export { useGraphLayout, type LayoutAlgorithm, type LayoutDirection } from "./useGraphLayout";
 export { useToolRuntime } from "./useToolRuntime";
 export type { UseToolRuntimeResult, ToolRuntimeResult } from "./useToolRuntime";

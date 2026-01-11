@@ -209,7 +209,7 @@ bunx convex dev --url https://convex.cascada.vision
 
 **Client Integration** (`apps/web/src/services/`):
 - `config.ts` — Feature flag `VITE_USE_CONVEX_AI` to toggle endpoint
-- `ai/sagaClient.ts` — Updated to use `getAIEndpoint()` for Convex routing
+- `ai/agentRuntimeClient.ts` — Updated to use `getAIEndpoint()` for Convex routing
 
 ### Remaining Cleanup
 
@@ -400,7 +400,7 @@ Specialized environments for deep creative work.
 Create focused workspaces where writers can dive deep into specific aspects:
 - Character development with AI as co-creator
 - Multi-character relationship mapping
-- World-building with structured templates
+- World-building with AI-generated templates
 - Plot architecture with timeline visualization
 
 ### Workspace Types

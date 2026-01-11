@@ -14,8 +14,6 @@ export {
   // Entity tools
   createEntityTool,
   updateEntityTool,
-  createEntityNeedsApproval,
-  updateEntityNeedsApproval,
   type CreateEntityArgs,
   type UpdateEntityArgs,
   // Project graph (generic) tools
@@ -26,8 +24,6 @@ export {
   // Relationship tools
   createRelationshipTool,
   updateRelationshipTool,
-  createRelationshipNeedsApproval,
-  updateRelationshipNeedsApproval,
   type CreateRelationshipArgs,
   type UpdateRelationshipArgs,
   // Project graph (generic) edges
@@ -45,7 +41,7 @@ export {
   analyzeImageTool,
   analyzeImageNeedsApproval,
   type AnalyzeImageArgs,
-} from "./worldGraphTools";
+} from "./projectGraphTools";
 export { expandChunkContext } from "./ragHandlers";
 export {
   executeCreateEntity,
@@ -56,4 +52,4 @@ export {
   executeUpdateNode,
   executeCreateEdge,
   executeUpdateEdge,
-} from "./worldGraphHandlers";
+} from "./projectGraphHandlers";

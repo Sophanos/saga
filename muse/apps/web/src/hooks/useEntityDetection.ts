@@ -8,18 +8,12 @@ import type {
 } from "@mythos/core";
 import type { Entity, Mention } from "@mythos/core";
 import type { Editor } from "@mythos/editor";
-import {
-  createEntity as dbCreateEntity,
-  updateEntity as dbUpdateEntity,
-  mapCoreEntityToDbInsert,
-  mapCoreEntityToDbUpdate,
-  mapDbEntityToEntity,
-} from "@mythos/db";
 import { useMythosStore, useEntities } from "../stores";
 import { useApiKey } from "./useApiKey";
 import { useEntityMarks } from "./useEntityMarks";
 import { detectEntitiesViaEdge, DetectApiError } from "../services/ai";
 import { useProgressiveStore } from "@mythos/state";
+import { useEntityPersistence } from "./useEntityPersistence";
 
 /**
  * Generate a simple UUID v4
@@ -157,12 +151,16 @@ export function useEntityDetection(
   };
 
   // Store actions
-  const addEntity = useMythosStore((state) => state.addEntity);
-  const updateEntity = useMythosStore((state) => state.updateEntity);
+  const addEntityToStore = useMythosStore((state) => state.addEntity);
+  const updateEntityInStore = useMythosStore((state) => state.updateEntity);
   const currentDocument = useMythosStore(
     (state) => state.document.currentDocument
   );
+  const currentProjectId = useMythosStore(
+    (state) => state.project.currentProject?.id
+  );
   const existingEntities = useEntities();
+  const { createEntity, updateEntity } = useEntityPersistence();
 
   // API key for BYOK
   const { key: apiKey } = useApiKey();
@@ -213,9 +211,15 @@ export function useEntityDetection(
           type: e.type as EntityType,
         }));
 
+        if (!currentProjectId) {
+          console.warn("[useEntityDetection] Missing project context");
+          return;
+        }
+
         // Call the entity detection edge function via service client
         const result = await detectEntitiesViaEdge(
           {
+            projectId: currentProjectId,
             text,
             existingEntities: existingForMatching,
             options: detectionOptions,
@@ -269,7 +273,7 @@ export function useEntityDetection(
         setIsDetecting(false);
       }
     },
-    [enabled, minLength, detectionOptions, existingEntities, apiKey]
+    [enabled, minLength, detectionOptions, existingEntities, apiKey, currentProjectId]
   );
 
   /**
@@ -347,36 +351,20 @@ export function useEntityDetection(
                 updatedAt: new Date(),
               };
 
-              try {
-                // Persist to DB first
-                const dbUpdate = mapCoreEntityToDbUpdate(updates);
-                const dbEntity = await dbUpdateEntity(detected.matchedExistingId, dbUpdate);
-                const persistedEntity = mapDbEntityToEntity(dbEntity);
-
-                // Then update in store
-                updateEntity(detected.matchedExistingId, persistedEntity);
-              } catch (dbErr) {
-                console.error("[useEntityDetection] DB update failed, updating store only:", dbErr);
-                // Fallback to store-only update
-                updateEntity(detected.matchedExistingId, updates);
+              const result = await updateEntity(detected.matchedExistingId, updates);
+              if (result.error) {
+                console.error("[useEntityDetection] Update failed, updating store only:", result.error);
+                updateEntityInStore(detected.matchedExistingId, updates);
               }
             }
           } else {
             // Create new entity with the tempId
             const newEntity = { ...entity, id: detected.tempId };
 
-            try {
-              // Persist to DB first
-              const dbInsert = mapCoreEntityToDbInsert(newEntity, projectId);
-              const dbEntity = await dbCreateEntity(dbInsert);
-              const persistedEntity = mapDbEntityToEntity(dbEntity);
-
-              // Then add to store with DB-returned data
-              addEntity(persistedEntity);
-            } catch (dbErr) {
-              console.error("[useEntityDetection] DB create failed, adding to store only:", dbErr);
-              // Fallback to store-only add
-              addEntity(newEntity);
+            const result = await createEntity(newEntity, projectId);
+            if (result.error) {
+              console.error("[useEntityDetection] Create failed, adding to store only:", result.error);
+              addEntityToStore(newEntity);
             }
           }
         }
@@ -403,7 +391,9 @@ export function useEntityDetection(
     [
       currentDocument,
       existingEntities,
-      addEntity,
+      addEntityToStore,
+      updateEntityInStore,
+      createEntity,
       updateEntity,
       closeModal,
       applyMarksForDetectedEntities,

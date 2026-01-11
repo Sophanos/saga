@@ -1,5 +1,5 @@
 /**
- * World Graph Tool Handlers - Server-side execution for entity/relationship tools
+ * Project Graph Tool Handlers - Server-side execution for entity/relationship tools
  */
 
 import { v } from "convex/values";
@@ -23,7 +23,7 @@ import type {
   UpdateNodeArgs,
   CreateEdgeArgs,
   UpdateEdgeArgs,
-} from "./worldGraphTools";
+} from "./projectGraphTools";
 
 // =============================================================================
 // Internal Queries - Access + Lookups
@@ -288,7 +288,7 @@ async function getProjectAccessError(
 
   const access = await ctx.runQuery(
     // @ts-expect-error Deep types
-    internal["ai/tools/worldGraphHandlers"].getProjectMemberRole,
+    internal["ai/tools/projectGraphHandlers"].getProjectMemberRole,
     { projectId, userId: actorUserId }
   );
 
@@ -315,7 +315,7 @@ async function resolveEntityByName(
 ): Promise<{ entity: Doc<"entities"> | null; error?: string }> {
   const matches = (await ctx.runQuery(
     // @ts-expect-error Deep types
-    internal["ai/tools/worldGraphHandlers"].findEntityByCanonical,
+    internal["ai/tools/projectGraphHandlers"].findEntityByCanonical,
     { projectId, name, type }
   )) as Doc<"entities">[] | null;
 
@@ -334,22 +334,37 @@ async function resolveEntityByName(
   return { entity: matches[0] };
 }
 
-function buildEntityProperties(args: CreateEntityArgs): Record<string, unknown> {
-  const props: Record<string, unknown> = {};
-  if (args.archetype) props["archetype"] = args.archetype;
-  if (args.backstory) props["backstory"] = args.backstory;
-  if (args.goals) props["goals"] = args.goals;
-  if (args.fears) props["fears"] = args.fears;
-  if (args.climate) props["climate"] = args.climate;
-  if (args.atmosphere) props["atmosphere"] = args.atmosphere;
-  if (args.category) props["category"] = args.category;
-  if (args.abilities) props["abilities"] = args.abilities;
-  if (args.leader) props["leader"] = args.leader;
-  if (args.headquarters) props["headquarters"] = args.headquarters;
-  if (args.factionGoals) props["factionGoals"] = args.factionGoals;
-  if (args.rules) props["rules"] = args.rules;
-  if (args.limitations) props["limitations"] = args.limitations;
-  return props;
+function buildEntityProperties(args: {
+  properties?: Record<string, unknown>;
+  archetype?: string;
+  backstory?: string;
+  goals?: string[];
+  fears?: string[];
+  climate?: string;
+  atmosphere?: string;
+  category?: string;
+  abilities?: string[];
+  leader?: string;
+  headquarters?: string;
+  factionGoals?: string[];
+  rules?: string[];
+  limitations?: string[];
+}): Record<string, unknown> {
+  const props: Record<string, unknown> = { ...(args.properties ?? {}) };
+  if (args.archetype !== undefined) props["archetype"] = args.archetype;
+  if (args.backstory !== undefined) props["backstory"] = args.backstory;
+  if (args.goals !== undefined) props["goals"] = args.goals;
+  if (args.fears !== undefined) props["fears"] = args.fears;
+  if (args.climate !== undefined) props["climate"] = args.climate;
+  if (args.atmosphere !== undefined) props["atmosphere"] = args.atmosphere;
+  if (args.category !== undefined) props["category"] = args.category;
+  if (args.abilities !== undefined) props["abilities"] = args.abilities;
+  if (args.leader !== undefined) props["leader"] = args.leader;
+  if (args.headquarters !== undefined) props["headquarters"] = args.headquarters;
+  if (args.factionGoals !== undefined) props["factionGoals"] = args.factionGoals;
+  if (args.rules !== undefined) props["rules"] = args.rules;
+  if (args.limitations !== undefined) props["limitations"] = args.limitations;
+  return Object.fromEntries(Object.entries(props).filter(([_, v]) => v !== undefined));
 }
 
 async function getResolvedRegistry(
@@ -433,7 +448,7 @@ export const executeCreateEntity = internalAction({
 
     const entityId = await ctx.runMutation(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].createEntityMutation,
+      internal["ai/tools/projectGraphHandlers"].createEntityMutation,
       {
         projectId: projectIdVal,
         type: args.type,
@@ -529,7 +544,7 @@ export const executeUpdateEntity = internalAction({
     if (!def) {
       return fail("INVALID_TYPE", `Unknown entity type: ${entity.type}`);
     }
-    const { name, aliases, notes, ...propertyUpdates } = args.updates;
+    const { name, aliases, notes, properties, ...legacyUpdates } = args.updates;
 
     const dbUpdates: Record<string, unknown> = {};
     if (name !== undefined) {
@@ -540,12 +555,13 @@ export const executeUpdateEntity = internalAction({
     if (notes !== undefined) dbUpdates["notes"] = notes;
 
     const existingProps = (entity.properties ?? {}) as Record<string, unknown>;
-    const cleanPropUpdates = Object.fromEntries(
-      Object.entries(propertyUpdates).filter(([_, v]) => v !== undefined)
-    );
+    const propertyUpdates = buildEntityProperties({
+      properties: properties as Record<string, unknown> | undefined,
+      ...(legacyUpdates as Record<string, unknown>),
+    });
     const nextProperties =
-      Object.keys(cleanPropUpdates).length > 0
-        ? { ...existingProps, ...cleanPropUpdates }
+      Object.keys(propertyUpdates).length > 0
+        ? { ...existingProps, ...propertyUpdates }
         : existingProps;
     const propertiesResult = validateEntityProperties(def, nextProperties);
     if (!propertiesResult.ok) {
@@ -555,13 +571,13 @@ export const executeUpdateEntity = internalAction({
         propertiesResult.error.errors
       );
     }
-    if (Object.keys(cleanPropUpdates).length > 0) {
+    if (Object.keys(propertyUpdates).length > 0) {
       dbUpdates["properties"] = propertiesResult.value;
     }
 
     await ctx.runMutation(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].updateEntityMutation,
+      internal["ai/tools/projectGraphHandlers"].updateEntityMutation,
       { id: entity._id, updates: dbUpdates }
     );
 
@@ -638,7 +654,7 @@ export const executeCreateRelationship = internalAction({
     if (!def) {
       return fail("INVALID_TYPE", `Unknown relationship type: ${args.type}`);
     }
-    const metadataResult = validateRelationshipMetadata(def, undefined);
+    const metadataResult = validateRelationshipMetadata(def, args.metadata);
     if (!metadataResult.ok) {
       return fail(
         "SCHEMA_VALIDATION_FAILED",
@@ -668,7 +684,7 @@ export const executeCreateRelationship = internalAction({
 
     const existing = await ctx.runQuery(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].findRelationship,
+      internal["ai/tools/projectGraphHandlers"].findRelationship,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -686,7 +702,7 @@ export const executeCreateRelationship = internalAction({
 
     const relId = await ctx.runMutation(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].createRelationshipMutation,
+      internal["ai/tools/projectGraphHandlers"].createRelationshipMutation,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -695,6 +711,7 @@ export const executeCreateRelationship = internalAction({
         bidirectional: args.bidirectional,
         strength: args.strength,
         notes: args.notes,
+        metadata: args.metadata === undefined ? undefined : metadataResult.value,
       }
     );
 
@@ -786,7 +803,7 @@ export const executeUpdateRelationship = internalAction({
 
     const rel = await ctx.runQuery(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].findRelationship,
+      internal["ai/tools/projectGraphHandlers"].findRelationship,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -802,7 +819,8 @@ export const executeUpdateRelationship = internalAction({
       );
     }
 
-    const metadataResult = validateRelationshipMetadata(def, rel.metadata);
+    const nextMetadata = args.updates.metadata ?? rel.metadata;
+    const metadataResult = validateRelationshipMetadata(def, nextMetadata);
     if (!metadataResult.ok) {
       return fail(
         "SCHEMA_VALIDATION_FAILED",
@@ -810,10 +828,13 @@ export const executeUpdateRelationship = internalAction({
         metadataResult.error.errors
       );
     }
+    if (args.updates.metadata !== undefined) {
+      args.updates.metadata = metadataResult.value as typeof args.updates.metadata;
+    }
 
     await ctx.runMutation(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].updateRelationshipMutation,
+      internal["ai/tools/projectGraphHandlers"].updateRelationshipMutation,
       { id: rel._id, updates: args.updates }
     );
 
@@ -903,7 +924,7 @@ export const executeCreateNode = internalAction({
 
     const entityId = await ctx.runMutation(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].createEntityMutation,
+      internal["ai/tools/projectGraphHandlers"].createEntityMutation,
       {
         projectId: projectIdVal,
         type: args.type,
@@ -1023,7 +1044,7 @@ export const executeUpdateNode = internalAction({
 
     await ctx.runMutation(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].updateEntityMutation,
+      internal["ai/tools/projectGraphHandlers"].updateEntityMutation,
       { id: entity._id, updates: dbUpdates }
     );
 
@@ -1118,7 +1139,7 @@ export const executeCreateEdge = internalAction({
 
     const existing = await ctx.runQuery(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].findRelationship,
+      internal["ai/tools/projectGraphHandlers"].findRelationship,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -1136,7 +1157,7 @@ export const executeCreateEdge = internalAction({
 
     const relId = await ctx.runMutation(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].createRelationshipMutation,
+      internal["ai/tools/projectGraphHandlers"].createRelationshipMutation,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -1225,7 +1246,7 @@ export const executeUpdateEdge = internalAction({
 
     const rel = await ctx.runQuery(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].findRelationship,
+      internal["ai/tools/projectGraphHandlers"].findRelationship,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -1256,7 +1277,7 @@ export const executeUpdateEdge = internalAction({
 
     await ctx.runMutation(
       // @ts-expect-error Deep types
-      internal["ai/tools/worldGraphHandlers"].updateRelationshipMutation,
+      internal["ai/tools/projectGraphHandlers"].updateRelationshipMutation,
       { id: rel._id, updates: args.updates }
     );
 

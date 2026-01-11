@@ -156,6 +156,7 @@ export interface CreateEntityArgs {
   name: string;
   aliases?: string[];
   notes?: string;
+  properties?: Record<string, unknown>;
   // Character-specific
   archetype?: string;
   backstory?: string;
@@ -209,6 +210,7 @@ export interface CreateRelationshipArgs {
   bidirectional?: boolean;
   notes?: string;
   strength?: number; // 0-1
+  metadata?: Record<string, unknown>;
   citations?: CanonCitation[];
 }
 
@@ -250,6 +252,7 @@ export interface UpdateRelationshipArgs {
     notes?: string;
     strength?: number;
     bidirectional?: boolean;
+    metadata?: Record<string, unknown>;
   };
   citations?: CanonCitation[];
 }

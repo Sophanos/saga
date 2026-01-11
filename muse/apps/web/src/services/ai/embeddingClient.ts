@@ -1,5 +1,5 @@
 /**
- * Embedding API Client - Calls Supabase edge function /functions/v1/ai-embed
+ * Embedding API Client - Calls Convex HTTP action /api/ai/embed
  *
  * Generates embeddings via DeepInfra and optionally indexes to Qdrant.
  * This client uses server-side secrets only - no API keys passed from client.
@@ -179,7 +179,7 @@ export async function embedTextViaEdge(
 
   try {
     const result = await callEdgeFunction<EmbedEdgeRequest, EmbedEdgeResponse>(
-      "ai-embed",
+      "ai/embed",
       {
         inputs: [text],
         qdrant: qdrantConfig,
@@ -232,7 +232,7 @@ export async function embedManyViaEdge(
 
   try {
     const result = await callEdgeFunction<EmbedEdgeRequest, EmbedEdgeResponse>(
-      "ai-embed",
+      "ai/embed",
       {
         inputs: texts,
         qdrant: opts?.qdrant,
@@ -268,8 +268,14 @@ export async function embedManyViaEdge(
  * @param pointIds - Array of point IDs to delete (e.g., ["doc_123", "ent_456"])
  * @param opts - Request options (signal for cancellation)
  */
+export interface VectorDeleteTarget {
+  projectId: string;
+  type: "document" | "entity" | "memory" | "image";
+  targetId: string;
+}
+
 export async function deleteVectorsViaEdge(
-  pointIds: string[],
+  target: VectorDeleteTarget,
   opts?: { signal?: AbortSignal }
 ): Promise<void> {
   // Skip if embeddings are disabled
@@ -277,14 +283,37 @@ export async function deleteVectorsViaEdge(
     return;
   }
 
-  if (!pointIds || pointIds.length === 0) {
+  if (!target.projectId || !target.targetId) {
     return;
   }
 
   try {
-    await callEdgeFunction<{ pointIds: string[] }, { deleted: number }>(
-      "ai-delete-vector",
-      { pointIds },
+    await callEdgeFunction<
+      {
+        action: "delete";
+        filter: {
+          projectId: string;
+          type: string;
+          documentId?: string;
+          entityId?: string;
+          memoryId?: string;
+          assetId?: string;
+        };
+      },
+      { deleted: number }
+    >(
+      "ai/embed",
+      {
+        action: "delete",
+        filter: {
+          projectId: target.projectId,
+          type: target.type,
+          documentId: target.type === "document" ? target.targetId : undefined,
+          entityId: target.type === "entity" ? target.targetId : undefined,
+          memoryId: target.type === "memory" ? target.targetId : undefined,
+          assetId: target.type === "image" ? target.targetId : undefined,
+        },
+      },
       { signal: opts?.signal }
     );
   } catch (error) {

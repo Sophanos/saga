@@ -41,6 +41,6 @@ export const getEntityTool = tool({
   description: "Get full details of a character, location, or other entity including relationships.",
   inputSchema: z.object({
     entityId: z.string().describe("Entity ID"),
-    includeRelationships: z.boolean().optional().describe("Include World Graph connections"),
+    includeRelationships: z.boolean().optional().describe("Include Project Graph connections"),
   }),
 });

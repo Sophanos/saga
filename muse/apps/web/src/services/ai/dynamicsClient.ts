@@ -1,11 +1,12 @@
 /**
- * Dynamics API Client - Calls Supabase edge function /functions/v1/ai-dynamics
+ * Dynamics API Client - Calls Convex HTTP action /api/ai/dynamics
  */
 
 import type { Interaction } from "@mythos/core";
 import { ApiError, callEdgeFunction, type ApiErrorCode } from "../api-client";
 
 export interface DynamicsRequestPayload {
+  projectId: string;
   content: string;
   sceneMarker?: string;
   documentId?: string;
@@ -43,6 +44,7 @@ export class DynamicsApiError extends ApiError {
 
 /** Internal request payload shape for the edge function */
 interface DynamicsEdgeRequest {
+  projectId: string;
   content: string;
   sceneMarker?: string;
   documentId?: string;
@@ -61,6 +63,10 @@ export async function extractDynamicsViaEdge(
   opts?: DynamicsRequestOptions
 ): Promise<DynamicsResponsePayload> {
   // Validate required fields
+  if (!payload.projectId || payload.projectId.trim().length === 0) {
+    throw new DynamicsApiError("projectId is required", 400, "VALIDATION_ERROR");
+  }
+
   if (!payload.content || payload.content.trim().length === 0) {
     throw new DynamicsApiError("content must be non-empty", 400, "VALIDATION_ERROR");
   }
@@ -75,8 +81,9 @@ export async function extractDynamicsViaEdge(
 
   try {
     const result = await callEdgeFunction<DynamicsEdgeRequest, DynamicsEdgeResponse>(
-      "ai-dynamics",
+      "ai/dynamics",
       {
+        projectId: payload.projectId,
         content: payload.content,
         sceneMarker: payload.sceneMarker,
         documentId: payload.documentId,

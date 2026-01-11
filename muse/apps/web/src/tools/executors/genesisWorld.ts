@@ -7,7 +7,7 @@
 import { buildEntity, buildRelationship } from "@mythos/core";
 import type { EntityType, RelationType } from "@mythos/core";
 import type { GenesisWorldArgs } from "@mythos/agent-protocol";
-import { executeGenesisWorld } from "../../services/ai/sagaClient";
+import { executeGenesisWorld } from "../../services/ai/agentRuntimeClient";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 
 export interface GenesisWorldExecutionResult {

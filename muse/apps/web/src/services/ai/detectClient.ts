@@ -1,5 +1,5 @@
 /**
- * Entity Detection API Client - Calls Supabase edge function /functions/v1/ai-detect
+ * Entity Detection API Client - Calls Convex HTTP action /api/ai/detect
  */
 
 import type {
@@ -12,6 +12,7 @@ import type {
 import { ApiError, callEdgeFunction, type ApiErrorCode } from "../api-client";
 
 export interface DetectRequestPayload {
+  projectId: string;
   text: string;
   existingEntities?: Array<{
     id: string;
@@ -53,6 +54,7 @@ export class DetectApiError extends ApiError {
 
 /** Internal request payload shape for the edge function */
 interface DetectEdgeRequest {
+  projectId: string;
   text: string;
   existingEntities?: Array<{
     id: string;
@@ -78,11 +80,15 @@ export async function detectEntitiesViaEdge(
   if (!payload.text || payload.text.trim().length === 0) {
     throw new DetectApiError("text must be non-empty", 400, "VALIDATION_ERROR");
   }
+  if (!payload.projectId || payload.projectId.trim().length === 0) {
+    throw new DetectApiError("projectId must be non-empty", 400, "VALIDATION_ERROR");
+  }
 
   try {
     const result = await callEdgeFunction<DetectEdgeRequest, DetectEdgeResponse>(
-      "ai-detect",
+      "ai/detect",
       {
+        projectId: payload.projectId,
         text: payload.text,
         existingEntities: payload.existingEntities,
         options: payload.options,

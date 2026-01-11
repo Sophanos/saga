@@ -10,9 +10,9 @@ export {
   getEntityTypeButtons,
   type EntityTypeButtonConfig,
   // Re-exports from @mythos/core
-  ENTITY_TYPE_CONFIG,
-  ENTITY_TYPES,
-  ENTITY_HEX_COLORS,
+  WRITER_ENTITY_TYPE_CONFIG,
+  WRITER_ENTITY_TYPES,
+  WRITER_ENTITY_HEX_COLORS,
   getEntityIcon,
   getEntityLabel,
   getEntityHexColor,

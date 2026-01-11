@@ -125,7 +125,7 @@ export const searchImagesExecutor: ToolDefinition<SearchImagesArgs, SearchImages
       let response: SagaExecuteToolResponse;
       try {
         response = await callEdgeFunction<SagaExecuteToolRequest, SagaExecuteToolResponse>(
-          "ai-saga",
+          "ai/saga",
           request,
           {
             apiKey: ctx.apiKey,

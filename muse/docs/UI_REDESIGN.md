@@ -87,7 +87,7 @@ app/
 ├── (tabs)/                  # Tab group
 │   ├── _layout.tsx          # Tab navigator config
 │   ├── index.tsx            # Home / Editor
-│   ├── world.tsx            # World graph
+│   ├── world.tsx            # Project graph
 │   └── settings.tsx         # Settings
 ├── (sheets)/                # Modal sheets group
 │   ├── _layout.tsx          # Sheet presentation config
@@ -242,7 +242,7 @@ Move to Convex:
 | Chapter/Scene hierarchy | Sidebar | P0 |
 | Entity system (7 types) | Sidebar + Modals | P0 |
 | Entity HUD on hover | Floating | P0 |
-| World Graph visualization | Canvas view | P1 |
+| Project Graph visualization | Canvas view | P1 |
 | AI Chat with RAG | Console tab | P0 |
 | Writing Coach (tension/pacing) | Console tab | P1 |
 | Consistency Linter | Console tab | P1 |
@@ -261,7 +261,7 @@ Move to Convex:
 | Three-panel layout | Feels cramped | Adaptive single canvas with overlays |
 | Entity forms | Modal-heavy | Inline editing + side sheets |
 | Project sidebar | Always visible | Collapsible + spotlight search |
-| World Graph | Separate view | Picture-in-picture or overlay |
+| Project Graph | Separate view | Picture-in-picture or overlay |
 
 ---
 
@@ -306,7 +306,7 @@ App
 │   ├── Editor (Tiptap)
 │   │   ├── EditorToolbar (floating, appears on selection)
 │   │   └── EntityMentionPopover
-│   ├── WorldGraphOverlay (toggle)
+│   ├── ProjectGraphOverlay (toggle)
 │   └── EntityHUD (floating near cursor)
 ├── BottomDock (macOS Dock-style)
 │   ├── OutlinePanel (slide up)
@@ -349,7 +349,7 @@ App
 ├─────────────────────────────────────────┤
 │ NAVIGATION                              │
 │   📁 Go to Document...                  │
-│   🗺 Open World Graph          ⌘G      │
+│   🗺 Open Project Graph          ⌘G      │
 └─────────────────────────────────────────┘
 ```
 
@@ -566,13 +566,13 @@ App
                 ▼
 ```
 
-### 3.10 World Graph Overlay
+### 3.10 Project Graph Overlay
 
 **Style:** Full-screen overlay with controls, glassmorphic background
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ ✕ World Graph                    [Filter ▾] [Reset Layout] │
+│ ✕ Project Graph                    [Filter ▾] [Reset Layout] │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │         [Marcus] ─────ally───── [Elena]                     │
@@ -604,7 +604,7 @@ App
 | New Entity | `⌘⇧E` | Global |
 | Toggle AI Panel | `⌘J` | Global |
 | Toggle Outline | `⌘B` | Global |
-| Toggle World Graph | `⌘G` | Global |
+| Toggle Project Graph | `⌘G` | Global |
 | Run Linter | `⌘⇧L` | Global |
 | Run Analysis | `⌘⇧A` | Global |
 | Focus Editor | `Esc` | Global |
@@ -645,7 +645,7 @@ Right-click context menus for:
 - Documents (rename, delete, move, export)
 - Entities (edit, delete, find mentions, view relationships)
 - Editor text (format, create entity from selection)
-- World Graph nodes (edit, delete, expand connections)
+- Project Graph nodes (edit, delete, expand connections)
 
 ---
 
@@ -735,7 +735,7 @@ mythos-app/
 │   ├── (main)/               # Main app group
 │   │   ├── _layout.tsx       # Sidebar + content layout
 │   │   ├── index.tsx         # Editor (home)
-│   │   ├── world.tsx         # World graph
+│   │   ├── world.tsx         # Project graph
 │   │   └── settings.tsx      # Settings
 │   └── (sheets)/             # Modal sheets
 │       ├── entity/[id].tsx
@@ -748,7 +748,7 @@ mythos-app/
 │   │   └── AISheet.tsx
 │   ├── shared/               # Cross-platform
 │   │   ├── Editor.tsx
-│   │   └── WorldGraph.tsx
+│   │   └── ProjectGraph.tsx
 │   └── web/                  # Web-specific
 │       └── WebSidebar.tsx
 ├── convex/                   # Convex backend
@@ -2198,8 +2198,8 @@ apps/web/src/
 │   │   ├── FloatingToolbar.tsx
 │   │   ├── EntityMention.tsx
 │   │   └── EntityHUD.tsx
-│   └── world-graph/
-│       ├── WorldGraphOverlay.tsx
+│   └── project-graph/
+│       ├── ProjectGraphOverlay.tsx
 │       └── ...
 ├── hooks/
 │   ├── usePanel.ts            # Panel open/close state

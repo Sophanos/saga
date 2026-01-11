@@ -1,16 +1,16 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { cn } from "@mythos/ui";
-import type { EntityType } from "@mythos/core";
-import {
-  getEntityIconComponent,
-  getEntityHexColor,
-} from "../../../utils/entityConfig";
+import type { GraphEntityType } from "@mythos/core";
+import { resolveLucideIcon } from "../../../utils/iconResolver";
 
 export interface EntityNodeData extends Record<string, unknown> {
   entityId: string;
   name: string;
-  type: EntityType;
+  type: GraphEntityType;
+  iconName?: string;
+  displayName?: string;
+  color: string;
 }
 
 // Full node type for React Flow
@@ -18,8 +18,9 @@ export type EntityNodeType = Node<EntityNodeData, "entityNode">;
 
 function EntityNodeComponent({ data, selected }: NodeProps<EntityNodeType>) {
   const nodeData = data as EntityNodeData;
-  const IconComponent = getEntityIconComponent(nodeData.type);
-  const borderColor = getEntityHexColor(nodeData.type);
+  const IconComponent = resolveLucideIcon(nodeData.iconName);
+  const borderColor = nodeData.color;
+  const typeLabel = nodeData.displayName ?? nodeData.type.replace("_", " ");
 
   return (
     <>
@@ -46,7 +47,7 @@ function EntityNodeComponent({ data, selected }: NodeProps<EntityNodeType>) {
             : "hover:shadow-xl"
         )}
         style={{ borderColor }}
-        data-testid={`wg-node-${nodeData.entityId}`}
+        data-testid={`pg-node-${nodeData.entityId}`}
         data-entity-type={nodeData.type}
       >
         <div className="flex items-center gap-2">
@@ -64,7 +65,7 @@ function EntityNodeComponent({ data, selected }: NodeProps<EntityNodeType>) {
               {nodeData.name}
             </div>
             <div className="text-[10px] text-mythos-text-muted capitalize">
-              {nodeData.type.replace("_", " ")}
+              {typeLabel}
             </div>
           </div>
         </div>

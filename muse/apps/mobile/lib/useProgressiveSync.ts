@@ -48,7 +48,7 @@ export function useProgressiveSync(projectId: string | null): void {
         editor: true,
         manifest: true,
         console: true,
-        world_graph: true
+        project_graph: true
       },
       totalWritingTimeSec: 0,
       neverAsk: {},

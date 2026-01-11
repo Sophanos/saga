@@ -4,7 +4,7 @@
 Keep Playwright E2E tests stable across Expo Web and Tauri Web by guaranteeing a small, consistent set of selectors and deterministic UI states.
 
 ## Scope
-Applies to MLP1 journeys (auth, editor, entities/world graph, AI chat, RAG, collaboration, billing) and upcoming P1/P2 writer tools (Focus Mode, grammar/style, logic checks).
+Applies to MLP1 journeys (auth, editor, entities/project graph, AI chat, RAG, collaboration, billing) and upcoming P1/P2 writer tools (Flow Mode, grammar/style, logic checks).
 
 ## Contract
 - Every E2E-relevant interactive control must expose a stable `data-testid` (Expo uses `testID`, which maps to `data-testid` on web).
@@ -14,17 +14,17 @@ Applies to MLP1 journeys (auth, editor, entities/world graph, AI chat, RAG, coll
 - Collaboration cursors must expose `remote-cursor-<userId>` and `remote-cursor-label-<userId>` test IDs for identity-based assertions.
 - Provide a deterministic E2E path behind `E2E_TEST_MODE` for AI/embeddings and other non-deterministic APIs.
 - For keyboard-only shortcuts, expose a secondary UI path so tests can reach the same state without relying on key combos.
-- World Graph edges must expose `wg-edge-<relationshipId>` on the label for edge assertions.
+- Project Graph edges must expose `pg-edge-<relationshipId>` on the label for edge assertions.
 
 ## Naming Conventions
 - `auth-*` for login/signup/reset/signout
 - `editor-*` for editor surface, focus mode, writing tools
 - `chat-*` for AI panel + streaming
-- `world-graph-*` for entity graph
+- `project-graph-*` for entity graph
 - `billing-*` for subscription UI
 
-## Focus Mode + Writer Tools (MLP1 Roadmap)
-- Focus Mode toggle, timers, word goals, and session stats must each have a test ID.
+## Flow Mode + Writer Tools (MLP1 Roadmap)
+- Flow Mode toggle, timers, word goals, and session stats must each have a test ID.
 - Writer tools (grammar, logic, name generation) must expose test IDs for trigger controls, result panels, and approval/undo actions.
 
 ## Test Hygiene

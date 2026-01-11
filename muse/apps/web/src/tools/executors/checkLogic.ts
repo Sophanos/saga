@@ -5,7 +5,7 @@
  */
 
 import type { CheckLogicArgs } from "@mythos/agent-protocol";
-import { executeCheckLogic } from "../../services/ai/sagaClient";
+import { executeCheckLogic } from "../../services/ai/agentRuntimeClient";
 import { resolveTextFromContext, type ToolDefinition, type ToolExecutionResult } from "../types";
 
 export interface CheckLogicExecutionResult {

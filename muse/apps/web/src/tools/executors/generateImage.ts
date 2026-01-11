@@ -203,7 +203,7 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
       let response: AIImageResponse;
       try {
         response = await callEdgeFunction<AIImageRequest, AIImageResponse>(
-          "ai-image",
+          "ai/image",
           request,
           {
             apiKey: ctx.apiKey,

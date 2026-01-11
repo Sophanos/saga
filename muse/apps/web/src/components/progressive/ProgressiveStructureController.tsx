@@ -49,7 +49,7 @@ const WORD_COUNT_THROTTLE_MS = 500;
 const UNLOCK_THRESHOLDS = {
   manifest: { writingTimeHours: 0.5 }, // 30 minutes
   console: { writingTimeHours: 1 },    // 1 hour
-  world_graph: { characters: 5, writingTimeHours: 2 },
+  project_graph: { entities: 5, writingTimeHours: 2 },
   timeline: { projectAgeDays: 7 },
 };
 
@@ -125,14 +125,12 @@ function useWordCount(): number {
 }
 
 // ============================================================================
-// Hook: useCharacterCount
+// Hook: useEntityCount
 // ============================================================================
 
-function useCharacterCount(): number {
+function useEntityCount(): number {
   const entities = useMythosStore(
-    useShallow((s) =>
-      Array.from(s.world.entities.values()).filter((e) => e.type === "character")
-    )
+    useShallow((s) => Array.from(s.world.entities.values()))
   );
   return entities.length;
 }
@@ -155,7 +153,7 @@ export function ProgressiveStructureController({
   const isSnoozed = useIsEntityNudgeSnoozed();
   
   const wordCount = useWordCount();
-  const characterCount = useCharacterCount();
+  const entityCount = useEntityCount();
   
   const editorInstance = useMythosStore((s) => s.editor.editorInstance);
   const currentProject = useMythosStore((s) => s.project.currentProject);
@@ -325,19 +323,19 @@ export function ProgressiveStructureController({
       ? (Date.now() - new Date(projectCreatedAt).getTime()) / (1000 * 60 * 60 * 24)
       : 0;
 
-    // Check for world graph unlock
+    // Check for project graph unlock
     if (
-      !projectState.unlockedModules.world_graph &&
-      (characterCount >= UNLOCK_THRESHOLDS.world_graph.characters ||
-        writingTimeHours >= UNLOCK_THRESHOLDS.world_graph.writingTimeHours)
+      !projectState.unlockedModules.project_graph &&
+      (entityCount >= UNLOCK_THRESHOLDS.project_graph.entities ||
+        writingTimeHours >= UNLOCK_THRESHOLDS.project_graph.writingTimeHours)
     ) {
       const nudge: FeatureUnlockNudge = {
-        id: `${projectId}:feature_unlock:world_graph:${Date.now()}`,
+        id: `${projectId}:feature_unlock:project_graph:${Date.now()}`,
         projectId,
         type: "feature_unlock",
         createdAt: new Date().toISOString(),
-        module: "world_graph",
-        message: `You have ${characterCount} characters. View their relationships in the World Graph.`,
+        module: "project_graph",
+        message: `You have ${entityCount} entities. View their relationships in the Project Graph.`,
       };
       showNudge(nudge);
     }
@@ -361,7 +359,7 @@ export function ProgressiveStructureController({
     isGardener,
     projectId,
     phase,
-    characterCount,
+    entityCount,
     currentProject,
     showNudge,
   ]);

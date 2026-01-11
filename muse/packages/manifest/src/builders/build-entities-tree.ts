@@ -3,15 +3,15 @@
  * Creates separate sections for Characters, Locations, Items, etc.
  */
 
-import type { Entity, EntityType } from "@mythos/core";
-import { ENTITY_TYPES, ENTITY_HEX_COLORS, getEntityLabel } from "@mythos/core/entities";
+import type { Entity, GraphEntityType } from "@mythos/core";
+import { WRITER_ENTITY_TYPES, getEntityHexColor, getEntityLabel } from "@mythos/core/entities";
 import type { TreeNode, ManifestSection, ManifestSectionType } from "../types";
 import { entityMatchesSearch } from "../utils/search";
 
 export interface EntitiesTreeInput {
   entities: Entity[];
   searchQuery?: string;
-  entityTypes?: EntityType[];
+  entityTypes?: GraphEntityType[];
 }
 
 export interface EntitiesTreeResult {
@@ -22,7 +22,7 @@ export interface EntitiesTreeResult {
 /**
  * Map EntityType to ManifestSectionType.
  */
-function getEntitySectionType(entityType: EntityType): ManifestSectionType {
+function getEntitySectionType(entityType: GraphEntityType): ManifestSectionType {
   switch (entityType) {
     case "character":
       return "characters";
@@ -49,7 +49,7 @@ function buildEntityNode(entity: Entity): TreeNode {
     type: "entity",
     entityType: entity.type,
     entity,
-    color: ENTITY_HEX_COLORS[entity.type],
+    color: getEntityHexColor(entity.type),
   };
 }
 
@@ -69,7 +69,7 @@ export function buildEntitiesTree(input: EntitiesTreeInput): EntitiesTreeResult 
   }
 
   // Group by type
-  const byType = new Map<EntityType, Entity[]>();
+  const byType = new Map<GraphEntityType, Entity[]>();
   for (const entity of filtered) {
     const existing = byType.get(entity.type) || [];
     existing.push(entity);
@@ -79,8 +79,8 @@ export function buildEntitiesTree(input: EntitiesTreeInput): EntitiesTreeResult 
   // Build sections for each type that has entities
   const sections: ManifestSection[] = [];
 
-  // Use ENTITY_TYPES order for consistent ordering
-  for (const entityType of ENTITY_TYPES) {
+  // Use WRITER_ENTITY_TYPES order for consistent ordering
+  for (const entityType of WRITER_ENTITY_TYPES) {
     const typeEntities = byType.get(entityType);
     if (!typeEntities || typeEntities.length === 0) continue;
 

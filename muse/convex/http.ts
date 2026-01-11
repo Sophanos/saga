@@ -6,9 +6,15 @@
  *
  * Routes:
  * - POST /ai/saga - Main Saga agent (SSE streaming)
- * - POST /ai/chat - Simple chat (SSE streaming)
+ * - POST /ai/chat - Simple chat (SSE streaming or JSON)
  * - POST /ai/detect - Entity detection (JSON response)
  * - POST /ai/lint - Consistency linting (JSON response)
+ * - POST /ai/dynamics - Interaction extraction (JSON response)
+ * - POST /ai/genesis - World seed generation (JSON response)
+ * - POST /ai/image - Image generation (JSON response)
+ * - POST /ai/image-analyze - Image analysis (JSON response)
+ * - POST /ai/search - Semantic search (JSON response)
+ * - POST /ai/embed - Embedding generation and Qdrant upsert/delete (JSON response)
  * - POST /billing-subscription - Subscription + usage snapshot (JSON response)
  * - GET /health - Health check
  */
@@ -26,7 +32,17 @@ import {
 } from "./lib/streaming";
 import { validateAuth, type AuthResult } from "./lib/httpAuth";
 import { authComponent, createAuth } from "./betterAuth";
-import { countPoints, isQdrantConfigured, type QdrantFilter } from "./lib/qdrant";
+import { retrieveRAGContext } from "./ai/rag";
+import { generateEmbeddings, isDeepInfraConfigured } from "./lib/embeddings";
+import { canonicalizeName } from "./lib/canonicalize";
+import {
+  countPoints,
+  deletePoints,
+  deletePointsByFilter,
+  isQdrantConfigured,
+  upsertPoints,
+  type QdrantFilter,
+} from "./lib/qdrant";
 import { verifyRevenueCatWebhook } from "./lib/webhookSecurity";
 
 const http = httpRouter();
@@ -59,6 +75,83 @@ http.route({
 
 http.route({
   path: "/ai/detect",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/ai/lint",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/ai/dynamics",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/ai/genesis",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/ai/image",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/ai/image-analyze",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/ai/search",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/ai/embed",
   method: "OPTIONS",
   handler: httpAction(async (_, request) => {
     return new Response(null, {
@@ -343,6 +436,94 @@ http.route({
 });
 
 // ============================================================
+// Simple Chat (SSE or JSON)
+// ============================================================
+
+http.route({
+  path: "/ai/chat",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const { messages, projectId, mentions, stream } = body as {
+        messages?: Array<{ role: string; content: string }>;
+        projectId?: string;
+        mentions?: Array<{ type: string; id: string; name: string }>;
+        stream?: boolean;
+      };
+
+      if (!projectId) {
+        return new Response(JSON.stringify({ error: "projectId is required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (!auth.userId) {
+        return new Response(JSON.stringify({ error: "Authenticated user required" }), {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      await ctx.runQuery(internal.projects.assertOwner, {
+        projectId: projectId as Id<"projects">,
+        userId: auth.userId,
+      });
+
+      const prompt = [...(messages ?? [])].reverse().find((m) => m.role === "user")?.content;
+      if (!prompt) {
+        return new Response(JSON.stringify({ error: "messages with a user prompt are required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (stream !== false) {
+        return handleSagaChat(ctx, {
+          projectId,
+          prompt,
+          mentions,
+          auth,
+          origin,
+        });
+      }
+
+      const result = await runSagaChatToJson(ctx, {
+        projectId,
+        prompt,
+        mentions,
+        auth,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[http/ai/chat] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
 // Entity Detection (JSON Response)
 // ============================================================
 
@@ -362,11 +543,24 @@ http.route({
 
     try {
       const body = await request.json();
-      const { text, projectId, entityTypes, minConfidence } = body as {
-        text: string;
-        projectId: string;
-        entityTypes?: string[];
-        minConfidence?: number;
+      const { text, projectId, existingEntities, options } = body as {
+        text?: string;
+        projectId?: string;
+        existingEntities?: Array<{
+          id: string;
+          name: string;
+          aliases: string[];
+          type: string;
+        }>;
+        options?: {
+          minConfidence?: number;
+          entityTypes?: string[];
+          detectAliases?: boolean;
+          matchExisting?: boolean;
+          maxEntities?: number;
+          includeContext?: boolean;
+          contextLength?: number;
+        };
       };
 
       if (!text || !projectId) {
@@ -388,13 +582,222 @@ http.route({
         userId: auth.userId,
       });
 
-      // Call internal action for entity detection
+      const detectionStart = Date.now();
       const result = await ctx.runAction((internal as any)["ai/detect"].detectEntities, {
         text,
         projectId,
-        entityTypes,
-        minConfidence,
+        entityTypes: options?.entityTypes,
+        minConfidence: options?.minConfidence,
         userId: auth.userId,
+      });
+
+      const includeContext = options?.includeContext !== false;
+      const contextLength = options?.contextLength ?? 50;
+      const allowAliases = options?.detectAliases !== false;
+      const allowMatching = options?.matchExisting !== false;
+
+      const normalizedExisting = (existingEntities ?? []).map((entity) => ({
+        id: entity.id,
+        name: entity.name,
+        aliases: entity.aliases ?? [],
+      }));
+
+      const findExistingMatch = (name: string): string | undefined => {
+        const canonical = canonicalizeName(name);
+        for (const entity of normalizedExisting) {
+          if (canonicalizeName(entity.name) === canonical) return entity.id;
+          if (entity.aliases.some((alias) => canonicalizeName(alias) === canonical)) {
+            return entity.id;
+          }
+        }
+        return undefined;
+      };
+
+      const detectedEntities = (result.entities ?? [])
+        .map((entity: any, index: number) => {
+          const textSpan = entity.textSpan as { start: number; end: number; text: string } | undefined;
+          const occurrence = textSpan
+            ? {
+                startOffset: textSpan.start,
+                endOffset: textSpan.end,
+                matchedText: textSpan.text,
+                context: includeContext
+                  ? text.slice(
+                      Math.max(0, textSpan.start - contextLength),
+                      Math.min(text.length, textSpan.end + contextLength)
+                    )
+                  : textSpan.text,
+              }
+            : null;
+
+          const matchedExistingId = allowMatching ? findExistingMatch(entity.name) : undefined;
+
+          return {
+            tempId: `temp_${index}`,
+            name: entity.name,
+            canonicalName: canonicalizeName(entity.name),
+            type: entity.type,
+            confidence: entity.confidence,
+            occurrences: occurrence ? [occurrence] : [],
+            suggestedAliases: allowAliases ? (entity.aliases ?? []) : [],
+            inferredProperties: entity.properties ?? {},
+            matchedExistingId,
+          };
+        })
+        .slice(0, options?.maxEntities ?? result.entities.length);
+
+      const matchedToExisting = detectedEntities.filter((entity) => entity.matchedExistingId).length;
+      const byType = result.stats?.byType ?? {};
+      const stats = {
+        charactersAnalyzed: text.length,
+        totalEntities: detectedEntities.length,
+        byType,
+        matchedToExisting,
+        newEntities: detectedEntities.length - matchedToExisting,
+        processingTimeMs: Date.now() - detectionStart,
+      };
+
+      return new Response(JSON.stringify({ entities: detectedEntities, warnings: [], stats }), {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[http/ai/detect] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Consistency Linter (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/ai/lint",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const { projectId, documentId, documentContent, rules } = body as {
+        projectId?: string;
+        documentId?: string;
+        documentContent?: string;
+        rules?: string[];
+      };
+
+      if (!projectId || !documentId || !documentContent) {
+        return new Response(JSON.stringify({ error: "projectId, documentId, and documentContent are required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (!auth.userId) {
+        return new Response(JSON.stringify({ error: "Authenticated user required" }), {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      await ctx.runQuery(internal.projects.assertOwner, {
+        projectId: projectId as Id<"projects">,
+        userId: auth.userId,
+      });
+
+      const result = await ctx.runAction((internal as any)["ai/lint"].runLint, {
+        projectId,
+        userId: auth.userId,
+        documentContent,
+        focus: rules,
+      });
+
+      return new Response(JSON.stringify({ issues: result.issues ?? [] }), {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[http/ai/lint] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Dynamics Extraction (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/ai/dynamics",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const { projectId, content, sceneMarker, documentId, knownEntities } = body as {
+        projectId?: string;
+        content?: string;
+        sceneMarker?: string;
+        documentId?: string;
+        knownEntities?: Array<{ id: string; name: string; type: string }>;
+      };
+
+      if (!projectId || !content) {
+        return new Response(JSON.stringify({ error: "projectId and content are required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (!auth.userId) {
+        return new Response(JSON.stringify({ error: "Authenticated user required" }), {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      await ctx.runQuery(internal.projects.assertOwner, {
+        projectId: projectId as Id<"projects">,
+        userId: auth.userId,
+      });
+
+      const result = await ctx.runAction((internal as any)["ai/dynamics"].extractDynamics, {
+        projectId,
+        userId: auth.userId,
+        content,
+        sceneMarker,
+        documentId,
+        knownEntities,
       });
 
       return new Response(JSON.stringify(result), {
@@ -402,7 +805,649 @@ http.route({
         headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
       });
     } catch (error) {
-      console.error("[http/ai/detect] Error:", error);
+      console.error("[http/ai/dynamics] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Genesis (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/ai/genesis",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const { prompt, genre, preferences } = body as {
+        prompt?: string;
+        genre?: string;
+        preferences?: {
+          entityCount?: number;
+          includeOutline?: boolean;
+          detailLevel?: "minimal" | "standard" | "detailed";
+        };
+      };
+
+      if (!prompt) {
+        return new Response(JSON.stringify({ error: "prompt is required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (!auth.userId) {
+        return new Response(JSON.stringify({ error: "Authenticated user required" }), {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      const result = await ctx.runAction((internal as any)["ai/genesis"].runGenesis, {
+        prompt,
+        genre,
+        entityCount: preferences?.entityCount,
+        detailLevel: preferences?.detailLevel,
+        includeOutline: preferences?.includeOutline,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[http/ai/genesis] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Image Generation (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/ai/image",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const { projectId } = body as { projectId?: string };
+
+      if (!projectId) {
+        return new Response(JSON.stringify({ error: "projectId is required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (!auth.userId) {
+        return new Response(JSON.stringify({ error: "Authenticated user required" }), {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      await ctx.runQuery(internal.projects.assertOwner, {
+        projectId: projectId as Id<"projects">,
+        userId: auth.userId,
+      });
+
+      const isScene = body?.kind === "scene" || typeof body?.sceneText === "string";
+
+      if (isScene) {
+        const { sceneText, style, aspectRatio, sceneFocus, tier, characterReferences } = body as {
+          sceneText?: string;
+          style?: string;
+          aspectRatio?: string;
+          sceneFocus?: string;
+          tier?: string;
+          characterReferences?: Array<{ name: string; entityId: string; portraitUrl?: string }>;
+        };
+
+        if (!sceneText) {
+          return new Response(JSON.stringify({ error: "sceneText is required for scene generation" }), {
+            status: 400,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          });
+        }
+
+        const result = await ctx.runAction((internal as any)["ai/image"].illustrateSceneAction, {
+          projectId,
+          userId: auth.userId,
+          sceneText,
+          style,
+          aspectRatio,
+          sceneFocus,
+          tier,
+        });
+
+        if (!result?.success) {
+          return new Response(JSON.stringify({ error: result?.error ?? "Scene illustration failed" }), {
+            status: 400,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          });
+        }
+
+        const storagePath = await resolveAssetStoragePath(ctx, result.assetId);
+        const sceneDescription = buildSceneDescription(sceneText);
+        const charactersIncluded =
+          characterReferences?.map((ref) => ({
+            name: ref.name,
+            entityId: ref.entityId,
+            hadPortraitReference: !!ref.portraitUrl,
+          })) ?? [];
+
+        return new Response(
+          JSON.stringify({
+            assetId: result.assetId,
+            storagePath,
+            imageUrl: result.imageUrl,
+            sceneDescription,
+            charactersIncluded,
+          }),
+          {
+            status: 200,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const {
+        subject,
+        style,
+        aspectRatio,
+        visualDescription,
+        negativePrompt,
+        entityId,
+        assetType,
+        tier,
+      } = body as {
+        subject?: string;
+        style?: string;
+        aspectRatio?: string;
+        visualDescription?: string;
+        negativePrompt?: string;
+        entityId?: string;
+        assetType?: string;
+        tier?: string;
+      };
+
+      if (!subject) {
+        return new Response(JSON.stringify({ error: "subject is required for image generation" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      const result = await ctx.runAction((internal as any)["ai/image"].generateImageAction, {
+        projectId,
+        userId: auth.userId,
+        subject,
+        style,
+        aspectRatio,
+        visualDescription,
+        negativePrompt,
+        entityId,
+        assetType,
+        tier,
+      });
+
+      if (!result?.success) {
+        return new Response(JSON.stringify({ error: result?.error ?? "Image generation failed" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      const storagePath = await resolveAssetStoragePath(ctx, result.assetId);
+
+      return new Response(
+        JSON.stringify({
+          assetId: result.assetId,
+          storagePath,
+          imageUrl: result.imageUrl,
+          entityId,
+          cached: false,
+        }),
+        {
+          status: 200,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    } catch (error) {
+      console.error("[http/ai/image] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Image Analysis (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/ai/image-analyze",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const {
+        projectId,
+        imageSource,
+        entityTypeHint,
+        extractionFocus,
+        entityId,
+        setAsPortrait,
+        analysisPrompt,
+      } = body as {
+        projectId?: string;
+        imageSource?: string;
+        entityTypeHint?: string;
+        extractionFocus?: string;
+        entityId?: string;
+        setAsPortrait?: boolean;
+        analysisPrompt?: string;
+      };
+
+      if (!projectId || !imageSource) {
+        return new Response(JSON.stringify({ error: "projectId and imageSource are required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (!auth.userId) {
+        return new Response(JSON.stringify({ error: "Authenticated user required" }), {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      await ctx.runQuery(internal.projects.assertOwner, {
+        projectId: projectId as Id<"projects">,
+        userId: auth.userId,
+      });
+
+      const { imageUrl, assetId } = await resolveImageSource(ctx, {
+        projectId,
+        imageSource,
+        entityId,
+        setAsPortrait,
+      });
+
+      const analysis = await ctx.runAction((internal as any)["ai/image"].analyzeImageAction, {
+        projectId,
+        userId: auth.userId,
+        imageUrl,
+        analysisPrompt,
+      });
+
+      const suggestedEntityType =
+        entityTypeHint ??
+        (Array.isArray((analysis as any)?.characters) && (analysis as any).characters.length > 0
+          ? "character"
+          : (analysis as any)?.setting
+          ? "location"
+          : "character");
+
+      const suggestedName = Array.isArray((analysis as any)?.characters)
+        ? (analysis as any).characters[0]
+        : undefined;
+
+      const visualDescription = {
+        artStyle: typeof (analysis as any)?.style === "string" ? (analysis as any).style : undefined,
+        mood: typeof (analysis as any)?.mood === "string" ? (analysis as any).mood : undefined,
+        atmosphere:
+          typeof (analysis as any)?.setting === "string" ? (analysis as any).setting : undefined,
+      };
+
+      return new Response(
+        JSON.stringify({
+          suggestedEntityType,
+          suggestedName,
+          visualDescription,
+          description: (analysis as any)?.description ?? "",
+          confidence: 0.7,
+          assetId,
+          imageUrl,
+          extractionFocus,
+        }),
+        {
+          status: 200,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    } catch (error) {
+      console.error("[http/ai/image-analyze] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Semantic Search (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/ai/search",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const { query, projectId, scope, limit, rerank, rerankTopK } = body as {
+        query?: string;
+        projectId?: string;
+        scope?: "all" | "documents" | "entities";
+        limit?: number;
+        rerank?: boolean;
+        rerankTopK?: number;
+      };
+
+      if (!query || !projectId) {
+        return new Response(JSON.stringify({ error: "query and projectId are required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (!auth.userId) {
+        return new Response(JSON.stringify({ error: "Authenticated user required" }), {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      await ctx.runQuery(internal.projects.assertOwner, {
+        projectId: projectId as Id<"projects">,
+        userId: auth.userId,
+      });
+
+      const startTime = Date.now();
+      const cappedLimit = Math.min(limit ?? 10, 50);
+
+      const lexicalDocuments = await ctx.runQuery((internal as any)["ai/lexical"].searchDocuments, {
+        projectId: projectId as Id<"projects">,
+        query,
+        limit: cappedLimit,
+      });
+      const lexicalEntities = await ctx.runQuery((internal as any)["ai/lexical"].searchEntities, {
+        projectId: projectId as Id<"projects">,
+        query,
+        limit: cappedLimit,
+      });
+
+      const ragContext = await retrieveRAGContext(query, projectId, {
+        scope: scope ?? "all",
+        lexical: {
+          documents: lexicalDocuments,
+          entities: lexicalEntities,
+        },
+        rerank,
+        rerankTopK,
+        telemetry: { distinctId: auth.userId },
+      });
+
+      const results = [
+        ...ragContext.documents.map((doc) => ({
+          id: doc.id,
+          type: "document" as const,
+          title: doc.title ?? "Untitled",
+          preview: doc.preview,
+          vectorScore: doc.score ?? 0,
+          documentId: doc.id,
+        })),
+        ...ragContext.entities.map((entity) => ({
+          id: entity.id,
+          type: "entity" as const,
+          title: entity.name ?? entity.id,
+          preview: entity.preview,
+          vectorScore: entity.score ?? 0,
+          entityType: entity.type,
+          entityId: entity.id,
+        })),
+      ].slice(0, cappedLimit);
+
+      return new Response(
+        JSON.stringify({
+          results,
+          query,
+          processingTimeMs: Date.now() - startTime,
+        }),
+        {
+          status: 200,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    } catch (error) {
+      console.error("[http/ai/search] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Embeddings (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/ai/embed",
+  method: "POST",
+  handler: httpAction(async (_ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    const auth = await validateAuth(_ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const action = body?.action ?? "embed";
+
+      if (action === "delete") {
+        if (!isQdrantConfigured()) {
+          return new Response(JSON.stringify({ error: "Vector search not configured" }), {
+            status: 500,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          });
+        }
+
+        const { pointIds, filter } = body as {
+          pointIds?: string[];
+          filter?: {
+            projectId?: string;
+            type?: string;
+            documentId?: string;
+            entityId?: string;
+            memoryId?: string;
+            assetId?: string;
+          };
+        };
+
+        if (Array.isArray(pointIds) && pointIds.length > 0) {
+          await deletePoints(pointIds);
+          return new Response(JSON.stringify({ deleted: pointIds.length }), {
+            status: 200,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          });
+        }
+
+        if (filter?.projectId && filter?.type) {
+          const qdrantFilter: QdrantFilter = {
+            must: [
+              { key: "project_id", match: { value: filter.projectId } },
+              { key: "type", match: { value: filter.type } },
+            ],
+          };
+          if (filter.documentId) {
+            qdrantFilter.must!.push({ key: "document_id", match: { value: filter.documentId } });
+          }
+          if (filter.entityId) {
+            qdrantFilter.must!.push({ key: "entity_id", match: { value: filter.entityId } });
+          }
+          if (filter.memoryId) {
+            qdrantFilter.must!.push({ key: "memory_id", match: { value: filter.memoryId } });
+          }
+          if (filter.assetId) {
+            qdrantFilter.must!.push({ key: "asset_id", match: { value: filter.assetId } });
+          }
+
+          await deletePointsByFilter(qdrantFilter);
+          return new Response(JSON.stringify({ deleted: 0 }), {
+            status: 200,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          });
+        }
+
+        return new Response(JSON.stringify({ error: "pointIds or filter are required for delete" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      const { inputs, qdrant } = body as {
+        inputs?: string[];
+        qdrant?: {
+          enabled?: boolean;
+          collection?: string;
+          points?: Array<{ id: string; payload: Record<string, unknown> }>;
+        };
+      };
+
+      if (!inputs || inputs.length === 0) {
+        return new Response(JSON.stringify({ error: "inputs must be non-empty" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (!isDeepInfraConfigured()) {
+        return new Response(JSON.stringify({ error: "Embeddings not configured" }), {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      const startTime = Date.now();
+      const embedResult = await generateEmbeddings(inputs, { task: "embed_document" });
+      let qdrantUpserted = false;
+
+      if (qdrant?.enabled) {
+        if (!isQdrantConfigured()) {
+          return new Response(JSON.stringify({ error: "Vector search not configured" }), {
+            status: 500,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          });
+        }
+
+        if (!qdrant.points || qdrant.points.length !== inputs.length) {
+          return new Response(JSON.stringify({ error: "qdrant.points must match inputs length" }), {
+            status: 400,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          });
+        }
+
+        const points = embedResult.embeddings.map((vector, index) => ({
+          id: qdrant.points![index]!.id,
+          vector,
+          payload: qdrant.points![index]!.payload,
+        }));
+
+        await upsertPoints(points, qdrant.collection ? { collection: qdrant.collection } : undefined);
+        qdrantUpserted = true;
+      }
+
+      return new Response(
+        JSON.stringify({
+          embeddings: embedResult.embeddings,
+          model: embedResult.model,
+          dimensions: embedResult.dimensions,
+          qdrantUpserted,
+          processingTimeMs: Date.now() - startTime,
+        }),
+        {
+          status: 200,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    } catch (error) {
+      console.error("[http/ai/embed] Error:", error);
       return new Response(
         JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
         {
@@ -535,6 +1580,120 @@ async function attachVectorUsage(
       },
     };
   }
+}
+
+function buildSceneDescription(sceneText: string): string {
+  const trimmed = sceneText.trim();
+  if (trimmed.length <= 200) return trimmed;
+  return `${trimmed.slice(0, 200)}...`;
+}
+
+async function resolveAssetStoragePath(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  assetId?: string
+): Promise<string | null> {
+  if (!assetId) return null;
+  const asset = await ctx.runQuery((internal as any).projectAssets.get, {
+    id: assetId as Id<"projectAssets">,
+  });
+  return asset?.storageId ?? null;
+}
+
+async function resolveImageSource(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  params: {
+    projectId: string;
+    imageSource: string;
+    entityId?: string;
+    setAsPortrait?: boolean;
+  }
+): Promise<{ imageUrl: string; assetId?: string }> {
+  const { projectId, imageSource, entityId, setAsPortrait } = params;
+
+  if (!imageSource.startsWith("data:")) {
+    return { imageUrl: imageSource };
+  }
+
+  const match = imageSource.match(/^data:(.+);base64,(.*)$/);
+  if (!match) {
+    throw new Error("Invalid base64 image source");
+  }
+
+  const mimeType = match[1] ?? "image/png";
+  const base64Data = match[2] ?? "";
+  const buffer = Buffer.from(base64Data, "base64");
+  const blob = new Blob([buffer], { type: mimeType });
+
+  const storageId = await ctx.storage.store(blob);
+  const imageUrl = await ctx.storage.getUrl(storageId);
+  if (!imageUrl) {
+    throw new Error("Failed to resolve stored image URL");
+  }
+
+  const extension = mimeType.split("/")[1] ?? "png";
+  const filename = `analysis_${Date.now()}.${extension}`;
+  const assetType = setAsPortrait ? "portrait" : "reference";
+
+  const assetId = await ctx.runMutation((internal as any).projectAssets.saveAssetInternal, {
+    projectId: projectId as Id<"projects">,
+    entityId: entityId ? (entityId as Id<"entities">) : undefined,
+    type: assetType,
+    filename,
+    mimeType,
+    storageId,
+    sizeBytes: buffer.byteLength,
+  });
+
+  return { imageUrl, assetId };
+}
+
+async function runSagaChatToJson(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  params: {
+    projectId: string;
+    prompt: string;
+    mentions?: Array<{ type: string; id: string; name: string }>;
+    auth: AuthResult;
+  }
+): Promise<{ content: string; context: unknown }> {
+  const { projectId, prompt, auth } = params;
+
+  const streamId = await ctx.runMutation((internal as any)["ai/streams"].create, {
+    projectId,
+    userId: auth.userId!,
+    type: "chat",
+  });
+
+  await ctx.runAction((internal as any)["ai/agentRuntime"].runSagaAgentChatToStream, {
+    streamId,
+    projectId,
+    userId: auth.userId!,
+    prompt,
+  });
+
+  const streamState = await ctx.runQuery((internal as any)["ai/streams"].getChunks, {
+    streamId,
+    afterIndex: 0,
+  });
+
+  if (!streamState) {
+    throw new Error("Stream not found");
+  }
+
+  let content = "";
+  let context: unknown = { documents: [], entities: [], memories: [] };
+
+  for (const chunk of streamState.chunks) {
+    if (chunk.type === "delta") {
+      content += chunk.content ?? "";
+    } else if (chunk.type === "context" && chunk.data) {
+      context = chunk.data;
+    } else if (chunk.type === "error") {
+      throw new Error(chunk.content ?? "Chat stream error");
+    }
+  }
+
+  return { content, context };
 }
 
 interface SagaChatParams {

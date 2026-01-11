@@ -17,24 +17,24 @@ async function openProject(page: Page, projectId: string): Promise<void> {
   await page.goto("/");
 }
 
-test.describe("E2E-04 Entity Detection + World Graph", () => {
+test.describe("E2E-04 Entity Detection + Project Graph", () => {
   test.beforeEach(({}, testInfo) => {
-    test.skip(skipIfNotWeb(testInfo.project.name), "World Graph is web-only");
+    test.skip(skipIfNotWeb(testInfo.project.name), "Project Graph is web-only");
   });
   test.skip(!hasE2EHarness, "E2E harness not configured");
 
-  test("detects entities and renders world graph", async ({ page }, testInfo) => {
+  test("detects entities and renders project graph", async ({ page }, testInfo) => {
     const runId = getRunId(testInfo, "entities");
     const convex = await getConvexHelpers(page);
 
     const projectId = await convex.createProject({
-      name: `E2E/WorldGraph/${runId}`,
+      name: `E2E/ProjectGraph/${runId}`,
     });
 
     await convex.createDocument({
       projectId,
       type: "chapter",
-      title: `World Graph Doc ${runId}`,
+      title: `Project Graph Doc ${runId}`,
       contentText: "Seed text",
     });
 
@@ -98,20 +98,20 @@ test.describe("E2E-04 Entity Detection + World Graph", () => {
     await page.keyboard.press("Meta+G");
     await page.keyboard.press("Control+G");
 
-    await expect(page.getByTestId("world-graph-view")).toBeVisible();
+    await expect(page.getByTestId("project-graph-view")).toBeVisible();
 
-    await expect(page.getByTestId(`wg-node-${elena?._id}`)).toBeVisible();
-    await expect(page.getByTestId(`wg-node-${citadel?._id}`)).toBeVisible();
-    await expect(page.getByTestId(`wg-node-${faction?._id}`)).toBeVisible();
+    await expect(page.getByTestId(`pg-node-${elena?._id}`)).toBeVisible();
+    await expect(page.getByTestId(`pg-node-${citadel?._id}`)).toBeVisible();
+    await expect(page.getByTestId(`pg-node-${faction?._id}`)).toBeVisible();
 
-    await expect(page.getByTestId(`wg-edge-${relationshipId}`)).toBeVisible();
+    await expect(page.getByTestId(`pg-edge-${relationshipId}`)).toBeVisible();
 
-    await expect(page.getByTestId("wg-entity-count")).toHaveText("3");
-    await expect(page.getByTestId("wg-relationship-count")).toHaveText("1");
+    await expect(page.getByTestId("pg-entity-count")).toHaveText("3");
+    await expect(page.getByTestId("pg-relationship-count")).toHaveText("1");
 
-    await page.getByTestId("world-graph-toggle-location").click();
-    await expect(page.getByTestId("wg-entity-count")).toHaveText("2");
-    await expect(page.getByTestId("wg-relationship-count")).toHaveText("0");
-    await expect(page.getByTestId(`wg-node-${citadel?._id}`)).toHaveCount(0);
+    await page.getByTestId("project-graph-toggle-location").click();
+    await expect(page.getByTestId("pg-entity-count")).toHaveText("2");
+    await expect(page.getByTestId("pg-relationship-count")).toHaveText("0");
+    await expect(page.getByTestId(`pg-node-${citadel?._id}`)).toHaveCount(0);
   });
 });

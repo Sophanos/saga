@@ -11,6 +11,9 @@
  */
 
 import { useCallback, useEffect, useRef } from "react";
+import { useConvex, useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import {
   useMythosStore,
   useChatSessions,
@@ -23,45 +26,40 @@ import {
   type ChatMention,
   type ChatToolInvocation,
 } from "../stores";
-import {
-  getSessions,
-  getSession,
-  getSessionMessages,
-  createMessage,
-  updateSession,
-  deleteSession as deleteSessionDb,
-  ensureSession,
-  type ChatSession,
-  type ChatMessage as DbChatMessage,
-  type ChatMessageInsert,
-  type ChatSessionInsert,
-} from "@mythos/db";
 import { useAuthStore } from "../stores/auth";
 
 /**
  * Map a store ChatMessage to a DB insert record
  */
-function toChatMessageInsert(sessionId: string, m: ChatMessage): ChatMessageInsert {
+function toChatMessageInsert(sessionId: string, m: ChatMessage) {
   return {
-    id: m.id,
-    session_id: sessionId,
+    threadId: sessionId,
+    messageId: m.id,
     role: m.role,
     content: m.content,
-    mentions: m.mentions as unknown as Record<string, unknown>[] | null,
-    tool: m.tool as unknown as Record<string, unknown> | null,
-    created_at: m.timestamp.toISOString(),
+    mentions: m.mentions as unknown as Record<string, unknown>[] | undefined,
+    tool: m.tool as unknown as Record<string, unknown> | undefined,
+    createdAt: m.timestamp.getTime(),
   };
 }
 
 /**
  * Map a DB message to a store ChatMessage
  */
-function fromDbMessage(m: DbChatMessage): ChatMessage {
+function fromDbMessage(m: {
+  _id: Id<"chatMessages">;
+  messageId?: string | null;
+  role: string;
+  content: string;
+  mentions?: Record<string, unknown>[] | null;
+  tool?: Record<string, unknown> | null;
+  createdAt: number;
+}): ChatMessage {
   return {
-    id: m.id,
+    id: m.messageId ?? m._id,
     role: m.role as ChatMessage["role"],
     content: m.content,
-    timestamp: new Date(m.created_at),
+    timestamp: new Date(m.createdAt),
     mentions: m.mentions as unknown as ChatMention[] | undefined,
     kind: m.tool ? "tool" : undefined,
     tool: m.tool as unknown as ChatToolInvocation | undefined,
@@ -71,12 +69,18 @@ function fromDbMessage(m: DbChatMessage): ChatMessage {
 /**
  * Map a DB session to a ChatSessionSummary
  */
-function toSessionSummary(s: ChatSession): ChatSessionSummary {
+function toSessionSummary(s: {
+  _id: Id<"chatSessions">;
+  threadId: string;
+  name?: string | null;
+  lastMessageAt?: number | null;
+  messageCount?: number | null;
+}): ChatSessionSummary {
   return {
-    id: s.id,
-    name: s.name,
-    lastMessageAt: s.last_message_at ? new Date(s.last_message_at) : null,
-    messageCount: s.message_count,
+    id: s.threadId,
+    name: s.name ?? null,
+    lastMessageAt: s.lastMessageAt ? new Date(s.lastMessageAt) : null,
+    messageCount: s.messageCount ?? 0,
   };
 }
 
@@ -128,6 +132,11 @@ export function useSessionHistory(): UseSessionHistoryResult {
   const startNewConversation = useMythosStore((s) => s.startNewConversation);
   const setConversationName = useMythosStore((s) => s.setConversationName);
   const stopStreaming = useMythosStore((s) => s.setChatStreaming);
+  const convex = useConvex();
+  const ensureSessionMutation = useMutation(api.chatSessions.ensureSession);
+  const createMessageMutation = useMutation(api.chatSessions.createMessage);
+  const updateSessionMutation = useMutation(api.chatSessions.updateSession);
+  const removeSessionMutation = useMutation(api.chatSessions.removeSession);
 
   // Track pending session ensure promises to deduplicate concurrent calls
   const sessionEnsurePromises = useRef<Map<string, Promise<boolean>>>(new Map());
@@ -145,21 +154,13 @@ export function useSessionHistory(): UseSessionHistoryResult {
 
     const promise = (async () => {
       try {
-        const sessionInsert: ChatSessionInsert = {
-          id: conversationId,
-          project_id: projectId,
-          user_id: user?.id, // Explicitly pass user_id
+        const session = await ensureSessionMutation({
+          projectId: projectId as Id<"projects">,
+          threadId: conversationId,
           name: conversationName ?? undefined,
-        };
-        await ensureSession(sessionInsert);
-
-        // Update session list if this is a new session
-        addSessionToList({
-          id: conversationId,
-          name: conversationName,
-          lastMessageAt: null,
-          messageCount: 0,
         });
+
+        addSessionToList(toSessionSummary(session));
 
         return true;
       } catch (error) {
@@ -171,7 +172,7 @@ export function useSessionHistory(): UseSessionHistoryResult {
 
     sessionEnsurePromises.current.set(conversationId, promise);
     return promise;
-  }, [currentProject?.id, conversationId, conversationName, user?.id, addSessionToList]);
+  }, [currentProject?.id, conversationId, conversationName, user?.id, ensureSessionMutation, addSessionToList]);
 
   /**
    * Refresh session list from database
@@ -182,36 +183,44 @@ export function useSessionHistory(): UseSessionHistoryResult {
 
     setSessionsLoading(true);
     try {
-      const dbSessions = await getSessions(projectId, user?.id);
-      setSessions(dbSessions.map(toSessionSummary));
+      const dbSessions = await convex.query(api.chatSessions.listByProject, {
+        projectId: projectId as Id<"projects">,
+      });
+      setSessions((dbSessions ?? []).map(toSessionSummary));
     } catch (error) {
       console.error("Failed to fetch sessions:", error);
       setSessionsError(error instanceof Error ? error.message : "Failed to load sessions");
     }
-  }, [currentProject?.id, user?.id, setSessions, setSessionsLoading, setSessionsError]);
+  }, [convex, currentProject?.id, user?.id, setSessions, setSessionsLoading, setSessionsError]);
 
   /**
    * Open (switch to) a session by ID
    */
   const openSession = useCallback(
     async (sessionId: string) => {
-      if (!user?.id) return;
+      if (!user?.id || !currentProject?.id) return;
       // Stop any current streaming
       stopStreaming(false);
 
       try {
         // Fetch session metadata
-        const session = await getSession(sessionId);
+        const session = await convex.query(api.chatSessions.getByThread, {
+          projectId: currentProject.id as Id<"projects">,
+          threadId: sessionId,
+        });
         if (!session) {
           throw new Error("Session not found");
         }
 
         // Fetch messages
-        const dbMessages = await getSessionMessages(sessionId);
-        const messages = dbMessages.map(fromDbMessage);
+        const dbMessages = await convex.query(api.chatSessions.listMessages, {
+          projectId: currentProject.id as Id<"projects">,
+          threadId: sessionId,
+        });
+        const messages = (dbMessages ?? []).map(fromDbMessage);
 
         // Load into store
-        loadSessionMessages(messages, sessionId, session.name);
+        loadSessionMessages(messages, sessionId, session.name ?? null);
 
         // Mark session as ensured (we just loaded it from DB)
         sessionEnsurePromises.current.set(sessionId, Promise.resolve(true));
@@ -220,7 +229,7 @@ export function useSessionHistory(): UseSessionHistoryResult {
         setSessionsError(error instanceof Error ? error.message : "Failed to load session");
       }
     },
-    [loadSessionMessages, stopStreaming, setSessionsError]
+    [convex, currentProject?.id, loadSessionMessages, stopStreaming, setSessionsError, user?.id]
   );
 
   /**
@@ -228,8 +237,12 @@ export function useSessionHistory(): UseSessionHistoryResult {
    */
   const removeSession = useCallback(
     async (sessionId: string) => {
+      if (!currentProject?.id) return;
       try {
-        await deleteSessionDb(sessionId);
+        await removeSessionMutation({
+          projectId: currentProject.id as Id<"projects">,
+          threadId: sessionId,
+        });
         removeSessionFromList(sessionId);
         sessionEnsurePromises.current.delete(sessionId);
 
@@ -241,7 +254,7 @@ export function useSessionHistory(): UseSessionHistoryResult {
         console.error("Failed to delete session:", error);
       }
     },
-    [conversationId, removeSessionFromList, startNewConversation]
+    [conversationId, currentProject?.id, removeSessionFromList, removeSessionMutation, startNewConversation]
   );
 
   /**
@@ -249,7 +262,7 @@ export function useSessionHistory(): UseSessionHistoryResult {
    */
   const renameActiveSession = useCallback(
     async (name: string | null) => {
-      if (!conversationId) return;
+      if (!conversationId || !currentProject?.id) return;
 
       try {
         // Ensure session exists first
@@ -257,7 +270,11 @@ export function useSessionHistory(): UseSessionHistoryResult {
         if (!ensured) return;
 
         // Update in DB
-        await updateSession(conversationId, { name });
+        await updateSessionMutation({
+          projectId: currentProject.id as Id<"projects">,
+          threadId: conversationId,
+          name: name ?? undefined,
+        });
 
         // Update in store
         setConversationName(name);
@@ -266,7 +283,14 @@ export function useSessionHistory(): UseSessionHistoryResult {
         console.error("Failed to rename session:", error);
       }
     },
-    [conversationId, ensureCurrentSession, setConversationName, updateSessionInList]
+    [
+      conversationId,
+      currentProject?.id,
+      ensureCurrentSession,
+      setConversationName,
+      updateSessionInList,
+      updateSessionMutation,
+    ]
   );
 
   /**
@@ -277,14 +301,17 @@ export function useSessionHistory(): UseSessionHistoryResult {
       (async () => {
         try {
           const ensured = await ensureCurrentSession();
-          if (!ensured || !conversationId) return;
-          await createMessage(toChatMessageInsert(conversationId, message));
+          if (!ensured || !conversationId || !currentProject?.id) return;
+          await createMessageMutation({
+            projectId: currentProject.id as Id<"projects">,
+            ...toChatMessageInsert(conversationId, message),
+          });
         } catch (error) {
           console.error(`Failed to persist ${role} message:`, error);
         }
       })();
     },
-    [conversationId, ensureCurrentSession]
+    [conversationId, createMessageMutation, currentProject?.id, ensureCurrentSession]
   );
 
   /**

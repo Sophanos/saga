@@ -1,8 +1,7 @@
 import { ApiError, type ApiErrorCode } from "../api-client";
-import { API_TIMEOUTS } from "../config";
+import { API_TIMEOUTS, getAIEndpoint } from "../config";
+import { authClient } from "../../lib/auth";
 import type { ChatContext, ChatMention } from "../../stores";
-
-const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "";
 
 // =============================================================================
 // Types
@@ -72,6 +71,7 @@ export interface AgentStreamEvent {
 export interface AgentStreamOptions {
   signal?: AbortSignal;
   apiKey?: string;
+  authToken?: string;
   onContext?: (context: ChatContext) => void;
   onDelta?: (delta: string) => void;
   onTool?: (tool: ToolCallResult) => void;
@@ -118,6 +118,21 @@ function parseSSELine(line: string): AgentStreamEvent | null {
   }
 }
 
+async function resolveAuthHeader(authToken?: string): Promise<string | null> {
+  if (authToken) {
+    return authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`;
+  }
+
+  try {
+    const token = await authClient.$fetch("/api/auth/convex-token", {
+      method: "GET",
+    });
+    return token?.data?.token ? `Bearer ${token.data.token}` : null;
+  } catch {
+    return null;
+  }
+}
+
 // =============================================================================
 // Streaming API
 // =============================================================================
@@ -126,12 +141,14 @@ export async function sendAgentMessageStreaming(
   payload: AgentRequestPayload,
   opts?: AgentStreamOptions
 ): Promise<void> {
-  const { signal, apiKey, onContext, onDelta, onTool, onProgress, onDone, onError } = opts ?? {};
+  const { signal, apiKey, authToken, onContext, onDelta, onTool, onProgress, onDone, onError } = opts ?? {};
 
-  const url = `${SUPABASE_URL}/functions/v1/ai-agent`;
+  const url = getAIEndpoint("/ai/saga");
+  const resolvedAuthHeader = await resolveAuthHeader(authToken);
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
+    ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
   };
 
   if (apiKey) {
@@ -142,7 +159,7 @@ export async function sendAgentMessageStreaming(
     const response = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ ...payload, stream: true }),
+      body: JSON.stringify({ kind: "chat", ...payload, stream: true }),
       signal,
     });
 

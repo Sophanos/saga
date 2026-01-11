@@ -2,18 +2,19 @@
  * update_relationship tool executor
  */
 
-import type { Relationship, RelationType } from "@mythos/core";
+import type { PropertyValue, Relationship, RelationType } from "@mythos/core";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 import { resolveRelationship } from "../types";
 
 export interface UpdateRelationshipArgs {
-  relationshipId?: string;
-  sourceEntityName: string;
-  targetEntityName: string;
-  relationType: RelationType;
+  sourceName: string;
+  targetName: string;
+  type: RelationType;
   updates: {
-    description?: string;
+    notes?: string;
     strength?: number;
+    bidirectional?: boolean;
+    metadata?: Record<string, PropertyValue>;
   };
 }
 
@@ -34,16 +35,16 @@ export const updateRelationshipExecutor: ToolDefinition<UpdateRelationshipArgs, 
     const fields = Object.keys(args.updates).filter(
       (k) => args.updates[k as keyof typeof args.updates] !== undefined
     );
-    return `${args.sourceEntityName} → ${args.relationType} → ${args.targetEntityName}: ${fields.join(", ")}`;
+    return `${args.sourceName} → ${args.type} → ${args.targetName}: ${fields.join(", ")}`;
   },
 
   execute: async (args, ctx): Promise<ToolExecutionResult<UpdateRelationshipResult>> => {
     try {
       // Resolve relationship by source, target, and type
       const resolution = resolveRelationship(
-        args.sourceEntityName,
-        args.targetEntityName,
-        args.relationType,
+        args.sourceName,
+        args.targetName,
+        args.type,
         ctx.entities,
         ctx.relationships
       );
@@ -58,14 +59,24 @@ export const updateRelationshipExecutor: ToolDefinition<UpdateRelationshipArgs, 
       const updates: Partial<Relationship> = {};
       const updatedFields: string[] = [];
 
-      if (args.updates.description !== undefined) {
-        updates.notes = args.updates.description;
-        updatedFields.push("description");
+      if (args.updates.notes !== undefined) {
+        updates.notes = args.updates.notes;
+        updatedFields.push("notes");
       }
 
       if (args.updates.strength !== undefined) {
         updates.strength = args.updates.strength;
         updatedFields.push("strength");
+      }
+
+      if (args.updates.bidirectional !== undefined) {
+        updates.bidirectional = args.updates.bidirectional;
+        updatedFields.push("bidirectional");
+      }
+
+      if (args.updates.metadata !== undefined) {
+        updates.metadata = args.updates.metadata;
+        updatedFields.push("metadata");
       }
 
       if (updatedFields.length === 0) {

@@ -1,5 +1,5 @@
 /**
- * Saga AI Client
+ * Agent Runtime Client
  *
  * Unified client for the ai-saga endpoint.
  * Supports:
@@ -8,15 +8,9 @@
  */
 
 import { ApiError, type ApiErrorCode } from "../api-client";
-import { getSupabaseClient, isSupabaseInitialized } from "@mythos/db";
 import { getAnonHeaders } from "../anonymousSession";
-import {
-  API_TIMEOUTS,
-  RETRY_CONFIG,
-  getAIEndpoint,
-  USE_CONVEX_AI,
-  SUPABASE_ANON_KEY,
-} from "../config";
+import { API_TIMEOUTS, RETRY_CONFIG, getAIEndpoint } from "../config";
+import { authClient } from "../../lib/auth";
 import type { ChatContext, ChatMention } from "../../stores";
 import type {
   ToolName,
@@ -47,26 +41,12 @@ async function resolveAuthHeader(authToken?: string): Promise<string | null> {
     return authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`;
   }
 
-  if (!isSupabaseInitialized()) {
-    return null;
-  }
-
   try {
-    const supabase = getSupabaseClient();
-    const { data: { session }, error } = await supabase.auth.getSession();
-
-    if (error) {
-      if (import.meta.env.DEV) {
-        console.warn("[sagaClient] Failed to resolve auth session:", error.message);
-      }
-      return null;
-    }
-
-    return session?.access_token ? `Bearer ${session.access_token}` : null;
-  } catch (error) {
-    if (import.meta.env.DEV) {
-      console.warn("[sagaClient] Failed to resolve auth token:", error);
-    }
+    const token = await authClient.$fetch("/api/auth/convex-token", {
+      method: "GET",
+    });
+    return token?.data?.token ? `Bearer ${token.data.token}` : null;
+  } catch {
     return null;
   }
 }
@@ -186,7 +166,7 @@ export interface SagaStreamOptions {
   signal?: AbortSignal;
   /** OpenRouter API key for BYOK mode */
   apiKey?: string;
-  /** Supabase auth token for per-user memory/profile */
+  /** Convex auth token for per-user memory/profile */
   authToken?: string;
   onContext?: (context: ChatContext) => void;
   onDelta?: (delta: string) => void;
@@ -204,7 +184,7 @@ export interface ExecuteToolOptions {
   signal?: AbortSignal;
   /** OpenRouter API key for BYOK mode */
   apiKey?: string;
-  /** Supabase auth token for per-user memory/profile */
+  /** Convex auth token for per-user memory/profile */
   authToken?: string;
 }
 
@@ -261,7 +241,7 @@ function parseSSEPayload(payload: string): SagaStreamEvent | null {
   try {
     return JSON.parse(jsonStr) as SagaStreamEvent;
   } catch {
-    console.warn("[sagaClient] Failed to parse SSE:", jsonStr);
+    console.warn("[agentRuntimeClient] Failed to parse SSE:", jsonStr);
     return null;
   }
 }
@@ -471,18 +451,12 @@ export async function sendSagaChatStreaming(
   const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    // Only include Supabase apikey when using Supabase Edge Functions
-    ...(!USE_CONVEX_AI && SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
     ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
     ...getAnonHeaders(),
   };
 
   if (apiKey) {
     headers["x-openrouter-key"] = apiKey;
-  }
-
-  if (authToken) {
-    headers["Authorization"] = `Bearer ${authToken}`;
   }
 
   try {
@@ -559,18 +533,12 @@ async function executeSagaTool<T>(
   const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    // Only include Supabase apikey when using Supabase Edge Functions
-    ...(!USE_CONVEX_AI && SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
     ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
     ...getAnonHeaders(),
   };
 
   if (apiKey) {
     headers["x-openrouter-key"] = apiKey;
-  }
-
-  if (authToken) {
-    headers["Authorization"] = `Bearer ${authToken}`;
   }
 
   const response = await fetchWithRetry(url, {
@@ -716,18 +684,12 @@ export async function sendToolResultStreaming(
   const resolvedAuthHeader = await resolveAuthHeader(authToken);
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    // Only include Supabase apikey when using Supabase Edge Functions
-    ...(!USE_CONVEX_AI && SUPABASE_ANON_KEY && { apikey: SUPABASE_ANON_KEY }),
     ...(resolvedAuthHeader && { Authorization: resolvedAuthHeader }),
     ...getAnonHeaders(),
   };
 
   if (apiKey) {
     headers["x-openrouter-key"] = apiKey;
-  }
-
-  if (authToken) {
-    headers["Authorization"] = `Bearer ${authToken}`;
   }
 
   try {

@@ -1,7 +1,7 @@
 /**
  * commit_decision tool executor
  *
- * Records a canon decision in project memory via ai-saga execute_tool.
+ * Records a canon decision in project memory via ai/saga execute_tool.
  */
 
 import type {
@@ -76,7 +76,7 @@ export const commitDecisionExecutor: ToolDefinition<CommitDecisionArgs, CommitDe
       };
 
       const response = await callEdgeFunction<SagaExecuteToolRequest, SagaExecuteToolResponse>(
-        "ai-saga",
+        "ai/saga",
         request,
         { apiKey: ctx.apiKey, signal: ctx.signal }
       );

@@ -7,15 +7,28 @@
 
 ## Summary
 
-Mythos transforms from a writing tool into an **AI co-author** with:
-- Auto-extraction of entities, relationships, world-building
+Mythos evolves into a **Project Knowledge System** with an AI co-author layer:
+- Role-agnostic templates (Writer is one) for domain specialization
+- Auto-extraction of entities, relationships, project context (Project Graph)
 - Writer style adaptation via embeddings
 - Real-time feedback (show-don't-tell, dialogue, tension)
 - Tool-based workspace manipulation
 - Thread persistence with full context
 - Offline-first + real-time sync (Figma model)
 - **Focus Mode** — distraction-free writing, AI silent unless invoked
-- **Sortiermaschine** — auto-organize entities, relationships, world (Project Graph)
+- **Sortiermaschine** — auto-organize entities, relationships, project context (Project Graph)
+
+## Templates (Project Knowledge System)
+
+- Templates define default registry types, document kinds, and capability sets.
+- Registry overrides remain per-project (template provides the base; projects can diverge).
+- No schema churn required: types, properties, and metadata are validated against the resolved registry.
+
+## Supabase → Convex Migration (MLP1)
+
+All Supabase → Convex migration work is complete.
+Reference: `../DB_MIGRATION_REPORT.md`.
+
 
 ### Recent Updates (2026-01-11)
 
@@ -24,11 +37,11 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 - Project Graph approvals now driven by registry `riskLevel` + per-type identity fields (legacy writer fields still optional).
 - AI task routing expanded with `review`/`generation` plus product/engineering/design/comms task slugs; `coach`/`creative` aliased.
 - UI updates: registry lock/unlock controls added in settings; entity create/edit now supports schema-driven properties.
-- UI gaps: no AI template generation flow yet, no org/team management UI, no registry editor UI, relationship metadata editor still missing schema-driven forms, and universal entity profile page (overview/graph/mentions/documents/history) not yet implemented.
+- UI gaps: no AI template generation flow yet, no org/team management UI, no registry editor UI; Project Graph filters are registry-driven but template icon/color coverage is incomplete for non-writer templates; schema-driven property/relationship metadata editors are still missing; universal entity profile page (overview/graph/mentions/documents/history) not yet implemented.
 
 ### Recent Updates (2026-01-10)
 
-- Phase 1: Project Graph (`projectTypeRegistry` + `create_node`/`update_node`/`create_edge`/`update_edge` + registry-aware approvals) (`muse/convex/projectTypeRegistry.ts`, `muse/convex/lib/typeRegistry.ts`, `muse/convex/ai/tools/worldGraphTools.ts`, `muse/convex/ai/tools/worldGraphHandlers.ts`, `muse/convex/ai/agentRuntime.ts`)
+- Phase 1: Project Graph (`projectTypeRegistry` + `create_node`/`update_node`/`create_edge`/`update_edge` + registry-aware approvals) (`muse/convex/projectTypeRegistry.ts`, `muse/convex/lib/typeRegistry.ts`, `muse/convex/ai/tools/projectGraphTools.ts`, `muse/convex/ai/tools/projectGraphHandlers.ts`, `muse/convex/ai/agentRuntime.ts`)
 - Phase 2: Knowledge PRs (`knowledgeSuggestions` + `suggestionId` in streams + tool-result resolution) (`muse/convex/knowledgeSuggestions.ts`, `muse/convex/schema.ts`, `muse/convex/ai/agentRuntime.ts`)
   - Expo Web UI: “Changes to review” panel (open via editor More menu → “Version history” and Cmd+K) (`muse/apps/expo/src/components/knowledge/*`, `muse/packages/editor-webview/src/components/EditorShell.tsx`, `muse/packages/commands/src/definitions/navigation.ts`)
 - Phase 3: Integrations (MCP)
@@ -378,8 +391,8 @@ convex/
 │       ├── editorTools.ts           # ask_question, write_content
 │       ├── ragTools.ts              # search_context, get_entity
 │       ├── ragHandlers.ts           # RAG server handlers
-│       ├── worldGraphTools.ts       # Entity/relationship CRUD ✅ NEW
-│       ├── worldGraphHandlers.ts    # Project graph handlers ✅ NEW
+│       ├── projectGraphTools.ts       # Entity/relationship CRUD ✅ NEW
+│       ├── projectGraphHandlers.ts    # Project graph handlers ✅ NEW
 │       └── index.ts                 # Tool exports
 ├── lib/
 │   ├── qdrant.ts                    # REST client
@@ -1722,9 +1735,9 @@ convex/
 | ProjectCreateModal.tsx | P2 | Replace `createProject`, `createDocument`, `createEntity`, `createRelationship` |
 | CreateProjectForm.tsx | P2 | Replace `createProject`, `createDocument` |
 | ProjectPickerSidebar.tsx | P2 | Replace `createDocument`, `mapDbDocumentToDocument` |
-| sagaClient.ts | P2 | Remove `getSupabaseClient`, `isSupabaseInitialized` |
-| analysisRepository.ts | P2 | Remove Supabase references |
-| seedWorldbuilding.ts | P2 | Replace `createDocument` |
+| agentRuntimeClient.ts | P2 | Remove `getSupabaseClient`, `isSupabaseInitialized` |
+| contentAnalysisRepository.ts | P2 | Remove Supabase references |
+| seedProjectContext.ts | P2 | Replace `createDocument` |
 
 ### P1: Performance Stabilization
 
@@ -1803,10 +1816,10 @@ convex/
 | `search_chapters` | Auto | `convex/ai/tools/ragTools.ts` |
 | `search_world` | Auto | `convex/ai/tools/ragTools.ts` |
 | `get_entity` | Auto | `convex/ai/tools/ragTools.ts` |
-| `create_entity` | **Dynamic** | `convex/ai/tools/worldGraphTools.ts` |
-| `update_entity` | **Dynamic** | `convex/ai/tools/worldGraphTools.ts` |
-| `create_relationship` | **Dynamic** | `convex/ai/tools/worldGraphTools.ts` |
-| `update_relationship` | **Dynamic** | `convex/ai/tools/worldGraphTools.ts` |
+| `create_entity` | **Dynamic** | `convex/ai/tools/projectGraphTools.ts` |
+| `update_entity` | **Dynamic** | `convex/ai/tools/projectGraphTools.ts` |
+| `create_relationship` | **Dynamic** | `convex/ai/tools/projectGraphTools.ts` |
+| `update_relationship` | **Dynamic** | `convex/ai/tools/projectGraphTools.ts` |
 
 ### Dynamic Approval Logic (`convex/lib/approvalConfig.ts`)
 

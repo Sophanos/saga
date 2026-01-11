@@ -56,7 +56,7 @@ export const API_TIMEOUTS = {
 /**
  * Retry configuration for API calls with exponential backoff.
  *
- * Used by api-client.ts fetchWithRetry and sagaClient.ts fetchWithRetry.
+ * Used by api-client.ts fetchWithRetry and agentRuntimeClient.ts fetchWithRetry.
  * These values control retry behavior for transient failures.
  */
 export const RETRY_CONFIG = {
@@ -92,28 +92,25 @@ export type RetryConfigKey = keyof typeof RETRY_CONFIG;
 
 /**
  * Feature flag to use Convex HTTP Actions for AI endpoints.
- * Set VITE_USE_CONVEX_AI=true to route AI calls to Convex.
- * Default: false (use Supabase Edge Functions)
+ * Default: true. Set VITE_USE_CONVEX_AI=false to use legacy Supabase Edge Functions.
  */
-export const USE_CONVEX_AI = import.meta.env['VITE_USE_CONVEX_AI'] === 'true';
+export const USE_CONVEX_AI = import.meta.env['VITE_USE_CONVEX_AI'] !== 'false';
 
 /** Convex deployment URL for HTTP Actions */
 export const CONVEX_URL = import.meta.env['VITE_CONVEX_URL'] || 'https://convex.cascada.vision';
+export const CONVEX_SITE_URL = import.meta.env['VITE_CONVEX_SITE_URL'] || 'https://cascada.vision';
 
-/** Supabase URL for Edge Functions */
+/** Legacy Supabase URL for Edge Functions (deprecated). */
 export const SUPABASE_URL = import.meta.env['VITE_SUPABASE_URL'] || '';
-
-/** Supabase anonymous key */
-export const SUPABASE_ANON_KEY = import.meta.env['VITE_SUPABASE_ANON_KEY'] || '';
-
 /**
  * Get the appropriate AI endpoint URL based on feature flag.
  * @param path - The endpoint path (e.g., '/ai/saga')
  */
 export function getAIEndpoint(path: string): string {
   if (USE_CONVEX_AI) {
-    // Convex HTTP Actions are at the root path
-    return `${CONVEX_URL}${path}`;
+    // Convex HTTP Actions use the /api prefix
+    const normalized = path.startsWith("/") ? path : `/${path}`;
+    return `${CONVEX_SITE_URL}/api${normalized}`;
   }
   // Supabase Edge Functions use /functions/v1/ prefix
   const functionName = path.replace(/^\/ai\//, 'ai-');

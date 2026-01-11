@@ -2,7 +2,7 @@
  * create_relationship tool executor
  */
 
-import type { Relationship, RelationType } from "@mythos/core";
+import type { Relationship, RelationType, PropertyValue } from "@mythos/core";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 import { resolveEntityByName } from "../types";
 
@@ -13,6 +13,7 @@ export interface CreateRelationshipArgs {
   bidirectional?: boolean;
   notes?: string;
   strength?: number;
+  metadata?: Record<string, PropertyValue>;
 }
 
 export interface CreateRelationshipResult {
@@ -66,6 +67,8 @@ export const createRelationshipExecutor: ToolDefinition<CreateRelationshipArgs, 
         type: args.type,
         bidirectional: args.bidirectional ?? false,
         notes: args.notes,
+        strength: args.strength,
+        metadata: args.metadata,
         createdAt: new Date(),
       };
 

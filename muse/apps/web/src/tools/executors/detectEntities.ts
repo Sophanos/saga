@@ -5,7 +5,7 @@
  */
 
 import type { DetectEntitiesArgs } from "@mythos/agent-protocol";
-import { executeDetectEntities } from "../../services/ai/sagaClient";
+import { executeDetectEntities } from "../../services/ai/agentRuntimeClient";
 import { resolveTextFromContext, type ToolDefinition, type ToolExecutionResult } from "../types";
 
 export interface DetectEntitiesExecutionResult {

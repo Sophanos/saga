@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import {
   Check,
   ChevronDown,
@@ -11,7 +14,6 @@ import {
   Users,
 } from "lucide-react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
-import { createDocument, mapDbDocumentToDocument } from "@mythos/db";
 import { useProjects } from "../../hooks/useProjects";
 import {
   useCurrentProject,
@@ -23,7 +25,7 @@ import {
 import { useNavigationStore } from "../../stores/navigation";
 import { useProjectSelectionStore } from "../../stores/projectSelection";
 import { getEntityTypeButtons } from "../../utils/entityConfig";
-import { type EntityType } from "@mythos/core";
+import { type Document, type EntityType } from "@mythos/core";
 
 const EMPTY_TIPTAP_DOC = { type: "doc", content: [{ type: "paragraph" }] };
 
@@ -56,6 +58,7 @@ export function ProjectPickerSidebar() {
   const recentDocuments = useRecentDocuments();
   const recentEntities = useRecentEntities();
   const entities = useEntities();
+  const createDocumentMutation = useMutation(api.documents.create);
 
   const sortedProjects = useMemo(() => {
     return [...projects].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
@@ -156,19 +159,32 @@ export function ProjectPickerSidebar() {
         documents.filter((doc) => doc.type === "chapter").length + 1;
       const title = `Chapter ${nextChapterNumber}`;
 
-      const created = await createDocument({
-        project_id: currentProject.id,
+      const createdId = await createDocumentMutation({
+        projectId: currentProject.id as Id<"projects">,
         type: "chapter",
         title,
         content: EMPTY_TIPTAP_DOC,
-        content_text: "",
-        order_index: nextOrderIndex,
-        word_count: 0,
+        contentText: "",
+        orderIndex: nextOrderIndex,
+        wordCount: 0,
       });
 
-      const mapped = mapDbDocumentToDocument(created);
-      addDocument(mapped);
-      setCurrentDocument(mapped);
+      const now = new Date();
+      const createdDocument: Document = {
+        id: createdId,
+        projectId: currentProject.id,
+        parentId: undefined,
+        type: "chapter",
+        title,
+        content: EMPTY_TIPTAP_DOC,
+        orderIndex: nextOrderIndex,
+        wordCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      addDocument(createdDocument);
+      setCurrentDocument(createdDocument);
       setCanvasView("editor");
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create chapter");

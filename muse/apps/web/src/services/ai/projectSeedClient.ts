@@ -1,8 +1,8 @@
 /**
- * Genesis Client
+ * Project Seed Client
  *
- * Client for calling the ai-genesis edge function to generate
- * story world scaffolding in Architect mode.
+ * Client for calling the Convex HTTP action /api/ai/genesis to generate
+ * project seed scaffolding in Architect mode.
  */
 
 import { ApiError, callEdgeFunction, type ApiErrorCode } from "../api-client";
@@ -56,14 +56,14 @@ export interface GenesisRequestOptions {
 // ============================================================================
 
 /**
- * Generate story world scaffolding via the AI genesis edge function.
+ * Generate project seed scaffolding via the AI genesis edge function.
  * 
  * @param payload - The genesis request containing the concept prompt
  * @param options - Optional API key and abort signal
  * @returns The generated entities, world summary, and optional outline
  * @throws GenesisApiError on failure
  */
-export async function runGenesisViaEdge(
+export async function generateProjectSeed(
   payload: GenesisRequestPayload,
   options?: GenesisRequestOptions
 ): Promise<GenesisResponsePayload> {
@@ -82,7 +82,7 @@ export async function runGenesisViaEdge(
 
   try {
     const result = await callEdgeFunction<GenesisRequestPayload, GenesisResponsePayload>(
-      "ai-genesis",
+      "ai/genesis",
       payload,
       {
         apiKey: options?.apiKey,

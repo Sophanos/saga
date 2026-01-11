@@ -1,12 +1,36 @@
-import { createDocument } from "@mythos/db";
-import { embedTextViaEdge, EmbeddingApiError } from "../ai";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
+import { authClient } from "../../lib/auth";
 
-export const WORLD_SEED_TITLE = "World Seed";
+export const PROJECT_SEED_TITLE = "World Seed";
 const WORLD_SEED_TYPE = "worldbuilding";
-const EMBEDDINGS_ENABLED = import.meta.env["VITE_EMBEDDINGS_ENABLED"] !== "false";
 const DEFAULT_ORDER_INDEX = 1;
+const CONVEX_URL = import.meta.env["VITE_CONVEX_URL"] || "https://convex.cascada.vision";
 
-export type SeedWorldbuildingSource =
+let cachedClient: ConvexHttpClient | null = null;
+let cachedToken: string | null = null;
+
+async function getConvexClient(): Promise<ConvexHttpClient> {
+  if (!cachedClient) {
+    cachedClient = new ConvexHttpClient(CONVEX_URL);
+  }
+
+  const token = await authClient.$fetch("/api/auth/convex-token", { method: "GET" });
+  const nextToken = token?.data?.token ?? null;
+  if (!nextToken) {
+    throw new Error("Missing Convex auth token");
+  }
+
+  if (cachedToken !== nextToken) {
+    cachedClient.setAuth(nextToken);
+    cachedToken = nextToken;
+  }
+
+  return cachedClient;
+}
+
+export type SeedProjectContextSource =
   | {
       kind: "blank";
       projectName: string;
@@ -26,9 +50,9 @@ export type SeedWorldbuildingSource =
       genre?: string;
     };
 
-export async function createSeedWorldbuildingDoc(params: {
+export async function createSeedProjectContextDoc(params: {
   projectId: string;
-  source: SeedWorldbuildingSource;
+  source: SeedProjectContextSource;
   orderIndex?: number;
 }): Promise<{ documentId: string; contentText: string }> {
   const { projectId, source, orderIndex = DEFAULT_ORDER_INDEX } = params;
@@ -37,59 +61,31 @@ export async function createSeedWorldbuildingDoc(params: {
   const content = buildTiptapDoc(lines);
   const wordCount = countWords(contentText);
 
-  const doc = await createDocument({
-    project_id: projectId,
+  const client = await getConvexClient();
+  const docId = await client.mutation(api.documents.create, {
+    projectId: projectId as Id<"projects">,
     type: WORLD_SEED_TYPE,
-    title: WORLD_SEED_TITLE,
+    title: PROJECT_SEED_TITLE,
     content,
-    content_text: contentText,
-    order_index: orderIndex,
-    word_count: wordCount,
+    contentText,
+    orderIndex,
+    wordCount,
   });
 
-  return { documentId: doc.id, contentText };
+  return { documentId: docId, contentText };
 }
 
-export async function embedSeedWorldbuildingDoc(params: {
+export async function embedSeedProjectContextDoc(params: {
   projectId: string;
   documentId: string;
   title: string;
   contentText: string;
 }): Promise<void> {
-  if (!EMBEDDINGS_ENABLED) {
-    return;
-  }
-
-  const contentText = params.contentText.trim();
-  if (!contentText) {
-    return;
-  }
-
-  try {
-    await embedTextViaEdge(contentText, {
-      qdrant: {
-        enabled: true,
-        pointId: `doc_${params.documentId}`,
-        payload: {
-          project_id: params.projectId,
-          type: "document",
-          document_id: params.documentId,
-          title: params.title,
-          content_preview: contentText.slice(0, 500),
-          updated_at: new Date().toISOString(),
-        },
-      },
-    });
-  } catch (error) {
-    if (error instanceof EmbeddingApiError) {
-      console.warn("[seedWorldbuilding] Embedding failed:", error.message);
-    } else {
-      console.warn("[seedWorldbuilding] Embedding failed:", error);
-    }
-  }
+  // Embeddings are enqueued server-side on document creation.
+  void params;
 }
 
-function buildSeedLines(source: SeedWorldbuildingSource): string[] {
+function buildSeedLines(source: SeedProjectContextSource): string[] {
   const lines: string[] = [];
 
   lines.push(`Project: ${source.projectName}`);

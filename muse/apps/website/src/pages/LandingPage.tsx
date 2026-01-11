@@ -750,8 +750,8 @@ const FEATURES = [
   {
     icon: BookMarked,
     title: "Your master document, always organized.",
-    description: "Visual World Graph shows all your characters, locations, and their relationships. Export a complete series bible with one click.",
-    highlight: "World Graph + Export",
+    description: "Visual Project Graph shows all your characters, locations, and their relationships. Export a complete series bible with one click.",
+    highlight: "Project Graph + Export",
   },
   {
     icon: Brain,
