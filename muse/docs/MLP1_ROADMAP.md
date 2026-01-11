@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-11 (P0 blocker fixes: rollback modal + pagination; flow timer enhancements; auth/marketing scaffolding)
+> Last Updated: 2026-01-11 (web research tools; ask_question multi-tab UI; P0 blockers resolved)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -15,6 +15,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 - Project Knowledge System: templates, registries, Project Graph, and schema validation.
 - AI co-author with explicit approvals; Focus Mode keeps AI silent unless invoked.
 - Knowledge PRs: review queue, diffs, approvals, and rollback.
+- Web Research: `web_search` + `web_extract` for real-world reference lookup (Parallel Web SDK).
 - MCP integrations and citations for external tool access and evidence.
 - Offline-first plus real-time sync for collaboration.
 - Platform focus: Expo Web first, macOS (Tauri v2) next, iOS/iPad later.
@@ -27,11 +28,18 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Convex Agent Integration | Done | 100 |
 | Platform Integration | In progress (Web done; Tauri scaffold; Expo partial) | 80 |
 | RAG Pipeline | Done | 100 |
+| Web Research Tools | Done | 100 |
 | Supabase -> Convex Migration | Done | 100 |
 | Real-Time Collaboration | In progress | 80 |
 | Overall MLP 1 | In progress | 95 |
 
 ## Recent Updates (condensed)
+
+**2026-01-11 (late evening)**
+- Web Research: `web_search` + `web_extract` tools via Parallel Web SDK; auto-execute (no approval needed); agent can search web and extract full page content for research.
+- Ask Question: unified schema with multi-tab UI; single question = inline, multiple = tabbed navigation; rich options with label+description; freeform always available.
+- System prompt: updated with Human-in-the-Loop and Research Tools guidance.
+- Tool registry: added `webSearchExecutor` + `webExtractExecutor` with summaries.
 
 **2026-01-11 (evening)**
 - P0 fix: Rollback confirmation modal added for Web + Expo; queries `getRollbackImpact`, shows cascade warnings, displays affected relationships.
@@ -138,6 +146,52 @@ Goal: production-grade review surface where every PR is actionable, diffs are re
 
 - Coach mode selector (Writing / Clarity / Policy) with taxonomy-aware labels.
 - Issue UI: ambiguity/unverifiable/not-testable/policy-conflict categories while preserving the "issue + suggested fix" structure.
+
+## AI Tools Overview
+
+### Active Tools (Registered)
+
+| Category | Tool | Purpose | Approval |
+|----------|------|---------|----------|
+| **Human-in-the-Loop** | `ask_question` | Multi-tab question UI with rich options | User input |
+| | `write_content` | Propose content changes | User approval |
+| | `commit_decision` | Save decisions to memory | User approval |
+| **Internal Search (RAG)** | `search_context` | Search project docs/entities/memories | Auto |
+| | `read_document` | Read specific document | Auto |
+| | `search_chapters` | Search chapters | Auto |
+| | `search_world` | Search entities | Auto |
+| | `get_entity` | Get specific entity | Auto |
+| **Web Research** | `web_search` | Search the internet (Parallel Web) | Auto |
+| | `web_extract` | Extract full page content from URL | Auto |
+| **Entity Management** | `create_entity` | Create character, location, item, etc. | Risk-based |
+| | `update_entity` | Update entity properties | Risk-based |
+| | `create_relationship` | Connect entities | Risk-based |
+| | `update_relationship` | Modify relationship | Risk-based |
+| | `create_node` / `update_node` | Graph nodes | Risk-based |
+| | `create_edge` / `update_edge` | Graph edges | Risk-based |
+| **Templates** | `generate_template` | Create project template | User approval |
+
+### Planned Tools (Defined, Not Wired)
+
+| Tool | Purpose | Generalization Notes |
+|------|---------|---------------------|
+| `check_consistency` | Find contradictions in content | Works for any domain with structured data |
+| `detect_entities` | Extract entities from text | Already general - works for any content type |
+| `check_logic` | Validate against defined rules | Rename to `validate_constraints`? |
+| `clarity_check` | Analyze content quality | Rename to `analyze_quality`? |
+| `name_generator` | Generate contextual names | Keep for creative workflows |
+| `genesis_world` | Bootstrap project structure | Rename to `bootstrap_project`? |
+| `search_images` | Search project image assets | Ready to wire up |
+| `generate_image` | Generate images | Ready to wire up |
+| `delete_entity` / `delete_relationship` | Delete operations | Ready to wire up |
+
+### Tool Implementation Paths
+
+- Tool definitions: `convex/ai/tools/*.ts`
+- Agent runtime: `convex/ai/agentRuntime.ts`
+- Type definitions: `packages/agent-protocol/src/tools.ts`
+- Client executors: `apps/web/src/tools/executors/*.ts`
+- Client registry: `apps/web/src/tools/registry.ts`
 
 ## Platform Strategy
 

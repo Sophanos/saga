@@ -35,6 +35,21 @@ MVP1 ships a minimal subset of receipts; the full manifest expands in Future.
 - Progressive depth: start with simple widgets, add governance and automation later.
 - Human control first: confirmations before writes, easy cancel/fork.
 
+### UI/UX design targets (MVP1)
+- One deliberate action: command -> preview -> confirm -> apply/save.
+- Quiet surfaces: no stacked modals, no extra panes, no popups.
+- Writing-first: output is plain Markdown, style later.
+- Provenance is present but calm: receipts exist, collapsed by default.
+- Keyboard-first: / and Cmd+K share the same command list and recents.
+- Minimal copy: short, neutral labels and no assistant chatter.
+
+### One Contract
+All features use the same contract and stay connected:
+Command -> widget recipe -> artifact deliverable -> manifest receipts.
+
+Widgets define inputs + sources + template; artifacts store output + manifest.
+In MVP1, widgets do not mutate entities. They only create inline output or artifacts.
+
 ## 3. The Pipeline
 
 Vision: Understand -> Create -> Refine -> Govern -> Automate.
@@ -49,6 +64,18 @@ MVP1 is a slice of the vision. Govern is a confirmation modal, and Automate is o
 | Govern | Confirmation modal | Policy packs, approval chains |
 | Automate | None | /watch, /agent, scheduling |
 
+### Vision flow example (end-to-end)
+Example: `/create spec` from a meeting note.
+
+1) Command invoked with selected notes.
+2) Understand resolves entities and gathers relevant docs/memories/precedents.
+3) Create renders the spec artifact and records inputs + sources in the manifest.
+4) Refine iterates in the workspace with diffs and version history.
+5) Govern applies policies and approval chains before publish.
+6) Automate schedules refreshes and reacts to changes via /watch.
+
+Output: published artifact with receipts, lineage, and staleness tracking.
+
 ## 4. Glossary
 - Command: slash invocation like `/create manga`.
 - Widget: typed recipe behind a command; some commands are non-widgets (e.g., `/help`).
@@ -56,6 +83,7 @@ MVP1 is a slice of the vision. Govern is a confirmation modal, and Automate is o
 - Manifest: receipts attached to an artifact (sources, status, and metadata).
 - Living Model: project graph + decisions + memories + relationships.
 - Entity: node in the project graph (character, feature, campaign, etc).
+- Execution Marker: hidden metadata in editor linking applied text to execution ID.
 
 ## 5. MVP1 Spec
 
@@ -76,9 +104,10 @@ MVP1 is a slice of the vision. Govern is a confirmation modal, and Automate is o
 | Field | Purpose |
 | --- | --- |
 | type | Artifact type |
-| status | draft (MVP1) |
-| sources[] | Entity/doc references |
-| createdBy | User or system actor |
+| status | draft, manually_modified |
+| sources[] | Entity/doc references with `addedAt` and `manual` flag |
+| createdBy | User ID |
+| executionContext | { widgetId, widgetVersion, model, inputs, timestamps } |
 | createdAt | Timestamp |
 | sourceUpdatedAt | Stored per source for stale badge |
 
@@ -87,17 +116,36 @@ Manifest is shown inline as a collapsible block attached to the artifact. If the
 ### Manual source tagging (MVP1)
 - Manifest block includes an "Add sources" action.
 - Source picker supports search across entities and docs; also allows paste of an ID or link.
-- Selected sources append to the manifest and store current sourceUpdatedAt.
+- Selected sources append to the manifest with `addedAt` timestamp and `manual: true` flag.
+- Manual sources update staleness calculation from the moment they're added.
 - Users can remove incorrect sources.
 - This does not mutate entities; it only updates artifact metadata.
+
+**Source picker UI:**
+- Search field with type-ahead across entities and documents.
+- Paste ID or link directly into search field for quick add.
+- Results grouped by type (Entities | Documents | Memories).
+- Truncate long lists within each group with "Show more".
+- Selected sources show as chips with remove (×) action.
+- Manual sources clearly labeled with "Manually added" + `addedAt` timestamp in receipts.
+
+### Artifact naming/titles
+- **Default title:** `{Template} - {Source doc name}` or `{Template} - {Date}` if no source doc.
+  - Examples: "Spec - Chapter 3 Notes", "Summary - 2026-01-11"
+- **User rename:** Available in confirm modal (editable title field) and after create (inline rename in artifact header).
+- **Constraints:** Title required, max 100 chars, no special characters that break file systems.
 
 ### Staleness
 - Store sourceUpdatedAt when artifact is created.
 - On access, compare against current source updatedAt.
 - If changed, show "May be stale" badge and offer "Re-run with current context".
+- **Source deletion:** Show distinct "Source missing" badge (different from "May be stale"). Block regeneration until user resolves missing sources (remove or replace), then allow re-run.
 
 ### Regeneration
-- Allow regenerate with the same inputs only (no refinement prompts).
+- "Re-run with current context" shows diff preview against current artifact before confirming replacement.
+- Old version preserved in history.
+- Two options: "Re-run same" (one click, identical inputs) vs "Re-run with changes" (review/adjust inputs before regenerating).
+- Same-input regenerate only in MVP1 (no refinement prompts).
 
 ### Approval flow
 - Single confirmation modal before artifact is written.
@@ -111,21 +159,386 @@ Manifest is shown inline as a collapsible block attached to the artifact. If the
 Inline widgets:
 - `/summarize` (inline summary)
 - `/expand` (inline expansion)
-- `/rewrite` (tone/style rewrite)
-- `/outline` (structured outline)
-- `/generate name` (name suggestions)
+- `/rewrite` (tone/style rewrite) - predefined presets + custom freeform
+- `/outline` (structured markdown outline with ## headers)
+- `/generate name` (name suggestions via inline dropdown)
 
 Artifact widgets (text-only):
 - `create_doc` with templates: summary, brief, spec, notes, release-notes
 - Command aliases: `/create summary`, `/create brief`, `/create spec`, `/create notes`, `/create release-notes`
 
+Simple prompt widget:
+- `/ai` or "Ask AI" - one-shot execution with selection + doc/project context, without saving/sharing.
+
 ### Discovery (MVP1)
-- `/` opens a simple command menu with search and recent commands.
-- `Cmd+K` opens the same command palette.
+- `/` opens a simple command menu with search focused.
+- `Cmd+K` opens the same command palette with additional filters and parameter hints for power users.
+- Show 3-5 recent widget commands at top (per-project scope).
 - No recommendations, categories, or widget browser in MVP1.
+- No dedicated widget shortcuts in MVP1 (avoid shortcut sprawl).
+
+**Unknown command handling:**
+- Fuzzy matching for typos: typing "summ" shows `/summarize`.
+- Final option: "Ask AI: [your input]" for freeform prompt fallback.
+- "Ask AI" routing: if text selected, run as inline widget (preview + apply); if no selection, open AI panel with prompt prefilled.
+
+### UI/UX surfaces (MVP1)
+
+#### Command menu (slash and palette)
+- Minimal overlay list, search-first, close on run or Esc.
+- Show 3-5 recent widget commands at top if available.
+- Names only in list; description appears when item is focused/hovered.
+- `/` is streamlined; `Cmd+K` shows filters and parameter hints.
+
+#### Preview modal (governance)
+- Single modal with a simple header, content preview, and two actions.
+- Primary action label matches the intent: "Insert Summary", "Create Spec".
+- For long content (2000+ words): truncated preview with "Show full preview" expansion.
+- Editable title field for artifact naming.
+- Optional Receipts disclosure is collapsed by default.
+- Cancel should never write; confirm always writes.
+
+**Confirm behavior:**
+- Inline apply: modal closes optimistically, write happens in background, error toast if fails.
+- Artifact create: modal shows brief "Applying..." then closes on success.
+
+**Escape behavior:**
+- Escape prompts "Discard this output?" if generated content exists.
+- Cmd+Escape (or double-Escape) discards immediately without prompt.
+
+#### Inline apply
+- Apply at cursor or selection with no extra UI chrome.
+- Brief inline highlight ("Applied") fades after 3-5 seconds.
+- Subtle marker persists (hover to show "Applied" + "Revert" action).
+- Execution marker stored as hidden metadata linking text range to execution ID for audit.
+- Markers survive copy/paste within project; stripped on cross-project paste.
+
+#### Inline progress tile
+- **Position:** Contextual - anchor near insertion point for quick runs; use fixed bottom bar for longer executions to avoid jumpiness.
+- **Appearance:** Thinking indicator with concise stage text, expandable for details (like ChatGPT/Grok thinking UI).
+- **Stages:** "Gathering context → Generating → Formatting" (adaptive detail by tier).
+- **Expandable details:** Collapsible "Show details" panel in tile for tool calls and timing.
+- **Cancel:** Graceful with warning - allow cancel anytime, explicit that in-flight generation may take a moment to stop; never write partial output.
+
+#### Artifact receipts block
+- Collapsed block titled "Receipts".
+- Expanded view shows type, status, createdBy, createdAt, widgetVersion, sources.
+- Sources grouped by type (Entities | Documents | Memories) with expand per group.
+- If sources are empty, show "No sources".
+- Manual sources labeled with "Manually added" + `addedAt` timestamp.
+- Include "Add sources", "Re-run same", and "Re-run with changes" actions.
+- Show "May be stale" or "Source missing" badge when applicable.
+
+### Execution visibility
+- **Default:** Stage labels only ("Gathering context → Generating → Formatting").
+- **Expanded:** Tool calls visible ("Reading entity: Elena → Fetching related docs → Calling LLM").
+- **Debug mode:** Full agent trace (tool calls, token counts, timing) for power users.
+- **Adaptive by tier:** Basic users see stages; Pro/Team see tool calls; debug mode shows full trace.
+- **Persistence:** Summary in manifest (stage timings + tool call counts) for audit/provenance; full trace discarded.
+
+### Failure handling
+
+#### Mid-stream failure (LLM timeout, etc.)
+- Keep partial output in preview state (invisible cache).
+- On retry, offer "Continue" vs "Restart" options.
+- Never write partial output on failure.
+
+#### Widget execution errors
+- **Tiered display:** Actionable guidance for fixable errors ("Rate limited - try again in 30s", "Context too large - reduce selection"); generic message with optional "Details" expand for system/internal errors.
+- Generic error: "Could not generate preview" with Retry and Cancel actions.
+
+#### Dashboard block refresh failure
+- Show stale cached content with "Refresh failed" badge and retry action.
+- Display lastRunAt and lastSuccessAt in receipts.
+
+### Entity resolution
+
+#### Multi-entity in selection
+- Hierarchical priority: anchor on parent doc/scene as primary context, include all detected entities as secondary.
+- No extra disambiguation UI unless resolution truly fails.
+
+#### Zero entities in selection
+- Warn but allow: proceed with doc/project context, save with sources=[] ("No sources").
+- Nudge to "Add sources" for specificity.
+
+#### Ambiguous entity matches
+- Threshold-based: auto-pick when confidence is clearly higher; if close, ask the user.
+- Simple entity picks shown inline in progress tile.
+- Complex/nuanced clarifications use agent ask modal.
+- High-impact ambiguity blocks before generation; low-impact proceeds with best-guess and surfaces assumption in preview/receipts.
+
+#### Chat context carry-forward
+- Widgets don't depend on ephemeral chat state.
+- After chat clarification, offer "Remember this for widgets?" to persist into project memory/decisions.
+
+### Undo and revert
+- AI changes grouped as single undo unit (Cmd+Z works).
+- Explicit "Revert" action available on applied highlight.
+- For `/rewrite`: before/after diff shown in preview modal and accessible via execution marker.
+
+### Double expansion warning
+- If `/expand` is run on previously-expanded content, show "Previously expanded" note in preview.
+- Still allow proceed.
+
+### Permissions
+- Inherit document permissions: view-only users can run read-only widgets (e.g., `/summarize`).
+- Any widget that writes (inline apply / artifact save) requires edit permission.
+
+### Concurrent execution (collaboration)
+- Optimistic with warning: both collaborators can preview.
+- On confirm, detect selection/document version drift.
+- Warn "Content changed since preview" with diff and rebase option.
+
+### Manual edits to artifacts
+- Staleness based on sourceUpdatedAt continues to trigger.
+- On regenerate, warn "will overwrite manual edits".
+- Record "manually_modified" flag in manifest status.
+
+### Context pipeline
+
+#### Context gathering visibility
+- Configurable per widget: simple widgets stay automatic; complex/high-cost widgets surface "Will use X sources" with adjust step.
+
+#### Token budgeting
+- Adaptive budget: scale by model context window + expected output size.
+- Truncate least relevant first.
+- Record what was omitted in receipts.
+
+### Model selection
+- Widget-defined default model.
+- Users can override per-widget in settings.
+- No per-execution model selector in MVP1.
+
+### UI/UX microcopy (MVP1)
+| Surface | State | Copy |
+| --- | --- | --- |
+| Command menu | Empty search | "No commands found" |
+| Command menu | Recent header | "Recent" |
+| Command menu | All header | "Commands" |
+| Command menu | Fallback option | "Ask AI: {input}" |
+| Preview modal | Title (inline) | "Insert Summary" |
+| Preview modal | Title (artifact) | "Create Spec" |
+| Preview modal | Primary action (inline) | "Insert" |
+| Preview modal | Primary action (artifact) | "Create" |
+| Preview modal | Secondary action | "Cancel" |
+| Preview modal | Long content | "Show full preview" |
+| Preview modal | Receipts disclosure | "Receipts" |
+| Preview modal | Discard prompt | "Discard this output?" |
+| Progress tile | Stage 1 | "Gathering context" |
+| Progress tile | Stage 2 | "Generating" |
+| Progress tile | Stage 3 | "Formatting" |
+| Progress tile | Expand | "Show details" |
+| Progress tile | Cancel warning | "Stopping... may take a moment" |
+| Receipts block | Collapsed label | "Receipts" |
+| Receipts block | Empty sources | "No sources" |
+| Receipts block | Add sources | "Add sources" |
+| Receipts block | Manual source | "Manually added {date}" |
+| Receipts block | Stale badge | "May be stale" |
+| Receipts block | Missing badge | "Source missing" |
+| Receipts block | Regenerate same | "Re-run same" |
+| Receipts block | Regenerate changes | "Re-run with changes" |
+| Apply highlight | Inline apply | "Applied" |
+| Apply highlight | Revert action | "Revert" |
+| Apply highlight | Prior expansion | "Previously expanded" |
+| Errors | Preview failure | "Could not generate preview" |
+| Errors | Approval failure | "Could not apply changes" |
+| Errors | Offline | "Offline - widgets unavailable" |
+| Errors | Rate limit | "Rate limited - try again in {time}" |
+| Errors | Context too large | "Context too large - reduce selection" |
+
+### Interaction matrix (MVP1)
+| Surface | State | Trigger | Result |
+| --- | --- | --- | --- |
+| Editor | Focused | `/` | Open command menu with search focused |
+| Editor | Focused | `Cmd+K` | Open command palette with filters/hints |
+| Command menu | Open | `Esc` | Close menu |
+| Command menu | Open | `Enter` on item | Run widget, close menu |
+| Command menu | Open | Click outside | Close menu |
+| Command menu | Open | Arrow keys | Navigate list, show description on focus |
+| Command menu | No match | Select "Ask AI" | Route based on selection state |
+| Preview modal | Open | `Confirm` | Apply write or create document |
+| Preview modal | Open | `Cancel` or `Esc` | Prompt if content exists, then close |
+| Preview modal | Open | `Cmd+Esc` | Force close without prompt |
+| Preview modal | Open | Toggle "Receipts" | Expand or collapse receipts |
+| Preview modal | Open | Toggle "Show full preview" | Expand truncated content |
+| Progress tile | Executing | Click "Show details" | Expand execution log |
+| Progress tile | Executing | Click "Cancel" | Graceful cancel with warning |
+| Receipts block | Collapsed | Click "Receipts" | Expand block |
+| Receipts block | Expanded | Click "Receipts" | Collapse block |
+| Receipts block | Expanded | Click "Add sources" | Open source picker |
+| Receipts block | Expanded | Click "Re-run same" | Start regenerate with same inputs |
+| Receipts block | Expanded | Click "Re-run with changes" | Open inputs review, then regenerate |
+| Inline highlight | Visible | Hover | Show "Applied" + "Revert" |
+| Inline highlight | Visible | Click "Revert" | Undo AI change |
+| Suggestions dropdown | Open | Arrow keys | Navigate options |
+| Suggestions dropdown | Open | Enter | Insert selected option |
+| Suggestions dropdown | Open | Esc | Close dropdown |
+
+### Receipts block layout (MVP1)
+- Header row: "Receipts" label, optional "May be stale" or "Source missing" badge.
+- Body row 1: type, status, createdBy, createdAt, widgetVersion (single line, small text).
+- Body row 2: sources grouped by type (Entities | Documents | Memories) with counts, expand per group.
+- Actions row: "Add sources", "Re-run same", "Re-run with changes".
+
+### Dashboard (MVP1)
+
+#### Structure
+- Dashboard is a pinned artifact with `type: dashboard`.
+- Composed of widget blocks, each storing: widget + inputs + sources + outputArtifactId + lastRunAt + lastSuccessAt.
+- **Layout:** Vertical stack with drag-to-reorder (no grid complexity).
+
+#### MVP1 block types
+- **Recent/Pinned artifacts:** List of project artifacts with filters.
+- **Project status summary:** Entity/doc counts + last updated + short "recent changes" summary.
+
+#### Block behavior
+- Manual refresh only; re-run the same widget with the same inputs.
+- No scheduling or on-change refresh in MVP1.
+- On refresh failure: show stale cached content with "Refresh failed" badge and retry action.
+
+#### Navigation
+- Dedicated `/dashboard` route backed by pinned dashboard artifact.
+- Accessible from project nav.
+
+### Artifacts view (MVP1)
+- Dedicated Artifacts view for browsing all project artifacts.
+- Search and filters (by type, status, date, staleness).
+- Bulk actions: archive, delete.
+- Quick actions: "Show in folder", "Open receipts".
+- "Drafts / Needs review" section for artifacts requiring attention.
+
+### Artifact lifecycle
+
+#### Retention
+- User-controlled: no auto-cleanup.
+- Soft limits with nudge: after N artifacts per project, surface "You have N drafts, archive?" with bulk actions.
+
+#### Location
+- Default: source document's folder.
+- Lineage always linked in receipts regardless of location.
+- Easy move/reorganize after creation.
+
+#### Entity back-links
+- Relationship stored in DB (artifacts link to entities via sources).
+- Queryable on-demand but not displayed in default entity view in MVP1.
+- Surface "Referenced in: [artifact list]" in future.
+
+### MVP1 flow example (manual)
+Example: `/create spec` from selected notes.
+1) User selects notes and runs `/create spec`.
+2) System does basic entity lookup (hierarchical: parent doc primary, detected entities secondary).
+3) If ambiguity is high-impact, prompt for clarification; otherwise proceed with best-guess.
+4) Progress tile shows stages; user can expand for details or cancel.
+5) Preview modal shows truncated content (expand available), editable title, collapsed receipts.
+6) User confirms; artifact is saved with manifest (sources, executionContext, widgetVersion).
+7) Optional: add sources in the manifest block.
+8) If needed, user clicks "Re-run same" or "Re-run with changes" (diff preview before confirm).
+
+### MVP1.5 flow example (toward MVP2)
+Example: `/create spec` with refinement.
+1) User opens artifact in the viewer and clicks refine.
+2) Refinement loop runs; diffs recorded as a new version.
+3) User accepts and marks Ready.
+4) Dashboard blocks can refresh on open (optional).
+
+### Widget definition structure
+
+#### Prompt format
+Structured prompt objects with typed variables:
+```typescript
+{
+  system: string,
+  user: string,
+  variables: Array<{
+    name: string,
+    type: 'string' | 'entity' | 'selection' | 'document',
+    required: boolean,
+    description?: string
+  }>
+}
+```
+
+#### Widget config
+```typescript
+{
+  id: string,
+  name: string,
+  command: string,           // e.g., "/summarize"
+  type: 'inline' | 'artifact',
+  prompt: StructuredPrompt,
+  defaultModel: string,
+  contextBudget: 'adaptive' | number,  // token limit
+  clarifyOnAmbiguity: boolean,         // pause for high-impact ambiguity
+  costWeight: number,                  // for rate limiting (1 = standard, 5 = expensive)
+  outputSchema?: ZodSchema,            // for validation
+}
+```
+
+#### Template customization (MVP1)
+- Core templates system-defined.
+- Per-project "Additional instructions" (prompt suffix) allowed.
+- No full template editor in MVP1.
+
+### Validation and safety
+- System widgets trusted.
+- Input validation: check inputs match widget schema.
+- Output validation: verify output matches expected type/schema.
+- Full sandbox reserved for future user-defined widgets.
+
+### Testing approach
+- Input/output fixtures for each widget.
+- Assert output shape/schema and key invariants.
+- No brittle golden text snapshots.
+
+### Rate limiting
+- Cost-weighted limits: single quota, expensive widgets consume more units.
+- Example: `/create spec` = 5 units, `/summarize` = 1 unit.
+- Soft limits: throttle at limit, don't hard block.
+- Grace period with nudge to upgrade.
+
+### Analytics events
+Track full funnel with context signals:
+- `widget_invoked` - command, source (/ or Cmd+K), selection_length, entity_count
+- `widget_preview_shown` - duration_ms, truncated
+- `widget_confirmed` - action (insert/create)
+- `widget_cancelled` - stage (preview/generating), had_content
+- `widget_applied` - inline/artifact, source_count
+- `widget_error` - error_category, stage
+- `widget_reverted` - time_since_apply_ms
+- `widget_regenerated` - same_inputs (boolean), had_staleness
+- `source_added` - manual (boolean), source_type
+- `source_removed` - manual (boolean)
+
+### Offline behavior
+- Graceful degradation: show offline state, disable widget commands in / and Cmd+K.
+- Allow browsing existing artifacts and receipts.
+- No queuing for later execution.
+
+### Execution history
+- Detailed provenance per artifact in receipts.
+- Project-level aggregate stats (runs per widget, success rate) for dashboard insights.
+- No global cross-project execution log.
+
+### Accessibility
+- Screen reader announcements: polite for quick runs (completion only), assertive stage updates for long runs.
+- All interactive elements keyboard-accessible.
+- Focus management: return focus to editor after modal close.
+- High contrast support for badges and highlights.
+
+### Implementation anchors (current repo)
+- Widget definitions and command registry: `muse/packages/commands/`
+- Execution mode flags and capability wiring: `muse/packages/capabilities/`
+- Artifact and manifest types: `muse/packages/manifest/`, `muse/packages/core/`
+- Entity lookup and project context: `muse/packages/memory/`, `muse/packages/context/`
+- UI surfaces (inline/modal/manifest block): `muse/packages/ui/`, `muse/packages/editor/`, `muse/packages/editor-webview/`
+- Prompts: `muse/packages/prompts/`
+- Backend schema and actions: `muse/convex/`
+- Client access: `muse/packages/convex-client/`, `muse/packages/api-client/`
+- Tier limits and gating: `muse/packages/tier-config/`
 
 ### Success metric
 - Primary KPI: artifact reuse rate, weighted (linked/referenced later > re-viewed or exported).
+- Secondary: widget completion rate (invoked → confirmed), revert rate, regeneration rate.
 
 ## 6. Open Questions + Decision Log
 
@@ -134,7 +547,7 @@ Artifact widgets (text-only):
 | --- | --- |
 | Writer is the primary wedge | Differentiation via project graph + narrative workflows |
 | Commands vs widgets | Commands are invocations; widgets are typed recipes |
-| Minimal manifest fields | type, status, sources[], createdBy, createdAt |
+| Minimal manifest fields | type, status, sources[], createdBy, executionContext, createdAt |
 | AI silent unless invoked | /watch is explicit opt-in, not unsolicited |
 | Staleness approach | Store sourceUpdatedAt; badge on access; manual re-run |
 | MVP1 scope | Understand + Create only; Govern is confirm modal |
@@ -142,17 +555,92 @@ Artifact widgets (text-only):
 | MVP1 artifact types | Text-only artifacts; diagrams and media deferred |
 | Manifest location | Inline collapsible block attached to the artifact |
 | Sources requirement | Sources optional; show "No sources" when empty |
-| Status semantics | Draft only in MVP1 |
+| Status semantics | Draft and manually_modified in MVP1 |
 | Entity mutations | No entity writes in MVP1 |
-| Regeneration | Same-input regenerate only |
+| Regeneration | Same-input regenerate only, with diff preview |
 | KPI definition | Reuse rate weighted: links > re-views/exports |
-| MVP1 widget list | Inline transforms + create_doc templates (summary/brief/spec/notes/release-notes) |
-| Source tagging | Manual add/remove sources from manifest |
+| MVP1 widget list | Inline transforms + create_doc templates + /ai one-shot |
+| Source tagging | Manual add/remove with timestamps, labeled "manually added" |
+| One contract | Command -> widget -> artifact -> manifest |
+| Mid-stream failure | Invisible cache for resume; offer Continue vs Restart |
+| Multi-entity resolution | Hierarchical priority: parent doc primary, detected entities secondary |
+| Source deletion | Distinct "Source missing" badge; block regeneration until resolved |
+| Source integrity | Append-only with timestamps; manual sources labeled with addedAt |
+| Zero entities | Warn but allow; proceed with doc/project context |
+| Preview length | Truncated with "Show full preview" expansion |
+| Recents scope | Per-project for relevance |
+| Manual edits | Staleness still triggers; regenerate warns about overwriting |
+| Block failure | Stale content + error badge; keep last successful output |
+| Undo behavior | Single undo unit + explicit "Revert" on highlight |
+| Cmd+K vs / | Same registry; Cmd+K has filters/hints, / is streamlined |
+| Suggestions UI | Inline dropdown at cursor with keyboard navigation |
+| Concurrent execution | Optimistic with warning on confirm if content changed |
+| Permissions | Inherit doc permissions; view-only can run read-only widgets |
+| Regenerate UX | Diff preview first; old version in history |
+| Widget versioning | Version in manifest; no upgrade nudge |
+| Artifact retention | User-controlled with soft limit nudge |
+| Artifact location | Default to source doc folder; easy move after |
+| Inline metadata | Hidden execution marker for audit + revert |
+| Actor attribution | createdBy=userId + full executionContext object |
+| Long execution | Progress with stages; collapsible details panel |
+| Rewrite history | Diff in preview modal; accessible via execution marker |
+| Outline format | Structured markdown (## headers) |
+| Double expansion | Warn in preview; allow proceed |
+| Execution visibility | Adaptive by tier; summary persisted in manifest |
+| Cancel behavior | Graceful with warning; never write partial output |
+| Progress tile position | Contextual: inline for short, fixed for long |
+| Unknown command | Fuzzy + "Ask AI" fallback |
+| Template customization | Prompt suffix only; no template editor in MVP1 |
+| Sources scaling | Grouped by type with expand per group |
+| Template systems | Shared prompt infrastructure; separate registries/UIs |
+| Custom widgets MVP1 | /ai one-shot; no save/share |
+| AI fallback routing | Context-dependent: selection → inline; no selection → AI panel |
+| Context gathering | Configurable per widget |
+| Disambiguation | Threshold-based; inline for simple, modal for complex |
+| Clarify timing | High-impact blocks; low-impact proceeds with assumption |
+| Chat context | Explicit carry-forward to project memory if user opts in |
+| Escape behavior | Prompt if content; Cmd+Esc force-closes |
+| Accessibility | Polite vs assertive announcements by duration |
+| Error display | Tiered by error type |
+| Widget shortcuts | None in MVP1 |
+| Dashboard layout | Vertical stack with drag-to-reorder |
+| MVP1 blocks | Artifacts + status summary |
+| Dashboard nature | Pinned artifact |
+| Re-run inputs | Fork option: "Re-run same" vs "Re-run with changes" |
+| Status metrics | Counts + recent activity |
+| Entity back-links | Queryable but not displayed |
+| Marker portability | Survive within project; strip cross-project |
+| Rate limits | Cost-weighted single quota |
+| Prompt format | Structured objects with typed variables |
+| Widget safety | System trusted; sandbox for future custom |
+| Testing | Input/output fixtures |
+| Context budget | Adaptive; record omissions in receipts |
+| Model selection | Widget-defined with user override in settings |
+| Analytics | Funnel + context signals |
+| Offline | Graceful degradation; allow browsing |
+| Execution history | Receipts + lightweight stats |
+| Highlight duration | Fade after 3-5s; subtle marker persists |
+| Confirm behavior | Optimistic for inline; wait for artifact |
+| Rewrite options | Predefined + custom freeform |
+| Menu verbosity | Description on focus |
 
-### Open Questions
-- What is the minimum viable entity set for "basic lookup"?
-- How do manual edits affect provenance and sources?
-- Are there must-have widgets missing from the MVP1 list?
+### Open Questions (resolved in this spec)
+- ~~What is the minimum viable entity set for "basic lookup"?~~ → Hierarchical: parent doc + detected entities
+- ~~How do manual edits affect provenance and sources?~~ → Staleness still triggers; "manually_modified" flag
+- ~~Are there must-have widgets missing from the MVP1 list?~~ → Added /ai one-shot
+- ~~Dashboard: new artifact type or create_doc template?~~ → Pinned artifact with type=dashboard
+- ~~Dashboard: per-block refresh or refresh all?~~ → Per-block manual refresh
+- ~~Dashboard: allow cross-project blocks or keep scoped to project?~~ → Project-scoped
+- ~~Dashboard: one pinned per project or multiple?~~ → One pinned per project
+- ~~Dashboard: which block types ship in MVP1?~~ → Artifacts + status summary
+- ~~Dashboard: show block manifest inline or via hover/expand?~~ → Collapsed with expand
+- ~~Dashboard: how to handle failed block refresh?~~ → Stale content + error badge
+- ~~Dashboard: where does the pinned dashboard live in navigation?~~ → Dedicated /dashboard route
+
+### Remaining open questions
+- Dashboard: who can edit the pinned dashboard in collaboration?
+- Is inbox a block or its own pinned artifact? (deferred past MVP1)
+- Goals block definition and data model (deferred past MVP1)
 
 ## 7. Recipes
 
@@ -196,14 +684,19 @@ These illustrate the end-to-end vision; MVP1 supports a subset.
 | Enterprise | Governance | Approval chains, audit trails, SSO, marketplace controls |
 
 ## 9. Non-Goals
+
 - Automation (/watch, /agent, scheduling).
 - Workspace panel and batch UI.
 - Policy packs and approval chains.
 - Marketplace and public widget publishing.
 - Multimodal output (image/audio).
 - Cross-project learning.
+- Per-execution model selection.
+- Grid-based dashboard layout.
+- Inline widget keyboard shortcuts.
 
 ## 10. Future
+
 This section preserves aspirational and deep design notes. Nothing here is required for MVP1 unless called out.
 
 ### The `create_artifact` Pattern
@@ -700,6 +1193,25 @@ User confirms or cancels. Actual cost recorded in manifest.
 - Setup wizard for new cadences
 - Status of active cadences (next run, last run)
 - Quick actions (run now, pause, edit)
+
+---
+
+### Dashboard Evolution
+
+Dashboards are composed artifacts made of widget blocks. Each block is a saved widget run (inputs + sources + output).
+
+#### Levels
+1) Pinned dashboard (MVP1)
+   - Manual refresh only, per block or refresh all
+   - Shows lastRunAt and sources
+
+2) On-open refresh (MVP1.5)
+   - Optional refresh when the dashboard is opened
+   - User-controlled to avoid surprise costs
+
+3) Scheduled and on-change (Pro)
+   - Per-block refresh modes: manual, on-open, scheduled, on-change
+   - Convex async notifications when blocks complete
 
 ---
 
