@@ -42,7 +42,7 @@ const TOOL_LABELS: Record<string, string> = {
   suggest_connections: 'Finding connections',
   detect_entities: 'Detecting entities',
   check_consistency: 'Checking consistency',
-  genesis_world: 'Generating world',
+  genesis_world: 'Generating project scaffold',
   generate_template: 'Creating template',
 };
 

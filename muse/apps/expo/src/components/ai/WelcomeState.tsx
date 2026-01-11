@@ -30,7 +30,7 @@ export function WelcomeState({ onAction }: WelcomeStateProps) {
           What can I help with?
         </Text>
         <Text style={[styles.greetingSubtitle, { color: colors.textSecondary }]}>
-          Ask about your story, characters, or world
+          Ask about your project, entities, or graph
         </Text>
       </Animated.View>
 

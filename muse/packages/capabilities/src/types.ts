@@ -36,7 +36,7 @@ export type CapabilityKind = "tool" | "chat_prompt" | "ui";
 export type CapabilityCategory =
   | "analysis"
   | "generation"
-  | "worldbuilding"
+  | "knowledge"
   | "navigation";
 
 // =============================================================================

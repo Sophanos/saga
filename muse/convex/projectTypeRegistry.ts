@@ -7,6 +7,7 @@ import {
   validateRegistryOverride,
   type ProjectTypeRegistryOverride,
 } from "./lib/typeRegistry";
+import { DEFAULT_TEMPLATE_ID, type ProjectTemplateId } from "./lib/projectTemplates";
 
 const riskLevelSchema = v.union(v.literal("low"), v.literal("high"), v.literal("core"));
 
@@ -29,12 +30,15 @@ const relationshipTypeDefSchema = v.object({
 export const getResolvedInternal = internalQuery({
   args: { projectId: v.id("projects") },
   handler: async (ctx, { projectId }) => {
+    const project = await ctx.db.get(projectId);
+    const templateId = (project?.templateId ?? DEFAULT_TEMPLATE_ID) as ProjectTemplateId;
+
     const override = await ctx.db
       .query("projectTypeRegistry")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
       .unique();
 
-    return resolveRegistry(override as ProjectTypeRegistryOverride | null);
+    return resolveRegistry(templateId, override as ProjectTypeRegistryOverride | null);
   },
 });
 
@@ -43,12 +47,34 @@ export const getResolved = query({
   handler: async (ctx, { projectId }) => {
     await verifyProjectAccess(ctx, projectId);
 
+    const project = await ctx.db.get(projectId);
+    const templateId = (project?.templateId ?? DEFAULT_TEMPLATE_ID) as ProjectTemplateId;
+
     const override = await ctx.db
       .query("projectTypeRegistry")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
       .unique();
 
-    return resolveRegistry(override as ProjectTypeRegistryOverride | null);
+    return resolveRegistry(templateId, override as ProjectTypeRegistryOverride | null);
+  },
+});
+
+export const getStatus = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }) => {
+    await verifyProjectAccess(ctx, projectId);
+
+    const registry = await ctx.db
+      .query("projectTypeRegistry")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .unique();
+
+    return {
+      locked: registry?.locked ?? false,
+      lockedAt: registry?.lockedAt ?? null,
+      lockedByUserId: registry?.lockedByUserId ?? null,
+      revision: registry?.revision ?? 0,
+    };
   },
 });
 
@@ -134,7 +160,9 @@ export const lock = mutation({
       relationshipTypes: [],
     }) as ProjectTypeRegistryOverride;
 
-    const registry = resolveRegistry(override);
+    const project = await ctx.db.get(projectId);
+    const templateId = (project?.templateId ?? DEFAULT_TEMPLATE_ID) as ProjectTemplateId;
+    const registry = resolveRegistry(templateId, override);
     const entities = await ctx.db
       .query("entities")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))

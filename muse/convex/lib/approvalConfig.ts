@@ -2,211 +2,133 @@
  * Tool Approval Configuration
  *
  * Centralized configuration for AI tool approval logic.
- * Provides defaults for registry seeding and non-world-graph approvals.
- *
- * World graph approvals are driven by registry riskLevel.
- * These lists define the default registry seed values only.
+ * Uses the resolved project registry for risk-aware decisions.
  */
 
-// =============================================================================
-// Entity Types
-// =============================================================================
+import type {
+  ProjectTypeRegistryResolved,
+  RelationshipTypeDef,
+  RiskLevel,
+  TypeDef,
+} from "./typeRegistry";
 
-/**
- * All supported entity types in the World Graph.
- */
-export const ENTITY_TYPES = [
-  "character",
-  "location",
-  "item",
-  "faction",
-  "magic_system",
-  "event",
-  "concept",
-] as const;
-
-export type EntityType = (typeof ENTITY_TYPES)[number];
-
-/**
- * Default entity types that should be marked high impact in the registry.
- */
-export const HIGH_IMPACT_ENTITY_TYPES: readonly EntityType[] = [
-  "character",
-  "magic_system",
-  "faction",
-] as const;
-
-/**
- * Default entity types that should be marked as core in the registry.
- */
-export const SENSITIVE_ENTITY_TYPES: readonly EntityType[] = [
-  "character",
-  "faction",
-  "magic_system",
-] as const;
-
-/**
- * Entity fields that affect identity and require approval to modify.
- * Changes to these fields can break narrative consistency.
- */
-export const IDENTITY_SENSITIVE_FIELDS: readonly string[] = [
-  "name",
-  "archetype",
-  "backstory",
-  "goals",
-] as const;
-
-// =============================================================================
-// Relationship Types
-// =============================================================================
-
-/**
- * All supported relationship types in the World Graph.
- */
-export const RELATION_TYPES = [
-  "knows",
-  "loves",
-  "hates",
-  "killed",
-  "created",
-  "owns",
-  "guards",
-  "weakness",
-  "strength",
-  "parent_of",
-  "child_of",
-  "sibling_of",
-  "married_to",
-  "allied_with",
-  "enemy_of",
-  "member_of",
-  "rules",
-  "serves",
-] as const;
-
-export type RelationType = (typeof RELATION_TYPES)[number];
-
-/**
- * Default relationship types that should be marked high impact in the registry.
- */
-export const HIGH_IMPACT_RELATIONSHIP_TYPES: readonly RelationType[] = [
-  // Familial relationships
-  "parent_of",
-  "child_of",
-  "sibling_of",
-  "married_to",
-  // Power dynamics
-  "rules",
-  "serves",
-  "member_of",
-  // Story-critical
-  "killed",
-  "created",
-] as const;
-
-/**
- * Default relationship types that should be marked as core in the registry.
- */
-export const CORE_RELATIONSHIP_TYPES: readonly RelationType[] = [
-  "parent_of",
-  "child_of",
-  "sibling_of",
-  "married_to",
-  "killed",
-  "created",
-] as const;
-
-/**
- * Threshold below which relationship strength changes require approval.
- * Weakening a relationship significantly can impact story dynamics.
- */
 export const RELATIONSHIP_STRENGTH_THRESHOLD = 0.3;
 
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-/**
- * Check if an entity type requires approval when created.
- *
- * @example
- * isHighImpactEntityType("character") // true
- * isHighImpactEntityType("item")      // false
- */
-export function isHighImpactEntityType(type: string): boolean {
-  return (HIGH_IMPACT_ENTITY_TYPES as readonly string[]).includes(type);
+function isHighRiskLevel(level: RiskLevel | undefined): boolean {
+  return level === "high" || level === "core";
 }
 
-/**
- * Check if an entity type requires approval for any update.
- */
-export function isSensitiveEntityType(type: string | undefined): boolean {
-  return !!type && (SENSITIVE_ENTITY_TYPES as readonly string[]).includes(type);
+function getIdentityFields(def?: TypeDef): readonly string[] {
+  return def?.approval?.identityFields ?? [];
 }
 
-/**
- * Check if an update contains identity-changing fields.
- *
- * @example
- * hasIdentityChange({ name: "New Name" })  // true
- * hasIdentityChange({ notes: "..." })      // false
- */
-export function hasIdentityChange(updates: Record<string, unknown>): boolean {
-  return IDENTITY_SENSITIVE_FIELDS.some(
-    (field) => updates[field] !== undefined
-  );
+export function hasIdentityChange(
+  updates: Record<string, unknown>,
+  identityFields: readonly string[]
+): boolean {
+  return identityFields.some((field) => updates[field] !== undefined);
 }
 
-/**
- * Check if a relationship type requires approval when created.
- *
- * @example
- * isHighImpactRelationshipType("parent_of") // true
- * isHighImpactRelationshipType("knows")     // false
- */
-export function isHighImpactRelationshipType(type: string): boolean {
-  return (HIGH_IMPACT_RELATIONSHIP_TYPES as readonly string[]).includes(type);
-}
-
-/**
- * Check if a relationship type requires approval for any update.
- */
-export function isCoreRelationshipType(type: string): boolean {
-  return (CORE_RELATIONSHIP_TYPES as readonly string[]).includes(type);
-}
-
-/**
- * Check if a relationship strength change is significant enough to require approval.
- * Weakening below threshold (0.3) is considered significant.
- */
 export function isSignificantStrengthChange(
   strength: number | undefined
 ): boolean {
   return strength !== undefined && strength < RELATIONSHIP_STRENGTH_THRESHOLD;
 }
 
-/**
- * Determine if a tool call needs user approval based on tool name and arguments.
- * Used by agentRuntime only for non-world-graph tools.
- *
- * @example
- * needsToolApproval("create_entity", { type: "character" })     // true
- * needsToolApproval("create_entity", { type: "item" })          // false
- * needsToolApproval("create_relationship", { type: "knows" })   // false
- * needsToolApproval("create_relationship", { type: "parent_of" }) // true
- */
+function shouldApproveEntityCreate(def?: TypeDef): boolean {
+  if (!def) return true;
+  if (def.approval?.createRequiresApproval) return true;
+  return isHighRiskLevel(def.riskLevel);
+}
+
+function shouldApproveEntityUpdate(
+  def: TypeDef | undefined,
+  updates: Record<string, unknown>
+): boolean {
+  if (!def) return true;
+  if (def.approval?.updateAlwaysRequiresApproval) return true;
+  if (def.riskLevel === "core") return true;
+  const identityFields = getIdentityFields(def);
+  if (identityFields.length === 0) return false;
+  return hasIdentityChange(updates, identityFields);
+}
+
+function shouldApproveRelationshipCreate(def?: RelationshipTypeDef): boolean {
+  if (!def) return true;
+  return isHighRiskLevel(def.riskLevel);
+}
+
+function shouldApproveRelationshipUpdate(
+  def: RelationshipTypeDef | undefined,
+  updates: Record<string, unknown>
+): boolean {
+  if (!def) return true;
+  if (def.riskLevel === "core") return true;
+  if (updates["bidirectional"] !== undefined) return true;
+  return isSignificantStrengthChange(updates["strength"] as number | undefined);
+}
+
 export function needsToolApproval(
+  registry: ProjectTypeRegistryResolved | null,
   toolName: string,
   args: Record<string, unknown>
 ): boolean {
   switch (toolName) {
-    // These always require approval (write operations)
     case "write_content":
     case "ask_question":
     case "commit_decision":
       return true;
 
-    // Default: no approval needed (read operations, etc.)
+    case "create_entity":
+    case "create_node": {
+      if (!registry) return true;
+      const type =
+        typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      if (!type) return true;
+      return shouldApproveEntityCreate(registry.entityTypes[type]);
+    }
+
+    case "update_entity": {
+      if (!registry) return true;
+      const type =
+        typeof args["entityType"] === "string"
+          ? (args["entityType"] as string)
+          : undefined;
+      const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+      if (!type) return true;
+      return shouldApproveEntityUpdate(registry.entityTypes[type], updates);
+    }
+
+    case "update_node": {
+      if (!registry) return true;
+      const type =
+        typeof args["nodeType"] === "string"
+          ? (args["nodeType"] as string)
+          : undefined;
+      const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+      if (!type) return true;
+      return shouldApproveEntityUpdate(registry.entityTypes[type], updates);
+    }
+
+    case "create_relationship":
+    case "create_edge": {
+      if (!registry) return true;
+      const type =
+        typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      if (!type) return true;
+      return shouldApproveRelationshipCreate(registry.relationshipTypes[type]);
+    }
+
+    case "update_relationship":
+    case "update_edge": {
+      if (!registry) return true;
+      const type =
+        typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+      if (!type) return true;
+      return shouldApproveRelationshipUpdate(registry.relationshipTypes[type], updates);
+    }
+
     default:
       return false;
   }

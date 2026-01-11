@@ -7,11 +7,19 @@
 
 import type { Capability, CapabilitySurface, ToolCapability, CapabilityContext } from "./types";
 
+export type ProjectTemplateId =
+  | "writer"
+  | "product"
+  | "engineering"
+  | "design"
+  | "comms"
+  | "custom";
+
 // =============================================================================
 // Capability Registry
 // =============================================================================
 
-export const CAPABILITIES: Capability[] = [
+const CAPABILITIES_BASE: Capability[] = [
   // ---------------------------------------------------------------------------
   // UI Actions (Navigation)
   // ---------------------------------------------------------------------------
@@ -19,7 +27,7 @@ export const CAPABILITIES: Capability[] = [
     id: "ai.chat",
     kind: "ui",
     label: "Ask AI",
-    description: "Open AI chat to ask questions about your story",
+    description: "Open AI chat to ask questions about your project",
     icon: "MessageSquare",
     category: "navigation",
     surfaces: ["command_palette"],
@@ -46,13 +54,13 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "ai.coach",
     kind: "ui",
-    label: "Writing Coach",
-    description: "Get AI feedback on pacing, show-don't-tell, and more",
+    label: "Review Coach",
+    description: "Get AI feedback on clarity, structure, and tone",
     icon: "Brain",
     category: "analysis",
     surfaces: ["command_palette"],
     requiresProject: true,
-    keywords: ["analyze", "style", "coach", "feedback", "pacing", "writing"],
+    keywords: ["review", "clarity", "coach", "feedback", "structure", "tone"],
     order: 30,
     action: { type: "open_console_tab", tab: "coach" },
   },
@@ -73,7 +81,7 @@ export const CAPABILITIES: Capability[] = [
     id: "profile.open",
     kind: "ui",
     label: "Profile Settings",
-    description: "Manage your profile and writing preferences",
+    description: "Manage your profile and preferences",
     icon: "User",
     category: "navigation",
     surfaces: ["command_palette"],
@@ -102,48 +110,48 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "prompt.detect-entities",
     kind: "chat_prompt",
-    label: "Detect Entities",
-    description: "Detect characters, locations, and items in the document",
+    label: "Extract Entities",
+    description: "Extract entities and relationships from the document",
     icon: "ScanSearch",
-    category: "worldbuilding",
+    category: "knowledge",
     surfaces: ["quick_actions", "command_palette"],
     requiresProject: true,
     keywords: ["detect", "entity", "extract", "selection", "ai"],
     order: 20,
     buildPrompt: () =>
-      "Analyze the current document and detect all characters, locations, items, and other story elements that should be tracked as entities.",
+      "Analyze the current document and extract entities and relationships that should be tracked in the project graph.",
   },
   {
     id: "prompt.create-character",
     kind: "chat_prompt",
-    label: "Create Character",
-    description: "Help create a new character based on story context",
+    label: "Create Entity",
+    description: "Help create a new entity based on project context",
     icon: "User",
-    category: "worldbuilding",
+    category: "knowledge",
     surfaces: ["quick_actions"],
     requiresProject: true,
     order: 30,
     buildPrompt: () =>
-      "Help me create a new character based on the current story context. Ask me about their role, personality, and appearance.",
+      "Help me create a new entity based on the current project context. Ask me about its role, attributes, and relationships.",
   },
   {
     id: "prompt.relationships",
     kind: "chat_prompt",
-    label: "Relationships",
-    description: "Suggest potential relationships between entities",
+    label: "Suggest Relationships",
+    description: "Suggest relationships between entities",
     icon: "GitBranch",
-    category: "worldbuilding",
+    category: "knowledge",
     surfaces: ["quick_actions"],
     requiresProject: true,
     order: 40,
     buildPrompt: () =>
-      "Analyze the entities in my story and suggest potential relationships between them. Consider family ties, alliances, rivalries, and romantic connections.",
+      "Analyze the entities in my project and suggest relationships between them. Consider dependencies, collaborations, and conflicts.",
   },
   {
     id: "prompt.backstory",
     kind: "chat_prompt",
-    label: "Backstory",
-    description: "Generate a backstory for the selected element",
+    label: "Background",
+    description: "Generate background for the selected element",
     icon: "BookOpen",
     category: "generation",
     surfaces: ["quick_actions"],
@@ -151,20 +159,20 @@ export const CAPABILITIES: Capability[] = [
     requiresProject: true,
     order: 50,
     buildPrompt: () =>
-      "Generate a compelling backstory for the character or element in the selected text.",
+      "Generate a concise background for the element in the selected text and how it fits the project context.",
   },
   {
     id: "prompt.next-steps",
     kind: "chat_prompt",
     label: "Next Steps",
-    description: "Suggest possible directions for the story",
+    description: "Suggest possible next steps for the project",
     icon: "Lightbulb",
     category: "generation",
     surfaces: ["quick_actions"],
     requiresProject: true,
     order: 70,
     buildPrompt: () =>
-      "Based on the current story, suggest 3-5 possible directions for what could happen next. Consider character arcs, plot tension, and thematic elements.",
+      "Based on the current project, suggest 3-5 possible next steps. Consider priorities, dependencies, and open questions.",
   },
 
   // ---------------------------------------------------------------------------
@@ -274,19 +282,19 @@ export const CAPABILITIES: Capability[] = [
   },
 
   // ---------------------------------------------------------------------------
-  // Worldbuilding Tools
+  // Knowledge Tools
   // ---------------------------------------------------------------------------
   {
     id: "tool.detect-entities",
     kind: "tool",
-    label: "Detect Entities",
-    description: "Extract entities from narrative text",
+    label: "Extract Entities",
+    description: "Extract entities from project documents",
     icon: "ScanSearch",
-    category: "worldbuilding",
+    category: "knowledge",
     surfaces: ["command_palette"],
     requiresProject: true,
     requiresApiKey: true,
-    keywords: ["detect", "entity", "extract", "character", "location"],
+    keywords: ["detect", "entity", "extract", "graph", "relationship"],
     order: 110,
     toolName: "detect_entities",
     danger: "safe",
@@ -299,14 +307,14 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "tool.genesis-world",
     kind: "tool",
-    label: "Build World",
-    description: "Generate a world scaffold from your story concept",
+    label: "Generate Project Scaffold",
+    description: "Generate a project scaffold with starter entities and relationships",
     icon: "Globe",
-    category: "worldbuilding",
+    category: "knowledge",
     surfaces: ["quick_actions", "command_palette"],
     requiresProject: true,
     requiresApiKey: true,
-    keywords: ["genesis", "world", "generate", "scaffold", "create"],
+    keywords: ["genesis", "project", "generate", "scaffold", "create"],
     order: 120,
     toolName: "genesis_world",
     danger: "safe",
@@ -432,6 +440,37 @@ export const CAPABILITIES: Capability[] = [
     }),
   },
 ];
+
+const CAPABILITIES_WRITER: Capability[] = [];
+const CAPABILITIES_PRODUCT: Capability[] = [];
+const CAPABILITIES_ENGINEERING: Capability[] = [];
+const CAPABILITIES_DESIGN: Capability[] = [];
+const CAPABILITIES_COMMS: Capability[] = [];
+
+export const CAPABILITIES: Capability[] = [
+  ...CAPABILITIES_BASE,
+  ...CAPABILITIES_WRITER,
+];
+
+export function getCapabilitiesForTemplate(
+  templateId: ProjectTemplateId
+): Capability[] {
+  switch (templateId) {
+    case "product":
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_PRODUCT];
+    case "engineering":
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_ENGINEERING];
+    case "design":
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_DESIGN];
+    case "comms":
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_COMMS];
+    case "custom":
+      return [...CAPABILITIES_BASE];
+    case "writer":
+    default:
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_WRITER];
+  }
+}
 
 // =============================================================================
 // Registry Helpers

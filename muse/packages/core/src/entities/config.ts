@@ -32,6 +32,18 @@ export interface EntityTypeConfig {
   color: string;
 }
 
+export interface GraphTypeDisplay {
+  type: string;
+  displayName: string;
+  icon?: string;
+  color?: string;
+}
+
+export interface ProjectGraphRegistryDisplay {
+  entityTypes: Record<string, GraphTypeDisplay>;
+  relationshipTypes: Record<string, Omit<GraphTypeDisplay, "icon" | "color">>;
+}
+
 /**
  * Hex colors for entity types (for inline styles, canvas, etc.)
  * These are the canonical color values; Tailwind classes derive from these.
@@ -134,6 +146,33 @@ export function getEntityIcon(type: EntityType): EntityIconName {
  */
 export function getEntityHexColor(type: EntityType): string {
   return ENTITY_HEX_COLORS[type] ?? "#64748b";
+}
+
+export function getGraphEntityLabel(
+  registry: ProjectGraphRegistryDisplay,
+  type: string
+): string {
+  const def = registry.entityTypes[type];
+  if (def?.displayName) return def.displayName;
+  return getEntityLabel(type as EntityType);
+}
+
+export function getGraphEntityIcon(
+  registry: ProjectGraphRegistryDisplay,
+  type: string
+): EntityIconName {
+  const def = registry.entityTypes[type];
+  if (def?.icon) return def.icon as EntityIconName;
+  return getEntityIcon(type as EntityType);
+}
+
+export function getGraphEntityColor(
+  registry: ProjectGraphRegistryDisplay,
+  type: string
+): string {
+  const def = registry.entityTypes[type];
+  if (def?.color) return def.color;
+  return getEntityColor(type as EntityType);
 }
 
 // ============================================================================

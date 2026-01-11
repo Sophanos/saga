@@ -10,6 +10,23 @@ import type { AITaskSlug, TierId, LlmTaskConfig, AIModality, ResolvedModel } fro
 import { getModelWithFallback } from "./registry";
 import { isTierHigher } from "../tierConfig";
 
+const TASK_ALIASES: Record<string, AITaskSlug> = {
+  coach: "review",
+  creative: "generation",
+};
+
+export function normalizeTaskSlug(taskSlug: string): AITaskSlug {
+  return (TASK_ALIASES[taskSlug] ?? taskSlug) as AITaskSlug;
+}
+
+function getDefaultTaskConfig(taskSlug: string): LlmTaskConfig {
+  const normalized = normalizeTaskSlug(taskSlug);
+  return (
+    DEFAULT_TASK_CONFIGS[normalized as AITaskSlug] ??
+    DEFAULT_TASK_CONFIGS[taskSlug as AITaskSlug]
+  );
+}
+
 // ============================================================================
 // DEFAULT TASK CONFIGS (Hardcoded fallback)
 // ============================================================================
@@ -19,7 +36,7 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskSlug, LlmTaskConfig> = {
   chat: {
     taskSlug: "chat",
     modality: "text",
-    description: "General conversation and writing assistance",
+    description: "General conversation and assistance",
     directModel: "anthropic/claude-sonnet-4",
     directProvider: "openrouter",
     fallback1Model: "google/gemini-2.0-flash-001",
@@ -27,6 +44,32 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskSlug, LlmTaskConfig> = {
     temperature: 0.7,
     responseFormat: "text",
     minTier: "free",
+    enabled: true,
+  },
+  review: {
+    taskSlug: "review",
+    modality: "text",
+    description: "Review feedback and critique",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.3,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  generation: {
+    taskSlug: "generation",
+    modality: "text",
+    description: "Drafting and content generation",
+    directModel: "moonshotai/kimi-k2-thinking",
+    directProvider: "openrouter",
+    fallback1Model: "anthropic/claude-sonnet-4",
+    fallback1Provider: "openrouter",
+    temperature: 0.8,
+    responseFormat: "text",
+    minTier: "pro",
     enabled: true,
   },
   lint: {
@@ -45,7 +88,7 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskSlug, LlmTaskConfig> = {
   coach: {
     taskSlug: "coach",
     modality: "text",
-    description: "Writing feedback and coaching",
+    description: "Legacy alias for review (writing coach)",
     directModel: "anthropic/claude-sonnet-4",
     directProvider: "openrouter",
     fallback1Model: "google/gemini-2.0-flash-001",
@@ -71,7 +114,7 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskSlug, LlmTaskConfig> = {
   dynamics: {
     taskSlug: "dynamics",
     modality: "text",
-    description: "Character interaction extraction",
+    description: "Entity interaction extraction",
     directModel: "anthropic/claude-sonnet-4",
     directProvider: "openrouter",
     fallback1Model: "google/gemini-2.0-flash-001",
@@ -113,7 +156,7 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskSlug, LlmTaskConfig> = {
   creative: {
     taskSlug: "creative",
     modality: "text",
-    description: "Creative writing generation",
+    description: "Legacy alias for generation",
     directModel: "moonshotai/kimi-k2-thinking",
     directProvider: "openrouter",
     fallback1Model: "anthropic/claude-sonnet-4",
@@ -134,6 +177,162 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskSlug, LlmTaskConfig> = {
     temperature: 0.2,
     responseFormat: "text",
     minTier: "free",
+    enabled: true,
+  },
+  requirements_draft: {
+    taskSlug: "requirements_draft",
+    modality: "text",
+    description: "Draft product requirements",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.6,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  prd_review: {
+    taskSlug: "prd_review",
+    modality: "text",
+    description: "Review PRDs for clarity and gaps",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.3,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  roadmap_summarize: {
+    taskSlug: "roadmap_summarize",
+    modality: "text",
+    description: "Summarize roadmaps and plans",
+    directModel: "google/gemini-2.0-flash-001",
+    directProvider: "openrouter",
+    fallback1Model: "anthropic/claude-haiku",
+    fallback1Provider: "openrouter",
+    temperature: 0.2,
+    responseFormat: "text",
+    minTier: "free",
+    enabled: true,
+  },
+  code_review: {
+    taskSlug: "code_review",
+    modality: "text",
+    description: "Review code for correctness and clarity",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.2,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  tech_spec_draft: {
+    taskSlug: "tech_spec_draft",
+    modality: "text",
+    description: "Draft technical specifications",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.5,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  incident_postmortem: {
+    taskSlug: "incident_postmortem",
+    modality: "text",
+    description: "Draft incident postmortems",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.4,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  design_critique: {
+    taskSlug: "design_critique",
+    modality: "text",
+    description: "Critique design work and UX flows",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.3,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  ux_copy_review: {
+    taskSlug: "ux_copy_review",
+    modality: "text",
+    description: "Review UX copy for clarity and tone",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.3,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  design_system_audit: {
+    taskSlug: "design_system_audit",
+    modality: "text",
+    description: "Audit design systems for consistency",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.3,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  press_release_draft: {
+    taskSlug: "press_release_draft",
+    modality: "text",
+    description: "Draft press releases",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.6,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  blog_edit: {
+    taskSlug: "blog_edit",
+    modality: "text",
+    description: "Edit blog posts for clarity",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.3,
+    responseFormat: "text",
+    minTier: "pro",
+    enabled: true,
+  },
+  brand_voice_review: {
+    taskSlug: "brand_voice_review",
+    modality: "text",
+    description: "Review copy for brand voice alignment",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.3,
+    responseFormat: "text",
+    minTier: "pro",
     enabled: true,
   },
   embed_document: {
@@ -314,11 +513,19 @@ export async function getTaskConfig(
   ctx: QueryCtx,
   taskSlug: AITaskSlug
 ): Promise<LlmTaskConfig> {
-  // Try database first
-  const dbConfig = await ctx.db
+  const normalized = normalizeTaskSlug(taskSlug);
+
+  let dbConfig = await ctx.db
     .query("llmTaskConfigs")
-    .withIndex("by_task", (q) => q.eq("taskSlug", taskSlug))
+    .withIndex("by_task", (q) => q.eq("taskSlug", normalized))
     .first();
+
+  if (!dbConfig && normalized !== taskSlug) {
+    dbConfig = await ctx.db
+      .query("llmTaskConfigs")
+      .withIndex("by_task", (q) => q.eq("taskSlug", taskSlug))
+      .first();
+  }
 
   if (dbConfig && dbConfig.enabled) {
     return {
@@ -352,22 +559,21 @@ export async function getTaskConfig(
     };
   }
 
-  // Fall back to defaults
-  return DEFAULT_TASK_CONFIGS[taskSlug];
+  return getDefaultTaskConfig(taskSlug);
 }
 
 /**
  * Get task config without database (sync version)
  */
 export function getTaskConfigSync(taskSlug: AITaskSlug): LlmTaskConfig {
-  return DEFAULT_TASK_CONFIGS[taskSlug];
+  return getDefaultTaskConfig(taskSlug);
 }
 
 /**
  * Check if task is available for a tier
  */
 export function isTaskAvailable(taskSlug: AITaskSlug, userTier: TierId): boolean {
-  const config = DEFAULT_TASK_CONFIGS[taskSlug];
+  const config = getDefaultTaskConfig(taskSlug);
   if (!config || !config.enabled) return false;
   return isTierAtLeast(userTier, config.minTier);
 }
@@ -379,7 +585,7 @@ export function checkTaskAccess(
   taskSlug: AITaskSlug,
   userTier: TierId
 ): { allowed: boolean; reason?: string; upgradeRequired?: boolean; requiredTier?: TierId } {
-  const config = DEFAULT_TASK_CONFIGS[taskSlug];
+  const config = getDefaultTaskConfig(taskSlug);
 
   if (!config) {
     return { allowed: false, reason: `Unknown task: ${taskSlug}` };

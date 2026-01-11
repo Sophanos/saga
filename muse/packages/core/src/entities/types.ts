@@ -9,7 +9,9 @@ import type {
 } from "../schema/entity.schema";
 
 // Entity Types
-export type EntityType =
+export type GraphEntityType = string;
+
+export type WriterEntityType =
   | "character"
   | "location"
   | "item"
@@ -17,6 +19,8 @@ export type EntityType =
   | "faction"
   | "event"
   | "concept";
+
+export type EntityType = WriterEntityType;
 
 // Jungian Archetypes
 export type JungianArchetype =
@@ -38,7 +42,9 @@ export type JungianArchetype =
   | "animus";
 
 // Relationship Types
-export type RelationType =
+export type GraphRelationType = string;
+
+export type WriterRelationType =
   | "knows"
   | "loves"
   | "hates"
@@ -57,6 +63,8 @@ export type RelationType =
   | "member_of"
   | "rules"
   | "serves";
+
+export type RelationType = WriterRelationType;
 
 // Property Value Types
 export type PropertyValue =

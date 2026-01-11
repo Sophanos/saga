@@ -14,11 +14,11 @@ interface QuickActionsProps {
 
 const ICONS: Record<QuickAction, string> = {
   search: '🔍',
-  lint: '⚠️',
-  continue: '✍️',
-  character: '👤',
+  review: '⚠️',
+  draft_next: '✍️',
+  create_entity: '👤',
   brainstorm: '💡',
-  arc: '📈',
+  analyze_structure: '📈',
 };
 
 export function QuickActions({ onAction }: QuickActionsProps) {

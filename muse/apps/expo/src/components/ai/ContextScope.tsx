@@ -82,11 +82,10 @@ export function ContextScope({ visible, onClose }: ContextScopeProps) {
 }
 
 const SCOPE_ICONS: Record<ContextScopeType, string> = {
-  scene: '📄',
-  chapter: '📖',
+  document: '📄',
+  collection: '📂',
   project: '📚',
-  entities: '👥',
-  world: '🗺️',
+  graph: '🗺️',
   notes: '📝',
 };
 

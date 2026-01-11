@@ -9,7 +9,7 @@
 MLP1 is building a **Living Memory OS** for a project:
 
 - **Documents** are the narrative surface (what writers write).
-- **World Graph** (entities + relationships) is the structured surface (what the system can reason about).
+- **Project Graph** (entities + relationships) is the structured surface (what the system can reason about).
 - **Pinned memories** (decisions/policies) are the canonical surface (what must stay consistent).
 - **Knowledge PRs** are the review surface (how changes become trusted).
 
@@ -19,7 +19,7 @@ This keeps the AI **silent unless invoked**, and keeps **high-impact changes rev
 
 If a teammate says “Leader X changed”, that statement should not live only in chat. In MLP1 it must be **captured via an explicit mutation path**, for example:
 
-- Update a node/edge in the World Graph (entity/relationship change).
+- Update a node/edge in the Project Graph (entity/relationship change).
 - Pin a canon memory / policy decision (Decision Ledger).
 - Edit a document (writer change).
 

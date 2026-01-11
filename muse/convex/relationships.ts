@@ -1,7 +1,7 @@
 /**
  * Convex Relationships Functions
  *
- * CRUD operations for entity relationships (World Graph edges).
+ * CRUD operations for entity relationships (Project Graph edges).
  */
 
 import { v } from "convex/values";
@@ -15,17 +15,21 @@ import {
   type ProjectTypeRegistryResolved,
   type ProjectTypeRegistryOverride,
 } from "./lib/typeRegistry";
+import { DEFAULT_TEMPLATE_ID, type ProjectTemplateId } from "./lib/projectTemplates";
 
 async function getResolvedRegistryForProject(
   ctx: MutationCtx,
   projectId: Id<"projects">
 ): Promise<ProjectTypeRegistryResolved> {
+  const project = await ctx.db.get(projectId);
+  const templateId = (project?.templateId ?? DEFAULT_TEMPLATE_ID) as ProjectTemplateId;
+
   const override = await ctx.db
     .query("projectTypeRegistry")
     .withIndex("by_project", (q) => q.eq("projectId", projectId))
     .unique();
 
-  return resolveRegistry(override as ProjectTypeRegistryOverride | null);
+  return resolveRegistry(templateId, override as ProjectTypeRegistryOverride | null);
 }
 
 // ============================================================

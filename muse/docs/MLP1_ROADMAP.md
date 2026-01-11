@@ -15,14 +15,15 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 - Thread persistence with full context
 - Offline-first + real-time sync (Figma model)
 - **Focus Mode** — distraction-free writing, AI silent unless invoked
-- **Sortiermaschine** — auto-organize entities, relationships, world (World Graph)
+- **Sortiermaschine** — auto-organize entities, relationships, world (Project Graph)
 
 ### Recent Updates (2026-01-11)
 
-- Project Graph enforcement: registry authoritative at mutation layer (schema validation + invalid type checks).
-- Registry lock/unlock added with readiness checks (`LOCK_FAILED_UNKNOWN_TYPES`); docs in `GRAPH_API_CONTRACT.md`.
-- World graph approvals now driven by registry riskLevel.
-- UI gaps: no UI yet for registry lock/unlock or schema-driven property forms in graph editors.
+- Template-aware Project Graph defaults (`projectTemplates`) with writer/product/engineering/design/comms templates; registry resolution keyed by `project.templateId`.
+- Projects/documents now support `templateId`, `metadata`, and `settings`; org/team schema scaffolding added for enterprise access control.
+- Project Graph approvals now driven by registry `riskLevel` + per-type identity fields (legacy writer fields still optional).
+- AI task routing expanded with `review`/`generation` plus product/engineering/design/comms task slugs; `coach`/`creative` aliased.
+- UI gaps: no template picker yet, no org/team management UI, no registry lock/unlock UI, and graph create/edit still missing schema-driven property editors.
 
 ### Recent Updates (2026-01-10)
 
@@ -69,7 +70,7 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 
 **E2E Coverage (04–08):**
 - Deterministic Convex E2E harness (fixtures + saga scripts + embeddings)
-- Playwright specs for World Graph, AI streaming, RAG, collaboration, and billing
+- Playwright specs for Project Graph, AI streaming, RAG, collaboration, and billing
 
 **Writer Tools (from user feedback):**
 - Focus Mode with Zen UI, timers, word goals, brainstorm prompts
@@ -88,7 +89,7 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 
 | Need | Mythos Feature | Status |
 |------|----------------|--------|
-| "Sortiermaschine" (auto-organize) | World Graph + entity detection | ✅ Have |
+| "Sortiermaschine" (auto-organize) | Project Graph + entity detection | ✅ Have |
 | Grammar without changing meaning | DeepL API + approval-based | 🔲 P2 |
 | Name lists | Name generator tool | 🔲 P2 |
 | Logic checks (biology, math) | Validation tool (optional) | 🔲 P2 |
@@ -215,7 +216,7 @@ export async function downloadBlob(blob: Blob, fileName: string) {
 | **Dictation transcription** | Voice → text workflow |
 | **Research clipping** | Web clipper for sources |
 | **Outline/beat sheet views** | Visual story structure |
-| **Character relationship map** | Visual World Graph |
+| **Character relationship map** | Visual Project Graph |
 | **Timeline visualization** | Visual chapter/event ordering |
 
 ---
@@ -971,7 +972,7 @@ embeddingJobs: defineTable({
 | Focus sessions (timer + word goals) | 🔲 | Pomodoro/sprint/custom, session stats |
 | Living Model UI entry points | ✅ | Cmd+K “Changes to review” + editor More menu (“Version history”) opens review panel; home entry point TBD |
 | Knowledge PRs review UX (polish) | ✅ (MVP, not production-ready) | Approve/reject + batch actions + provenance + undo (graph/memory); document apply remains editor UI |
-| Project/World Graph editor UX | 🔲 | Create/edit nodes/edges; registry-aware type picker + properties editor |
+| Project Graph editor UX | 🔲 | Create/edit nodes/edges; registry-aware type picker + properties editor |
 | Lint → “jump to canon” UX | 🔲 | Canon citations link to Decision Ledger items |
 | Clarity/Policy Coach UX | 🔲 | Mode selector + taxonomy-aware issues + apply/dismiss |
 | E2E coverage for new surfaces | 🔲 | Stable `data-testid` hooks per `muse/docs/E2E_TESTABILITY_CONTRACT.md` |
@@ -982,11 +983,11 @@ embeddingJobs: defineTable({
 |------|--------|-------|
 | Project Type Registry screen | 🔲 | Manage types, risk levels, optional JSON schema; drives create/edit and approvals |
 | Project Graph editor UX | 🔲 | Node/edge create/edit for `type` + `properties` (schema-driven when available) |
-| Knowledge PRs inbox UX | ✅ (MVP, not production-ready) | Expo Web right-panel (“Changes to review”) with filters, selection, batch approve/reject |
-| Knowledge PR diff/preview components | ✅ (MVP, not production-ready) | Entity/relationship diffs + memory preview + raw patch; document diff + JSON Patch view TBD |
+| Knowledge PRs inbox UX | ✅ (MVP, not production-ready) | Expo Web right-panel (“Changes to review”) + web console view; filters, selection, batch approve/reject |
+| Knowledge PR diff/preview components | ✅ (MVP, not production-ready) | Entity/relationship diffs + memory preview + raw + normalized JSON Patch; document diff still TBD |
 | Knowledge history + rollback UX | ✅ (MVP, not production-ready) | Undo supported for accepted suggestions with rollback metadata (graph/memory) |
 | Integrations settings UX | 🔲 | Connections, scopes, status, and audit trail for external sources |
-| Evidence + citations UX | 🔲 | Canon citation drilldown + jump-to-canon from lint/coach |
+| Evidence + citations UX | 🔲 | Knowledge PR detail shows citations (Expo + web console); jump-to-canon from lint/coach still missing |
 | Promote-to-model flow UX | 🔲 | From evidence/context inspector → create Knowledge PR with citations |
 | Coach mode selector UX | 🔲 | Writing / Clarity / Policy and taxonomy-aware issue labels |
 
@@ -1959,7 +1960,7 @@ EXPO_PUBLIC_CLARITY_PROJECT_ID=...
 - Status: Infra + initial suites in place (Expo web primary; Tauri web content validation).
 - Coverage: Auth, project/document create + editor persistence, detect+persist (mockable).
 - Entry points: `bun run e2e:expo`, `bun run e2e:tauri`, `E2E_MOCK_AI=true`, `EXPO_PUBLIC_E2E=true`.
-- Note: World Graph UI tests are deferred until graph exists in Expo/Tauri.
+- Note: Project Graph UI tests are deferred until graph exists in Expo/Tauri.
 
 ### Convex Deploy Workflow (`deploy-convex.yml`)
 

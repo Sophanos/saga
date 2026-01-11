@@ -33,12 +33,12 @@ export function AIPanel({ mode = 'side' }: AIPanelProps) {
 
   const handleQuickAction = useCallback((action: QuickAction) => {
     const actionMessages: Record<QuickAction, string> = {
-      search: 'Search my story for...',
-      lint: 'Find inconsistencies in my story',
-      continue: 'Continue writing this scene',
-      character: 'Help me create a new character',
-      brainstorm: "Let's brainstorm ideas for my story",
-      arc: 'Analyze the story arc',
+      search: 'Search my project for...',
+      review: 'Review this project for issues',
+      draft_next: 'Draft the next section',
+      create_entity: 'Help me create a new entity',
+      brainstorm: "Let's brainstorm ideas for this project",
+      analyze_structure: 'Analyze the structure and flow',
     };
     sendMessage(actionMessages[action]);
   }, [sendMessage]);

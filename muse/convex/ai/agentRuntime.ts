@@ -339,18 +339,19 @@ async function needsWorldGraphToolApproval(
     case "update_entity":
     case "update_node": {
       const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
-      const typeHint =
-        typeof args["entityType"] === "string"
-          ? (args["entityType"] as string)
-          : typeof args["nodeType"] === "string"
-            ? (args["nodeType"] as string)
-            : undefined;
-      const name =
-        typeof args["entityName"] === "string"
-          ? (args["entityName"] as string)
-          : typeof args["nodeName"] === "string"
-            ? (args["nodeName"] as string)
-            : undefined;
+      let typeHint: string | undefined;
+      if (typeof args["entityType"] === "string") {
+        typeHint = args["entityType"] as string;
+      } else if (typeof args["nodeType"] === "string") {
+        typeHint = args["nodeType"] as string;
+      }
+
+      let name: string | undefined;
+      if (typeof args["entityName"] === "string") {
+        name = args["entityName"] as string;
+      } else if (typeof args["nodeName"] === "string") {
+        name = args["nodeName"] as string;
+      }
 
       if (!name) return true;
 
@@ -421,18 +422,19 @@ async function resolveSuggestionRiskLevel(
     case "update_entity":
     case "update_node": {
       const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
-      const typeHint =
-        typeof args["entityType"] === "string"
-          ? (args["entityType"] as string)
-          : typeof args["nodeType"] === "string"
-            ? (args["nodeType"] as string)
-            : undefined;
-      const name =
-        typeof args["entityName"] === "string"
-          ? (args["entityName"] as string)
-          : typeof args["nodeName"] === "string"
-            ? (args["nodeName"] as string)
-            : undefined;
+      let typeHint: string | undefined;
+      if (typeof args["entityType"] === "string") {
+        typeHint = args["entityType"] as string;
+      } else if (typeof args["nodeType"] === "string") {
+        typeHint = args["nodeType"] as string;
+      }
+
+      let name: string | undefined;
+      if (typeof args["entityName"] === "string") {
+        name = args["entityName"] as string;
+      } else if (typeof args["nodeName"] === "string") {
+        name = args["nodeName"] as string;
+      }
 
       let resolvedType: string | null = null;
       if (typeHint) {

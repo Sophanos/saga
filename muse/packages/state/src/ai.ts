@@ -25,33 +25,45 @@ export const AI_MODELS: Record<AIModel, { label: string; badge?: string; icon: s
 };
 
 // Context scope options
-export type ContextScope = 'scene' | 'chapter' | 'project' | 'entities' | 'world' | 'notes';
+export type ContextScope = 'document' | 'collection' | 'project' | 'graph' | 'notes';
+
+type LegacyContextScope = 'scene' | 'chapter' | 'world' | 'entities';
+
+const LEGACY_SCOPE_MAP: Record<LegacyContextScope, ContextScope> = {
+  scene: 'document',
+  chapter: 'collection',
+  world: 'graph',
+  entities: 'graph',
+};
+
+function normalizeContextScope(scope: ContextScope | LegacyContextScope): ContextScope {
+  return LEGACY_SCOPE_MAP[scope as LegacyContextScope] ?? scope;
+}
 
 export const CONTEXT_SCOPES: Record<ContextScope, { label: string; icon: string }> = {
-  scene: { label: 'Current Scene', icon: 'doc.fill' },
-  chapter: { label: 'Current Chapter', icon: 'doc.text.fill' },
+  document: { label: 'Current Document', icon: 'doc.fill' },
+  collection: { label: 'Current Collection', icon: 'doc.text.fill' },
   project: { label: 'Entire Project', icon: 'folder.fill' },
-  entities: { label: 'All Entities', icon: 'person.3.fill' },
-  world: { label: 'World Graph', icon: 'globe' },
-  notes: { label: 'Writer Notes', icon: 'note.text' },
+  graph: { label: 'Project Graph', icon: 'globe' },
+  notes: { label: 'Notes', icon: 'note.text' },
 };
 
 // Quick action definitions
 export type QuickAction =
   | 'search'
-  | 'lint'
-  | 'continue'
-  | 'character'
+  | 'review'
+  | 'draft_next'
+  | 'create_entity'
   | 'brainstorm'
-  | 'arc';
+  | 'analyze_structure';
 
 export const QUICK_ACTIONS: Record<QuickAction, { label: string; description: string; icon: string; badge?: string }> = {
-  search: { label: 'Search your world', description: 'Find anything in your story', icon: 'magnifyingglass' },
-  lint: { label: 'Find inconsistencies', description: 'Check for plot holes and errors', icon: 'exclamationmark.triangle' },
-  continue: { label: 'Continue this scene', description: 'AI continues your writing', icon: 'pencil.line' },
-  character: { label: 'Generate character', description: 'Create a new character', icon: 'person.badge.plus', badge: 'New' },
-  brainstorm: { label: 'Brainstorm ideas', description: 'Explore story possibilities', icon: 'lightbulb' },
-  arc: { label: 'Analyze story arc', description: 'Review character and plot arcs', icon: 'chart.line.uptrend.xyaxis' },
+  search: { label: 'Search your project', description: 'Find anything in your project', icon: 'magnifyingglass' },
+  review: { label: 'Review for issues', description: 'Check for contradictions and gaps', icon: 'exclamationmark.triangle' },
+  draft_next: { label: 'Draft next section', description: 'Continue with a new draft section', icon: 'pencil.line' },
+  create_entity: { label: 'Create an entity', description: 'Add a node to the project graph', icon: 'person.badge.plus', badge: 'New' },
+  brainstorm: { label: 'Brainstorm ideas', description: 'Explore next steps and options', icon: 'lightbulb' },
+  analyze_structure: { label: 'Analyze structure', description: 'Review flow and structure', icon: 'chart.line.uptrend.xyaxis' },
 };
 
 // Tool call in message
@@ -153,7 +165,7 @@ const initialState = {
   inputValue: '',
   contextChips: [] as ContextChip[],
   selectedModel: 'auto' as AIModel,
-  enabledScopes: ['scene', 'chapter'] as ContextScope[],
+  enabledScopes: ['document', 'collection'] as ContextScope[],
   webSearchEnabled: false,
   isStreaming: false,
   showModelSelector: false,
@@ -180,11 +192,14 @@ export const useAIStore = create<AIState>((set, get) => ({
   // Settings actions
   setSelectedModel: (model) => set({ selectedModel: model }),
 
-  toggleScope: (scope) => set((s) => ({
-    enabledScopes: s.enabledScopes.includes(scope)
-      ? s.enabledScopes.filter(sc => sc !== scope)
-      : [...s.enabledScopes, scope]
-  })),
+  toggleScope: (scope) => {
+    const normalized = normalizeContextScope(scope as ContextScope | LegacyContextScope);
+    set((s) => ({
+      enabledScopes: s.enabledScopes.includes(normalized)
+        ? s.enabledScopes.filter((sc) => sc !== normalized)
+        : [...s.enabledScopes, normalized],
+    }));
+  },
 
   setWebSearchEnabled: (enabled) => set({ webSearchEnabled: enabled }),
 

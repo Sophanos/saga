@@ -1,7 +1,13 @@
 import { useState } from 'react';
 
 // Match AI panel quick actions
-export type QuickActionType = 'search' | 'lint' | 'continue' | 'character' | 'brainstorm' | 'arc';
+export type QuickActionType =
+  | 'search'
+  | 'review'
+  | 'draft_next'
+  | 'create_entity'
+  | 'brainstorm'
+  | 'analyze_structure';
 
 interface QuickAction {
   id: QuickActionType;
@@ -21,15 +27,15 @@ export function QuickActions({ onAction, className = '' }: QuickActionsProps) {
 
   // Match the AI panel's QUICK_ACTIONS
   const primaryActions: QuickAction[] = [
-    { id: 'search', label: 'Search your world', icon: <SearchIcon />, description: 'Find anything in your story' },
-    { id: 'continue', label: 'Continue this scene', icon: <WriteIcon />, description: 'AI continues your writing' },
-    { id: 'character', label: 'Generate character', icon: <CharacterIcon />, description: 'Create a new character', badge: 'New' },
-    { id: 'brainstorm', label: 'Brainstorm ideas', icon: <BrainstormIcon />, description: 'Explore story possibilities' },
+    { id: 'search', label: 'Search your project', icon: <SearchIcon />, description: 'Find anything in your project' },
+    { id: 'draft_next', label: 'Draft next section', icon: <WriteIcon />, description: 'Continue with a new draft section' },
+    { id: 'create_entity', label: 'Create an entity', icon: <CharacterIcon />, description: 'Add a node to the project graph', badge: 'New' },
+    { id: 'brainstorm', label: 'Brainstorm ideas', icon: <BrainstormIcon />, description: 'Explore next steps and options' },
   ];
 
   const moreActions: QuickAction[] = [
-    { id: 'lint', label: 'Find inconsistencies', icon: <LintIcon />, description: 'Check for plot holes and errors' },
-    { id: 'arc', label: 'Analyze story arc', icon: <ArcIcon />, description: 'Review character and plot arcs' },
+    { id: 'review', label: 'Review for issues', icon: <LintIcon />, description: 'Check for contradictions and gaps' },
+    { id: 'analyze_structure', label: 'Analyze structure', icon: <ArcIcon />, description: 'Review flow and structure' },
   ];
 
   return (

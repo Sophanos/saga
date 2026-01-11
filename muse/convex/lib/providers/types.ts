@@ -18,17 +18,36 @@ export type AIModality = (typeof AI_MODALITIES)[number];
 export const AI_TASK_CATEGORIES = {
   text: [
     "chat", // General conversation
+    "review", // Review + feedback
+    "generation", // Drafting + generation
     "lint", // Consistency checking
-    "coach", // Writing feedback
+    "coach", // Legacy writing feedback
     "detect", // Entity extraction
-    "dynamics", // Character interactions
+    "dynamics", // Entity interactions
     "style", // Style learning
     "thinking", // Deep reasoning
-    "creative", // Creative generation
+    "creative", // Legacy creative generation
     "summarize", // Text summarization
-    "embed_document", // Document/entity embeddings
-    "embed_query", // Query embeddings
-    "rerank_candidates", // Reranking
+    // Product
+    "requirements_draft",
+    "prd_review",
+    "roadmap_summarize",
+    // Engineering
+    "code_review",
+    "tech_spec_draft",
+    "incident_postmortem",
+    // Design
+    "design_critique",
+    "ux_copy_review",
+    "design_system_audit",
+    // Comms
+    "press_release_draft",
+    "blog_edit",
+    "brand_voice_review",
+    // RAG + embeddings
+    "embed_document",
+    "embed_query",
+    "rerank_candidates",
   ],
   image: [
     "image_generate", // Text → image

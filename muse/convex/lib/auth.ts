@@ -32,7 +32,7 @@ export async function getOptionalAuthUserId(ctx: AuthContext): Promise<string | 
 }
 
 /**
- * Verify user has access to a project via membership
+ * Verify user has access to a project via membership or org/team role
  * @throws Error if project not found or user isn't a member
  * @returns The user ID and role
  */
@@ -54,11 +54,47 @@ export async function verifyProjectAccess(
     )
     .unique();
 
-  if (!member) {
-    throw new Error("Access denied");
+  if (member) {
+    return { userId, role: member.role };
   }
 
-  return { userId, role: member.role };
+  if (project.teamId) {
+    const teamMember = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", project.teamId).eq("userId", userId)
+      )
+      .unique();
+
+    if (teamMember) {
+      return {
+        userId,
+        role: teamMember.role === "lead" ? "editor" : "viewer",
+      };
+    }
+  }
+
+  if (project.orgId) {
+    const orgMember = await ctx.db
+      .query("organizationMembers")
+      .withIndex("by_org_user", (q) =>
+        q.eq("orgId", project.orgId).eq("userId", userId)
+      )
+      .unique();
+
+    if (orgMember) {
+      let role: "owner" | "editor" | "viewer" = "viewer";
+      if (orgMember.role === "owner") {
+        role = "owner";
+      } else if (orgMember.role === "admin") {
+        role = "editor";
+      }
+
+      return { userId, role };
+    }
+  }
+
+  throw new Error("Access denied");
 }
 
 /**
