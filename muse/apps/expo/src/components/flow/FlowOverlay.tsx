@@ -7,20 +7,12 @@
 
 import { useEffect, useState, useCallback, type ReactNode } from 'react';
 import { View, StyleSheet, Modal, Platform } from 'react-native';
-import Animated, {
-  FadeIn,
-  FadeOut,
-  useAnimatedStyle,
-  withTiming,
-  useSharedValue,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useTheme } from '@/design-system';
 import {
   useFlowStore,
   useFlowEnabled,
   useFlowPreferences,
-  useDimOpacity,
-  useTypewriterScrolling,
   type SessionStats,
 } from '@mythos/state';
 import { FlowHeader } from './FlowHeader';
@@ -37,16 +29,11 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
   const { colors, isDark } = useTheme();
   const enabled = useFlowEnabled();
   const preferences = useFlowPreferences();
-  const dimOpacity = useDimOpacity();
-  const typewriterScrolling = useTypewriterScrolling();
   const exitFlowMode = useFlowStore((s) => s.exitFlowMode);
   const updateWordCount = useFlowStore((s) => s.updateWordCount);
 
   const [showSummary, setShowSummary] = useState(false);
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
-
-  // Animation values
-  const overlayOpacity = useSharedValue(0);
 
   // Update word count in store when it changes
   useEffect(() => {
@@ -54,11 +41,6 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
       updateWordCount(wordCount);
     }
   }, [enabled, wordCount, updateWordCount]);
-
-  // Animate overlay
-  useEffect(() => {
-    overlayOpacity.value = withTiming(enabled ? 1 : 0, { duration: 300 });
-  }, [enabled, overlayOpacity]);
 
   // Handle exit
   const handleExit = useCallback(() => {
@@ -99,10 +81,6 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
   if (!enabled) {
     return null;
   }
-
-  const overlayStyle = useAnimatedStyle(() => ({
-    opacity: overlayOpacity.value,
-  }));
 
   return (
     <Modal
