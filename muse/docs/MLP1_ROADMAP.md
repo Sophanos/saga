@@ -134,97 +134,67 @@ Goal: make Knowledge PRs a production-grade review surface: every PR is actionab
 
 #### P0 - Production blockers (ship before beta)
 
-1) Document PRs must be actionable (fix write_content approval UX) - Scope: M/L
-   - Problem: applyDecisions cannot apply write_content ("Apply document changes from the editor UI."), but inbox UIs still show Approve.
-   - Fix: in the inbox, replace Approve with Apply in editor for write_content suggestions; keep Reject supported from the inbox.
-   - Add an editor -> backend resolution hook so applying in the editor marks the suggestion accepted and creates a revision with provenance (sourceSuggestionId).
-   - Files:
-     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
-     - muse/apps/expo/src/components/knowledge/KnowledgeSuggestionDetails.tsx
-     - muse/convex/knowledgeSuggestions.ts (new: resolveWriteContentFromEditor)
-     - muse/convex/revisions.ts (ensure revision provenance supports sourceSuggestionId)
-     - Editor bridge: muse/packages/editor-webview/src/... (apply/resolve wiring)
+1) ✅ Document PRs must be actionable (fix write_content approval UX)
+   - ✅ Expo: "Open in editor" button replaces disabled Approve; navigates with `pendingWriteContent` state
+   - ✅ Web: "Open in editor" button in KnowledgePRsView (was already present)
+   - ✅ Backend: `resolveWriteContentFromEditor` action marks suggestion resolved + creates revision
+   - ✅ EditorShell: `pendingWriteContent` prop applies content + calls `onWriteContentApplied`
+   - ✅ Layout store: `PendingWriteContent` type + `setPendingWriteContent`/`clearPendingWriteContent`
 
-2) Server-side preflight validation + conflict detection (block unsafe approvals) - Scope: L
-   - Add a preflight step before apply that validates:
-     - tool args shape (required fields present; updates/metadata types sane)
-     - schema/registry constraints using resolved projectTypeRegistry
-     - target resolution (entity/relationship uniqueness; source/target existence)
-     - rollback safety (ensure "before" snapshot can be captured for updates)
-     - conflict detection (fingerprint/hash of target fields being edited)
-   - Persist preflight result on the suggestion so UI can disable Approve and surface errors/warnings.
-   - Files:
-     - muse/convex/knowledgeSuggestions.ts (preflight + apply gating)
-     - muse/convex/schema.ts (optional: preflight, conflict, resolvedTargetId fields)
-     - muse/convex/lib/typeRegistry.ts (reuse validateEntityProperties / validateRelationshipMetadata)
-     - muse/convex/ai/agentRuntime.ts (optional: resolve targetId earlier for better UX)
-   - Depends on: none (but improves rollback + diff UX).
+2) ✅ Server-side preflight validation + conflict detection (block unsafe approvals)
+   - ✅ `preflightSuggestion` validates tool args, registry constraints, target resolution
+   - ✅ Preflight persisted on suggestion; UI blocks Approve when status is `invalid`/`conflict`
+   - ✅ Fingerprint-based conflict detection for entity/relationship updates
+   - ✅ `rerunPreflight` mutation for manual recheck without applying
+   - ✅ "Rebase required" callout + "Recheck" button in both Expo + Web UIs
 
-3) Rollback hardening + explicit rolled-back state + audit events - Scope: M
-   - Add idempotency guard (rollback called twice should be a no-op).
-   - Store explicit rollback metadata (rolledBackAt, rolledBackByUserId, resolutionReason="rollback") for UI and filtering.
-   - Emit activity events on rollback success/failure.
-   - Optionally store minimal after snapshot at apply-time for better audit/diff.
-   - Files:
-     - muse/convex/knowledgeSuggestions.ts (rollbackSuggestion, markRolledBackInternal, applySuggestionApprove)
-     - muse/convex/activity.ts (use existing emit)
-     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
-     - muse/apps/expo/src/components/knowledge/KnowledgeSuggestionDetails.tsx
+3) ✅ Rollback hardening + explicit rolled-back state + audit events
+   - ✅ Idempotency guard (returns `alreadyRolledBack: true` on duplicate calls)
+   - ✅ Explicit `rolledBackAt`, `rolledBackByUserId`, `resolution="rolled_back"` fields
+   - ✅ Activity events emitted on rollback success/failure
+   - ✅ After snapshots stored at apply-time for updates
+   - ✅ `getRollbackImpact` query shows cascade warnings (relationships affected)
+   - ✅ `cascadeRelationships` param required for entity.create rollback with relationships
+   - ❌ UI confirmation modal not yet implemented
 
-4) Inbox scalability: server-side filters + pagination - Scope: M
-   - Add query-level filters for targetType, riskLevel, and optional rolled-back inclusion.
-   - Add indexes for by_project_targetType_createdAt and by_project_status_targetType_createdAt.
-   - Convert UIs from limit=200 to cursor-based paging.
-   - Files:
-     - muse/convex/knowledgeSuggestions.ts (listByProject)
-     - muse/convex/schema.ts (indexes)
-     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
-     - muse/apps/expo/src/components/knowledge/KnowledgePRsPanel.tsx
+4) ⏳ Inbox scalability: server-side filters + pagination
+   - ✅ Backend `listByProject` supports cursor, status, targetType, riskLevel, toolName filters
+   - ✅ Indexes added for efficient filtering
+   - ❌ UIs still use `limit=200`; need cursor-based paging implementation
 
 #### P1 - Important (post-beta)
 
-5) Web parity for graph diffs (entity + relationship + metadata) - Scope: M
-   - Port Expo field-by-field entity/relationship diff into Web details panel.
-   - Add a readable metadata diff presentation (collapsed JSON with expand).
-   - Files:
-     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
-     - muse/apps/web/src/components/console/DiffViews.tsx (reuse/extend)
+5) Web parity for graph diffs (entity + relationship + metadata)
+   - Expo has field-by-field diffs; port to KnowledgePRsView.tsx
 
-6) JSON Patch visualization for normalizedPatch - Scope: S/M
-   - Add a compact JSON Patch viewer (op/path/value) for opaque operations.
-   - Files:
-     - muse/apps/web/src/components/console/KnowledgePRsView.tsx (new component usage)
-     - muse/apps/web/src/components/console/JsonPatchView.tsx
+6) JSON Patch visualization for normalizedPatch
+   - Add `JsonPatchView` component for opaque operations
 
-7) Provenance + citations deep-links - Scope: M
-   - Surface: model, threadId, streamId, toolCallId, promptMessageId prominently.
-   - Add Open memory / Copy memory id for citations; add Copy provenance on Web.
-   - Files:
-     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
-     - muse/apps/expo/src/components/knowledge/KnowledgeSuggestionDetails.tsx
+7) Provenance + citations deep-links
+   - Add "Copy provenance" on Web; "Open memory" navigation in Expo
+   - Expo already shows provenance IDs; need actionable links
 
-8) Inbox UX upgrades (filters, shortcuts, batch actions) - Scope: M
-   - Add target-type filters (document/entity/relationship/memory).
-   - Add keyboard shortcuts (approve/reject).
-   - Add multi-select + batch approve/reject to Web (Expo already supports batch).
-   - Files:
-     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
-     - muse/apps/expo/src/components/knowledge/KnowledgePRsPanel.tsx
+8) Inbox UX upgrades (filters, shortcuts, batch actions)
+   - Add target-type filter chips to UI
+   - Keyboard shortcuts for approve/reject
+   - Web batch selection (Expo already supports)
 
 #### P2 - Nice-to-have / strategic cleanup
 
-9) Clarify documentSuggestions vs knowledgeSuggestions (unify inbox or formalize split) - Scope: L
-   - Decision target: keep document application on editor surface (intentional for MLP1), but keep review state in a unified inbox.
-   - Either migrate documentSuggestions into knowledgeSuggestions, or provide a unified query/feed that merges both.
-   - Files:
-     - muse/convex/schema.ts
-     - muse/convex/*Suggestions*.ts (depending on current documentSuggestions implementation)
+9) Unify documentSuggestions vs knowledgeSuggestions
+   - Either migrate or build unified query/feed
 
-10) Best-effort late-apply anchoring for write_content - Scope: M/L
-   - If apply later must work, add stronger selection anchoring (prefix/suffix windows, offsets, or fuzzy matching).
-   - Files:
-     - muse/convex/ai/agentRuntime.ts (editorContext capture)
-     - muse/apps/*/knowledge/* (apply UX)
+10) Late-apply anchoring for write_content
+   - Richer selection anchors or fuzzy matching for deferred apply
+
+### Recent Updates (2026-01-11)
+
+**Knowledge PRs Production Hardening:**
+- Backend: `rerunPreflight` mutation, `getRollbackImpact` query, `cascadeRelationships` rollback param
+- Expo: "Open in editor" for write_content, "Rebase required" + "Recheck" button, editor resolve path
+- Web: "Rebase required" + "Recheck" button for preflight conflicts
+- Packages: `PendingWriteContent` state in @mythos/state, `pendingWriteContent` props in EditorShell
+- Typecheck fixes: style-decoration.ts, knowledgeSuggestions.ts, auth.ts
 
 ### Recent Updates (2026-01-09)
 
