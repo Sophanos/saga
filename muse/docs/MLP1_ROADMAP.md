@@ -24,7 +24,7 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 - Project Graph approvals now driven by registry `riskLevel` + per-type identity fields (legacy writer fields still optional).
 - AI task routing expanded with `review`/`generation` plus product/engineering/design/comms task slugs; `coach`/`creative` aliased.
 - UI updates: registry lock/unlock controls added in settings; entity create/edit now supports schema-driven properties.
-- UI gaps: no AI template generation flow yet, no org/team management UI, no registry editor UI, and relationship metadata editor still missing schema-driven forms.
+- UI gaps: no AI template generation flow yet, no org/team management UI, no registry editor UI, relationship metadata editor still missing schema-driven forms, and universal entity profile page (overview/graph/mentions/documents/history) not yet implemented.
 
 ### Recent Updates (2026-01-10)
 
@@ -47,6 +47,7 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 - Project settings: type registry editor (`projectTypeRegistry`) for entity/relationship types, risk levels, and optional JSON schema.
 - Graph UI: generic node/edge create/edit that supports `type: string` + `properties`, with schema-driven forms when available. (Entity form done; relationship metadata editor pending.)
 - Approvals UX: surface risk level + approval requirement at the point of change.
+- Universal entity profile page: overview + graph + mentions + documents + history (spec in `docs/UNIVERSAL_ENTITY_PROFILE.md`).
 
 **Phase 2: Knowledge PRs**
 - Knowledge PRs inbox: unified review queue across `document`/`entity`/`relationship`/`memory` with filters + batch actions (label: “Changes to review”; opened from editor “Version history” menu item).
