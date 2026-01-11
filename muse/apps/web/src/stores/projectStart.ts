@@ -8,7 +8,7 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 
-export type ProjectStartAction = "start-blank" | "browse-templates" | "ai-builder";
+export type ProjectStartAction = "start-blank" | "ai-builder";
 
 interface ProjectStartState {
   requestedAction: ProjectStartAction | null;

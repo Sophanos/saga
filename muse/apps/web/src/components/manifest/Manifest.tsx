@@ -8,8 +8,6 @@ import {
   MapPin,
   Sword,
   Sparkles,
-  LayoutGrid,
-  Database,
   Users,
   Search,
   Filter,
@@ -131,9 +129,7 @@ function formatMemoryLabel(memory: MemoryRecord): string {
 
 const START_ACTIONS = [
   { label: "Page", action: "start-blank", icon: FileText },
-  { label: "AI Notes", action: "ai-builder", icon: Sparkles },
-  { label: "Database", action: "browse-templates", icon: Database },
-  { label: "Templates", action: "browse-templates", icon: LayoutGrid },
+  { label: "AI Builder", action: "ai-builder", icon: Sparkles },
 ] as const;
 
 const MEMORY_CATEGORY_OPTIONS: Array<{ id: MemoryCategory; label: string }> = [

@@ -1,8 +1,7 @@
-import { Sparkles, LayoutGrid, Feather } from "lucide-react";
+import { Sparkles, Feather } from "lucide-react";
 
 interface StartOptionsProps {
   onStartBlank: () => void;
-  onBrowseTemplates: () => void;
   onAIBuilder: () => void;
 }
 
@@ -11,10 +10,6 @@ const ACCENT_STYLES = {
   purple: {
     hover: "hover:border-mythos-accent-purple/50 hover:bg-mythos-accent-purple/5",
     iconBg: "group-hover:bg-mythos-accent-purple/10",
-  },
-  cyan: {
-    hover: "hover:border-mythos-accent-primary/50 hover:bg-mythos-accent-primary/5",
-    iconBg: "group-hover:bg-mythos-accent-primary/10",
   },
   green: {
     hover: "hover:border-mythos-accent-green/50 hover:bg-mythos-accent-green/5",
@@ -69,7 +64,6 @@ function OptionCard({ icon, title, description, accent, onClick, badge }: Option
 
 export function StartOptions({
   onStartBlank,
-  onBrowseTemplates,
   onAIBuilder,
 }: StartOptionsProps) {
   return (
@@ -86,15 +80,6 @@ export function StartOptions({
           description="Describe your story idea and let AI generate a custom template with entity types, relationships, and structure tailored to your vision."
           accent="purple"
           onClick={onAIBuilder}
-        />
-
-        {/* Browse Templates */}
-        <OptionCard
-          icon={<LayoutGrid className="w-5 h-5 text-mythos-accent-primary" />}
-          title="Browse Templates"
-          description="Choose from 14 genre-specific templates like Epic Fantasy, Sci-Fi, TTRPG Campaigns, Manga, Screenplays, and more."
-          accent="cyan"
-          onClick={onBrowseTemplates}
         />
 
         {/* Start Blank (Gardener) */}

@@ -144,7 +144,7 @@ function AuthenticatedApp() {
       clearSelectedProject();
       if (openNewProjectModal) {
         if (!projectsLoading && !projectsError && projects.length === 0) {
-          requestProjectStartAction("browse-templates");
+          requestProjectStartAction("ai-builder");
         } else {
           setIsCreateModalOpen(true);
         }

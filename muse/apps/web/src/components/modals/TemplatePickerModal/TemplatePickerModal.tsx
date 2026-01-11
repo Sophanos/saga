@@ -5,13 +5,12 @@ import type { ProjectTemplate } from "@mythos/core";
 import { BLANK_TEMPLATE } from "@mythos/core";
 import type { TemplateDraft, GenesisEntity } from "@mythos/agent-protocol";
 import { StartOptions } from "./StartOptions";
-import { TemplateGrid } from "./TemplateGrid";
 import { CreateProjectForm } from "./CreateProjectForm";
 import { AITemplateBuilder } from "./AITemplateBuilder";
 import { TemplateDraftPreview } from "./TemplateDraftPreview";
 import { convertDraftToTemplate } from "./utils/convertDraftToTemplate";
 
-type Step = "start" | "browse" | "ai-builder" | "preview" | "create";
+type Step = "start" | "ai-builder" | "preview" | "create";
 
 export interface TemplatePickerModalProps {
   isOpen: boolean;
@@ -21,7 +20,6 @@ export interface TemplatePickerModalProps {
 
 const STEP_TITLES: Record<Step, string> = {
   start: "New Project",
-  browse: "Choose a Template",
   "ai-builder": "Create with AI",
   preview: "Review Template",
   create: "Create Project",
@@ -53,17 +51,15 @@ export function TemplatePickerModal({
   }, [isOpen]);
 
   const handleBack = useCallback(() => {
-    if (step === "browse" || step === "ai-builder") {
+    if (step === "ai-builder") {
       setStep("start");
     } else if (step === "preview") {
       setStep("ai-builder");
     } else if (step === "create") {
       if (selectedTemplate?.id?.startsWith("ai-")) {
         setStep("preview");
-      } else if (selectedTemplate?.id === "blank") {
-        setStep("start");
       } else {
-        setStep("browse");
+        setStep("start");
       }
     }
   }, [step, selectedTemplate]);
@@ -74,18 +70,8 @@ export function TemplatePickerModal({
     setStep("create");
   }, []);
 
-  const handleBrowseTemplates = useCallback(() => {
-    setStep("browse");
-  }, []);
-
   const handleAIBuilder = useCallback(() => {
     setStep("ai-builder");
-  }, []);
-
-  const handleSelectTemplate = useCallback((template: ProjectTemplate) => {
-    setSelectedTemplate(template);
-    setCreationMode("architect");
-    setStep("create");
   }, []);
 
   const handleTemplateGenerated = useCallback(
@@ -171,13 +157,8 @@ export function TemplatePickerModal({
           {step === "start" && (
             <StartOptions
               onStartBlank={handleStartBlank}
-              onBrowseTemplates={handleBrowseTemplates}
               onAIBuilder={handleAIBuilder}
             />
-          )}
-
-          {step === "browse" && (
-            <TemplateGrid onSelectTemplate={handleSelectTemplate} />
           )}
 
           {step === "ai-builder" && (

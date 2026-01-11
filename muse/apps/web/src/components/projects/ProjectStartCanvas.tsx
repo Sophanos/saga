@@ -5,7 +5,6 @@ import type { ProjectTemplate } from "@mythos/core";
 import { BLANK_TEMPLATE } from "@mythos/core";
 import type { TemplateDraft, GenesisEntity } from "@mythos/agent-protocol";
 import { StartOptions } from "../modals/TemplatePickerModal/StartOptions";
-import { TemplateGrid } from "../modals/TemplatePickerModal/TemplateGrid";
 import { CreateProjectForm } from "../modals/TemplatePickerModal/CreateProjectForm";
 import { AITemplateBuilder } from "../modals/TemplatePickerModal/AITemplateBuilder";
 import { TemplateDraftPreview } from "../modals/TemplatePickerModal/TemplateDraftPreview";
@@ -16,7 +15,7 @@ import {
 } from "../../stores/projectStart";
 import { useMythosStore } from "../../stores";
 
-type Step = "start" | "browse" | "ai-builder" | "preview" | "create";
+type Step = "start" | "ai-builder" | "preview" | "create";
 
 interface ProjectStartCanvasProps {
   onProjectCreated: (projectId: string) => void;
@@ -24,7 +23,6 @@ interface ProjectStartCanvasProps {
 
 const STEP_TITLES: Record<Step, string> = {
   start: "Start a project",
-  browse: "Choose a template",
   "ai-builder": "Create with AI",
   preview: "Review template",
   create: "Create project",
@@ -43,17 +41,15 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
   const initializedRef = useRef(false);
 
   const handleBack = useCallback(() => {
-    if (step === "browse" || step === "ai-builder") {
+    if (step === "ai-builder") {
       setStep("start");
     } else if (step === "preview") {
       setStep("ai-builder");
     } else if (step === "create") {
       if (selectedTemplate?.id?.startsWith("ai-")) {
         setStep("preview");
-      } else if (selectedTemplate?.id === "blank") {
-        setStep("start");
       } else {
-        setStep("browse");
+        setStep("start");
       }
     }
   }, [step, selectedTemplate]);
@@ -64,18 +60,8 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
     setStep("create");
   }, []);
 
-  const handleBrowseTemplates = useCallback(() => {
-    setStep("browse");
-  }, []);
-
   const handleAIBuilder = useCallback(() => {
     setStep("ai-builder");
-  }, []);
-
-  const handleSelectTemplate = useCallback((template: ProjectTemplate) => {
-    setSelectedTemplate(template);
-    setCreationMode("architect");
-    setStep("create");
   }, []);
 
   const handleTemplateGenerated = useCallback(
@@ -100,8 +86,6 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
 
     if (requestedAction === "start-blank") {
       handleStartBlank();
-    } else if (requestedAction === "browse-templates") {
-      handleBrowseTemplates();
     } else if (requestedAction === "ai-builder") {
       handleAIBuilder();
     }
@@ -110,7 +94,6 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
   }, [
     requestedAction,
     handleStartBlank,
-    handleBrowseTemplates,
     handleAIBuilder,
     clearRequestedAction,
   ]);
@@ -164,13 +147,8 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
             {step === "start" && (
               <StartOptions
                 onStartBlank={handleStartBlank}
-                onBrowseTemplates={handleBrowseTemplates}
                 onAIBuilder={handleAIBuilder}
               />
-            )}
-
-            {step === "browse" && (
-              <TemplateGrid onSelectTemplate={handleSelectTemplate} />
             )}
 
             {step === "ai-builder" && (
