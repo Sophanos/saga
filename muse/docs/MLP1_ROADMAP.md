@@ -41,7 +41,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 **2026-01-11 (night)**
 - Flow Mode: added FlowFocus extension (iA Writer-style sentence/paragraph dimming), TypewriterScroll extension, FlowTimerPanel with break reminders, EditorMetrics store for word count tracking.
 - Template Builder: enhanced with project type selection, PhaseIndicator for build phases, ProgressiveTemplatePreview for live preview, domain-specific questions per project type.
-- Project setup: added unified `project_manage` tool for bootstrap (template structure + optional starter content); restructure/pivot stubbed as not_implemented.
+- Project setup: unified `project_manage` tool - bootstrap always generates template structure; `seed` flag controls starter content (default true); restructure/pivot stubbed.
 - Website: removed deprecated `apps/website/` (landing page moved to `apps/web/src/pages/`).
 - Widgets: added MVP1 execution-ready plan + MVP1.5 async notifications plan (`WIDGETS_MVP1_IMPLEMENTATION_PLAN.md`).
 
@@ -214,8 +214,8 @@ Core deliverables:
 | | `update_relationship` | Modify relationship | Risk-based |
 | | `create_node` / `update_node` | Graph nodes | Risk-based |
 | | `create_edge` / `update_edge` | Graph edges | Risk-based |
-| **Project Setup** | `project_manage` | Bootstrap project (template structure + optional starter content) | User approval |
-| **Templates** | `generate_template` | Create template draft (also used by `project_manage`) | User approval |
+| **Project Setup** | `project_manage` | Bootstrap project (always template + seed:true/false for content) | User approval |
+| **Templates** | `generate_template` | Create template draft (used internally by `project_manage`) | User approval |
 
 ### Planned Tools (Defined, Not Wired)
 

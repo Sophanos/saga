@@ -32,11 +32,9 @@ export const projectManageExecutor: ToolDefinition<ProjectManageArgs, ProjectMan
     if (args.action === "bootstrap") {
       const preview =
         args.description.length > 50 ? args.description.slice(0, 50) + "..." : args.description;
-      const includeTemplate = args.includeTemplate ?? true;
-      if (includeTemplate && args.seed) return `Bootstrap: "${preview}" (structure + seed)`;
-      if (includeTemplate && !args.seed) return `Bootstrap: "${preview}" (structure only)`;
-      if (!includeTemplate && args.seed) return `Bootstrap: "${preview}" (seed)`;
-      return `Bootstrap: "${preview}" (preview)`;
+      const seed = args.seed ?? true;
+      const mode = seed ? "structure + seed" : "structure only";
+      return `Bootstrap: "${preview}" (${mode})`;
     }
     if (args.action === "restructure") {
       return `Restructure (${args.changes.length} changes)`;

@@ -401,10 +401,8 @@ export interface ProjectManageBootstrapArgs {
   action: "bootstrap";
   /** High-level story or world description */
   description: string;
-  /** Whether to generate a template draft (structure) */
-  includeTemplate?: boolean;
-  /** Whether to persist generated entities/relationships into the project */
-  seed: boolean;
+  /** Whether to persist starter entities/relationships (default true) */
+  seed?: boolean;
   /** Optional genre hint */
   genre?: string;
   /** Target number of entities to generate (3-50) */

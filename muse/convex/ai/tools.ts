@@ -165,14 +165,9 @@ async function executeProjectManage(
       throw new Error("project_manage.bootstrap requires a description");
     }
 
-    const seed = record["seed"];
-    if (typeof seed !== "boolean") {
-      throw new Error("project_manage.bootstrap requires seed: boolean");
-    }
+    const seedRaw = record["seed"];
+    const seed = typeof seedRaw === "boolean" ? seedRaw : true;
 
-    const includeTemplateRaw = record["includeTemplate"];
-    const includeTemplate =
-      typeof includeTemplateRaw === "boolean" ? (includeTemplateRaw as boolean) : true;
     const genre = typeof record["genre"] === "string" ? (record["genre"] as string) : undefined;
     const entityCount =
       typeof record["entityCount"] === "number" ? (record["entityCount"] as number) : undefined;
@@ -193,15 +188,16 @@ async function executeProjectManage(
     } else if (detailLevel === "detailed") {
       templateComplexity = "complex";
     }
-    const templateResult = includeTemplate
-      ? await executeGenerateTemplate({
-          storyDescription: description,
-          genreHints: genre ? [genre] : undefined,
-          complexity: detailLevel ? templateComplexity : undefined,
-        })
-      : undefined;
 
-    if (!seed && includeTemplate) {
+    // Always generate template structure
+    const templateResult = await executeGenerateTemplate({
+      storyDescription: description,
+      genreHints: genre ? [genre] : undefined,
+      complexity: detailLevel ? templateComplexity : undefined,
+    });
+
+    // Structure-only: return template without running genesis
+    if (!seed) {
       return {
         action: "bootstrap",
         status: "ok",
