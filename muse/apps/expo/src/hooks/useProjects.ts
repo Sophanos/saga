@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '../../../../convex/_generated/api';
 import type { Id } from '../../../../convex/_generated/dataModel';
+import { useSession } from '@/lib/auth';
 
 export interface Project {
   id: Id<'projects'>;
@@ -19,8 +20,16 @@ export interface Project {
   role?: 'owner' | 'editor' | 'viewer';
 }
 
-export function useProjects() {
-  const projectsQuery = useQuery(api.projects.list);
+export interface UseProjectsResult {
+  projects: Project[];
+  isLoading: boolean;
+  error: null;
+}
+
+export function useProjects(): UseProjectsResult {
+  const { data: session, isPending } = useSession();
+  const isAuthenticated = !isPending && !!session?.user;
+  const projectsQuery = useQuery(api.projects.list, isAuthenticated ? {} : 'skip');
 
   const projects = useMemo(() => {
     if (!projectsQuery) return [];
@@ -40,12 +49,12 @@ export function useProjects() {
 
   return {
     projects,
-    isLoading: projectsQuery === undefined,
+    isLoading: isPending || (isAuthenticated && projectsQuery === undefined),
     error: null, // Convex throws on error, doesn't return it
   };
 }
 
-export function useProjectCount() {
+export function useProjectCount(): { count: number; isLoading: boolean } {
   const { projects, isLoading } = useProjects();
   return { count: projects.length, isLoading };
 }
