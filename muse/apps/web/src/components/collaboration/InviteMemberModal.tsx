@@ -17,7 +17,7 @@ import {
   ScrollArea,
 } from "@mythos/ui";
 import { useCurrentProject } from "../../stores";
-import type { ProjectRole } from "@mythos/state";
+type InviteRole = "editor" | "viewer";
 import { isValidEmail } from "@mythos/core";
 import { useAuthStore } from "../../stores/auth";
 
@@ -33,7 +33,7 @@ interface InviteMemberModalProps {
 
 interface InviteFormData {
   email: string;
-  role: ProjectRole;
+  role: InviteRole;
 }
 
 type FeedbackType = "success" | "error" | null;
@@ -47,7 +47,7 @@ interface Feedback {
 // Constants
 // ============================================================================
 
-const ROLE_OPTIONS: { value: ProjectRole; label: string }[] = [
+const ROLE_OPTIONS: { value: InviteRole; label: string }[] = [
   { value: "editor", label: "Editor - Can edit content" },
   { value: "viewer", label: "Viewer - Read-only access" },
 ];
@@ -59,7 +59,7 @@ const ROLE_OPTIONS: { value: ProjectRole; label: string }[] = [
 interface ProjectInvitationWithInviter {
   id: string;
   email: string;
-  role: ProjectRole;
+  role: InviteRole;
   expiresAt: string;
 }
 
@@ -195,7 +195,7 @@ export function InviteMemberModal({
         (invitation: { _id: string; email: string; role: string; expiresAt: number }) => ({
           id: invitation._id,
           email: invitation.email,
-          role: invitation.role as ProjectRole,
+          role: invitation.role as InviteRole,
           expiresAt: new Date(invitation.expiresAt).toISOString(),
         })
       );
@@ -376,7 +376,7 @@ export function InviteMemberModal({
             <FormField label="Role">
               <Select
                 value={formData.role}
-                onChange={(v) => updateFormData({ role: v as ProjectRole })}
+                onChange={(v) => updateFormData({ role: v as InviteRole })}
                 options={ROLE_OPTIONS}
                 disabled={isSubmitting}
               />
