@@ -97,13 +97,19 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
 
   // Perform the actual invitation acceptance
   const performAcceptance = useCallback(async () => {
+    if (!user?.id) {
+      setError("You must be signed in to accept an invitation.");
+      setStatus("error");
+      return;
+    }
+
     setStatus("accepting");
 
     try {
-      const result = await acceptInvitationMutation({ token });
+      const projectId = await acceptInvitationMutation({ token, userId: user.id });
 
       // Store the project ID so app loads it after redirect
-      localStorage.setItem(LAST_PROJECT_KEY, result.projectId);
+      localStorage.setItem(LAST_PROJECT_KEY, projectId);
       // Clear the pending token
       sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
 
@@ -131,7 +137,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
       }
       setStatus("error");
     }
-  }, [token, acceptInvitationMutation]);
+  }, [token, user?.id, acceptInvitationMutation]);
 
   // Handle user confirming they want to accept with mismatched email
   const handleConfirmMismatch = useCallback(async () => {
