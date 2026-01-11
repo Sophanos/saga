@@ -140,6 +140,55 @@ const SCENE_FOCUS = [
 ] as const;
 
 // =============================================================================
+// Citation Schema (aligned with muse/convex/ai/tools/citations.ts)
+// =============================================================================
+
+/**
+ * Reusable JSON Schema fragment for citations.
+ * Citations provide provenance for Knowledge PRs by referencing pinned memories.
+ */
+const CITATION_SCHEMA = {
+  type: "object" as const,
+  description: "Citation referencing a pinned canon/policy memory",
+  properties: {
+    memoryId: {
+      type: "string",
+      description: "Stable memory ID (from saga://projects/{projectId}/memories)",
+    },
+    category: {
+      type: "string",
+      enum: DECISION_CATEGORIES,
+      description: "Memory category: decision (canon) or policy (house style)",
+    },
+    excerpt: {
+      type: "string",
+      description: "Short supporting excerpt from the memory",
+    },
+    reason: {
+      type: "string",
+      description: "Why this memory supports the change",
+    },
+    confidence: {
+      type: "number",
+      minimum: 0,
+      maximum: 1,
+      description: "Confidence score (0-1)",
+    },
+  },
+  required: ["memoryId"],
+} as const;
+
+/**
+ * Citations array schema for tools that create Knowledge PRs.
+ */
+const CITATIONS_ARRAY_SCHEMA = {
+  type: "array" as const,
+  description: "Citations providing evidence/provenance for this change (max 10)",
+  items: CITATION_SCHEMA,
+  maxItems: 10,
+} as const;
+
+// =============================================================================
 // Tool Definitions
 // =============================================================================
 
@@ -240,6 +289,8 @@ export const createEntityTool: Tool = {
         items: { type: "string" },
         description: "Limitations and costs of the magic system",
       },
+      // Citations for provenance
+      citations: CITATIONS_ARRAY_SCHEMA,
     },
     required: ["projectId", "type", "name"],
   },
@@ -282,6 +333,8 @@ export const createNodeTool: Tool = {
         description: "Arbitrary node properties (JSON object)",
         additionalProperties: true,
       },
+      // Citations for provenance
+      citations: CITATIONS_ARRAY_SCHEMA,
     },
     required: ["projectId", "type", "name"],
   },
@@ -318,6 +371,8 @@ export const updateEntityTool: Tool = {
         type: "object",
         description: "Properties to update (merged with existing)",
       },
+      // Citations for provenance
+      citations: CITATIONS_ARRAY_SCHEMA,
     },
     required: ["projectId", "entityId"],
   },
@@ -365,6 +420,8 @@ export const updateNodeTool: Tool = {
         },
         additionalProperties: false,
       },
+      // Citations for provenance
+      citations: CITATIONS_ARRAY_SCHEMA,
     },
     required: ["projectId", "nodeName", "updates"],
   },
@@ -406,6 +463,8 @@ export const createRelationshipTool: Tool = {
         type: "boolean",
         description: "Whether the relationship goes both ways",
       },
+      // Citations for provenance
+      citations: CITATIONS_ARRAY_SCHEMA,
     },
     required: ["projectId", "sourceEntityId", "targetEntityId", "type"],
   },
@@ -457,6 +516,8 @@ export const createEdgeTool: Tool = {
         description: "Additional edge metadata (JSON object)",
         additionalProperties: true,
       },
+      // Citations for provenance
+      citations: CITATIONS_ARRAY_SCHEMA,
     },
     required: ["projectId", "sourceName", "targetName", "type"],
   },
@@ -509,6 +570,8 @@ export const updateEdgeTool: Tool = {
         },
         additionalProperties: false,
       },
+      // Citations for provenance
+      citations: CITATIONS_ARRAY_SCHEMA,
     },
     required: ["projectId", "sourceName", "targetName", "type", "updates"],
   },
@@ -935,6 +998,8 @@ export const commitDecisionTool: Tool = {
         type: "boolean",
         description: "Pin decision (default true on server)",
       },
+      // Citations for provenance (other memories this decision references)
+      citations: CITATIONS_ARRAY_SCHEMA,
     },
     required: ["decision"],
   },
@@ -1098,6 +1163,8 @@ export const createEntityFromImageTool: Tool = {
         type: "boolean",
         description: "Whether to set the image as entity portrait (default true)",
       },
+      // Citations for provenance
+      citations: CITATIONS_ARRAY_SCHEMA,
     },
     required: ["imageData"],
   },
@@ -1146,6 +1213,8 @@ export const illustrateSceneTool: Tool = {
         type: "string",
         description: "Negative prompt (what to avoid, optional)",
       },
+      // Citations for provenance
+      citations: CITATIONS_ARRAY_SCHEMA,
     },
     required: ["sceneText"],
   },
@@ -1229,4 +1298,49 @@ export const STANDALONE_TOOLS = new Set([
   "check_logic",
   "name_generator",
   "generate_template",
+]);
+
+/**
+ * Mutating tools that should create Knowledge PRs (proposal-first).
+ * These tools modify graph state and should go through review.
+ * Read-only/analysis tools are executed immediately.
+ */
+export const PROPOSAL_FIRST_TOOLS = new Set([
+  // Entity/Node mutations
+  "create_entity",
+  "update_entity",
+  "create_node",
+  "update_node",
+  // Relationship/Edge mutations
+  "create_relationship",
+  "update_relationship",
+  "create_edge",
+  "update_edge",
+  // Memory mutations
+  "commit_decision",
+  // Image-to-entity mutations (creates entities)
+  "create_entity_from_image",
+  "illustrate_scene",
+]);
+
+/**
+ * Read-only/analysis tools that execute immediately.
+ * These do not modify state and don't need review.
+ */
+export const IMMEDIATE_EXECUTION_TOOLS = new Set([
+  // Analysis tools
+  "detect_entities",
+  "check_consistency",
+  "clarity_check",
+  "check_logic",
+  // Generation tools (no state mutation)
+  "genesis_world",
+  "generate_template",
+  "name_generator",
+  "generate_content",
+  // Search tools (read-only)
+  "search_entities",
+  "search_images",
+  "find_similar_images",
+  "analyze_image",
 ]);

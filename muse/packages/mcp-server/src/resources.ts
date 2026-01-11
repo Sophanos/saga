@@ -106,6 +106,27 @@ export const projectGraphTemplate: ResourceTemplate = {
   mimeType: "application/json",
 };
 
+/**
+ * Resource template for project memories (pinned canon/policy decisions).
+ * Use these memoryIds when providing citations for Knowledge PRs.
+ */
+export const projectMemoriesTemplate: ResourceTemplate = {
+  uriTemplate: "saga://projects/{projectId}/memories",
+  name: "Project Memories",
+  description: "Pinned canon decisions and policy rules for the project. Use memoryIds from here when providing citations.",
+  mimeType: "application/json",
+};
+
+/**
+ * Resource template for project citations (recent Knowledge PR citations).
+ */
+export const projectCitationsTemplate: ResourceTemplate = {
+  uriTemplate: "saga://projects/{projectId}/citations",
+  name: "Project Citations",
+  description: "Recent citations attached to Knowledge PRs, showing provenance of changes",
+  mimeType: "application/json",
+};
+
 // =============================================================================
 // All Resource Templates
 // =============================================================================
@@ -119,6 +140,8 @@ export const RESOURCE_TEMPLATES: ResourceTemplate[] = [
   projectDocumentsTemplate,
   documentContentTemplate,
   projectGraphTemplate,
+  projectMemoriesTemplate,
+  projectCitationsTemplate,
 ];
 
 // =============================================================================
@@ -184,6 +207,16 @@ export function parseResourceUri(
     return { type: "project_graph", params: { projectId: parts[1] } };
   }
 
+  // saga://projects/{projectId}/memories
+  if (parts.length === 3 && parts[0] === "projects" && parts[2] === "memories") {
+    return { type: "project_memories", params: { projectId: parts[1] } };
+  }
+
+  // saga://projects/{projectId}/citations
+  if (parts.length === 3 && parts[0] === "projects" && parts[2] === "citations") {
+    return { type: "project_citations", params: { projectId: parts[1] } };
+  }
+
   return null;
 }
 
@@ -227,6 +260,10 @@ export async function fetchResource(
         );
       case "project_graph":
         return await fetchProjectGraph(params.projectId, config);
+      case "project_memories":
+        return await fetchProjectMemories(params.projectId, config);
+      case "project_citations":
+        return await fetchProjectCitations(params.projectId, config);
       default:
         return null;
     }
@@ -474,6 +511,137 @@ async function fetchProjectGraph(
   };
 }
 
+/**
+ * Fetches pinned canon/policy memories for a project.
+ * These provide memoryIds for citations in Knowledge PRs.
+ */
+async function fetchProjectMemories(
+  projectId: string,
+  config: SagaApiConfig
+): Promise<ResourceWithContent> {
+  // Fetch pinned memories (canon decisions and policies)
+  const memories = await fetchFromSupabase(
+    `memories?project_id=eq.${projectId}&pinned=eq.true&select=id,text,type,category,confidence,scope,source,entity_ids,document_id,created_at,updated_at&order=created_at.desc&limit=50`,
+    config
+  ) as Array<{
+    id: string;
+    text: string;
+    type?: string;
+    category?: string;
+    confidence?: number;
+    scope?: string;
+    source?: string;
+    entity_ids?: string[];
+    document_id?: string;
+    created_at?: string;
+    updated_at?: string;
+  }>;
+
+  const result = {
+    projectId,
+    memories: memories.map((m) => ({
+      memoryId: m.id,
+      text: m.text,
+      category: m.category ?? m.type ?? "decision",
+      confidence: m.confidence ?? 1.0,
+      scope: m.scope ?? "project",
+      source: m.source ?? "unknown",
+      entityIds: m.entity_ids ?? [],
+      documentId: m.document_id,
+      createdAt: m.created_at,
+      updatedAt: m.updated_at,
+    })),
+    totalCount: memories.length,
+    usage: "Use memoryId values when providing citations for Knowledge PR changes.",
+  };
+
+  return {
+    uri: `saga://projects/${projectId}/memories`,
+    name: "Project Memories",
+    description: `Pinned canon decisions and policies for project ${projectId}`,
+    mimeType: "application/json",
+    text: JSON.stringify(result, null, 2),
+  };
+}
+
+/**
+ * Fetches recent citations attached to Knowledge PRs.
+ */
+async function fetchProjectCitations(
+  projectId: string,
+  config: SagaApiConfig
+): Promise<ResourceWithContent> {
+  // Get recent knowledge suggestions with citations
+  const suggestions = await fetchFromSupabase(
+    `knowledge_suggestions?project_id=eq.${projectId}&select=id,tool_name,target_type,status,created_at&order=created_at.desc&limit=25`,
+    config
+  ) as Array<{
+    id: string;
+    tool_name?: string;
+    target_type?: string;
+    status?: string;
+    created_at?: string;
+  }>;
+
+  // Get citations for these suggestions
+  const suggestionIds = suggestions.map((s) => s.id);
+  const citations = suggestionIds.length > 0
+    ? await fetchFromSupabase(
+        `knowledge_citations?target_id=in.(${suggestionIds.join(",")})&select=id,target_id,memory_id,memory_category,excerpt,reason,confidence,visibility,phase,created_at`,
+        config
+      ) as Array<{
+        id: string;
+        target_id: string;
+        memory_id: string;
+        memory_category?: string;
+        excerpt?: string;
+        reason?: string;
+        confidence?: number;
+        visibility?: string;
+        phase?: string;
+        created_at?: string;
+      }>
+    : [];
+
+  // Group citations by suggestion
+  const citationsBySuggestion = new Map<string, typeof citations>();
+  for (const c of citations) {
+    const existing = citationsBySuggestion.get(c.target_id) ?? [];
+    existing.push(c);
+    citationsBySuggestion.set(c.target_id, existing);
+  }
+
+  const result = {
+    projectId,
+    recentSuggestions: suggestions.map((s) => ({
+      suggestionId: s.id,
+      toolName: s.tool_name,
+      targetType: s.target_type,
+      status: s.status,
+      createdAt: s.created_at,
+      citations: (citationsBySuggestion.get(s.id) ?? []).map((c) => ({
+        citationId: c.id,
+        memoryId: c.memory_id,
+        category: c.memory_category,
+        excerpt: c.visibility === "redacted" ? "[redacted]" : c.excerpt,
+        reason: c.visibility === "redacted" ? "[redacted]" : c.reason,
+        confidence: c.confidence,
+        phase: c.phase,
+      })),
+    })),
+    totalSuggestions: suggestions.length,
+    totalCitations: citations.length,
+  };
+
+  return {
+    uri: `saga://projects/${projectId}/citations`,
+    name: "Project Citations",
+    description: `Recent Knowledge PR citations for project ${projectId}`,
+    mimeType: "application/json",
+    text: JSON.stringify(result, null, 2),
+  };
+}
+
 // =============================================================================
 // Dynamic Resource Discovery
 // =============================================================================
@@ -516,6 +684,20 @@ export async function listProjectResources(
     resources.push({
       uri: `saga://projects/${projectId}/graph`,
       name: "Project Graph",
+      mimeType: "application/json",
+    });
+
+    resources.push({
+      uri: `saga://projects/${projectId}/memories`,
+      name: "Project Memories",
+      description: "Pinned canon/policy decisions (use for citations)",
+      mimeType: "application/json",
+    });
+
+    resources.push({
+      uri: `saga://projects/${projectId}/citations`,
+      name: "Project Citations",
+      description: "Recent Knowledge PR citations",
       mimeType: "application/json",
     });
 

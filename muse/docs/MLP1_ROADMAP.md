@@ -38,6 +38,8 @@ Reference: `../DB_MIGRATION_REPORT.md`.
 - AI task routing expanded with `review`/`generation` plus product/engineering/design/comms task slugs; `coach`/`creative` aliased.
 - UI updates: registry lock/unlock controls added in settings; entity create/edit now supports schema-driven properties.
 - UI gaps: no AI template generation flow yet, no org/team management UI, no registry editor UI; Project Graph filters are registry-driven but template icon/color coverage is incomplete for non-writer templates; schema-driven property/relationship metadata editors are still missing; universal entity profile page (overview/graph/mentions/documents/history) not yet implemented.
+- Phase 3 MCP Citations Integration: citations schema added to mutating tools; memories/citations resources discoverable via `saga://projects/{id}/memories` and `saga://projects/{id}/citations`; proposal-first routing for governed tool calls (`muse/packages/mcp-server/src/tools.ts`, `muse/packages/mcp-server/src/resources.ts`, `muse/packages/mcp-server/src/index.ts`).
+- Phase 4 Clarity/Policy Coach fully implemented (see 2026-01-10 notes for details).
 
 ### Recent Updates (2026-01-10)
 

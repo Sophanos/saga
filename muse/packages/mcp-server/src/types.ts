@@ -389,3 +389,49 @@ export interface SagaExecuteToolRequest {
   input: unknown;
   projectId?: string;
 }
+
+/**
+ * Request to propose a tool call as a Knowledge PR (proposal-first).
+ * The tool is not executed immediately; instead, a suggestion is created for review.
+ */
+export interface SagaProposeToolRequest {
+  kind: "propose_tool";
+  toolName: string;
+  input: unknown;
+  projectId: string;
+}
+
+// =============================================================================
+// Citation Types (aligned with muse/convex/ai/tools/citations.ts)
+// =============================================================================
+
+/**
+ * Citation referencing a pinned canon/policy memory.
+ * Used to provide provenance for Knowledge PR changes.
+ */
+export interface Citation {
+  /** Stable memory ID (from saga://projects/{projectId}/memories) */
+  memoryId: string;
+  /** Memory category: decision (canon) or policy (house style) */
+  category?: "decision" | "policy";
+  /** Short supporting excerpt from the memory */
+  excerpt?: string;
+  /** Why this memory supports the change */
+  reason?: string;
+  /** Confidence score (0-1) */
+  confidence?: number;
+}
+
+/**
+ * Result of a proposal-first tool call.
+ */
+export interface SagaProposeToolResult {
+  /** The created suggestion ID */
+  suggestionId: string;
+  /** Status of the proposal */
+  status: "proposed" | "invalid";
+  /** Preflight validation errors (if status is invalid) */
+  errors?: string[];
+  /** Preflight warnings */
+  warnings?: string[];
+}

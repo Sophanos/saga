@@ -30,7 +30,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { SAGA_TOOLS, TOOL_MAP } from "./tools.js";
-import { PROJECT_REQUIRED_TOOLS } from "./tools.js";
+import { PROJECT_REQUIRED_TOOLS, PROPOSAL_FIRST_TOOLS, IMMEDIATE_EXECUTION_TOOLS } from "./tools.js";
 import {
   RESOURCE_TEMPLATES,
   fetchResource,
@@ -44,6 +44,22 @@ import type { SagaApiConfig } from "./types.js";
 
 const SERVER_NAME = "saga-worldbuilding";
 const SERVER_VERSION = "1.0.0";
+
+type ProposalApiResponse = {
+  suggestionId?: string;
+  warnings?: string[];
+};
+
+function isProposalApiResponse(value: unknown): value is ProposalApiResponse {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  if (record.suggestionId !== undefined && typeof record.suggestionId !== "string") return false;
+  if (record.warnings !== undefined && !Array.isArray(record.warnings)) return false;
+  if (Array.isArray(record.warnings) && !record.warnings.every((item) => typeof item === "string")) {
+    return false;
+  }
+  return true;
+}
 
 /**
  * Gets the API configuration from environment variables.
@@ -105,7 +121,7 @@ function resolveProjectIdForTool(
 }
 
 /**
- * Executes a tool by calling the Saga API.
+ * Executes a tool by calling the Saga API (immediate execution).
  */
 async function executeTool(
   toolName: string,
@@ -154,7 +170,8 @@ async function executeTool(
       };
     }
 
-    const result = await response.json();
+    const responseJson = await response.json();
+    const result: ProposalApiResponse = isProposalApiResponse(responseJson) ? responseJson : {};
 
     return {
       content: [
@@ -172,6 +189,100 @@ async function executeTool(
         {
           type: "text",
           text: `Error executing ${toolName}: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Creates a Knowledge PR proposal for a mutating tool call.
+ * The tool is not executed immediately; instead, a suggestion is created for review.
+ */
+async function proposeTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  config: SagaApiConfig
+): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  console.error(`[saga-mcp] Proposing tool (Knowledge PR): ${toolName}`);
+
+  try {
+    const resolved = resolveProjectIdForTool(toolName, args, config);
+    if (resolved.error) {
+      return {
+        content: [{ type: "text", text: resolved.error }],
+        isError: true,
+      };
+    }
+
+    if (!resolved.projectId) {
+      return {
+        content: [{ type: "text", text: `projectId is required for proposal-first tools like ${toolName}` }],
+        isError: true,
+      };
+    }
+
+    // Call the Saga edge function with propose_tool kind
+    const response = await fetch(`${config.supabaseUrl}/functions/v1/ai-saga`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+        apikey: config.apiKey,
+      },
+      body: JSON.stringify({
+        kind: "propose_tool",
+        toolName,
+        input: resolved.args,
+        projectId: resolved.projectId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[saga-mcp] API error (${response.status}):`, errorText);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error proposing ${toolName}: ${response.status} ${response.statusText}\n${errorText}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    const responseJson = await response.json();
+    const result: ProposalApiResponse = isProposalApiResponse(responseJson) ? responseJson : {};
+
+    // Format the proposal result
+    const proposalResult = {
+      status: "proposed",
+      message: `Knowledge PR created for ${toolName}. The change will be applied after review.`,
+      suggestionId: result.suggestionId,
+      toolName,
+      projectId: resolved.projectId,
+      ...(result.warnings?.length ? { warnings: result.warnings } : {}),
+    };
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(proposalResult, null, 2),
+        },
+      ],
+    };
+  } catch (error) {
+    console.error(`[saga-mcp] Tool proposal error:`, error);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Error proposing ${toolName}: ${error instanceof Error ? error.message : String(error)}`,
         },
       ],
       isError: true,
@@ -321,7 +432,13 @@ function createServer(config: SagaApiConfig): Server {
       return executeSearchTool(resolvedArgs.args, config);
     }
 
-    // Execute tool via Saga API
+    // Route mutating tools through proposal-first (Knowledge PR)
+    // This ensures all graph mutations go through review
+    if (PROPOSAL_FIRST_TOOLS.has(name)) {
+      return proposeTool(name, resolvedArgs.args, config);
+    }
+
+    // Execute read-only/analysis tools immediately
     return executeTool(name, resolvedArgs.args, config);
   });
 
