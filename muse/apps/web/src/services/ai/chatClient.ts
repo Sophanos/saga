@@ -7,7 +7,7 @@
 
 import { ApiError, type ApiErrorCode } from "../api-client";
 import { getAIEndpoint } from "../config";
-import { authClient } from "../../lib/auth";
+import { getConvexToken } from "../../lib/tokenCache";
 import type { ChatContext, ChatMention } from "../../stores";
 
 /**
@@ -116,16 +116,8 @@ async function resolveAuthHeader(authToken?: string): Promise<string | null> {
   if (authToken) {
     return authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`;
   }
-
-  try {
-    const response = await authClient.$fetch("/api/auth/convex-token", {
-      method: "GET",
-    });
-    const tokenData = response?.data as { token?: string } | undefined;
-    return tokenData?.token ? `Bearer ${tokenData.token}` : null;
-  } catch {
-    return null;
-  }
+  const token = await getConvexToken();
+  return token ? `Bearer ${token}` : null;
 }
 
 /**

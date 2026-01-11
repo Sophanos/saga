@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { ConvexReactClient } from "convex/react";
 import { ConvexOfflineProvider } from "@mythos/convex-client";
 import { authClient } from "../lib/auth";
+import { getConvexToken } from "../lib/tokenCache";
 
 // Convex client singleton
 const convexUrl = import.meta.env["VITE_CONVEX_URL"] || "https://convex.cascada.vision";
@@ -33,12 +34,8 @@ function useConvexAuth() {
       isLoading: isPending,
       isAuthenticated: !!session?.user,
       fetchAccessToken: async () => {
-        // convexClient plugin handles token exchange with Better Auth
-        // The token is automatically managed by the crossDomainClient plugin
-        const response = await authClient.$fetch("/api/auth/convex-token", {
-          method: "GET",
-        });
-        return (response?.data as { token?: string } | undefined)?.token ?? null;
+        if (!session?.user) return null;
+        return getConvexToken();
       },
     }),
     [session, isPending]

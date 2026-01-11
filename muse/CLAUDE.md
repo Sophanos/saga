@@ -89,6 +89,7 @@ Always put shared logic in `packages/`, then thin wrappers in `apps/`.
 
 ## Git Commits
 Never `git add -A`; always `git add <specific files>` grouped by feature.
+Never `git restore`, `git checkout --`, `git reset`, or any destructive git command without explicit user approval.
 
 ## Convex AI (high level)
 - Core modules: `agentRuntime`, `coach`, `dynamics`, `genesis`, `image`, `lint`, `style`, `rag`, `saga`

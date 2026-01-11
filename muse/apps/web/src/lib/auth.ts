@@ -7,6 +7,7 @@
 import { createAuthClient } from "better-auth/react";
 import { convexClient, crossDomainClient } from "@convex-dev/better-auth/client/plugins";
 import { initAuthConfig, setPlatform } from "@mythos/auth";
+import { invalidateTokenCache } from "./tokenCache";
 
 // Set platform
 setPlatform("web");
@@ -88,6 +89,7 @@ export async function signInWithGoogle() {
  * Sign out
  */
 export async function signOut() {
+  invalidateTokenCache();
   return authClient.signOut();
 }
 

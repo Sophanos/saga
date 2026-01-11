@@ -15,6 +15,54 @@ import type {
 } from "./types";
 
 // ============================================================
+// Auth Lifecycle Events
+// ============================================================
+
+/**
+ * Lifecycle events emitted by the auth store.
+ * Used by platform-specific code (e.g., web token cache) to react to auth changes.
+ */
+export type AuthLifecycleEvent =
+  | { type: "reset" }
+  | { type: "user_changed"; prevUserId: string | null; nextUserId: string | null }
+  | { type: "session_changed"; prevSessionId: string | null; nextSessionId: string | null };
+
+/** Set of lifecycle event subscribers */
+const lifecycleSubscribers = new Set<(event: AuthLifecycleEvent) => void>();
+
+/**
+ * Emit an auth lifecycle event to all subscribers
+ */
+function emitLifecycleEvent(event: AuthLifecycleEvent) {
+  for (const callback of lifecycleSubscribers) {
+    try {
+      callback(event);
+    } catch (error) {
+      console.error("[auth/store] Lifecycle subscriber error:", error);
+    }
+  }
+}
+
+/**
+ * Subscribe to auth lifecycle events.
+ *
+ * Events are emitted on:
+ * - `reset`: Store was reset (logout)
+ * - `user_changed`: User ID changed (login/logout/switch)
+ * - `session_changed`: Session ID changed (refresh/login/logout)
+ *
+ * @returns Unsubscribe function
+ */
+export function subscribeAuthLifecycle(
+  callback: (event: AuthLifecycleEvent) => void
+): () => void {
+  lifecycleSubscribers.add(callback);
+  return () => {
+    lifecycleSubscribers.delete(callback);
+  };
+}
+
+// ============================================================
 // Auth Store
 // ============================================================
 
@@ -37,27 +85,48 @@ const initialAuthState: AuthState = {
 
 export const useAuthStore = create<AuthStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...initialAuthState,
 
-      setUser: (user) =>
+      setUser: (user) => {
+        const prevUserId = get().user?.id ?? null;
+        const nextUserId = user?.id ?? null;
+
         set({
           user,
           isAuthenticated: !!user,
           isLoading: false,
-        }),
+        });
 
-      setSession: (session) =>
+        // Emit lifecycle event if user ID changed
+        if (prevUserId !== nextUserId) {
+          emitLifecycleEvent({ type: "user_changed", prevUserId, nextUserId });
+        }
+      },
+
+      setSession: (session) => {
+        const prevSessionId = get().session?.id ?? null;
+        const nextSessionId = session?.id ?? null;
+
         set({
           session,
           isAuthenticated: !!session,
-        }),
+        });
+
+        // Emit lifecycle event if session ID changed
+        if (prevSessionId !== nextSessionId) {
+          emitLifecycleEvent({ type: "session_changed", prevSessionId, nextSessionId });
+        }
+      },
 
       setLoading: (isLoading) => set({ isLoading }),
 
       setError: (error) => set({ error, isLoading: false }),
 
-      reset: () => set(initialAuthState),
+      reset: () => {
+        set(initialAuthState);
+        emitLifecycleEvent({ type: "reset" });
+      },
     }),
     {
       name: "mythos-auth",

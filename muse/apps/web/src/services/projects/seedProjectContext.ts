@@ -1,7 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
-import { authClient } from "../../lib/auth";
+import { getConvexToken } from "../../lib/tokenCache";
 
 export const PROJECT_SEED_TITLE = "World Seed";
 const WORLD_SEED_TYPE = "worldbuilding";
@@ -16,8 +16,7 @@ async function getConvexClient(): Promise<ConvexHttpClient> {
     cachedClient = new ConvexHttpClient(CONVEX_URL);
   }
 
-  const response = await authClient.$fetch("/api/auth/convex-token", { method: "GET" });
-  const nextToken = (response?.data as { token?: string } | undefined)?.token ?? null;
+  const nextToken = await getConvexToken();
   if (!nextToken) {
     throw new Error("Missing Convex auth token");
   }

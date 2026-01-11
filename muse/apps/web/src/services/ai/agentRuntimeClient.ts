@@ -44,7 +44,7 @@ import type {
   ToolApprovalDanger,
 } from '@mythos/agent-protocol';
 import { getAnonHeaders } from '../anonymousSession';
-import { authClient } from '../../lib/auth';
+import { getConvexToken } from '../../lib/tokenCache';
 
 // Re-export from shared
 export { SagaApiError, API_TIMEOUTS, RETRY_CONFIG };
@@ -72,13 +72,8 @@ async function resolveAuthHeader(authToken?: string): Promise<string | null> {
   if (authToken) {
     return authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}`;
   }
-  try {
-    const response = await authClient.$fetch('/api/auth/convex-token', { method: 'GET' });
-    const tokenData = response?.data as { token?: string } | undefined;
-    return tokenData?.token ? `Bearer ${tokenData.token}` : null;
-  } catch {
-    return null;
-  }
+  const token = await getConvexToken();
+  return token ? `Bearer ${token}` : null;
 }
 
 // Extended types for web
