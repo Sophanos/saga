@@ -14,6 +14,8 @@ import { authClient } from "../../lib/auth";
 import type { ChatContext, ChatMention } from "../../stores";
 import type {
   ToolName,
+  ProjectManageArgs,
+  ProjectManageResult,
   GenesisWorldArgs,
   GenesisWorldResult,
   DetectEntitiesArgs,
@@ -581,6 +583,16 @@ export async function executeGenesisWorld(
   opts: ExecuteToolOptions
 ): Promise<GenesisWorldResult> {
   return executeSagaTool<GenesisWorldResult>("genesis_world", input, opts);
+}
+
+/**
+ * Execute project_manage to bootstrap or migrate a project.
+ */
+export async function executeProjectManage(
+  input: ProjectManageArgs,
+  opts: ExecuteToolOptions
+): Promise<ProjectManageResult> {
+  return executeSagaTool<ProjectManageResult>("project_manage", input, opts);
 }
 
 /**

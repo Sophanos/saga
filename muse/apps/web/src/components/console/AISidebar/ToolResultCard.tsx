@@ -479,6 +479,9 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
       return <ImageIcon className="w-4 h-4" />;
     }
     // Saga unified agent tools
+    if (tool.toolName === "project_manage") {
+      return <Sparkles className="w-4 h-4" />;
+    }
     if (tool.toolName === "genesis_world") {
       return <Sparkles className="w-4 h-4" />;
     }
@@ -497,6 +500,9 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
   // Get action button label based on tool type
   const getActionLabel = () => {
     // Saga unified agent tools
+    if (tool.toolName === "project_manage") {
+      return "Run";
+    }
     if (tool.toolName === "genesis_world") {
       return "Generate";
     }

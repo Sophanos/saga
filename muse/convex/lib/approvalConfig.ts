@@ -74,6 +74,7 @@ export function needsToolApproval(
   args: Record<string, unknown>
 ): boolean {
   switch (toolName) {
+    case "project_manage":
     case "write_content":
     case "ask_question":
     case "commit_decision":

@@ -618,6 +618,93 @@ export const genesisWorldTool: Tool = {
 };
 
 /**
+ * Project Manage Tool
+ * Unified entry point for bootstrapping/migrating a project.
+ */
+export const projectManageTool: Tool = {
+  name: "project_manage",
+  description:
+    "Bootstrap or migrate a project. Use action=bootstrap to generate a world scaffold; set seed=true to persist entities/relationships to the project.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: { type: "string", description: "Project ID (required)" },
+      action: {
+        type: "string",
+        enum: ["bootstrap", "restructure", "pivot"],
+        description: "Operation to perform",
+      },
+      // bootstrap
+      description: {
+        type: "string",
+        description: "High-level story or world description",
+        minLength: 10,
+      },
+      seed: {
+        type: "boolean",
+        description: "Whether to persist generated entities/relationships into the project",
+      },
+      genre: { type: "string", description: "Optional genre hint" },
+      entityCount: {
+        type: "integer",
+        description: "Target number of entities to generate (3-50)",
+        minimum: 3,
+        maximum: 50,
+      },
+      detailLevel: {
+        type: "string",
+        enum: ["minimal", "standard", "detailed"],
+        description: "How detailed the generation should be",
+      },
+      includeOutline: { type: "boolean", description: "Whether to include a story outline" },
+      skipEntityTypes: {
+        type: "array",
+        items: { type: "string" },
+        description: "Entity types to skip during persistence",
+      },
+      // restructure
+      changes: {
+        type: "array",
+        description: "Restructure operations (currently may be unsupported)",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            op: { type: "string" },
+            from: { type: "string" },
+            to: { type: "string" },
+            type: { type: "string" },
+            field: { type: "string" },
+          },
+          required: ["op"],
+        },
+      },
+      // pivot
+      toTemplate: { type: "string", description: "Target template ID to pivot to" },
+      mappings: {
+        type: "array",
+        description: "Type mappings for pivot",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            from: { type: "string" },
+            to: { type: "string" },
+          },
+          required: ["from", "to"],
+        },
+      },
+      unmappedContent: {
+        type: "string",
+        enum: ["archive", "discard"],
+        description: "What to do with unmapped content",
+      },
+    },
+    required: ["projectId", "action"],
+  },
+};
+
+/**
  * Detect Entities Tool
  * Detects and extracts entities from narrative text.
  */
@@ -1240,6 +1327,7 @@ export const SAGA_TOOLS: Tool[] = [
   searchEntitiesTool,
   generateContentTool,
   // World generation
+  projectManageTool,
   genesisWorldTool,
   generateTemplateTool,
   // Canon / policy decisions
@@ -1279,6 +1367,7 @@ export const PROJECT_REQUIRED_TOOLS = new Set([
   "update_edge",
   "search_entities",
   "generate_content",
+  "project_manage",
   "commit_decision",
   "search_images",
   "find_similar_images",
@@ -1318,6 +1407,7 @@ export const PROPOSAL_FIRST_TOOLS = new Set([
   "update_edge",
   // Memory mutations
   "commit_decision",
+  "project_manage",
   // Image-to-entity mutations (creates entities)
   "create_entity_from_image",
   "illustrate_scene",

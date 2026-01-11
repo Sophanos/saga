@@ -38,6 +38,7 @@ import {
   updateEdgeTool,
 } from "./tools/projectGraphTools";
 import { generateTemplateTool } from "./tools/templateTools";
+import { projectManageTool } from "./tools/projectManageTools";
 import { webSearchTool, webExtractTool } from "./tools/webSearchTools";
 import { getEmbeddingModelForTask } from "../lib/embeddings";
 import { ServerAgentEvents } from "../lib/analytics";
@@ -252,6 +253,7 @@ function createSagaAgent() {
       search_chapters: searchChaptersTool,
       search_world: searchWorldTool,
       get_entity: getEntityTool,
+      project_manage: projectManageTool,
       generate_template: generateTemplateTool,
       create_entity: createEntityTool,
       update_entity: updateEntityTool,
@@ -866,6 +868,13 @@ function resolveApprovalDanger(toolName: string, args: Record<string, unknown>):
       return "costly";
     }
     return "safe";
+  }
+  if (toolName === "project_manage") {
+    const action = typeof args["action"] === "string" ? (args["action"] as string) : undefined;
+    if (action === "restructure" || action === "pivot") {
+      return "destructive";
+    }
+    return "costly";
   }
   if (projectGraphTools.has(toolName)) return "destructive";
   return "safe";

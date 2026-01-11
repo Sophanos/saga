@@ -18,6 +18,7 @@ import type {
   GenerateTemplateArgs,
   GenerateTemplateResult,
   GenesisEntity,
+  ProjectManageResult,
   TemplateDraft,
   TemplateDocumentKind,
   TemplateEntityKind,
@@ -100,6 +101,9 @@ export const execute = internalAction({
           skipEntityTypes: input.skipEntityTypes,
         });
 
+      case "project_manage":
+        return executeProjectManage(ctx, input, projectId);
+
       case "generate_template":
         return executeGenerateTemplate(input);
 
@@ -132,7 +136,7 @@ export const execute = internalAction({
 
       default:
         throw new Error(
-          `Unknown tool: ${toolName}. Supported tools: detect_entities, check_consistency, genesis_world, genesis_world_enhanced, persist_genesis_world, generate_template, clarity_check, policy_check, name_generator, commit_decision, search_images, find_similar_images, check_logic, generate_content, analyze_image`
+          `Unknown tool: ${toolName}. Supported tools: project_manage, detect_entities, check_consistency, genesis_world, genesis_world_enhanced, persist_genesis_world, generate_template, clarity_check, policy_check, name_generator, commit_decision, search_images, find_similar_images, check_logic, generate_content, analyze_image`
         );
     }
   },
@@ -141,6 +145,152 @@ export const execute = internalAction({
 // ============================================================
 // Tool Implementations
 // ============================================================
+
+async function executeProjectManage(
+  ctx: ActionCtx,
+  input: unknown,
+  projectId: string
+): Promise<ProjectManageResult> {
+  if (!input || typeof input !== "object") {
+    throw new Error("project_manage input is required");
+  }
+
+  const record = input as Record<string, unknown>;
+  const action = record["action"];
+
+  if (action === "bootstrap") {
+    const description =
+      typeof record["description"] === "string" ? record["description"].trim() : "";
+    if (!description) {
+      throw new Error("project_manage.bootstrap requires a description");
+    }
+
+    const seed = record["seed"];
+    if (typeof seed !== "boolean") {
+      throw new Error("project_manage.bootstrap requires seed: boolean");
+    }
+
+    const genre = typeof record["genre"] === "string" ? (record["genre"] as string) : undefined;
+    const entityCount =
+      typeof record["entityCount"] === "number" ? (record["entityCount"] as number) : undefined;
+    const detailLevelRaw = typeof record["detailLevel"] === "string" ? record["detailLevel"] : undefined;
+    const detailLevel =
+      detailLevelRaw === "minimal" || detailLevelRaw === "standard" || detailLevelRaw === "detailed"
+        ? detailLevelRaw
+        : undefined;
+    const includeOutline =
+      typeof record["includeOutline"] === "boolean" ? (record["includeOutline"] as boolean) : true;
+    const skipEntityTypes = Array.isArray(record["skipEntityTypes"])
+      ? (record["skipEntityTypes"] as unknown[]).filter((t) => typeof t === "string")
+      : undefined;
+
+    const genesisResult = await ctx.runAction((internal as any)["ai/genesis"].runGenesis, {
+      prompt: description,
+      genre,
+      entityCount,
+      detailLevel,
+      includeOutline,
+    });
+
+    const entities = Array.isArray(genesisResult?.entities)
+      ? (genesisResult.entities as Array<{
+          name: string;
+          type: string;
+          description: string;
+          properties?: Record<string, unknown>;
+          relationships?: Array<{
+            targetName: string;
+            type: string;
+            description?: string;
+          }>;
+        }>)
+      : [];
+
+    const relationships = entities.flatMap((entity) => {
+      const rels = Array.isArray(entity.relationships) ? entity.relationships : [];
+      return rels
+        .filter((rel) => typeof rel?.targetName === "string" && rel.targetName.length > 0)
+        .map((rel) => ({
+          source: entity.name,
+          target: rel.targetName,
+          type: rel.type,
+          description: rel.description,
+        }));
+    });
+
+    const baseResult: ProjectManageResult = {
+      action: "bootstrap",
+      status: "ok",
+      persisted: seed,
+      worldSummary: typeof genesisResult?.worldSummary === "string" ? genesisResult.worldSummary : "",
+      suggestedTitle:
+        typeof genesisResult?.suggestedTitle === "string" ? genesisResult.suggestedTitle : undefined,
+      outline: Array.isArray(genesisResult?.outline)
+        ? (genesisResult.outline as Array<{ title: string; summary: string }>)
+        : undefined,
+      entities: entities.map((entity) => ({
+        name: entity.name,
+        type: entity.type,
+        description: entity.description,
+        properties: entity.properties,
+      })),
+      relationships,
+    };
+
+    if (!seed) {
+      return baseResult;
+    }
+
+    if (projectId === "template-builder") {
+      return {
+        action: "bootstrap",
+        status: "ok",
+        persisted: false,
+        worldSummary: baseResult.worldSummary,
+        suggestedTitle: baseResult.suggestedTitle,
+        outline: baseResult.outline,
+        entities: baseResult.entities,
+        relationships: baseResult.relationships,
+        persistence: {
+          success: false,
+          entitiesCreated: 0,
+          relationshipsCreated: 0,
+          errors: ["Cannot persist bootstrap results in template-builder mode."],
+        },
+      };
+    }
+
+    const persistResult = await ctx.runAction((internal as any)["ai/genesis"].persistGenesisWorld, {
+      projectId: projectId as Id<"projects">,
+      result: genesisResult,
+      skipEntityTypes,
+    });
+
+    return {
+      ...baseResult,
+      persistence: {
+        success: !!persistResult?.success,
+        entitiesCreated: typeof persistResult?.entitiesCreated === "number" ? persistResult.entitiesCreated : 0,
+        relationshipsCreated:
+          typeof persistResult?.relationshipsCreated === "number" ? persistResult.relationshipsCreated : 0,
+        errors: Array.isArray(persistResult?.errors)
+          ? (persistResult.errors as unknown[]).filter((e) => typeof e === "string")
+          : [],
+      },
+    };
+  }
+
+  if (action === "restructure" || action === "pivot") {
+    return {
+      action,
+      status: "not_implemented",
+      message: "project_manage currently supports action: bootstrap only.",
+      supportedActions: ["bootstrap"],
+    } satisfies ProjectManageResult;
+  }
+
+  throw new Error('project_manage requires action: "bootstrap" | "restructure" | "pivot"');
+}
 
 async function executeCheckConsistency(input: {
   text: string;

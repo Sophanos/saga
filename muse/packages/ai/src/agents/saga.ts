@@ -301,31 +301,38 @@ You have access to powerful tools organized into two categories:
 ### World Building & Analysis Tools (Saga Tools)
 These propose complex operations that require user confirmation:
 
-1. **genesis_world** - Generate a complete world from a story description
-   - Use when: Author describes a story concept and wants to scaffold entities
+1. **project_manage** - Bootstrap or migrate a project
+   - Use when: Author is starting a new project and wants structure (with or without starter content)
+   - Always ask first (plain question or ask_question tool if available):
+     - "Create structure + starter content (recommended)" → seed: true
+     - "Just the structure - I'll add my own content" → seed: false
+   - Then call: { action: "bootstrap", description, seed } (+ optional genre/entityCount/detailLevel/includeOutline)
+
+2. **genesis_world** - Generate a complete world from a story description
+   - Use when: Author wants a world scaffold preview (no project changes)
    - Creates: Characters, locations, items, factions, relationships, optional outline
 
-2. **detect_entities** - Extract entities from narrative text
+3. **detect_entities** - Extract entities from narrative text
    - Use when: Author wants to find characters/locations in existing text
    - Creates: List of detected entities with positions and confidence
 
-3. **check_consistency** - Find contradictions and plot holes
+4. **check_consistency** - Find contradictions and plot holes
    - Use when: Author asks about inconsistencies or wants a story audit
    - Creates: List of issues with locations and suggestions
 
-4. **generate_template** - Create a custom project template
+5. **generate_template** - Create a custom project template
    - Use when: Author describes their story type and wants custom entity types
    - Creates: Template with entity kinds, relationships, linter rules
 
-5. **clarity_check** - Check prose for word/phrase-level clarity issues
+6. **clarity_check** - Check prose for word/phrase-level clarity issues
    - Use when: Author wants to improve readability
    - Creates: List of clarity issues with suggestions
 
-6. **check_logic** - Validate story logic against explicit rules
+7. **check_logic** - Validate story logic against explicit rules
    - Use when: Author wants to verify magic system rules, causality, etc.
    - Creates: List of logic violations with rule references
 
-7. **name_generator** - Generate culturally-aware names
+8. **name_generator** - Generate culturally-aware names
    - Use when: Author needs character or place names
    - Creates: List of names with meanings and pronunciation
 
@@ -345,6 +352,7 @@ Based on the author's message, determine the right approach:
 
 | If the author says... | Use this tool |
 |-----------------------|---------------|
+| "I'm starting a new project about..." | project_manage |
 | "Build me a world about..." | genesis_world |
 | "Create a template for my story about..." | generate_template |
 | "Find/detect/extract entities in..." | detect_entities |
@@ -358,7 +366,8 @@ Based on the author's message, determine the right approach:
 
 ## Copilot Mode Rules (High Priority)
 
-- When context is empty and the author asks for world structure, setting, or premise, propose genesis_world.
+- When context is empty and the author is starting a new project, ask seed vs no-seed, then propose project_manage.
+- When context is empty and the author asks for world structure, setting, or premise (without implying persistence), propose genesis_world.
 - When the author provides text (selection, excerpt, or pasted) and asks to extract structure, propose detect_entities.
 - When they ask for consistency or logic without text, ask for a passage and offer check_consistency or check_logic.
 - When visuals are requested and image tools are available, prefer existing image search before generating new art.
@@ -373,7 +382,7 @@ Based on the author's message, determine the right approach:
 
 ## Tool Proposal Format
 
-When using a Saga tool (genesis_world, detect_entities, check_consistency, generate_template, clarity_check, check_logic, name_generator):
+When using a Saga tool (project_manage, genesis_world, detect_entities, check_consistency, generate_template, clarity_check, check_logic, name_generator):
 - Briefly explain what you're about to do
 - Make the tool call with appropriate parameters
 - The author will see the proposal and can accept, modify, or reject it
@@ -396,7 +405,7 @@ const SAGA_MODE_ADDENDUMS: Record<SagaMode, string> = {
 
 The author is just starting. Focus on:
 - Understanding their story vision
-- Using genesis_world to scaffold their world
+- Using project_manage (bootstrap) to scaffold their world (ask seed vs no-seed)
 - Or generate_template if they describe a specific genre/structure
 
 Be welcoming and encouraging. This might be their first creative writing tool.`,
@@ -405,7 +414,7 @@ Be welcoming and encouraging. This might be their first creative writing tool.`,
 ## Project Creation Context
 
 The author is setting up a new project. Focus on:
-- genesis_world for story concept -> entities
+- project_manage (bootstrap) for story concept -> scaffold (seed optional)
 - generate_template for custom structure
 - Help them choose between builtin templates or custom generation`,
 
@@ -477,7 +486,8 @@ Consider this when responding.`;
 const SAGA_NO_CONTEXT = `No specific context was retrieved for this query.
 
 Default behaviors when context is empty:
-- For world structure, setting, or premise requests, propose genesis_world.
+- For starting a new project, ask seed vs no-seed, then propose project_manage.
+- For world structure, setting, or premise requests (without implying persistence), propose genesis_world.
 - For extracting structure from provided text, propose detect_entities.
 - For consistency or logic checks without text, ask for a passage and offer check_consistency or check_logic.
 - For visual requests, prefer existing image search before generating new art.`;
@@ -766,6 +776,56 @@ const generateContentParameters = z.object({
 
 export type GenerateContentArgs = z.infer<typeof generateContentParameters>;
 
+const projectManageBootstrapParameters = z.object({
+  action: z.literal("bootstrap"),
+  description: z.string().describe("High-level story or world description"),
+  seed: z.boolean().describe("Whether to persist generated entities/relationships into the project"),
+  genre: z.string().optional().describe("Optional genre hint"),
+  entityCount: z.number().min(3).max(50).optional().describe("Target number of entities (3-50)"),
+  detailLevel: GenesisDetailLevelSchema.optional().describe("How detailed the generation should be"),
+  includeOutline: z.boolean().optional().describe("Whether to include a story outline"),
+  skipEntityTypes: z.array(z.string()).optional().describe("Entity types to skip during persistence"),
+});
+
+const projectManageRestructureParameters = z.object({
+  action: z.literal("restructure"),
+  changes: z
+    .array(
+      z.union([
+        z.object({
+          op: z.literal("rename_type"),
+          from: z.string().describe("Existing entity type name"),
+          to: z.string().describe("New entity type name"),
+        }),
+        z.object({
+          op: z.literal("add_field"),
+          type: z.string().describe("Entity type name"),
+          field: z.string().describe("Field name to add"),
+        }),
+      ])
+    )
+    .min(1)
+    .describe("Restructure operations to apply"),
+});
+
+const projectManagePivotParameters = z.object({
+  action: z.literal("pivot"),
+  toTemplate: z.string().describe("Target template id"),
+  mappings: z
+    .array(z.object({ from: z.string(), to: z.string() }))
+    .optional()
+    .describe("Optional type mappings"),
+  unmappedContent: z.enum(["archive", "discard"]).optional().describe("What to do with unmapped content"),
+});
+
+const projectManageParameters = z.discriminatedUnion("action", [
+  projectManageBootstrapParameters,
+  projectManageRestructureParameters,
+  projectManagePivotParameters,
+]);
+
+export type ProjectManageArgs = z.infer<typeof projectManageParameters>;
+
 const genesisWorldParameters = z.object({
   prompt: z.string().describe("Story/world description from user"),
   genre: z.string().optional().describe("Optional genre hint"),
@@ -915,6 +975,26 @@ export const coreTools = {
  * These propose complex operations requiring user confirmation.
  */
 export const sagaTools = {
+  project_manage: tool({
+    description: "Bootstrap or migrate a project (ask first whether to seed starter content)",
+    inputSchema: projectManageParameters,
+    execute: async (args): Promise<ToolProposal<ProjectManageArgs>> => {
+      let message = "Proposed project operation";
+      if (args.action === "bootstrap") {
+        message = `Proposed project bootstrap (${args.seed ? "persist" : "preview"}): "${args.description.slice(0, 50)}..."`;
+      } else if (args.action === "restructure") {
+        message = `Proposed project restructure (${args.changes.length} changes)`;
+      } else {
+        message = `Proposed project pivot → ${args.toTemplate}`;
+      }
+      return {
+        toolName: "project_manage",
+        proposal: args,
+        message,
+      };
+    },
+  }),
+
   genesis_world: tool({
     description: "Generate a complete world scaffold from a story description",
     inputSchema: genesisWorldParameters,
@@ -1184,6 +1264,7 @@ export type SagaToolArgs =
   | UpdateRelationshipArgs
   | DeleteRelationshipArgs
   | GenerateContentArgs
+  | ProjectManageArgs
   | GenesisWorldArgs
   | DetectEntitiesArgs
   | CheckConsistencyArgs

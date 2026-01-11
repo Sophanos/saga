@@ -17,6 +17,7 @@ import { deleteRelationshipExecutor } from "./executors/deleteRelationship";
 import { generateContentExecutor } from "./executors/generateContent";
 import { generateImageExecutor } from "./executors/generateImage";
 // Saga tools
+import { projectManageExecutor } from "./executors/projectManage";
 import { genesisWorldExecutor } from "./executors/genesisWorld";
 import { detectEntitiesExecutor } from "./executors/detectEntities";
 import { checkConsistencyExecutor } from "./executors/checkConsistency";
@@ -56,6 +57,7 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   generate_content: generateContentExecutor as ToolDefinition<unknown, unknown>,
   generate_image: generateImageExecutor as ToolDefinition<unknown, unknown>,
   // Saga unified agent tools
+  project_manage: projectManageExecutor as ToolDefinition<unknown, unknown>,
   genesis_world: genesisWorldExecutor as ToolDefinition<unknown, unknown>,
   detect_entities: detectEntitiesExecutor as ToolDefinition<unknown, unknown>,
   check_consistency: checkConsistencyExecutor as ToolDefinition<unknown, unknown>,

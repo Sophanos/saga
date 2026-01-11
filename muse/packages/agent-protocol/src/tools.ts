@@ -42,6 +42,7 @@ export type ToolName =
   | "generate_image"
   | "edit_image"
   // Saga unified agent tools
+  | "project_manage"
   | "genesis_world"
   | "detect_entities"
   | "check_consistency"
@@ -389,6 +390,51 @@ export interface EditImageArgs {
 // =============================================================================
 // Saga Tool Arguments
 // =============================================================================
+
+/**
+ * Arguments for project_manage tool.
+ * Unified entry point for project setup and migration workflows.
+ */
+export type ProjectManageAction = "bootstrap" | "restructure" | "pivot";
+
+export interface ProjectManageBootstrapArgs {
+  action: "bootstrap";
+  /** High-level story or world description */
+  description: string;
+  /** Whether to persist generated entities/relationships into the project */
+  seed: boolean;
+  /** Optional genre hint */
+  genre?: string;
+  /** Target number of entities to generate (3-50) */
+  entityCount?: number;
+  /** How detailed the generation should be */
+  detailLevel?: GenesisDetailLevel;
+  /** Whether to include a story outline */
+  includeOutline?: boolean;
+  /** Entity types to skip during persistence */
+  skipEntityTypes?: string[];
+}
+
+export type ProjectManageRestructureChange =
+  | { op: "rename_type"; from: string; to: string }
+  | { op: "add_field"; type: string; field: string };
+
+export interface ProjectManageRestructureArgs {
+  action: "restructure";
+  changes: ProjectManageRestructureChange[];
+}
+
+export interface ProjectManagePivotArgs {
+  action: "pivot";
+  toTemplate: string;
+  mappings?: Array<{ from: string; to: string }>;
+  unmappedContent?: "archive" | "discard";
+}
+
+export type ProjectManageArgs =
+  | ProjectManageBootstrapArgs
+  | ProjectManageRestructureArgs
+  | ProjectManagePivotArgs;
 
 /**
  * Arguments for genesis_world tool.
@@ -920,6 +966,7 @@ export interface ToolArgsMap {
   generate_image: GenerateImageArgs;
   edit_image: EditImageArgs;
   // Saga tools
+  project_manage: ProjectManageArgs;
   genesis_world: GenesisWorldArgs;
   detect_entities: DetectEntitiesArgs;
   check_consistency: CheckConsistencyArgs;
@@ -1099,6 +1146,46 @@ export interface GenesisWorldResult {
   relationships: GenesisRelationship[];
   outline?: GenesisOutlineItem[];
 }
+
+export interface ProjectManageBootstrapEntity {
+  name: string;
+  type: string;
+  description: string;
+  properties?: Record<string, unknown>;
+}
+
+export interface ProjectManageBootstrapRelationship {
+  source: string;
+  target: string;
+  type: string;
+  description?: string;
+}
+
+export interface ProjectManageBootstrapResult {
+  action: "bootstrap";
+  status: "ok";
+  persisted: boolean;
+  worldSummary: string;
+  suggestedTitle?: string;
+  outline?: Array<{ title: string; summary: string }>;
+  entities: ProjectManageBootstrapEntity[];
+  relationships: ProjectManageBootstrapRelationship[];
+  persistence?: {
+    success: boolean;
+    entitiesCreated: number;
+    relationshipsCreated: number;
+    errors: string[];
+  };
+}
+
+export interface ProjectManageNotImplementedResult {
+  action: "restructure" | "pivot";
+  status: "not_implemented";
+  message: string;
+  supportedActions: ["bootstrap"];
+}
+
+export type ProjectManageResult = ProjectManageBootstrapResult | ProjectManageNotImplementedResult;
 
 /**
  * A detected entity from detect_entities.
@@ -1496,6 +1583,7 @@ export interface ToolResultsMap {
   generate_image: GenerateImageResult;
   edit_image: EditImageResult;
   // Saga tools
+  project_manage: ProjectManageResult;
   genesis_world: GenesisWorldResult;
   detect_entities: DetectEntitiesResult;
   check_consistency: CheckConsistencyResult;
