@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  graphEntitySchema,
-  graphRelationshipSchema,
-  propertyValueSchema,
-} from "./graph.schema";
+import { graphEntitySchema, graphRelationshipSchema } from "./graph.schema";
 
 // Enums as Zod schemas
 export const entityTypeSchema = z.enum([

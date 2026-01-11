@@ -527,7 +527,7 @@ function normalizeUIVisibility(
   if (overrides["showWorldGraph"] !== undefined && overrides["showProjectGraph"] === undefined) {
     overrides["showProjectGraph"] = overrides["showWorldGraph"];
   }
-  return overrides as UIVisibility;
+  return overrides as unknown as UIVisibility;
 }
 
 /**
