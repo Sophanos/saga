@@ -37,6 +37,8 @@ import {
   createEdgeTool,
   updateEdgeTool,
 } from "./tools/projectGraphTools";
+import { generateTemplateTool } from "./tools/templateTools";
+import { webSearchTool, webExtractTool } from "./tools/webSearchTools";
 import { getEmbeddingModelForTask } from "../lib/embeddings";
 import { ServerAgentEvents } from "../lib/analytics";
 import {
@@ -250,6 +252,7 @@ function createSagaAgent() {
       search_chapters: searchChaptersTool,
       search_world: searchWorldTool,
       get_entity: getEntityTool,
+      generate_template: generateTemplateTool,
       create_entity: createEntityTool,
       update_entity: updateEntityTool,
       create_relationship: createRelationshipTool,
@@ -258,6 +261,8 @@ function createSagaAgent() {
       update_node: updateNodeTool,
       create_edge: createEdgeTool,
       update_edge: updateEdgeTool,
+      web_search: webSearchTool,
+      web_extract: webExtractTool,
     },
     maxSteps: 8,
   });
@@ -281,6 +286,8 @@ const autoExecuteTools = new Set([
   "search_chapters",
   "search_world",
   "get_entity",
+  "web_search",
+  "web_extract",
 ]);
 const projectGraphTools = new Set([
   "create_entity",
@@ -379,10 +386,6 @@ function classifyKnowledgeSuggestion(toolName: string): { targetType: KnowledgeS
     default:
       return null;
   }
-}
-
-function isHighRiskLevel(level: RiskLevel | undefined): boolean {
-  return level === "high" || level === "core";
 }
 
 function getIdentityFields(def?: { approval?: { identityFields?: readonly string[] } }): readonly string[] {
@@ -1123,6 +1126,30 @@ function resolveE2EScenario(contextHints: unknown): string | undefined {
   return undefined;
 }
 
+function resolveTemplateBuilderHints(contextHints: unknown): { projectType?: string; phase?: string } | null {
+  if (!contextHints || typeof contextHints !== "object") return null;
+  const templateBuilder = (contextHints as { templateBuilder?: unknown }).templateBuilder;
+  if (!templateBuilder || typeof templateBuilder !== "object") return null;
+  const record = templateBuilder as Record<string, unknown>;
+  return {
+    projectType: typeof record["projectType"] === "string" ? (record["projectType"] as string) : undefined,
+    phase: typeof record["phase"] === "string" ? (record["phase"] as string) : undefined,
+  };
+}
+
+function buildTemplateBuilderSystemPrompt(hints: { projectType?: string; phase?: string } | null): string {
+  const projectType = hints?.projectType ?? "story";
+  const phase = hints?.phase ?? "discovery";
+  return [
+    "You are Muse, a Mythos template architect.",
+    "You design structured project templates across fiction, product, engineering, design, communications, and cinema.",
+    `Current project type: ${projectType}.`,
+    `Current phase: ${phase}.`,
+    "Ask concise, targeted questions to gather missing constraints.",
+    "When ready, propose a generate_template tool call with the required fields.",
+  ].join("\n");
+}
+
 export const runSagaAgentChatToStream = internalAction({
   args: {
     streamId: v.string(),
@@ -1182,6 +1209,7 @@ export const runSagaAgentChatToStream = internalAction({
       }
 
       const sagaAgent = getSagaAgent();
+      const templateHints = resolveTemplateBuilderHints(contextHints);
       let threadId = args.threadId;
       const editorDocumentId = resolveEditorDocumentId(editorContext);
       let threadScope: "project" | "document" | "private" = editorDocumentId ? "document" : "project";
@@ -1189,14 +1217,21 @@ export const runSagaAgentChatToStream = internalAction({
         ? (editorDocumentId as Id<"documents">)
         : undefined;
 
-      if (threadId && !isTemplateBuilder) {
-        const threadAccess = await ctx.runQuery((internal as any)["ai/threads"].assertThreadAccess, {
-          threadId,
-          projectId: projectIdValue,
-          userId,
-        });
-        threadScope = threadAccess.scope;
-        threadDocumentId = threadAccess.documentId ?? undefined;
+      if (threadId) {
+        if (isTemplateBuilder) {
+          await ctx.runQuery((internal as any).templateBuilderSessions.assertThreadOwner, {
+            threadId,
+            userId,
+          });
+        } else {
+          const threadAccess = await ctx.runQuery((internal as any)["ai/threads"].assertThreadAccess, {
+            threadId,
+            projectId: projectIdValue,
+            userId,
+          });
+          threadScope = threadAccess.scope;
+          threadDocumentId = threadAccess.documentId ?? undefined;
+        }
       } else {
         threadId = (await sagaAgent.createThread(ctx, {
           userId,
@@ -1219,6 +1254,13 @@ export const runSagaAgentChatToStream = internalAction({
           userId,
           scope: threadScope,
           documentId: threadDocumentId,
+        });
+      } else if (threadId) {
+        await ctx.runMutation((internal as any).templateBuilderSessions.upsertInternal, {
+          userId,
+          threadId,
+          projectType: templateHints?.projectType,
+          phase: templateHints?.phase ?? "discovery",
         });
       }
 
@@ -1294,11 +1336,13 @@ export const runSagaAgentChatToStream = internalAction({
         },
       });
 
-      const systemPrompt = buildSystemPrompt({
-        mode,
-        ragContext,
-        editorContext,
-      });
+      const systemPrompt = isTemplateBuilder
+        ? buildTemplateBuilderSystemPrompt(templateHints)
+        : buildSystemPrompt({
+            mode,
+            ragContext,
+            editorContext,
+          });
 
       const result = await sagaAgent.streamText(
         ctx,
@@ -1764,7 +1808,12 @@ export const applyToolResultAndResumeToStream = internalAction({
       }
 
       const sagaAgent = getSagaAgent();
-      if (!isTemplateBuilder) {
+      if (isTemplateBuilder) {
+        await ctx.runQuery((internal as any).templateBuilderSessions.assertThreadOwner, {
+          threadId,
+          userId,
+        });
+      } else {
         const threadAccess = await ctx.runQuery((internal as any)["ai/threads"].assertThreadAccess, {
           threadId,
           projectId: projectIdValue,

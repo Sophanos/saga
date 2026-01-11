@@ -27,6 +27,9 @@ import { nameGeneratorExecutor } from "./executors/nameGenerator";
 import { commitDecisionExecutor } from "./executors/commitDecision";
 import { askQuestionExecutor } from "./executors/askQuestion";
 import { writeContentExecutor } from "./executors/writeContent";
+// Web research tools
+import { webSearchExecutor } from "./executors/webSearch";
+import { webExtractExecutor } from "./executors/webExtract";
 // Image search tools
 import { searchImagesExecutor } from "./executors/searchImages";
 import { findSimilarImagesExecutor } from "./executors/findSimilarImages";
@@ -63,6 +66,9 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   commit_decision: commitDecisionExecutor as ToolDefinition<unknown, unknown>,
   ask_question: askQuestionExecutor as ToolDefinition<unknown, unknown>,
   write_content: writeContentExecutor as ToolDefinition<unknown, unknown>,
+  // Web research tools
+  web_search: webSearchExecutor as ToolDefinition<unknown, unknown>,
+  web_extract: webExtractExecutor as ToolDefinition<unknown, unknown>,
   // Image search tools
   search_images: searchImagesExecutor as ToolDefinition<unknown, unknown>,
   find_similar_images: findSimilarImagesExecutor as ToolDefinition<unknown, unknown>,

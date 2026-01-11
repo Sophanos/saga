@@ -54,6 +54,9 @@ export type ToolName =
   // Human-in-the-loop editor tools
   | "ask_question"
   | "write_content"
+  // Web research tools
+  | "web_search"
+  | "web_extract"
   // Image search tools
   | "search_images"
   | "find_similar_images"
@@ -515,16 +518,75 @@ export interface NameGeneratorArgs {
 // Human-in-the-loop Editor Tools
 // =============================================================================
 
-export interface AskQuestionArgs {
-  question: string;
-  detail?: string;
-  responseType?: "text" | "choice";
-  choices?: string[];
+/**
+ * Rich option with label and description for ask_question tool.
+ */
+export interface QuestionOption {
+  /** Unique identifier for this option */
+  id: string;
+  /** Display label */
+  label: string;
+  /** Optional description shown below label */
+  description?: string;
 }
 
-export interface AskQuestionResult {
+/**
+ * Individual question in an ask_question flow.
+ */
+export interface ResearchQuestion {
+  /** Unique identifier for this question */
+  id: string;
+  /** Short tab label (used when 2+ questions) */
+  tabLabel?: string;
+  /** The full question text */
+  question: string;
+  /** Optional context or detail */
+  detail?: string;
+  /** Rich options with label + description */
+  options?: QuestionOption[];
+  /** Whether this question is required (default true) */
+  required?: boolean;
+}
+
+/**
+ * Answer to a single question.
+ */
+export interface QuestionAnswer {
+  /** The answer text (either option label or freeform) */
   answer: string;
-  choice?: string;
+  /** Option ID if an option was selected */
+  optionId?: string;
+  /** Whether this question was skipped */
+  skipped?: boolean;
+}
+
+/**
+ * Arguments for ask_question tool.
+ * Unified schema - UI adapts based on question count:
+ * - 1 question: simple inline display
+ * - 2+ questions: tabbed navigation with progress
+ */
+export interface AskQuestionArgs {
+  /** Optional title (shown when 2+ questions) */
+  title?: string;
+  /** Optional description */
+  description?: string;
+  /** Array of questions (1 or more) */
+  questions: ResearchQuestion[];
+  /** Allow submitting without answering all required questions */
+  allowPartialSubmit?: boolean;
+  /** Custom submit button label */
+  submitLabel?: string;
+}
+
+/**
+ * Result of ask_question tool.
+ */
+export interface AskQuestionResult {
+  /** Answers keyed by question ID */
+  answers: Record<string, QuestionAnswer>;
+  /** Whether all required questions were answered */
+  complete: boolean;
 }
 
 export type WriteContentOperation =
@@ -545,6 +607,64 @@ export interface WriteContentResult {
   appliedOperation: WriteContentOperation;
   summary?: string;
   insertedTextPreview?: string;
+}
+
+// =============================================================================
+// Web Research Tool Arguments (Parallel Web SDK)
+// =============================================================================
+
+/**
+ * Arguments for web_search tool.
+ * Searches the web for real-world information using Parallel Web.
+ */
+export interface WebSearchArgs {
+  /** The search query */
+  query: string;
+}
+
+/**
+ * A single web search result.
+ */
+export interface WebSearchHit {
+  /** URL of the result */
+  url: string;
+  /** Title of the page */
+  title?: string;
+  /** Summary or snippet of the content */
+  summary?: string;
+  /** Extracted text content */
+  text?: string;
+}
+
+/**
+ * Result of web_search tool.
+ */
+export interface WebSearchResult {
+  /** The original query */
+  query: string;
+  /** Search results */
+  results: WebSearchHit[];
+}
+
+/**
+ * Arguments for web_extract tool.
+ * Extracts full content from a URL using Parallel Web.
+ */
+export interface WebExtractArgs {
+  /** The URL to extract content from */
+  url: string;
+}
+
+/**
+ * Result of web_extract tool.
+ */
+export interface WebExtractResult {
+  /** The URL that was extracted */
+  url: string;
+  /** Title of the page */
+  title?: string;
+  /** Full extracted text content */
+  content: string;
 }
 
 // =============================================================================
@@ -812,6 +932,9 @@ export interface ToolArgsMap {
   // Human-in-the-loop editor tools
   ask_question: AskQuestionArgs;
   write_content: WriteContentArgs;
+  // Web research tools
+  web_search: WebSearchArgs;
+  web_extract: WebExtractArgs;
   // Image search tools
   search_images: SearchImagesArgs;
   find_similar_images: FindSimilarImagesArgs;
@@ -1385,6 +1508,9 @@ export interface ToolResultsMap {
   // Human-in-the-loop editor tools
   ask_question: AskQuestionResult;
   write_content: WriteContentResult;
+  // Web research tools
+  web_search: WebSearchResult;
+  web_extract: WebExtractResult;
   // Image search tools
   search_images: SearchImagesResult;
   find_similar_images: FindSimilarImagesResult;

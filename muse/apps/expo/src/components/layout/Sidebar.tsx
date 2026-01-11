@@ -5,12 +5,15 @@
  * Uses @mythos/manifest for tree logic
  */
 
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useQuery } from 'convex/react';
+import { api } from '../../../../../convex/_generated/api';
+import type { Id } from '../../../../../convex/_generated/dataModel';
 import { useTheme, spacing, typography, radii } from '@/design-system';
 import { entityColors } from '@/design-system/colors';
-import { useLayoutStore, useCommandPaletteStore } from '@mythos/state';
+import { useLayoutStore, useCommandPaletteStore, useProjectStore } from '@mythos/state';
 import {
   useManifestTree,
   useTreeExpansion,
@@ -22,34 +25,14 @@ import {
 import type { Entity } from '@mythos/core';
 import type { Document } from '@mythos/core/schema';
 
-// Mock data - replace with Convex queries
-// TODO: Move to packages/manifest/fixtures for shared mock data
-const MOCK_DOCUMENTS: Document[] = [
-  { id: 'ch1', projectId: 'p1', type: 'chapter', title: 'Chapter 1: The Beginning', orderIndex: 0, wordCount: 4500, createdAt: new Date(), updatedAt: new Date() },
-  { id: 'sc1', projectId: 'p1', type: 'scene', parentId: 'ch1', title: 'Scene 1: Dawn', orderIndex: 0, wordCount: 800, createdAt: new Date(), updatedAt: new Date() },
-  { id: 'sc2', projectId: 'p1', type: 'scene', parentId: 'ch1', title: 'Scene 2: Journey', orderIndex: 1, wordCount: 1200, createdAt: new Date(), updatedAt: new Date() },
-  { id: 'ch2', projectId: 'p1', type: 'chapter', title: 'Chapter 2: The Conflict', orderIndex: 1, wordCount: 3200, createdAt: new Date(), updatedAt: new Date() },
-  { id: 'sc3', projectId: 'p1', type: 'scene', parentId: 'ch2', title: 'Scene 1: Tension', orderIndex: 0, wordCount: 1500, createdAt: new Date(), updatedAt: new Date() },
-];
-
-const MOCK_ENTITIES: Entity[] = [
-  { id: 'e1', name: 'Marcus', type: 'character', aliases: ['Marc'], properties: {}, mentions: [], createdAt: new Date(), updatedAt: new Date() },
-  { id: 'e2', name: 'Elena', type: 'character', aliases: [], properties: {}, mentions: [], createdAt: new Date(), updatedAt: new Date() },
-  { id: 'e3', name: 'The Castle', type: 'location', aliases: ['Fortress'], properties: {}, mentions: [], createdAt: new Date(), updatedAt: new Date() },
-  { id: 'e4', name: 'Enchanted Sword', type: 'item', aliases: [], properties: {}, mentions: [], createdAt: new Date(), updatedAt: new Date() },
-];
-
-const MOCK_MEMORIES: ManifestMemory[] = [
-  { id: 'm1', category: 'decision', content: 'Marcus has blue eyes and brown hair', createdAt: new Date().toISOString(), metadata: { pinned: true } },
-  { id: 'm2', category: 'decision', content: 'The story takes place in medieval times', createdAt: new Date().toISOString() },
-  { id: 'm3', category: 'style', content: 'Use short, punchy sentences for action scenes', createdAt: new Date().toISOString() },
-];
-
 export function Sidebar() {
   const { colors } = useTheme();
   const { toggleSidebar } = useLayoutStore();
   const { open: openCommandPalette } = useCommandPaletteStore();
   const router = useRouter();
+  const currentProject = useProjectStore((s) => s.project);
+  const projectName = currentProject?.title || currentProject?.name || 'Select Project';
+  const projectInitial = projectName.charAt(0).toUpperCase();
 
   return (
     <View style={[styles.container, { borderRightColor: colors.border }]}>
@@ -71,12 +54,13 @@ export function Sidebar() {
       <View style={styles.projectRow}>
         <Pressable
           style={[styles.projectPicker, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}
+          onPress={() => router.push('/projects')}
         >
           <View style={[styles.projectInitial, { backgroundColor: colors.bgHover }]}>
-            <Text style={[styles.projectInitialText, { color: colors.text }]}>L</Text>
+            <Text style={[styles.projectInitialText, { color: colors.text }]}>{projectInitial}</Text>
           </View>
           <Text style={[styles.projectName, { color: colors.text }]} numberOfLines={1}>
-            LOTR_SLAVIC
+            {projectName}
           </Text>
           <Text style={{ color: colors.textMuted }}>▾</Text>
         </Pressable>
@@ -115,11 +99,56 @@ export function Sidebar() {
 
 function ProjectView() {
   const { colors } = useTheme();
+  const currentProject = useProjectStore((s) => s.project);
+  const projectId = currentProject?.id as Id<'projects'> | undefined;
 
-  // TODO: Replace with Convex queries
-  const documents = MOCK_DOCUMENTS;
-  const entities = MOCK_ENTITIES;
-  const memories = MOCK_MEMORIES;
+  // Convex queries - skip if no project selected
+  const documentsQuery = useQuery(
+    api.documents.list,
+    projectId ? { projectId } : 'skip'
+  );
+  const entitiesQuery = useQuery(
+    api.entities.list,
+    projectId ? { projectId } : 'skip'
+  );
+  const memoriesQuery = useQuery(
+    api.memories.list,
+    projectId ? { projectId, pinnedOnly: true } : 'skip'
+  );
+
+  const isLoading = documentsQuery === undefined || entitiesQuery === undefined;
+
+  // Map Convex data to manifest types
+  const documents: Document[] = (documentsQuery ?? []).map((doc: any) => ({
+    id: doc._id,
+    projectId: doc.projectId,
+    type: doc.type || 'chapter',
+    title: doc.title || 'Untitled',
+    parentId: doc.parentId,
+    orderIndex: doc.orderIndex ?? 0,
+    wordCount: doc.wordCount ?? 0,
+    createdAt: new Date(doc._creationTime),
+    updatedAt: new Date(doc._creationTime),
+  }));
+
+  const entities: Entity[] = (entitiesQuery ?? []).map((ent: any) => ({
+    id: ent._id,
+    name: ent.name || 'Unnamed',
+    type: ent.type || 'character',
+    aliases: ent.aliases ?? [],
+    properties: ent.properties ?? {},
+    mentions: [],
+    createdAt: new Date(ent._creationTime),
+    updatedAt: new Date(ent._creationTime),
+  }));
+
+  const memories: ManifestMemory[] = (memoriesQuery ?? []).map((mem: any) => ({
+    id: mem._id,
+    category: mem.type || 'decision',
+    content: mem.text || '',
+    createdAt: new Date(mem._creationTime).toISOString(),
+    metadata: mem.pinned ? { pinned: true } : undefined,
+  }));
 
   // Build manifest tree using shared logic
   const manifestData = useManifestTree({
@@ -130,7 +159,25 @@ function ProjectView() {
   });
 
   // Tree expansion state - default expand chapters
-  const expansion = useTreeExpansion(['chapters', 'ch1']);
+  const expansion = useTreeExpansion(['chapters']);
+
+  if (!projectId) {
+    return (
+      <View style={styles.section}>
+        <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+          Select a project to see content
+        </Text>
+      </View>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <View style={[styles.section, { alignItems: 'center', paddingVertical: spacing[4] }]}>
+        <ActivityIndicator size="small" color={colors.textMuted} />
+      </View>
+    );
+  }
 
   return (
     <>
