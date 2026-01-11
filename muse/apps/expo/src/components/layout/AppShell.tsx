@@ -14,7 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, radii, typography } from '@/design-system';
-import { useLayoutStore, useProjectStore } from '@mythos/state';
+import { useLayoutStore, useProjectStore, useFlowEnabled } from '@mythos/state';
 import { Sidebar } from './Sidebar';
 import { AIPanel, AIFloatingButton } from '@/components/ai';
 import { KnowledgePRsPanel } from '@/components/knowledge/KnowledgePRsPanel';
@@ -48,6 +48,7 @@ export function AppShell({ children }: AppShellProps) {
     closeKnowledgePanel,
   } = useLayoutStore();
   const fallbackProjectId = useProjectStore((s) => s.currentProjectId);
+  const flowEnabled = useFlowEnabled();
 
   const [showTooltip, setShowTooltip] = useState(false);
   const [showSidebarOverlay, setShowSidebarOverlay] = useState(false);
@@ -57,12 +58,13 @@ export function AppShell({ children }: AppShellProps) {
 
   const isTablet = width >= TABLET_BREAKPOINT;
   const isDesktop = width >= DESKTOP_BREAKPOINT;
-  const showSidebarDocked = isTablet && !sidebarCollapsed;
 
-  const showSidePanel = isDesktop && aiPanelMode === 'side';
-  const showFloating = aiPanelMode === 'floating';
-  const showFull = aiPanelMode === 'full';
-  const showFAB = true; // Always show floating button
+  // In flow mode, hide all panels for distraction-free writing
+  const showSidebarDocked = !flowEnabled && isTablet && !sidebarCollapsed;
+  const showSidePanel = !flowEnabled && isDesktop && aiPanelMode === 'side';
+  const showFloating = !flowEnabled && aiPanelMode === 'floating';
+  const showFull = !flowEnabled && aiPanelMode === 'full';
+  const showFAB = !flowEnabled; // Hide FAB in flow mode
 
   const clearAllTimeouts = useCallback(() => {
     if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
@@ -125,7 +127,7 @@ export function AppShell({ children }: AppShellProps) {
         </View>
       )}
 
-      {isTablet && sidebarCollapsed && !showSidebarOverlay && (
+      {!flowEnabled && isTablet && sidebarCollapsed && !showSidebarOverlay && (
         <View
           style={styles.hoverTriggerZone}
           onPointerEnter={handleHoverStart}
@@ -164,7 +166,9 @@ export function AppShell({ children }: AppShellProps) {
         </View>
       )}
 
-      <View style={styles.main}>{children}</View>
+      <View style={styles.main}>
+        <FlowOverlay>{children}</FlowOverlay>
+      </View>
 
       {Platform.OS === 'web' && knowledgePanelOpen && (
         <Modal
@@ -209,7 +213,7 @@ export function AppShell({ children }: AppShellProps) {
         </View>
       )}
 
-      {showSidebarOverlay && isTablet && sidebarCollapsed && (
+      {!flowEnabled && showSidebarOverlay && isTablet && sidebarCollapsed && (
         <>
           <Animated.View
             entering={FadeIn.duration(100)}
@@ -254,9 +258,6 @@ export function AppShell({ children }: AppShellProps) {
 
       {showFloating && <AIPanel mode="floating" />}
       {showFAB && <AIFloatingButton />}
-
-      {/* Flow Mode Overlay */}
-      <FlowOverlay />
     </View>
   );
 }

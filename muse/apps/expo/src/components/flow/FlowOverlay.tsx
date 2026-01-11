@@ -1,12 +1,14 @@
 /**
- * FlowOverlay - Full-screen distraction-free writing container (Expo)
+ * FlowOverlay - Distraction-free writing overlay (Expo)
  *
- * Creates an immersive, zen-like environment for focused writing.
- * Renders as a modal overlay when flow mode is enabled.
+ * Instead of a Modal, this component:
+ * 1. Renders a header bar when flow mode is enabled
+ * 2. The parent (AppShell) hides sidebar/panels based on flow state
+ * 3. Children (the editor) render normally underneath
  */
 
 import { useEffect, useState, useCallback, type ReactNode } from 'react';
-import { View, StyleSheet, Modal, Platform } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useTheme } from '@/design-system';
 import {
@@ -19,14 +21,14 @@ import { FlowHeader } from './FlowHeader';
 import { FlowSummaryModal } from './FlowSummaryModal';
 
 interface FlowOverlayProps {
-  /** The editor/content to render in flow mode */
+  /** The editor/content to render - passed from AppShell */
   children?: ReactNode;
   /** Current word count from editor */
   wordCount?: number;
 }
 
 export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const enabled = useFlowEnabled();
   const preferences = useFlowPreferences();
   const exitFlowMode = useFlowStore((s) => s.exitFlowMode);
@@ -75,76 +77,40 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
 
   // Summary modal (shown after exit)
   if (showSummary && sessionStats) {
-    return <FlowSummaryModal stats={sessionStats} onClose={handleCloseSummary} />;
+    return (
+      <>
+        {children}
+        <FlowSummaryModal stats={sessionStats} onClose={handleCloseSummary} />
+      </>
+    );
   }
 
-  if (!enabled) {
-    return null;
-  }
+  // Flow mode: show header + children (editor)
+  if (enabled) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
+        {/* Flow header with timer, word count, exit */}
+        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
+          <FlowHeader onExit={handleExit} />
+        </Animated.View>
 
-  return (
-    <Modal
-      visible={enabled}
-      animationType="none"
-      transparent={false}
-      onRequestClose={handleExit}
-    >
-      <Animated.View
-        entering={FadeIn.duration(300)}
-        exiting={FadeOut.duration(200)}
-        style={[styles.container, { backgroundColor: colors.bgApp }]}
-      >
-        {/* Vignette effect */}
-        {Platform.OS === 'web' && (
-          <View
-            style={[
-              styles.vignette,
-              {
-                // @ts-ignore - web-only style
-                background: `radial-gradient(ellipse 80% 60% at 50% 50%, transparent 0%, ${isDark ? 'rgba(25, 25, 25, 0.4)' : 'rgba(0, 0, 0, 0.1)'} 100%)`,
-              },
-            ]}
-            pointerEvents="none"
-          />
-        )}
-
-        {/* Header */}
-        <FlowHeader onExit={handleExit} />
-
-        {/* Content area */}
+        {/* Editor content */}
         <View style={styles.content}>
-          <View style={styles.contentInner}>
-            {children}
-          </View>
+          {children}
         </View>
+      </View>
+    );
+  }
 
-        {/* Bottom padding */}
-        <View style={styles.bottomPadding} />
-      </Animated.View>
-    </Modal>
-  );
+  // Normal mode: just render children
+  return <>{children}</>;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  vignette: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 0,
-  },
   content: {
     flex: 1,
-    zIndex: 1,
-    paddingHorizontal: 16,
-  },
-  contentInner: {
-    flex: 1,
-    maxWidth: 720,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  bottomPadding: {
-    height: 32,
   },
 });
