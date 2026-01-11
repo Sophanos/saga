@@ -109,9 +109,9 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
   const handleGoogleSignIn = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    const { error } = await signInWithGoogle();
-    if (error) {
-      setError(error.message);
+    const { error: signInError } = await signInWithGoogle();
+    if (signInError) {
+      setError(signInError.message ?? null);
       setIsLoading(false);
     }
   }, []);
@@ -119,9 +119,9 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
   const handleAppleSignIn = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    const { error } = await signInWithApple();
-    if (error) {
-      setError(error.message);
+    const { error: appleError } = await signInWithApple();
+    if (appleError) {
+      setError(appleError.message ?? null);
       setIsLoading(false);
     }
   }, []);
@@ -132,14 +132,14 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
     setError(null);
 
     if (mode === "signin") {
-      const { error } = await signInWithEmail(email, password);
-      if (error) {
-        setError(error.message);
+      const { error: signInErr } = await signInWithEmail(email, password);
+      if (signInErr) {
+        setError(signInErr.message ?? null);
       }
     } else {
-      const { error } = await signUpWithEmail(email, password, name);
-      if (error) {
-        setError(error.message);
+      const { error: signUpErr } = await signUpWithEmail(email, password, name);
+      if (signUpErr) {
+        setError(signUpErr.message ?? null);
       }
     }
 
