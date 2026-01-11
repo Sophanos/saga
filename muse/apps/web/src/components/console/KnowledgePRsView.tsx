@@ -154,19 +154,19 @@ function getRollbackInfo(
   if (!suggestion.result || typeof suggestion.result !== "object") return null;
   const result = suggestion.result as Record<string, unknown>;
   const rollback =
-    result["rollback"] && typeof result["rollback"] === "object"
-      ? (result["rollback"] as Record<string, unknown>)
+    result.rollback && typeof result.rollback === "object"
+      ? (result.rollback as Record<string, unknown>)
       : null;
-  if (!rollback || typeof rollback["kind"] !== "string") return null;
+  if (!rollback || typeof rollback.kind !== "string") return null;
 
   let rolledBackAt: number | undefined;
   if (typeof suggestion.rolledBackAt === "number") {
     rolledBackAt = suggestion.rolledBackAt;
-  } else if (typeof result["rolledBackAt"] === "number") {
-    rolledBackAt = result["rolledBackAt"] as number;
+  } else if (typeof result.rolledBackAt === "number") {
+    rolledBackAt = result.rolledBackAt as number;
   }
 
-  return { kind: rollback["kind"], rolledBackAt };
+  return { kind: rollback.kind, rolledBackAt };
 }
 
 function titleCase(input: string): string {
@@ -258,10 +258,10 @@ function parseWriteContentArgs(
 ): { operation: WriteContentOperation; content: string; rationale?: string } | null {
   const record = getRecord(patch);
   if (!record) return null;
-  const content = typeof record["content"] === "string" ? record["content"] : "";
+  const content = typeof record.content === "string" ? record.content : "";
   if (!content) return null;
-  const operation = parseWriteContentOperation(record["operation"]);
-  const rationale = typeof record["rationale"] === "string" ? record["rationale"] : undefined;
+  const operation = parseWriteContentOperation(record.operation);
+  const rationale = typeof record.rationale === "string" ? record.rationale : undefined;
   return { operation, content, rationale };
 }
 
@@ -662,7 +662,7 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
                   </span>
                   {selected.status === "proposed" && (
                     <Button
-                      size="sm"
+                      size="xs"
                       variant="ghost"
                       onClick={handleRecheckPreflight}
                       disabled={isRecheckingPreflight || isBusy}

@@ -143,11 +143,6 @@ const ACTIVITY_CONFIGS: Record<ActivityType, ActivityConfig> = {
     color: "text-mythos-accent-purple",
     getDescription: () => "created a relationship",
   },
-  relationship_updated: {
-    icon: Edit3,
-    color: "text-mythos-accent-yellow",
-    getDescription: () => "updated a relationship",
-  },
   relationship_deleted: {
     icon: Link,
     color: "text-mythos-accent-red",
@@ -173,52 +168,6 @@ const ACTIVITY_CONFIGS: Record<ActivityType, ActivityConfig> = {
       return newRole
         ? `changed role to ${newRole}`
         : "updated member role";
-    },
-  },
-  suggestion_created: {
-    icon: Plus,
-    color: "text-mythos-accent-primary",
-    getDescription: () => "created a suggestion",
-  },
-  suggestion_accepted: {
-    icon: Activity,
-    color: "text-mythos-accent-green",
-    getDescription: () => "accepted a suggestion",
-  },
-  suggestion_rejected: {
-    icon: Activity,
-    color: "text-mythos-accent-red",
-    getDescription: () => "rejected a suggestion",
-  },
-  suggestion_resolved: {
-    icon: Activity,
-    color: "text-mythos-text-muted",
-    getDescription: () => "resolved a suggestion",
-  },
-  revision_created: {
-    icon: RefreshCw,
-    color: "text-mythos-accent-primary",
-    getDescription: () => "created a revision",
-  },
-  revision_restored: {
-    icon: RefreshCw,
-    color: "text-mythos-accent-yellow",
-    getDescription: () => "restored a revision",
-  },
-  ai_tool_executed: {
-    icon: Wand2,
-    color: "text-mythos-accent-purple",
-    getDescription: (entry) => {
-      const toolName = entry.details?.['toolName'] as string | undefined;
-      return toolName ? `executed AI tool "${toolName}"` : "executed an AI tool";
-    },
-  },
-  ai_tool_approval_requested: {
-    icon: Wand2,
-    color: "text-mythos-accent-yellow",
-    getDescription: (entry) => {
-      const toolName = entry.details?.['toolName'] as string | undefined;
-      return toolName ? `requested approval for "${toolName}"` : "requested AI tool approval";
     },
   },
   comment_added: {
@@ -389,8 +338,8 @@ export function ActivityFeed({
         if (!isMountedRef.current) return;
 
         // Map DB activity to state activity format using shared mapper
-        const mappedActivities: ActivityLogEntry[] = (data ?? []).map(
-          (entry: ActivityRecord) => mapActivityToEntry(entry)
+        const mappedActivities: ActivityLogEntry[] = (data ?? []).map((entry) =>
+          mapActivityToEntry(entry as ActivityRecord)
         );
         const nextCursor =
           mappedActivities.length > 0

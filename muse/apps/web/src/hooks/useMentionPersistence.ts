@@ -72,7 +72,7 @@ export interface UseMentionPersistenceResult extends BasePersistenceState {
  * ```
  */
 export function useMentionPersistence(): UseMentionPersistenceResult {
-  const [isLoading, _setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
@@ -85,7 +85,7 @@ export function useMentionPersistence(): UseMentionPersistenceResult {
     async (_documentId: string): Promise<PersistenceResult<Mention[]>> => {
       // Stub: return empty array until Convex mentions schema is implemented
       console.debug("[useMentionPersistence] loadMentionsForDocument not yet implemented for Convex");
-      return { data: [], error: null };
+      return { data: [] };
     },
     []
   );
@@ -106,7 +106,7 @@ export function useMentionPersistence(): UseMentionPersistenceResult {
         id: `temp_mention_${i}`,
         document_id: _documentId,
       }));
-      return { data: savedMentions, error: null };
+      return { data: savedMentions };
     },
     []
   );
@@ -122,7 +122,7 @@ export function useMentionPersistence(): UseMentionPersistenceResult {
         ...mention,
         id: `temp_mention_${Date.now()}`,
       };
-      return { data: newMention, error: null };
+      return { data: newMention };
     },
     []
   );
@@ -134,7 +134,7 @@ export function useMentionPersistence(): UseMentionPersistenceResult {
   const removeMention = useCallback(
     async (_id: string): Promise<PersistenceResult<void>> => {
       console.debug("[useMentionPersistence] removeMention not yet implemented for Convex");
-      return { data: null, error: null };
+      return {};
     },
     []
   );

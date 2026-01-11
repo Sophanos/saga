@@ -256,40 +256,5 @@ Defer (costly early):
 ## Optional bets (post-MLP2)
 
 - **Memgraph/graph DB**: add when multi-hop traversal + impact analysis become primary UX; keep the abstraction so you can start with adjacency tables and cached traversals (see `muse/docs/MLP1_ROADMAP.md`).
-- **DOCX tracked-changes export**: make "PR output" shippable (writers + compliance workflows) without rethinking the core system.
-- **Connector breadth via MCP**: add Notion/Office/GitHub/SAP as *evidence sources* (delta capture + citations), not as a promise to "index everything".
-
----
-
-## Platform Consolidation (MLP2+)
-
-### Unistyles Migration (Long-term, Full Rewrite)
-
-> **Note:** This is a large migration, not a quick simplification. apps/web is the full product (editor, project graph, console, etc.) with heavy DOM/Tailwind/CSS dependencies (@xyflow/react, cmdk, tippy.js, react-resizable-panels, @tiptap/react). The editor itself uses packages/editor-webview which has its own Vite build.
-
-**Current state (MLP1):**
-```
-apps/website/     # Vite landing (Tailwind) → fold into apps/web
-apps/web/         # Vite main app (Tailwind) → source of truth for web/Tauri
-apps/expo/        # Expo (RN) → native + web redirects to apps/web
-apps/tauri/       # wraps apps/web
-```
-
-**Near-term cleanup (MLP1):**
-1. Fold `apps/website` into `apps/web` (remove one Vite app)
-2. Keep `apps/web` as canonical for web + Tauri
-3. Keep Expo for native + web redirects
-
-**Long-term target (MLP2+, if prioritized):**
-```
-apps/expo/        # Everything via Unistyles (requires full rewrite)
-apps/tauri/       # wraps Expo web
-```
-
-**Scope of full migration:**
-- Convert apps/web components (editor UI, project graph, console) to RN/Unistyles
-- Replace DOM-only dependencies or add .web.tsx shims
-- Replace packages/editor-webview Vite pipeline
-- Estimated effort: weeks, not days
-
-**Decision:** Defer to MLP2+ or later. Current architecture (apps/web + Tauri) ships faster.
+- **DOCX tracked-changes export**: make “PR output” shippable (writers + compliance workflows) without rethinking the core system.
+- **Connector breadth via MCP**: add Notion/Office/GitHub/SAP as *evidence sources* (delta capture + citations), not as a promise to “index everything”.

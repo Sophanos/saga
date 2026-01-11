@@ -11,7 +11,7 @@ interface AuthCallbackProps {
 }
 
 export function AuthCallback({ onComplete }: AuthCallbackProps) {
-  const [error] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Better Auth handles the OAuth callback automatically via crossDomainClient

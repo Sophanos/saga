@@ -23,26 +23,7 @@ export type EntityIconName =
   | "Wand2"
   | "Building2"
   | "Calendar"
-  | "Sparkles"
-  | "Flag"
-  | "ListChecks"
-  | "Gauge"
-  | "Rocket"
-  | "Server"
-  | "Link"
-  | "Database"
-  | "AlertTriangle"
-  | "BookOpen"
-  | "Box"
-  | "Monitor"
-  | "Palette"
-  | "Shapes"
-  | "ClipboardList"
-  | "Megaphone"
-  | "MessageSquare"
-  | "Image"
-  | "Users"
-  | "Radio";
+  | "Sparkles";
 
 /**
  * Configuration for a single entity type

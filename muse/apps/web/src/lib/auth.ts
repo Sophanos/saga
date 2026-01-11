@@ -12,8 +12,8 @@ import { initAuthConfig, setPlatform } from "@mythos/auth";
 setPlatform("web");
 
 // Environment variables
-const CONVEX_SITE_URL = import.meta.env["VITE_CONVEX_SITE_URL"] || "https://cascada.vision";
-const CONVEX_URL = import.meta.env["VITE_CONVEX_URL"] || "https://convex.cascada.vision";
+const CONVEX_SITE_URL = import.meta.env.VITE_CONVEX_SITE_URL || "https://cascada.vision";
+const CONVEX_URL = import.meta.env.VITE_CONVEX_URL || "https://convex.cascada.vision";
 
 /**
  * Better Auth client for Web

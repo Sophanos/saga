@@ -135,10 +135,11 @@ export function SceneListBlock({
         type: "scene",
         title,
         content: emptyContent,
+        contentText: "",
         orderIndex: nextOrderIndex,
         wordCount: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       addDocument(newDocument);

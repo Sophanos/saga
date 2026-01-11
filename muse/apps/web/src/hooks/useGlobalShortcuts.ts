@@ -49,6 +49,7 @@ export function useGlobalShortcuts(options?: UseGlobalShortcutsOptions): void {
 
   // Flow mode
   const toggleFlowMode = useFlowStore((s) => s.toggleFlowMode);
+  const flowEnabled = useFlowStore((s) => s.enabled);
 
   // Get selection imperatively (for command execution)
   const getSelectedText = useGetEditorSelection(editorInstance);

@@ -1,6 +1,20 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useQuery } from "convex/react";
-import { X, Wand2, Plus, Save, Loader2, AlertCircle } from "lucide-react";
+import {
+  X,
+  User,
+  Sword,
+  MapPin,
+  Sparkles,
+  Building2,
+  Wand2,
+  Calendar,
+  Plus,
+  Save,
+  Loader2,
+  AlertCircle,
+  type LucideIcon,
+} from "lucide-react";
 import {
   Button,
   Card,
@@ -29,23 +43,15 @@ import type {
   PropertyValue,
 } from "@mythos/core";
 import {
+  WRITER_ENTITY_TYPE_CONFIG,
   WRITER_ENTITY_TYPES,
-  getGraphEntityIcon,
-  getGraphEntityLabel,
-  getRegistryEntityHexColor,
+  getEntityColor,
+  getEntityLabel,
+  type EntityIconName,
 } from "@mythos/core";
-import { api } from "../../../../../convex/_generated/api";
+import { api } from "../../../../convex/_generated/api";
 import { executeNameGenerator } from "../../services/ai/agentRuntimeClient";
 import { useMythosStore } from "../../stores";
-import { resolveLucideIcon } from "../../utils/iconResolver";
-import {
-  JsonSchemaObjectEditor,
-  getObjectSchemaInfo,
-  isPlainObject,
-  normalizeSchemaType,
-  parseJsonValue,
-  type JsonSchema,
-} from "../forms/JsonSchemaObjectEditor";
 import { useAuthStore } from "../../stores/auth";
 import type { NameCulture, NameStyle } from "@mythos/agent-protocol";
 
@@ -54,13 +60,6 @@ import type { NameCulture, NameStyle } from "@mythos/agent-protocol";
 // ============================================================================
 
 type FormMode = "create" | "edit";
-
-type ResolvedRegistry = {
-  entityTypes?: Record<
-    string,
-    { schema?: JsonSchema; displayName?: string; icon?: string; color?: string }
-  >;
-};
 
 interface EntityFormData {
   name: string;
@@ -111,9 +110,33 @@ interface EntityFormModalProps {
 // ============================================================================
 
 /**
- * Default entity types for fallback when registry is unavailable.
+ * Entity types available for form selection (excludes event/concept)
  */
-const DEFAULT_ENTITY_TYPES: GraphEntityType[] = WRITER_ENTITY_TYPES;
+const ENTITY_TYPES: GraphEntityType[] = WRITER_ENTITY_TYPES.filter(
+  (type) => type !== "event" && type !== "concept"
+);
+
+/**
+ * Map icon names to React components
+ */
+const ENTITY_ICONS: Record<EntityIconName, LucideIcon> = {
+  User,
+  MapPin,
+  Sword,
+  Wand2,
+  Building2,
+  Calendar,
+  Sparkles,
+};
+
+/**
+ * Get the icon component for an entity type
+ */
+function getEntityIconComponent(type: GraphEntityType): LucideIcon {
+  const iconName =
+    WRITER_ENTITY_TYPE_CONFIG[type as keyof typeof WRITER_ENTITY_TYPE_CONFIG]?.icon ?? "User";
+  return ENTITY_ICONS[iconName] ?? User;
+}
 
 const JUNGIAN_ARCHETYPES: JungianArchetype[] = [
   "hero",
@@ -156,6 +179,88 @@ const TRAIT_TYPES: Trait["type"][] = ["strength", "weakness", "neutral", "shadow
 // ============================================================================
 // Helper Components
 // ============================================================================
+
+type JsonSchema = Record<string, unknown>;
+
+type JsonSchemaProperty = {
+  type?: string | string[];
+  title?: string;
+  description?: string;
+  enum?: unknown[];
+  items?: {
+    type?: string | string[];
+    enum?: unknown[];
+  };
+};
+
+type ObjectSchemaInfo = {
+  properties: Record<string, JsonSchemaProperty>;
+  required: string[];
+  additionalProperties?: boolean;
+};
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeSchemaType(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    const firstType = value.find((entry) => typeof entry === "string");
+    return typeof firstType === "string" ? firstType : undefined;
+  }
+  return undefined;
+}
+
+function humanizePropertyName(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getObjectSchemaInfo(schema: unknown): ObjectSchemaInfo | null {
+  if (!isPlainObject(schema)) return null;
+
+  const schemaType = normalizeSchemaType(schema["type"]);
+  const propertiesRaw = schema["properties"];
+  const properties = isPlainObject(propertiesRaw)
+    ? (propertiesRaw as Record<string, JsonSchemaProperty>)
+    : {};
+  const required = Array.isArray(schema["required"])
+    ? schema["required"].filter((key) => typeof key === "string")
+    : [];
+  const additionalProperties =
+    typeof schema["additionalProperties"] === "boolean"
+      ? schema["additionalProperties"]
+      : undefined;
+
+  if (schemaType && schemaType !== "object" && !propertiesRaw) {
+    return null;
+  }
+
+  return {
+    properties,
+    required,
+    additionalProperties,
+  };
+}
+
+function parseJsonValue(
+  raw: string
+): { ok: true; value: unknown } | { ok: false; message: string } {
+  if (!raw.trim()) {
+    return { ok: true, value: undefined };
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(raw) };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Invalid JSON value",
+    };
+  }
+}
 
 interface StringListFieldProps {
   label: string;
@@ -331,40 +436,27 @@ function TraitListField({ traits, onChange }: TraitListFieldProps) {
 // Entity Type Selector
 // ============================================================================
 
-interface EntityTypeOption {
-  type: GraphEntityType;
-  label: string;
-  iconName?: string;
-  color?: string;
-}
-
 interface EntityTypeSelectorProps {
   value: GraphEntityType;
   onChange: (type: GraphEntityType) => void;
-  options: EntityTypeOption[];
   disabled?: boolean;
 }
 
-function EntityTypeSelector({
-  value,
-  onChange,
-  options,
-  disabled,
-}: EntityTypeSelectorProps) {
+function EntityTypeSelector({ value, onChange, disabled }: EntityTypeSelectorProps) {
   return (
     <div className="grid grid-cols-5 gap-2">
-      {options.map((option) => {
-        const Icon = resolveLucideIcon(option.iconName);
-        const isSelected = option.type === value;
-        const color = option.color ?? "#64748b";
+      {ENTITY_TYPES.map((type) => {
+        const Icon = getEntityIconComponent(type);
+        const colorClass = getEntityColor(type);
+        const label = getEntityLabel(type);
+        const isSelected = type === value;
 
         return (
           <button
-            key={option.type}
+            key={type}
             type="button"
             disabled={disabled}
-            onClick={() => onChange(option.type)}
-            data-testid={`entity-form-type-${option.type}`}
+            onClick={() => onChange(type)}
             className={cn(
               "flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-all",
               isSelected
@@ -373,18 +465,12 @@ function EntityTypeSelector({
               disabled && "opacity-50 cursor-not-allowed"
             )}
           >
-            <Icon
-              className="w-5 h-5"
-              style={{ color: isSelected ? color : color }}
-            />
-            <span
-              className={cn(
-                "text-xs font-medium",
-                isSelected ? "text-mythos-accent-primary" : "text-mythos-text-secondary"
-              )}
-              style={!isSelected ? { color } : undefined}
-            >
-              {option.label}
+            <Icon className={cn("w-5 h-5", isSelected ? "text-mythos-accent-primary" : colorClass)} />
+            <span className={cn(
+              "text-xs font-medium",
+              isSelected ? "text-mythos-accent-primary" : "text-mythos-text-secondary"
+            )}>
+              {label}
             </span>
           </button>
         );
@@ -733,38 +819,14 @@ export function EntityFormModal({
   const registry = useQuery(
     api.projectTypeRegistry.getResolved,
     projectId ? { projectId } : "skip"
-  ) as ResolvedRegistry | undefined;
+  ) as { entityTypes?: Record<string, { schema?: JsonSchema }> } | undefined;
 
   const schemaInfo = useMemo(() => {
     const schema = registry?.entityTypes?.[formData.type]?.schema;
     return getObjectSchemaInfo(schema);
   }, [registry, formData.type]);
 
-  const registryEntityTypes = useMemo(
-    () => Object.keys(registry?.entityTypes ?? {}) as GraphEntityType[],
-    [registry]
-  );
-  const registryEntityTypesKey = useMemo(
-    () => registryEntityTypes.slice().sort().join(","),
-    [registryEntityTypes]
-  );
-
-  const entityTypeOptions = useMemo(() => {
-    const types = registryEntityTypes.length > 0 ? registryEntityTypes : DEFAULT_ENTITY_TYPES;
-    const sorted = [...types].sort((a, b) => {
-      const aLabel = getGraphEntityLabel(registry ?? null, a);
-      const bLabel = getGraphEntityLabel(registry ?? null, b);
-      return aLabel.localeCompare(bLabel);
-    });
-    return sorted.map((type) => ({
-      type,
-      label: getGraphEntityLabel(registry ?? null, type),
-      iconName: getGraphEntityIcon(registry ?? null, type),
-      color: getRegistryEntityHexColor(registry ?? null, type),
-    }));
-  }, [registryEntityTypesKey, registry]);
-
-  const schemaFieldEntries = useMemo(() => {
+  const schemaFields = useMemo(() => {
     if (!schemaInfo) return [];
     return Object.entries(schemaInfo.properties).map(([key, schema]) => ({
       key,
@@ -773,10 +835,10 @@ export function EntityFormModal({
     }));
   }, [schemaInfo]);
 
-  const showSchemaFields = schemaFieldEntries.length > 0;
+  const showSchemaFields = schemaFields.length > 0;
   const allowRawProperties =
     !schemaInfo || schemaInfo.additionalProperties !== false;
-  const schemaNeedsRawEditor = schemaFieldEntries.some((field) => {
+  const schemaNeedsRawEditor = schemaFields.some((field) => {
     const fieldType = normalizeSchemaType(field.schema.type);
     const hasEnum = Array.isArray(field.schema.enum) && field.schema.enum.length > 0;
     if (hasEnum) return false;
@@ -806,23 +868,6 @@ export function EntityFormModal({
       setIsEditingRawProperties(false);
     }
   }, [isOpen, mode, entityType, entity]);
-
-  useEffect(() => {
-    if (!isOpen || mode !== "create") return;
-    const availableTypes =
-      registryEntityTypes.length > 0 ? registryEntityTypes : DEFAULT_ENTITY_TYPES;
-    if (availableTypes.length === 0) return;
-    if (!availableTypes.includes(formData.type)) {
-      setFormData((prev) => ({ ...prev, type: availableTypes[0], properties: {} }));
-      setRawPropertiesJson("{}");
-    }
-  }, [
-    formData.type,
-    isOpen,
-    mode,
-    registryEntityTypesKey,
-    registryEntityTypes,
-  ]);
 
   useEffect(() => {
     if (!isOpen || isEditingRawProperties) return;
@@ -882,16 +927,22 @@ export function EntityFormModal({
     });
   }, []);
 
-  const handlePropertiesChange = useCallback(
-    (nextProperties: Record<string, PropertyValue>) => {
-      setFormData((prev) => ({ ...prev, properties: nextProperties }));
+  const updatePropertyValue = useCallback(
+    (key: string, value: PropertyValue | undefined) => {
+      setFormData((prev) => {
+        const nextProperties = { ...(prev.properties ?? {}) };
+        if (value === undefined) {
+          delete nextProperties[key];
+        } else {
+          nextProperties[key] = value;
+        }
+        return { ...prev, properties: nextProperties };
+      });
+
       setErrors((prev) => {
         const next = { ...prev };
-        Object.keys(next).forEach((key) => {
-          if (key === "properties" || key.startsWith("properties.")) {
-            delete next[key];
-          }
-        });
+        delete next[`properties.${key}`];
+        delete next["properties"];
         return next;
       });
     },
@@ -936,6 +987,196 @@ export function EntityFormModal({
       updateFormData({ properties: parsed.value as Record<string, PropertyValue> });
     },
     [updateFormData]
+  );
+
+  const renderSchemaField = useCallback(
+    (field: { key: string; schema: JsonSchemaProperty; required: boolean }) => {
+      const value = formData.properties?.[field.key];
+      const label = field.schema.title ?? humanizePropertyName(field.key);
+      const description =
+        typeof field.schema.description === "string" ? field.schema.description : null;
+      const errorKey = `properties.${field.key}`;
+      const errorMessage = errors[errorKey];
+      const enumValues = Array.isArray(field.schema.enum) ? field.schema.enum : null;
+
+      if (enumValues && enumValues.length > 0) {
+        const selectedValue = enumValues.find(
+          (entry) => String(entry) === String(value)
+        );
+        return (
+          <FormField
+            key={field.key}
+            label={label}
+            required={field.required}
+            error={errorMessage}
+          >
+            <Select
+              value={selectedValue !== undefined ? String(selectedValue) : ""}
+              onChange={(next) => {
+                const matched = enumValues.find(
+                  (entry) => String(entry) === String(next)
+                );
+                updatePropertyValue(
+                  field.key,
+                  matched as PropertyValue | undefined
+                );
+              }}
+              options={enumValues.map((entry) => ({
+                value: String(entry),
+                label: String(entry),
+              }))}
+            />
+            {description && (
+              <p className="text-xs text-mythos-text-muted mt-1">{description}</p>
+            )}
+          </FormField>
+        );
+      }
+
+      const schemaType = normalizeSchemaType(field.schema.type);
+
+      if (schemaType === "boolean") {
+        return (
+          <FormField
+            key={field.key}
+            label={label}
+            required={field.required}
+            error={errorMessage}
+          >
+            <Select
+              value={
+                value === true
+                  ? "true"
+                  : value === false
+                    ? "false"
+                    : ""
+              }
+              onChange={(next) => {
+                if (next === "true") {
+                  updatePropertyValue(field.key, true);
+                } else if (next === "false") {
+                  updatePropertyValue(field.key, false);
+                } else {
+                  updatePropertyValue(field.key, undefined);
+                }
+              }}
+              options={[
+                { value: "true", label: "True" },
+                { value: "false", label: "False" },
+              ]}
+            />
+            {description && (
+              <p className="text-xs text-mythos-text-muted mt-1">{description}</p>
+            )}
+          </FormField>
+        );
+      }
+
+      if (schemaType === "number" || schemaType === "integer") {
+        const numberValue = typeof value === "number" ? value : "";
+        return (
+          <FormField
+            key={field.key}
+            label={label}
+            required={field.required}
+            error={errorMessage}
+          >
+            <Input
+              type="number"
+              step={schemaType === "integer" ? 1 : "any"}
+              value={numberValue}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw.trim() === "") {
+                  updatePropertyValue(field.key, undefined);
+                  return;
+                }
+                const parsed = Number(raw);
+                if (Number.isNaN(parsed)) return;
+                updatePropertyValue(
+                  field.key,
+                  schemaType === "integer" ? Math.trunc(parsed) : parsed
+                );
+              }}
+            />
+            {description && (
+              <p className="text-xs text-mythos-text-muted mt-1">{description}</p>
+            )}
+          </FormField>
+        );
+      }
+
+      if (schemaType === "array") {
+        const itemType = normalizeSchemaType(field.schema.items?.type);
+        const itemEnum =
+          field.schema.items && Array.isArray(field.schema.items.enum)
+            ? field.schema.items.enum
+            : null;
+        if (itemType === "string" && !itemEnum) {
+          const listValue = Array.isArray(value)
+            ? value.filter((entry) => typeof entry === "string")
+            : [];
+          return (
+            <div key={field.key} className="space-y-1">
+              <StringListField
+                label={label}
+                values={listValue}
+                onChange={(next) => updatePropertyValue(field.key, next)}
+                placeholder={`Add ${label.toLowerCase()}...`}
+              />
+              {errorMessage && (
+                <p className="text-xs text-mythos-accent-red">{errorMessage}</p>
+              )}
+              {description && (
+                <p className="text-xs text-mythos-text-muted">{description}</p>
+              )}
+            </div>
+          );
+        }
+      }
+
+      if (!schemaType || schemaType === "string") {
+        return (
+          <FormField
+            key={field.key}
+            label={label}
+            required={field.required}
+            error={errorMessage}
+          >
+            <Input
+              value={typeof value === "string" ? value : ""}
+              onChange={(e) => updatePropertyValue(field.key, e.target.value)}
+            />
+            {description && (
+              <p className="text-xs text-mythos-text-muted mt-1">{description}</p>
+            )}
+          </FormField>
+        );
+      }
+
+      return (
+        <FormField
+          key={field.key}
+          label={label}
+          required={field.required}
+          error={errorMessage}
+        >
+          <TextArea
+            value={value === undefined ? "" : JSON.stringify(value, null, 2)}
+            onChange={(_value) => {}}
+            rows={2}
+            disabled
+          />
+          {description && (
+            <p className="text-xs text-mythos-text-muted mt-1">{description}</p>
+          )}
+          <p className="text-xs text-mythos-text-muted mt-1">
+            Unsupported schema type. Use the JSON editor below.
+          </p>
+        </FormField>
+      );
+    },
+    [errors, formData.properties, updatePropertyValue]
   );
 
   const validate = useCallback((): boolean => {
@@ -1009,9 +1250,7 @@ export function EntityFormModal({
   );
 
   const title = mode === "create" ? "Create Entity" : `Edit ${entity?.name || "Entity"}`;
-  const typeIconName = getGraphEntityIcon(registry ?? null, formData.type);
-  const TypeIcon = resolveLucideIcon(typeIconName);
-  const typeColor = getRegistryEntityHexColor(registry ?? null, formData.type);
+  const TypeIcon = getEntityIconComponent(formData.type);
 
   if (!isOpen) return null;
 
@@ -1022,7 +1261,6 @@ export function EntityFormModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="entity-form-title"
-      data-testid="entity-form-modal"
     >
       {/* Backdrop */}
       <div
@@ -1036,7 +1274,7 @@ export function EntityFormModal({
         <CardHeader className="pb-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <TypeIcon className="w-5 h-5" style={{ color: typeColor }} />
+              <TypeIcon className={cn("w-5 h-5", getEntityColor(formData.type))} />
               <CardTitle id="entity-form-title" className="text-lg">
                 {title}
               </CardTitle>
@@ -1074,8 +1312,6 @@ export function EntityFormModal({
                   <FormField label="Entity Type" required>
                     <EntityTypeSelector
                       value={formData.type}
-                      options={entityTypeOptions}
-                      disabled={entityTypeOptions.length === 0}
                       onChange={(type) => {
                         updateFormData({ type, properties: {} });
                         setRawPropertiesJson("{}");
@@ -1091,10 +1327,9 @@ export function EntityFormModal({
                       <Input
                         value={formData.name}
                         onChange={(e) => updateFormData({ name: e.target.value })}
-                        placeholder={`Enter ${getGraphEntityLabel(registry ?? null, formData.type)} name...`}
+                        placeholder={`Enter ${formData.type.replace("_", " ")} name...`}
                         autoFocus
                         className="flex-1"
-                        data-testid="entity-form-name"
                       />
                       <Button
                         type="button"
@@ -1153,7 +1388,7 @@ export function EntityFormModal({
                 {/* Divider */}
                 <div className="border-t border-mythos-border-default pt-4">
                   <h3 className="text-sm font-medium text-mythos-text-secondary mb-4">
-                    {getGraphEntityLabel(registry ?? null, formData.type)} Details
+                    {getEntityLabel(formData.type)} Details
                   </h3>
 
                   {/* Type-specific fields */}
@@ -1175,41 +1410,54 @@ export function EntityFormModal({
                 </div>
 
                 {(showSchemaFields || showRawPropertiesEditor || !schemaInfo) && (
-                  <JsonSchemaObjectEditor
-                    schema={registry?.entityTypes?.[formData.type]?.schema ?? null}
-                    value={(formData.properties ?? {}) as Record<string, PropertyValue>}
-                    onChange={handlePropertiesChange}
-                    rawJson={rawPropertiesJson}
-                    onRawJsonChange={handleRawPropertiesChange}
-                    onRawFocus={() => setIsEditingRawProperties(true)}
-                    onRawBlur={() => setIsEditingRawProperties(false)}
-                    errors={errors}
-                    pathPrefix="properties"
-                    title="Custom Properties"
-                    fieldTestIdPrefix="entity-form-prop"
-                    rawTestId="entity-form-properties-json"
-                  />
+                  <div className="border-t border-mythos-border-default pt-4">
+                    <h3 className="text-sm font-medium text-mythos-text-secondary mb-3">
+                      Custom Properties
+                    </h3>
+
+                    {!showSchemaFields && !showRawPropertiesEditor && (
+                      <p className="text-xs text-mythos-text-muted">
+                        This type does not allow additional properties.
+                      </p>
+                    )}
+
+                    {showSchemaFields && (
+                      <div className="space-y-4">
+                        {schemaFields.map((field) => renderSchemaField(field))}
+                      </div>
+                    )}
+
+                    {showRawPropertiesEditor && (
+                      <div className={cn("space-y-2", showSchemaFields ? "mt-4" : "")}>
+                        <FormField
+                          label={showSchemaFields ? "Advanced JSON" : "Properties (JSON)"}
+                          error={errors["properties"]}
+                        >
+                          <TextArea
+                            value={rawPropertiesJson}
+                            onChange={(value) => handleRawPropertiesChange(value)}
+                            onFocus={() => setIsEditingRawProperties(true)}
+                            onBlur={() => setIsEditingRawProperties(false)}
+                            rows={6}
+                            placeholder='{"key":"value"}'
+                          />
+                        </FormField>
+                        <p className="text-xs text-mythos-text-muted">
+                          Values must be a JSON object. Invalid JSON will be rejected on save.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </ScrollArea>
           </CardContent>
 
           <CardFooter className="flex justify-between gap-2 pt-4 flex-shrink-0 border-t border-mythos-border-default">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={isSaving}
-              data-testid="entity-form-cancel"
-            >
+            <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              className="gap-1.5 min-w-[120px]"
-              disabled={isSaving}
-              data-testid="entity-form-save"
-            >
+            <Button type="submit" className="gap-1.5 min-w-[120px]" disabled={isSaving}>
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {isSaving ? "Saving..." : mode === "create" ? "Create" : "Save Changes"}
             </Button>

@@ -191,14 +191,12 @@ export function InviteMemberModal({
       const invitations = await convex.query(api.collaboration.listProjectInvitationsWithInviter, {
         projectId: project.id as Id<"projects">,
       });
-      const mapped = (invitations ?? []).map(
-        (invitation: { _id: string; email: string; role: string; expiresAt: number }) => ({
-          id: invitation._id,
-          email: invitation.email,
-          role: invitation.role as ProjectRole,
-          expiresAt: new Date(invitation.expiresAt).toISOString(),
-        })
-      );
+      const mapped = (invitations ?? []).map((invitation) => ({
+        id: invitation._id,
+        email: invitation.email,
+        role: invitation.role as ProjectRole,
+        expiresAt: new Date(invitation.expiresAt).toISOString(),
+      }));
       setPendingInvitations(mapped);
     } catch (error) {
       console.error("[Collaboration] Failed to load invitations:", error);

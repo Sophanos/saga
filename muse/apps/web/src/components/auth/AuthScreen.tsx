@@ -111,7 +111,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
     setError(null);
     const { error } = await signInWithGoogle();
     if (error) {
-      setError(error.message ?? "Sign in failed");
+      setError(error.message);
       setIsLoading(false);
     }
   }, []);
@@ -121,7 +121,7 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
     setError(null);
     const { error } = await signInWithApple();
     if (error) {
-      setError(error.message ?? "Sign in failed");
+      setError(error.message);
       setIsLoading(false);
     }
   }, []);
@@ -134,12 +134,12 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
     if (mode === "signin") {
       const { error } = await signInWithEmail(email, password);
       if (error) {
-        setError(error.message ?? "Sign in failed");
+        setError(error.message);
       }
     } else {
       const { error } = await signUpWithEmail(email, password, name);
       if (error) {
-        setError(error.message ?? "Sign up failed");
+        setError(error.message);
       }
     }
 

@@ -4,10 +4,10 @@
   "version": "0.0.1",
   "identifier": "vision.cascada.mythos",
   "build": {
-    "beforeDevCommand": "cd ../web && bun run dev",
-    "devUrl": "http://localhost:3005",
-    "beforeBuildCommand": "cd ../web && bun run build",
-    "frontendDist": "../web/dist"
+    "beforeDevCommand": "cd ../expo && npx expo start --web --port 19006",
+    "devUrl": "http://localhost:19006",
+    "beforeBuildCommand": "cd ../expo && npx expo export --platform web",
+    "frontendDist": "../expo/dist"
   },
   "app": {
     "windows": [
@@ -29,7 +29,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost http://localhost:3005 https://convex.cascada.vision https://cascada.vision wss://convex.cascada.vision; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; frame-src 'self' asset: http://asset.localhost http://localhost:*; img-src 'self' asset: http://asset.localhost blob: data: https:; connect-src 'self' http://localhost:* ws://localhost:* https://convex.cascada.vision https://cascada.vision wss://convex.cascada.vision; font-src 'self' data:",
+      "csp": "default-src 'self' ipc: http://ipc.localhost http://localhost:19006 https://convex.cascada.vision https://cascada.vision wss://convex.cascada.vision; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; frame-src 'self' asset: http://asset.localhost http://localhost:*; img-src 'self' asset: http://asset.localhost blob: data: https:; connect-src 'self' http://localhost:* ws://localhost:* https://convex.cascada.vision https://cascada.vision wss://convex.cascada.vision; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
         "scope": ["$RESOURCE/**"]

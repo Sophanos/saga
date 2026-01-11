@@ -112,7 +112,7 @@ function toMemoryRecord(mem: ConvexMemory): MemoryRecord {
 // =============================================================================
 
 export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
-  const { autoFetch: _autoFetch = false, categories: _categories } = options ?? {};
+  const { autoFetch = false, categories } = options ?? {};
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +125,7 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
   const removeLocal = useMemoryStore((s: MemoryCacheState) => s.removeLocal);
   const setCategoryCache = useMemoryStore((s: MemoryCacheState) => s.setCategoryCache);
   const getByCategory = useMemoryStore((s: MemoryCacheState) => s.getByCategory);
+  const getRecent = useMemoryStore((s: MemoryCacheState) => s.getRecent);
 
   // Convex queries and mutations
   const convexMemories = useQuery(

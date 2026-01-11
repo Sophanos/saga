@@ -10,8 +10,6 @@ export const emit = internalMutation({
   args: {
     projectId: v.id("projects"),
     documentId: v.optional(v.id("documents")),
-    suggestionId: v.optional(v.id("knowledgeSuggestions")),
-    toolCallId: v.optional(v.string()),
     actorType: v.string(),
     actorUserId: v.optional(v.string()),
     actorAgentId: v.optional(v.string()),
@@ -26,8 +24,6 @@ export const emit = internalMutation({
     return ctx.db.insert("activityLog", {
       projectId: args.projectId,
       documentId: args.documentId,
-      suggestionId: args.suggestionId,
-      toolCallId: args.toolCallId,
       actorType: args.actorType,
       actorUserId: args.actorUserId,
       actorAgentId: args.actorAgentId,
@@ -73,55 +69,6 @@ export const listByDocument = query({
       .query("activityLog")
       .withIndex("by_document_createdAt", (q) =>
         cursor ? q.eq("documentId", documentId).lt("createdAt", cursor) : q.eq("documentId", documentId)
-      )
-      .order("desc");
-
-    return query.take(limit);
-  },
-});
-
-export const listBySuggestion = query({
-  args: {
-    projectId: v.id("projects"),
-    suggestionId: v.id("knowledgeSuggestions"),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.number()),
-  },
-  handler: async (ctx, { projectId, suggestionId, limit = 50, cursor }) => {
-    await verifyProjectAccess(ctx, projectId);
-
-    const query = ctx.db
-      .query("activityLog")
-      .withIndex("by_project_suggestion_createdAt", (q) =>
-        cursor
-          ? q
-              .eq("projectId", projectId)
-              .eq("suggestionId", suggestionId)
-              .lt("createdAt", cursor)
-          : q.eq("projectId", projectId).eq("suggestionId", suggestionId)
-      )
-      .order("desc");
-
-    return query.take(limit);
-  },
-});
-
-export const listByToolCallId = query({
-  args: {
-    projectId: v.id("projects"),
-    toolCallId: v.string(),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.number()),
-  },
-  handler: async (ctx, { projectId, toolCallId, limit = 50, cursor }) => {
-    await verifyProjectAccess(ctx, projectId);
-
-    const query = ctx.db
-      .query("activityLog")
-      .withIndex("by_project_toolCallId_createdAt", (q) =>
-        cursor
-          ? q.eq("projectId", projectId).eq("toolCallId", toolCallId).lt("createdAt", cursor)
-          : q.eq("projectId", projectId).eq("toolCallId", toolCallId)
       )
       .order("desc");
 

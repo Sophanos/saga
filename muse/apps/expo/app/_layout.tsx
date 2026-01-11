@@ -91,7 +91,6 @@ export default function RootLayout(): JSX.Element {
                   }),
                 }}
               >
-                <Stack.Screen name="(marketing)" />
                 <Stack.Screen name="(app)" />
                 <Stack.Screen name="(auth)" />
                 <Stack.Screen

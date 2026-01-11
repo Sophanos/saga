@@ -206,10 +206,11 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
         type: "scene",
         title,
         content: EMPTY_TIPTAP_DOC,
+        contentText: "",
         orderIndex: nextOrderIndex,
         wordCount: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       addDocument(newDocument);
