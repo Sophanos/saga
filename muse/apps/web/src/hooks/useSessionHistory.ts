@@ -160,7 +160,9 @@ export function useSessionHistory(): UseSessionHistoryResult {
           name: conversationName ?? undefined,
         });
 
-        addSessionToList(toSessionSummary(session));
+        if (session) {
+          addSessionToList(toSessionSummary(session));
+        }
 
         return true;
       } catch (error) {

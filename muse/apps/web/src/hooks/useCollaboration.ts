@@ -7,6 +7,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { useConvex, useConvexConnectionState, useMutation, useQuery } from "convex/react";
 import usePresence from "@convex-dev/presence/react";
 import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import {
   useCollaborationStore,
   generateCollaboratorColor,
@@ -172,15 +173,15 @@ export function useCollaboration(projectId: string): UseCollaborationResult {
   // Connection status as state so UI re-renders when status changes
   const [connectionStatus, setConnectionStatus] = useState<CollaborationConnectionStatus>("disconnected");
 
-  const members = useQuery(api.collaboration.listProjectMembersWithProfiles, { projectId });
-  const activity = useQuery(api.activity.listByProject, { projectId, limit: 50 });
+  const members = useQuery(api.collaboration.listProjectMembersWithProfiles, { projectId: projectId as Id<"projects"> });
+  const activity = useQuery(api.activity.listByProject, { projectId: projectId as Id<"projects">, limit: 50 });
   const presenceState = usePresence(api.presence, `project:${projectId}`, currentUser?.id ?? "", PRESENCE_INTERVAL_MS);
   const updatePresenceMutation = useMutation(api.presence.update);
 
   const refreshMembers = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const nextMembers = await convex.query(api.collaboration.listProjectMembersWithProfiles, { projectId });
+      const nextMembers = await convex.query(api.collaboration.listProjectMembersWithProfiles, { projectId: projectId as Id<"projects"> });
       const mappedMembers = nextMembers.map(mapMemberToProjectMember);
       setMembers(mappedMembers);
 
@@ -193,7 +194,7 @@ export function useCollaboration(projectId: string): UseCollaborationResult {
 
   const refreshActivity = useCallback(async () => {
     try {
-      const entries = await convex.query(api.activity.listByProject, { projectId, limit: 50 });
+      const entries = await convex.query(api.activity.listByProject, { projectId: projectId as Id<"projects">, limit: 50 });
       setActivity(entries.map(mapActivityToEntry));
     } catch (error) {
       console.error("[Collaboration] Failed to fetch activity:", error);
@@ -225,7 +226,7 @@ export function useCollaboration(projectId: string): UseCollaborationResult {
       avatarUrl: currentUser.avatarUrl,
       color: colorRef.current,
       documentId: currentDocument?.id,
-      status: "online",
+      status: "online" as const,
       isAi: false,
     };
 

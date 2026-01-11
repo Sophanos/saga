@@ -166,7 +166,6 @@ export function ProjectPickerSidebar() {
         content: EMPTY_TIPTAP_DOC,
         contentText: "",
         orderIndex: nextOrderIndex,
-        wordCount: 0,
       });
 
       const now = new Date();

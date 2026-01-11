@@ -16,8 +16,8 @@ async function getConvexClient(): Promise<ConvexHttpClient> {
     cachedClient = new ConvexHttpClient(CONVEX_URL);
   }
 
-  const token = await authClient.$fetch("/api/auth/convex-token", { method: "GET" });
-  const nextToken = token?.data?.token ?? null;
+  const response = await authClient.$fetch("/api/auth/convex-token", { method: "GET" });
+  const nextToken = (response?.data as { token?: string } | undefined)?.token ?? null;
   if (!nextToken) {
     throw new Error("Missing Convex auth token");
   }
@@ -59,7 +59,6 @@ export async function createSeedProjectContextDoc(params: {
   const lines = buildSeedLines(source);
   const contentText = lines.join("\n");
   const content = buildTiptapDoc(lines);
-  const wordCount = countWords(contentText);
 
   const client = await getConvexClient();
   const docId = await client.mutation(api.documents.create, {
@@ -69,7 +68,6 @@ export async function createSeedProjectContextDoc(params: {
     content,
     contentText,
     orderIndex,
-    wordCount,
   });
 
   return { documentId: docId, contentText };
@@ -142,12 +140,4 @@ function buildTiptapDoc(lines: string[]): Record<string, unknown> {
         : [],
     })),
   };
-}
-
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return 0;
-  }
-  return trimmed.split(/\s+/).length;
 }

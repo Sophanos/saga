@@ -15,6 +15,7 @@ import {
 } from "@mythos/ui";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useMythosStore } from "../../stores";
 import type { PropertyValue } from "@mythos/core";
 import {
@@ -109,7 +110,7 @@ export function RelationshipFormModal({
 
   const registry = useQuery(
     api.projectTypeRegistry.getResolved,
-    projectId ? { projectId } : "skip"
+    projectId ? { projectId: projectId as Id<"projects"> } : "skip"
   ) as ResolvedRegistry | undefined;
 
   const relationship = useMemo(() => {

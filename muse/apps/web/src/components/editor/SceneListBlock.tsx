@@ -125,7 +125,6 @@ export function SceneListBlock({
         content: emptyContent as Record<string, unknown>,
         contentText: "",
         orderIndex: nextOrderIndex,
-        wordCount: 0,
       });
 
       const newDocument: Document = {

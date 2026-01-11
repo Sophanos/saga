@@ -33,8 +33,10 @@ import {
   getGraphEntityIcon,
   getGraphEntityLabel,
   getRegistryEntityHexColor,
+  type ProjectGraphRegistryDisplay,
 } from "@mythos/core";
 import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { executeNameGenerator } from "../../services/ai/agentRuntimeClient";
 import { useMythosStore } from "../../stores";
 import { resolveLucideIcon } from "../../utils/iconResolver";
@@ -56,9 +58,13 @@ import type { NameCulture, NameStyle } from "@mythos/agent-protocol";
 type FormMode = "create" | "edit";
 
 type ResolvedRegistry = {
-  entityTypes?: Record<
+  entityTypes: Record<
     string,
     { schema?: JsonSchema; displayName?: string; icon?: string; color?: string }
+  >;
+  relationshipTypes: Record<
+    string,
+    { displayName?: string }
   >;
 };
 
@@ -732,8 +738,11 @@ export function EntityFormModal({
   const projectId = currentProject?.id;
   const registry = useQuery(
     api.projectTypeRegistry.getResolved,
-    projectId ? { projectId } : "skip"
+    projectId ? { projectId: projectId as Id<"projects"> } : "skip"
   ) as ResolvedRegistry | undefined;
+
+  // Cast for helper functions that expect ProjectGraphRegistryDisplay
+  const registryDisplay = registry as ProjectGraphRegistryDisplay | null | undefined;
 
   const schemaInfo = useMemo(() => {
     const schema = registry?.entityTypes?.[formData.type]?.schema;
@@ -752,15 +761,15 @@ export function EntityFormModal({
   const entityTypeOptions = useMemo(() => {
     const types = registryEntityTypes.length > 0 ? registryEntityTypes : DEFAULT_ENTITY_TYPES;
     const sorted = [...types].sort((a, b) => {
-      const aLabel = getGraphEntityLabel(registry ?? null, a);
-      const bLabel = getGraphEntityLabel(registry ?? null, b);
+      const aLabel = getGraphEntityLabel(registryDisplay ?? null, a);
+      const bLabel = getGraphEntityLabel(registryDisplay ?? null, b);
       return aLabel.localeCompare(bLabel);
     });
     return sorted.map((type) => ({
       type,
-      label: getGraphEntityLabel(registry ?? null, type),
-      iconName: getGraphEntityIcon(registry ?? null, type),
-      color: getRegistryEntityHexColor(registry ?? null, type),
+      label: getGraphEntityLabel(registryDisplay ?? null, type),
+      iconName: getGraphEntityIcon(registryDisplay ?? null, type),
+      color: getRegistryEntityHexColor(registryDisplay ?? null, type),
     }));
   }, [registryEntityTypesKey, registry]);
 
@@ -1009,9 +1018,9 @@ export function EntityFormModal({
   );
 
   const title = mode === "create" ? "Create Entity" : `Edit ${entity?.name || "Entity"}`;
-  const typeIconName = getGraphEntityIcon(registry ?? null, formData.type);
+  const typeIconName = getGraphEntityIcon(registryDisplay ?? null, formData.type);
   const TypeIcon = resolveLucideIcon(typeIconName);
-  const typeColor = getRegistryEntityHexColor(registry ?? null, formData.type);
+  const typeColor = getRegistryEntityHexColor(registryDisplay ?? null, formData.type);
 
   if (!isOpen) return null;
 
@@ -1091,7 +1100,7 @@ export function EntityFormModal({
                       <Input
                         value={formData.name}
                         onChange={(e) => updateFormData({ name: e.target.value })}
-                        placeholder={`Enter ${getGraphEntityLabel(registry ?? null, formData.type)} name...`}
+                        placeholder={`Enter ${getGraphEntityLabel(registryDisplay ?? null, formData.type)} name...`}
                         autoFocus
                         className="flex-1"
                         data-testid="entity-form-name"
@@ -1153,7 +1162,7 @@ export function EntityFormModal({
                 {/* Divider */}
                 <div className="border-t border-mythos-border-default pt-4">
                   <h3 className="text-sm font-medium text-mythos-text-secondary mb-4">
-                    {getGraphEntityLabel(registry ?? null, formData.type)} Details
+                    {getGraphEntityLabel(registryDisplay ?? null, formData.type)} Details
                   </h3>
 
                   {/* Type-specific fields */}

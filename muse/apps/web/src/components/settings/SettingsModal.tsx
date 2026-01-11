@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button, Input, FormField, Select, ScrollArea, cn } from "@mythos/ui";
 import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useMythosStore } from "../../stores";
 import { useAuthStore } from "../../stores/auth";
 import { signOut as authSignOut, authClient } from "../../lib/auth";
@@ -147,7 +148,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
 
   const registryStatus = useQuery(
     api.projectTypeRegistry.getStatus,
-    project ? { projectId: project.id } : "skip"
+    project ? { projectId: project.id as Id<"projects"> } : "skip"
   );
   const lockRegistry = useMutation(api.projectTypeRegistry.lock);
   const unlockRegistry = useMutation(api.projectTypeRegistry.unlock);
@@ -303,7 +304,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     setSuccessMessage(null);
 
     try {
-      await lockRegistry({ projectId: project.id });
+      await lockRegistry({ projectId: project.id as Id<"projects"> });
       setSuccessMessage("Registry locked");
     } catch (err) {
       setError(formatGraphErrorMessage(err, "Failed to lock registry"));
@@ -321,7 +322,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     setSuccessMessage(null);
 
     try {
-      await unlockRegistry({ projectId: project.id });
+      await unlockRegistry({ projectId: project.id as Id<"projects"> });
       setSuccessMessage("Registry unlocked");
     } catch (err) {
       setError(formatGraphErrorMessage(err, "Failed to unlock registry"));

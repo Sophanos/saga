@@ -195,7 +195,6 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
         content: EMPTY_TIPTAP_DOC as Record<string, unknown>,
         contentText: "",
         orderIndex: nextOrderIndex,
-        wordCount: 0,
       });
 
       // Create document object for store
