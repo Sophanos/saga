@@ -5,6 +5,7 @@ import { MoreMenu } from './MoreMenu';
 import { QuickActions, type QuickActionType } from './QuickActions';
 import { Editor } from './Editor';
 import { CollaborativeEditor } from './CollaborativeEditor';
+import { FlowFocusExtension, TypewriterScrollExtension } from '../extensions';
 
 type FontStyle = 'default' | 'serif' | 'mono';
 type PrivacyLevel = 'private' | 'workspace' | 'public';
@@ -41,6 +42,14 @@ export interface WriteContentApplyResult {
   error?: string;
 }
 
+/** Flow mode settings passed from host app to ensure store consistency */
+export interface FlowModeSettings {
+  enabled: boolean;
+  focusLevel: 'none' | 'sentence' | 'paragraph';
+  dimOpacity: number;
+  typewriterScrolling: boolean;
+}
+
 export interface EditorShellProps {
   initialDocuments?: DocumentState[];
   onDocumentChange?: (doc: DocumentState) => void;
@@ -58,6 +67,8 @@ export interface EditorShellProps {
   onWriteContentApplied?: (result: WriteContentApplyResult) => void;
   /** When true, hides TabBar and PageHeader for distraction-free editing (flow mode) */
   minimalMode?: boolean;
+  /** Flow mode settings - passed from host app to avoid store isolation issues */
+  flowSettings?: FlowModeSettings;
 }
 
 const CSS_TOKENS = `
@@ -247,7 +258,8 @@ export function EditorShell({
   pendingWriteContent,
   onWriteContentApplied,
   minimalMode = false,
-}: EditorShellProps) {
+  flowSettings,
+}: EditorShellProps): JSX.Element {
   useEffect(() => {
     const styleId = 'editor-webview-tokens';
     if (!document.getElementById(styleId)) {
@@ -280,6 +292,22 @@ export function EditorShell({
   const collaborationDocumentId = collaboration?.documentId ?? activeDocId;
   const shouldUseCollaboration =
     !!collaboration && !!collaboration.projectId && !!collaboration.user && !!collaborationDocumentId;
+  const flowEnabled = flowSettings?.enabled ?? false;
+  const effectiveFocusLevel = flowEnabled ? flowSettings?.focusLevel ?? 'none' : 'none';
+  const effectiveDimOpacity = flowSettings?.dimOpacity ?? 0.3;
+  const effectiveTypewriterScrolling = flowEnabled ? flowSettings?.typewriterScrolling ?? false : false;
+  const flowExtensions = useMemo(
+    () => [
+      FlowFocusExtension.configure({
+        focusLevel: 'none',
+        dimOpacity: 0.3,
+      }),
+      TypewriterScrollExtension.configure({
+        enabled: false,
+      }),
+    ],
+    []
+  );
 
   // Build tabs with content preview for hover tooltip
   const tabs: Tab[] = documents.map((d) => ({
@@ -467,6 +495,14 @@ export function EditorShell({
     }
   }, [pendingWriteContent]);
 
+  useEffect(() => {
+    const editor = editorInstanceRef.current;
+    if (!editor || editor.isDestroyed) return;
+    editor.commands.setFlowFocusLevel?.(effectiveFocusLevel);
+    editor.commands.setFlowDimOpacity?.(effectiveDimOpacity);
+    editor.commands.setTypewriterScrolling?.(effectiveTypewriterScrolling);
+  }, [effectiveFocusLevel, effectiveDimOpacity, effectiveTypewriterScrolling, readyDocumentId]);
+
   const handleSyncError = useCallback((error: Error) => {
     setAutosaveError(error.message);
   }, []);
@@ -608,6 +644,7 @@ export function EditorShell({
             showTitle={true}
             autoFocus
             syncContentFromProps={false}
+            extraExtensions={flowExtensions}
           />
         )}
 

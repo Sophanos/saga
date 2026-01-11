@@ -4,6 +4,7 @@ import { CollaborativeEditor, Editor } from './components';
 import type { NativeToEditorMessage } from './bridge';
 import './styles/tokens.css';
 import './styles/suggestions.css';
+import './styles/flow.css';
 
 interface EditorBundleProps {
   initialContent?: string;

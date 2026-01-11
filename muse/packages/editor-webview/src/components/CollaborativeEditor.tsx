@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConvexProvider, ConvexReactClient, useMutation, useQuery } from 'convex/react';
 import usePresence from '@convex-dev/presence/react';
 import { useTiptapSync } from '@convex-dev/prosemirror-sync/tiptap';
-import { generateCollaboratorColor } from '@mythos/state';
+import { generateCollaboratorColor, useEditorMetricsStore } from '@mythos/state';
+import { FlowFocusExtension, TypewriterScrollExtension } from '../extensions';
 import { api } from '../../../../convex/_generated/api';
 import { Editor, type EditorProps } from './Editor';
 import type { Editor as TiptapEditor } from '@tiptap/core';
@@ -58,7 +59,7 @@ function CollaborativeEditorInner({
   presenceIntervalMs = 10_000,
   onSyncError,
   ...editorProps
-}: CollaborativeEditorProps) {
+}: CollaborativeEditorProps): JSX.Element {
   const { onChange: onEditorChange, onFocusChange: onEditorFocusChange, ...restEditorProps } =
     editorProps;
   const sync = useTiptapSync(apiAny.prosemirrorSync as any, documentId, {
@@ -71,6 +72,24 @@ function CollaborativeEditorInner({
   const roomId = `document:${documentId}`;
   const colorRef = useRef<string>(generateCollaboratorColor());
   const createRequestedRef = useRef(false);
+
+  // Configure flow extensions ONCE (stable reference)
+  // Settings are synced via commands in the parent shell
+  const flowExtensions = useMemo(() => [
+    FlowFocusExtension.configure({
+      focusLevel: 'none', // Initial state, updated via command
+      dimOpacity: 0.3,
+    }),
+    TypewriterScrollExtension.configure({
+      enabled: false, // Initial state, updated via command
+    }),
+  ], []); // Empty deps = stable reference
+
+  // Memoize all extra extensions to prevent editor recreation
+  const allExtraExtensions = useMemo(() => {
+    if (!sync.extension) return flowExtensions;
+    return [sync.extension, ...flowExtensions];
+  }, [sync.extension, flowExtensions]);
   const updatePresence = useMutation(apiAny.presence?.update as any);
   const updateSuggestionStatus = useMutation(apiAny.suggestions?.setSuggestionStatus as any);
   const suggestions = useQuery(apiAny.suggestions?.listByDocument as any, {
@@ -181,14 +200,25 @@ function CollaborativeEditorInner({
     ]
   );
 
+  // Get metrics store updater
+  const updateMetrics = useEditorMetricsStore((s) => s.updateMetrics);
+
   const handleContentChange = useCallback(
     (content: string) => {
       onEditorChange?.(content);
+
+      // Update word count in shared metrics store
+      if (editorInstance) {
+        const text = editorInstance.getText();
+        const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+        updateMetrics({ wordCount });
+      }
+
       if (!isFocusedRef.current) return;
       updateStatusPresence('typing');
       scheduleTypingReset();
     },
-    [onEditorChange, scheduleTypingReset, updateStatusPresence]
+    [onEditorChange, scheduleTypingReset, updateStatusPresence, editorInstance, updateMetrics]
   );
 
   const handleCursorChange = useCallback(
@@ -281,6 +311,14 @@ function CollaborativeEditorInner({
     [updateSuggestionStatus]
   );
 
+  // Update word count when editor becomes ready
+  useEffect(() => {
+    if (!editorInstance) return;
+    const text = editorInstance.getText();
+    const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+    updateMetrics({ wordCount });
+  }, [editorInstance, updateMetrics]);
+
   useEffect(() => {
     if (!editorInstance) return;
     if (!suggestions) {
@@ -348,7 +386,7 @@ function CollaborativeEditorInner({
       <Editor
         {...restEditorProps}
         content={sync.initialContent}
-        extraExtensions={[sync.extension]}
+        extraExtensions={allExtraExtensions}
         remoteCursors={remoteCursors}
         currentUserId={user.id}
         onChange={handleContentChange}
@@ -363,7 +401,7 @@ function CollaborativeEditorInner({
   );
 }
 
-export function CollaborativeEditor(props: CollaborativeEditorProps) {
+export function CollaborativeEditor(props: CollaborativeEditorProps): JSX.Element {
   const { convexUrl, authToken } = props;
 
   const client = useMemo(() => {

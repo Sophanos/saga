@@ -18,6 +18,9 @@ import {
   useDocuments,
   useProjectStore,
   useFlowEnabled,
+  useFocusLevel,
+  useDimOpacity,
+  useTypewriterScrolling,
 } from '@mythos/state';
 
 // Lazy load editor only on web
@@ -66,8 +69,18 @@ export default function EditorScreen(): JSX.Element {
       }
     : null;
 
-  // Flow mode (distraction-free writing)
+  // Flow mode
   const flowEnabled = useFlowEnabled();
+  const focusLevel = useFocusLevel();
+  const dimOpacity = useDimOpacity();
+  const typewriterScrolling = useTypewriterScrolling();
+
+  const flowSettings = {
+    enabled: flowEnabled,
+    focusLevel,
+    dimOpacity,
+    typewriterScrolling,
+  };
 
   // Hide quick actions when AI panel is visible (side or floating mode)
   const hideQuickActions = aiPanelMode === 'side' || aiPanelMode === 'floating';
@@ -134,6 +147,7 @@ export default function EditorScreen(): JSX.Element {
               hideQuickActions={hideQuickActions}
               sidebarCollapsed={sidebarCollapsed}
               minimalMode={flowEnabled}
+              flowSettings={flowSettings}
               collaboration={
                 collaborationProjectId && activeDocumentId && collaborationUser
                   ? {
