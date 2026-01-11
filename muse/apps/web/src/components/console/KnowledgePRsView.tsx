@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, CornerUpLeft, FileText, X } from "lucide-react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, CornerUpLeft, FileText, Loader2, X } from "lucide-react";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { Button, ScrollArea, cn } from "@mythos/ui";
 import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useMythosStore } from "../../stores";
 import { DiffView } from "./DiffViews";
+import { RollbackConfirmModal } from "../modals/RollbackConfirmModal";
 
 type KnowledgeStatus = "proposed" | "accepted" | "rejected" | "resolved";
 type KnowledgeRiskLevel = "low" | "high" | "core";
@@ -343,11 +345,14 @@ function buildWriteContentDiff(
   };
 }
 
+const PAGE_SIZE = 50;
+
 export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
   const projectId = useMythosStore((s) => s.project.currentProject?.id);
   const documents = useMythosStore((s) => s.document.documents);
   const setCurrentDocument = useMythosStore((s) => s.setCurrentDocument);
   const setCanvasView = useMythosStore((s) => s.setCanvasView);
+  const convex = useConvex();
   const apiAny: any = api;
 
   const [status, setStatus] = useState<KnowledgeStatus | "all">("proposed");
@@ -356,16 +361,85 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const suggestions = useQuery(
-    apiAny.knowledgeSuggestions.listByProject as any,
-    projectId
-      ? {
-          projectId,
+  // Pagination state
+  const [suggestions, setSuggestions] = useState<KnowledgeSuggestion[]>([]);
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const isMountedRef = useRef(true);
+
+  // Rollback modal state
+  const [rollbackModalOpen, setRollbackModalOpen] = useState(false);
+  const [rollbackSuggestionId, setRollbackSuggestionId] = useState<string | null>(null);
+  const [isRollingBack, setIsRollingBack] = useState(false);
+
+  // Track mounted state
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Load suggestions with cursor-based pagination
+  const loadSuggestions = useCallback(
+    async (reset = false) => {
+      if (!projectId || isLoading) return;
+
+      setIsLoading(true);
+      try {
+        const currentCursor = reset ? null : cursor;
+        const data = await convex.query(api.knowledgeSuggestions.listByProject, {
+          projectId: projectId as Id<"projects">,
           status: status === "all" ? undefined : status,
-          limit: 200,
+          limit: PAGE_SIZE,
+          cursor: currentCursor ?? undefined,
+        }) as KnowledgeSuggestion[];
+
+        if (!isMountedRef.current) return;
+
+        // Derive next cursor from last item's createdAt
+        const nextCursor =
+          data.length > 0 ? data[data.length - 1]!.createdAt : null;
+
+        if (reset) {
+          setSuggestions(data);
+        } else {
+          setSuggestions((prev) => [...prev, ...data]);
         }
-      : ("skip" as any)
-  ) as KnowledgeSuggestion[] | undefined;
+        setCursor(nextCursor);
+        setHasMore(data.length === PAGE_SIZE);
+        setIsInitialLoad(false);
+      } catch (error) {
+        if (!isMountedRef.current) return;
+        console.error("[KnowledgePRs] Failed to load suggestions:", error);
+      } finally {
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [convex, projectId, status, cursor, isLoading]
+  );
+
+  // Load on mount and when filters change
+  useEffect(() => {
+    if (projectId) {
+      setSuggestions([]);
+      setCursor(null);
+      setHasMore(true);
+      setIsInitialLoad(true);
+      loadSuggestions(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, status]);
+
+  const handleLoadMore = useCallback(() => {
+    if (!isLoading && hasMore) {
+      loadSuggestions(false);
+    }
+  }, [isLoading, hasMore, loadSuggestions]);
 
   const applyDecisions = useAction(
     apiAny.knowledgeSuggestions.applyDecisions as any
@@ -453,9 +527,10 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
 
   const metaLabel = useMemo((): string => {
     if (!projectId) return "No project selected";
-    if (suggestions === undefined) return "Loading…";
-    return `${filtered.length} result${filtered.length === 1 ? "" : "s"}`;
-  }, [filtered.length, projectId, suggestions]);
+    if (isInitialLoad) return "Loading…";
+    const suffix = hasMore ? "+" : "";
+    return `${filtered.length}${suffix} result${filtered.length === 1 ? "" : "s"}`;
+  }, [filtered.length, hasMore, isInitialLoad, projectId]);
 
   const handleApply = useCallback(
     async (decision: "approve" | "reject"): Promise<void> => {
@@ -475,20 +550,37 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
     [applyDecisions, selected]
   );
 
-  const handleRollback = useCallback(async (): Promise<void> => {
+  // Open rollback confirmation modal instead of direct rollback
+  const handleOpenRollbackModal = useCallback((): void => {
     if (!selected) return;
-    setIsBusy(true);
-    setActionError(null);
-    try {
-      await rollbackSuggestion({ suggestionId: selected._id });
-    } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : "Failed to undo change"
-      );
-    } finally {
-      setIsBusy(false);
-    }
-  }, [rollbackSuggestion, selected]);
+    setRollbackSuggestionId(selected._id);
+    setRollbackModalOpen(true);
+  }, [selected]);
+
+  const handleCloseRollbackModal = useCallback((): void => {
+    setRollbackModalOpen(false);
+    setRollbackSuggestionId(null);
+  }, []);
+
+  const handleConfirmRollback = useCallback(
+    async (suggestionId: string, cascadeRelationships: boolean): Promise<void> => {
+      setIsRollingBack(true);
+      setActionError(null);
+      try {
+        await rollbackSuggestion({ suggestionId, cascadeRelationships });
+        // Refresh the list after successful rollback
+        loadSuggestions(true);
+      } catch (error) {
+        setActionError(
+          error instanceof Error ? error.message : "Failed to undo change"
+        );
+        throw error; // Re-throw so modal can show error
+      } finally {
+        setIsRollingBack(false);
+      }
+    },
+    [rollbackSuggestion, loadSuggestions]
+  );
 
   const handleRecheckPreflight = useCallback(async () => {
     if (!selected) return;
@@ -546,45 +638,72 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
         </div>
         <ScrollArea className="flex-1">
           <div className="p-3 space-y-2">
-            {filtered.length === 0 ? (
+            {isInitialLoad ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-mythos-text-muted" />
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="text-xs text-mythos-text-muted">
                 No Knowledge PRs found.
               </div>
             ) : (
-              filtered.map((item) => (
-                <button
-                  key={item._id}
-                  onClick={() => setSelectedId(item._id)}
-                  className={cn(
-                    "w-full text-left rounded-md border p-3 transition-colors",
-                    selectedId === item._id
-                      ? "border-mythos-accent-primary bg-mythos-bg-secondary"
-                      : "border-mythos-border-default bg-mythos-bg-secondary/40 hover:bg-mythos-bg-secondary"
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-medium text-mythos-text-primary truncate">
-                      {titleCase(item.operation || item.toolName)} ·{" "}
-                      {titleCase(item.targetType)}
+              <>
+                {filtered.map((item) => (
+                  <button
+                    key={item._id}
+                    onClick={() => setSelectedId(item._id)}
+                    className={cn(
+                      "w-full text-left rounded-md border p-3 transition-colors",
+                      selectedId === item._id
+                        ? "border-mythos-accent-primary bg-mythos-bg-secondary"
+                        : "border-mythos-border-default bg-mythos-bg-secondary/40 hover:bg-mythos-bg-secondary"
+                    )}
+                    data-testid={`knowledge-pr-item-${item._id}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-medium text-mythos-text-primary truncate">
+                        {titleCase(item.operation || item.toolName)} ·{" "}
+                        {titleCase(item.targetType)}
+                      </div>
+                      <span
+                        className={cn(
+                          "text-[10px] px-2 py-0.5 rounded-full border",
+                          getStatusBadgeClasses(item.status)
+                        )}
+                      >
+                        {titleCase(item.status)}
+                      </span>
                     </div>
-                    <span
-                      className={cn(
-                        "text-[10px] px-2 py-0.5 rounded-full border",
-                        getStatusBadgeClasses(item.status)
-                      )}
-                    >
-                      {titleCase(item.status)}
-                    </span>
-                  </div>
-                  <div className="text-xs text-mythos-text-muted truncate mt-1">
-                    {item.toolName}
-                    {item.targetId ? ` · ${item.targetId}` : ""}
-                  </div>
-                  <div className="text-[10px] text-mythos-text-muted mt-2">
-                    {formatRelativeTime(item.createdAt)}
-                  </div>
-                </button>
-              ))
+                    <div className="text-xs text-mythos-text-muted truncate mt-1">
+                      {item.toolName}
+                      {item.targetId ? ` · ${item.targetId}` : ""}
+                    </div>
+                    <div className="text-[10px] text-mythos-text-muted mt-2">
+                      {formatRelativeTime(item.createdAt)}
+                    </div>
+                  </button>
+                ))}
+                {/* Load more button */}
+                {hasMore && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleLoadMore}
+                    disabled={isLoading}
+                    className="w-full mt-2"
+                    data-testid="knowledge-pr-load-more"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <ChevronDown className="w-4 h-4" />
+                        Load more
+                      </>
+                    )}
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </ScrollArea>
@@ -737,9 +856,10 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={handleRollback}
-                  disabled={isBusy}
+                  onClick={handleOpenRollbackModal}
+                  disabled={isBusy || isRollingBack}
                   className="gap-1"
+                  data-testid="knowledge-pr-rollback"
                 >
                   <CornerUpLeft className="w-3 h-3" />
                   Undo
@@ -868,6 +988,15 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
           </>
         )}
       </div>
+
+      {/* Rollback confirmation modal */}
+      <RollbackConfirmModal
+        isOpen={rollbackModalOpen}
+        suggestionId={rollbackSuggestionId}
+        onClose={handleCloseRollbackModal}
+        onConfirm={handleConfirmRollback}
+        isRollingBack={isRollingBack}
+      />
     </div>
   );
 }

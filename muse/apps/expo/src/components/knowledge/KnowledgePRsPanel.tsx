@@ -5,15 +5,17 @@
  * Product labels: "Changes to review" / "Version history".
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, TextInput, Pressable, StyleSheet, FlatList, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useAction, useQuery } from 'convex/react';
+import { useAction, useConvex } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
+import type { Id } from '../../../../../convex/_generated/dataModel';
 import { useTheme, spacing, radii, typography } from '@/design-system';
 import { useLayoutStore } from '@mythos/state';
 import { KnowledgeSuggestionDetails } from '@/components/knowledge/KnowledgeSuggestionDetails';
+import { RollbackConfirmModal } from '@/components/knowledge/RollbackConfirmModal';
 import type { KnowledgeStatus, KnowledgeSuggestion } from '@/components/knowledge/types';
 import { formatRelativeTime, titleCase } from '@/components/knowledge/types';
 
@@ -38,11 +40,14 @@ export interface KnowledgePRsPanelProps {
   onClose: () => void;
 }
 
+const PAGE_SIZE = 50;
+
 export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps): JSX.Element {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
   const router = useRouter();
+  const convex = useConvex();
   const { setPendingWriteContent, closeKnowledgePanel } = useLayoutStore();
 
   const [status, setStatus] = useState<KnowledgeStatus | 'all'>('proposed');
@@ -52,21 +57,90 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Pagination state
+  const [suggestions, setSuggestions] = useState<KnowledgeSuggestion[]>([]);
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const isMountedRef = useRef(true);
+
+  // Rollback modal state
+  const [rollbackModalVisible, setRollbackModalVisible] = useState(false);
+  const [rollbackSuggestionId, setRollbackSuggestionId] = useState<string | null>(null);
+  const [isRollingBack, setIsRollingBack] = useState(false);
+
   // Convex API types are too deep for expo typecheck; treat as untyped.
   // @ts-ignore
   const apiAny: any = api;
   const applyDecisions = useAction(apiAny.knowledgeSuggestions.applyDecisions as any);
-  const rollbackSuggestion = useAction(apiAny.knowledgeSuggestions.rollbackSuggestion as any);
-  const suggestions = useQuery(
-    apiAny.knowledgeSuggestions.listByProject as any,
-    projectId
-      ? {
-          projectId,
+  const rollbackSuggestionAction = useAction(apiAny.knowledgeSuggestions.rollbackSuggestion as any);
+
+  // Track mounted state
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Load suggestions with cursor-based pagination
+  const loadSuggestions = useCallback(
+    async (reset = false) => {
+      if (!projectId || isLoading) return;
+
+      setIsLoading(true);
+      try {
+        const currentCursor = reset ? null : cursor;
+        const data = await convex.query(api.knowledgeSuggestions.listByProject, {
+          projectId: projectId as Id<'projects'>,
           status: status === 'all' ? undefined : status,
-          limit: 200,
+          limit: PAGE_SIZE,
+          cursor: currentCursor ?? undefined,
+        }) as KnowledgeSuggestion[];
+
+        if (!isMountedRef.current) return;
+
+        // Derive next cursor from last item's createdAt
+        const nextCursor = data.length > 0 ? data[data.length - 1]!.createdAt : null;
+
+        if (reset) {
+          setSuggestions(data);
+        } else {
+          setSuggestions((prev) => [...prev, ...data]);
         }
-      : ('skip' as any)
-  ) as KnowledgeSuggestion[] | undefined;
+        setCursor(nextCursor);
+        setHasMore(data.length === PAGE_SIZE);
+        setIsInitialLoad(false);
+      } catch (error) {
+        if (!isMountedRef.current) return;
+        console.error('[KnowledgePRs] Failed to load suggestions:', error);
+      } finally {
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [convex, projectId, status, cursor, isLoading]
+  );
+
+  // Load on mount and when filters change
+  useEffect(() => {
+    if (projectId) {
+      setSuggestions([]);
+      setCursor(null);
+      setHasMore(true);
+      setIsInitialLoad(true);
+      loadSuggestions(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, status]);
+
+  const handleLoadMore = useCallback(() => {
+    if (!isLoading && hasMore) {
+      loadSuggestions(false);
+    }
+  }, [isLoading, hasMore, loadSuggestions]);
 
   const filtered = useMemo((): KnowledgeSuggestion[] => {
     const items = suggestions ?? [];
@@ -105,9 +179,10 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
 
   const metaLabel = useMemo((): string => {
     if (!projectId) return 'No project selected';
-    if (suggestions === undefined) return 'Loading…';
-    return `${filtered.length} result${filtered.length === 1 ? '' : 's'}`;
-  }, [filtered.length, projectId, suggestions]);
+    if (isInitialLoad) return 'Loading…';
+    const suffix = hasMore ? '+' : '';
+    return `${filtered.length}${suffix} result${filtered.length === 1 ? '' : 's'}`;
+  }, [filtered.length, hasMore, isInitialLoad, projectId]);
 
   const toggleChecked = useCallback((id: string): void => {
     setCheckedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -132,18 +207,34 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
     }
   }, [applyDecisions, projectId]);
 
-  const handleRollback = useCallback(async (suggestionId: string): Promise<void> => {
-    if (!projectId) return;
-    setIsBusy(true);
-    setActionError(null);
-    try {
-      await rollbackSuggestion({ suggestionId });
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to undo change');
-    } finally {
-      setIsBusy(false);
-    }
-  }, [projectId, rollbackSuggestion]);
+  // Open rollback confirmation modal instead of direct rollback
+  const handleOpenRollbackModal = useCallback((suggestionId: string): void => {
+    setRollbackSuggestionId(suggestionId);
+    setRollbackModalVisible(true);
+  }, []);
+
+  const handleCloseRollbackModal = useCallback((): void => {
+    setRollbackModalVisible(false);
+    setRollbackSuggestionId(null);
+  }, []);
+
+  const handleConfirmRollback = useCallback(
+    async (suggestionId: string, cascadeRelationships: boolean): Promise<void> => {
+      setIsRollingBack(true);
+      setActionError(null);
+      try {
+        await rollbackSuggestionAction({ suggestionId, cascadeRelationships });
+        // Refresh the list after successful rollback
+        loadSuggestions(true);
+      } catch (error) {
+        setActionError(error instanceof Error ? error.message : 'Failed to undo change');
+        throw error; // Re-throw so modal can show error
+      } finally {
+        setIsRollingBack(false);
+      }
+    },
+    [rollbackSuggestionAction, loadSuggestions]
+  );
 
   const handleOpenWriteContent = useCallback((suggestion: KnowledgeSuggestion): void => {
     if (!projectId || suggestion.toolName !== 'write_content') return;
@@ -304,27 +395,53 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
 
       <View style={[styles.body, { flexDirection: isWide ? 'row' : 'column' }]}>
         <View style={[styles.listColumn, { borderRightColor: isWide ? colors.border : 'transparent' }]}>
-          <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false}>
-            {!projectId ? (
-              <View style={styles.emptyState}>
-                <Text style={[styles.emptyTitle, { color: colors.text }]}>Select a project</Text>
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-                  Changes to review appear after the agent requests approval for high-impact tools.
-                </Text>
-              </View>
-            ) : suggestions === undefined ? (
-              <View style={styles.emptyState}>
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>Loading…</Text>
-              </View>
-            ) : filtered.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={[styles.emptyTitle, { color: colors.text }]}>No changes yet</Text>
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-                  Nothing matches this filter.
-                </Text>
-              </View>
-            ) : (
-              filtered.map((s) => {
+          {!projectId ? (
+            <View style={styles.emptyState}>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>Select a project</Text>
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                Changes to review appear after the agent requests approval for high-impact tools.
+              </Text>
+            </View>
+          ) : isInitialLoad ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="small" color={colors.textMuted} />
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>Loading…</Text>
+            </View>
+          ) : filtered.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No changes yet</Text>
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                Nothing matches this filter.
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filtered}
+              keyExtractor={(item) => item._id}
+              contentContainerStyle={styles.listScroll}
+              showsVerticalScrollIndicator={false}
+              onEndReached={handleLoadMore}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={
+                isLoading ? (
+                  <View style={styles.loadingFooter}>
+                    <ActivityIndicator size="small" color={colors.textMuted} />
+                  </View>
+                ) : hasMore ? (
+                  <Pressable
+                    onPress={handleLoadMore}
+                    style={({ pressed, hovered }) => [
+                      styles.loadMoreButton,
+                      { backgroundColor: colors.bgSurface, borderColor: colors.border },
+                      (pressed || hovered) && { backgroundColor: colors.bgHover },
+                    ]}
+                  >
+                    <Feather name="chevron-down" size={14} color={colors.textMuted} />
+                    <Text style={[styles.loadMoreText, { color: colors.textMuted }]}>Load more</Text>
+                  </Pressable>
+                ) : null
+              }
+              renderItem={({ item: s }) => {
                 const isSelected = s._id === selectedId;
                 const isChecked = checkedSet.has(s._id);
                 const pill = statusPillColors(s.status, colors);
@@ -332,7 +449,6 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
                 const subtitle = `${titleCase(s.toolName)}${s.targetId ? ` · ${s.targetId}` : ''}`;
                 return (
                   <Pressable
-                    key={s._id}
                     testID={`approval-item-${s._id}`}
                     accessibilityLabel={`Change to review: ${title}`}
                     onPress={() => setSelectedId(s._id)}
@@ -393,9 +509,9 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
                     </View>
                   </Pressable>
                 );
-              })
-            )}
-          </ScrollView>
+              }}
+            />
+          )}
         </View>
 
         <View style={styles.detailsColumn}>
@@ -403,12 +519,21 @@ export function KnowledgePRsPanel({ projectId, onClose }: KnowledgePRsPanelProps
             projectId={projectId}
             suggestion={selected}
             onApply={handleApply}
-            onRollback={handleRollback}
+            onRollback={handleOpenRollbackModal}
             onOpenWriteContent={handleOpenWriteContent}
-            isBusy={isBusy}
+            isBusy={isBusy || isRollingBack}
           />
         </View>
       </View>
+
+      {/* Rollback confirmation modal */}
+      <RollbackConfirmModal
+        visible={rollbackModalVisible}
+        suggestionId={rollbackSuggestionId}
+        onClose={handleCloseRollbackModal}
+        onConfirm={handleConfirmRollback}
+        isRollingBack={isRollingBack}
+      />
     </View>
   );
 }
@@ -502,6 +627,26 @@ const styles = StyleSheet.create({
     padding: spacing[3],
     gap: spacing[2],
   } as any,
+  loadingFooter: {
+    padding: spacing[4],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing[2],
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[4],
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    marginTop: spacing[2],
+  },
+  loadMoreText: {
+    fontSize: typography.sm,
+    fontWeight: '500',
+  },
   row: {
     borderWidth: 1,
     borderRadius: radii.lg,
