@@ -7,7 +7,6 @@
 import { v } from "convex/values";
 import { action, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
 import { retrieveRAGContext } from "./ai/rag";
 import { canAccessFeature, getUserTier } from "./lib/entitlements";
 

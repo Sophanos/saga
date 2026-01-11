@@ -287,8 +287,7 @@ async function getProjectAccessError(
   }
 
   const access = await ctx.runQuery(
-    // @ts-expect-error Deep types
-    internal["ai/tools/projectGraphHandlers"].getProjectMemberRole,
+    (internal as any)["ai/tools/projectGraphHandlers"].getProjectMemberRole,
     { projectId, userId: actorUserId }
   );
 
@@ -314,8 +313,7 @@ async function resolveEntityByName(
   type?: string
 ): Promise<{ entity: Doc<"entities"> | null; error?: string }> {
   const matches = (await ctx.runQuery(
-    // @ts-expect-error Deep types
-    internal["ai/tools/projectGraphHandlers"].findEntityByCanonical,
+    (internal as any)["ai/tools/projectGraphHandlers"].findEntityByCanonical,
     { projectId, name, type }
   )) as Doc<"entities">[] | null;
 
@@ -447,8 +445,7 @@ export const executeCreateEntity = internalAction({
     }
 
     const entityId = await ctx.runMutation(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].createEntityMutation,
+      (internal as any)["ai/tools/projectGraphHandlers"].createEntityMutation,
       {
         projectId: projectIdVal,
         type: args.type,
@@ -576,8 +573,7 @@ export const executeUpdateEntity = internalAction({
     }
 
     await ctx.runMutation(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].updateEntityMutation,
+      (internal as any)["ai/tools/projectGraphHandlers"].updateEntityMutation,
       { id: entity._id, updates: dbUpdates }
     );
 
@@ -683,8 +679,7 @@ export const executeCreateRelationship = internalAction({
     const target = targetResult.entity;
 
     const existing = await ctx.runQuery(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].findRelationship,
+      (internal as any)["ai/tools/projectGraphHandlers"].findRelationship,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -701,8 +696,7 @@ export const executeCreateRelationship = internalAction({
     }
 
     const relId = await ctx.runMutation(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].createRelationshipMutation,
+      (internal as any)["ai/tools/projectGraphHandlers"].createRelationshipMutation,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -802,8 +796,7 @@ export const executeUpdateRelationship = internalAction({
     const target = targetResult.entity;
 
     const rel = await ctx.runQuery(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].findRelationship,
+      (internal as any)["ai/tools/projectGraphHandlers"].findRelationship,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -833,8 +826,7 @@ export const executeUpdateRelationship = internalAction({
     }
 
     await ctx.runMutation(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].updateRelationshipMutation,
+      (internal as any)["ai/tools/projectGraphHandlers"].updateRelationshipMutation,
       { id: rel._id, updates: args.updates }
     );
 
@@ -923,8 +915,7 @@ export const executeCreateNode = internalAction({
     }
 
     const entityId = await ctx.runMutation(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].createEntityMutation,
+      (internal as any)["ai/tools/projectGraphHandlers"].createEntityMutation,
       {
         projectId: projectIdVal,
         type: args.type,
@@ -1043,8 +1034,7 @@ export const executeUpdateNode = internalAction({
     }
 
     await ctx.runMutation(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].updateEntityMutation,
+      (internal as any)["ai/tools/projectGraphHandlers"].updateEntityMutation,
       { id: entity._id, updates: dbUpdates }
     );
 
@@ -1138,8 +1128,7 @@ export const executeCreateEdge = internalAction({
     const target = targetResult.entity;
 
     const existing = await ctx.runQuery(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].findRelationship,
+      (internal as any)["ai/tools/projectGraphHandlers"].findRelationship,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -1156,8 +1145,7 @@ export const executeCreateEdge = internalAction({
     }
 
     const relId = await ctx.runMutation(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].createRelationshipMutation,
+      (internal as any)["ai/tools/projectGraphHandlers"].createRelationshipMutation,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -1245,8 +1233,7 @@ export const executeUpdateEdge = internalAction({
     const target = targetResult.entity;
 
     const rel = await ctx.runQuery(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].findRelationship,
+      (internal as any)["ai/tools/projectGraphHandlers"].findRelationship,
       {
         projectId: projectIdVal,
         sourceId: source._id,
@@ -1276,8 +1263,7 @@ export const executeUpdateEdge = internalAction({
     }
 
     await ctx.runMutation(
-      // @ts-expect-error Deep types
-      internal["ai/tools/projectGraphHandlers"].updateRelationshipMutation,
+      (internal as any)["ai/tools/projectGraphHandlers"].updateRelationshipMutation,
       { id: rel._id, updates: args.updates }
     );
 

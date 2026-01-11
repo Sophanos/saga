@@ -124,10 +124,11 @@ async function resolveAuthHeader(authToken?: string): Promise<string | null> {
   }
 
   try {
-    const token = await authClient.$fetch("/api/auth/convex-token", {
+    const response = await authClient.$fetch("/api/auth/convex-token", {
       method: "GET",
     });
-    return token?.data?.token ? `Bearer ${token.data.token}` : null;
+    const tokenData = response?.data as { token?: string } | undefined;
+    return tokenData?.token ? `Bearer ${tokenData.token}` : null;
   } catch {
     return null;
   }

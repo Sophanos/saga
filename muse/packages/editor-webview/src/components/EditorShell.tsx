@@ -656,5 +656,3 @@ export function EditorShell({
     </div>
   );
 }
-
-export type { DocumentState, EditorShellProps };

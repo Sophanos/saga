@@ -25,7 +25,6 @@
     "@mythos/storage": "workspace:*",
     "@mythos/theme": "workspace:*",
     "@mythos/ui": "workspace:*",
-    "@mythos/website": "workspace:*",
     "@tippyjs/react": "^4.2.6",
     "@tiptap/react": "^2.10.4",
     "@xyflow/react": "^12.3.0",

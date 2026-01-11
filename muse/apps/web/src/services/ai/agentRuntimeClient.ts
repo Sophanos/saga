@@ -44,10 +44,11 @@ async function resolveAuthHeader(authToken?: string): Promise<string | null> {
   }
 
   try {
-    const token = await authClient.$fetch("/api/auth/convex-token", {
+    const response = await authClient.$fetch("/api/auth/convex-token", {
       method: "GET",
     });
-    return token?.data?.token ? `Bearer ${token.data.token}` : null;
+    const tokenData = response?.data as { token?: string } | undefined;
+    return tokenData?.token ? `Bearer ${tokenData.token}` : null;
   } catch {
     return null;
   }
@@ -363,14 +364,14 @@ async function processSSEStream(
   const dataLines: string[] = [];
   let doneReceived = false;
   let consecutiveTimeouts = 0;
-  let pendingRead: Promise<ReadableStreamReadResult<Uint8Array>> | null = null;
+  let pendingRead: ReturnType<typeof reader.read> | null = null;
 
   try {
     while (true) {
-      const readPromise = pendingRead ?? reader.read();
+      const readPromise: ReturnType<typeof reader.read> = pendingRead ?? reader.read();
       pendingRead = readPromise;
 
-      let readResult: ReadableStreamReadResult<Uint8Array>;
+      let readResult: Awaited<ReturnType<typeof reader.read>>;
       try {
         readResult = await waitWithTimeout(readPromise);
         pendingRead = null;

@@ -29,7 +29,7 @@ function mapConvexRelationshipToRelationship(
     type: relationship.type as Relationship["type"],
     bidirectional: relationship.bidirectional,
     strength: relationship.strength ?? undefined,
-    metadata: relationship.metadata ?? undefined,
+    metadata: relationship.metadata as Relationship["metadata"],
     notes: relationship.notes ?? undefined,
     createdAt: new Date(relationship.createdAt),
   };

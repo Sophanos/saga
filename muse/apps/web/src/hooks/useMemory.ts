@@ -153,7 +153,7 @@ export function useMemory(options?: UseMemoryOptions): UseMemoryResult {
         grouped.set(mem.category, list);
       }
       for (const [cat, mems] of grouped) {
-        setCategoryCache(projectId, cat, mems);
+        setCategoryCache(projectId, cat as "decision" | "style" | "preference", mems);
       }
     }
   }, [memories, projectId, setCategoryCache]);

@@ -113,7 +113,7 @@ export const updateEntityExecutor: ToolDefinition<UpdateEntityArgs, UpdateEntity
       }
 
       if (hasPropertyUpdates) {
-        updates.properties = propertyUpdates;
+        updates.properties = propertyUpdates as Record<string, import("@mythos/core").PropertyValue>;
       }
 
       // Persist updates

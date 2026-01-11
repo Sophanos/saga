@@ -5,6 +5,18 @@
  * Only imported when running in Tauri.
  */
 
+// Type declarations for Tauri APIs (dynamically imported at runtime)
+// These modules only exist in Tauri builds
+interface TauriShell {
+  open(url: string): Promise<void>;
+}
+interface TauriEvent {
+  listen<T>(
+    event: string,
+    handler: (event: { payload: T }) => void | Promise<void>
+  ): Promise<() => void>;
+}
+
 const SCHEME = "mythos";
 
 /**
@@ -19,8 +31,9 @@ export function isTauri(): boolean {
  */
 export async function openInBrowser(url: string): Promise<void> {
   if (!isTauri()) return;
-  const { open } = await import("@tauri-apps/plugin-shell");
-  await open(url);
+  // @ts-expect-error - Tauri module only exists in Tauri builds
+  const mod = await import("@tauri-apps/plugin-shell") as TauriShell;
+  await mod.open(url);
 }
 
 /**
@@ -64,9 +77,10 @@ export async function setupAuthDeepLinks(
   }
 
   try {
-    const { listen } = await import("@tauri-apps/api/event");
-    const unlisten = await listen("deep-link://new-url", async (event) => {
-      const url = event.payload as string;
+    // @ts-expect-error - Tauri module only exists in Tauri builds
+    const mod = await import("@tauri-apps/api/event") as TauriEvent;
+    const unlisten = await mod.listen<string>("deep-link://new-url", async (event) => {
+      const url = event.payload;
       const handled = await handleAuthCallback(url, refreshSession);
       if (handled && onAuthComplete) {
         onAuthComplete();

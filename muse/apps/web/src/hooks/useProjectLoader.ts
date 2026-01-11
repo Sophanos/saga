@@ -78,7 +78,7 @@ function mapConvexProjectToProject(project: ConvexProject): Project {
     id: project._id,
     name: project.name,
     description: project.description ?? undefined,
-    templateId: project.templateId ?? undefined,
+    templateId: project.templateId as Project["templateId"],
     templateOverrides: project.templateOverrides as Project["templateOverrides"] | undefined,
     config,
     createdAt: new Date(project.createdAt),
@@ -126,7 +126,7 @@ function mapConvexRelationshipToRelationship(relationship: ConvexRelationship): 
     type: relationship.type as Relationship["type"],
     bidirectional: relationship.bidirectional,
     strength: relationship.strength ?? undefined,
-    metadata: relationship.metadata ?? undefined,
+    metadata: relationship.metadata as Relationship["metadata"],
     notes: relationship.notes ?? undefined,
     createdAt: new Date(relationship.createdAt),
   };
@@ -282,14 +282,14 @@ export function useProjectLoader(
         ]);
 
         // Convert database types to core types and batch update stores
-        const documents = (dbDocuments ?? []).map((doc) =>
-          mapConvexDocumentToDocument(doc as ConvexDocument)
+        const documents = (dbDocuments ?? []).map((doc: ConvexDocument) =>
+          mapConvexDocumentToDocument(doc)
         );
-        const entities = (dbEntities ?? []).map((entity) =>
-          mapConvexEntityToEntity(entity as ConvexEntity)
+        const entities = (dbEntities ?? []).map((entity: ConvexEntity) =>
+          mapConvexEntityToEntity(entity)
         );
-        const relationships = (dbRelationships ?? []).map((relationship) =>
-          mapConvexRelationshipToRelationship(relationship as ConvexRelationship)
+        const relationships = (dbRelationships ?? []).map((relationship: ConvexRelationship) =>
+          mapConvexRelationshipToRelationship(relationship)
         );
 
         // Hydrate the store with project

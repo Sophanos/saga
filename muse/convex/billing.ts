@@ -125,10 +125,11 @@ export const getBillingSubscriptionSnapshot = internalQuery({
 
     let usageDetail: BillingUsageDetail | undefined;
     if (args.projectId) {
-      await assertProjectAccess(ctx, args.userId, args.projectId);
+      const projectId = args.projectId;
+      await assertProjectAccess(ctx, args.userId, projectId);
       const memories = await ctx.db
         .query("memories")
-        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .collect();
       usageDetail = {
         memories: buildMemoryUsage(memories, nowMs, tierConfig),

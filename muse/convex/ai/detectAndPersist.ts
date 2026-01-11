@@ -41,6 +41,7 @@ export const detectAndPersistEntitiesPublic = action({
       throw new Error("Authentication required");
     }
 
+    // @ts-expect-error Deep type instantiation
     await ctx.runQuery(api.projects.get, { id: args.projectId });
 
     const detection = await ctx.runAction(internal.ai.detect.detectEntities, {

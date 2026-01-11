@@ -5,7 +5,7 @@ import { TemplatePickerModal } from "./components/modals";
 import { AuthScreen, AuthCallback } from "./components/auth";
 import { InviteAcceptPage } from "./components/collaboration";
 import { LAST_DOCUMENT_KEY, PENDING_INVITE_TOKEN_KEY } from "./constants/storageKeys";
-import { LandingPage } from "@mythos/website/pages";
+import { LandingPage } from "./pages";
 import { useProjects } from "./hooks/useProjects";
 import { useProjectLoader } from "./hooks/useProjectLoader";
 import { useAnonymousProjectLoader } from "./hooks/useAnonymousProjectLoader";

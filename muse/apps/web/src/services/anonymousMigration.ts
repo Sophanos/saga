@@ -12,7 +12,14 @@ export interface AnonymousMigrationSummary {
   hasData: boolean;
   project: string | null;
   documentCount: number;
+  entityCount: number;
   chatMessageCount: number;
+}
+
+export interface MigrationResult {
+  success: boolean;
+  projectId?: string;
+  error?: string;
 }
 
 /**
@@ -25,19 +32,19 @@ export function getAnonymousMigrationSummary(): AnonymousMigrationSummary {
     hasData: state.project !== null || state.chatMessageCount > 0,
     project: state.project?.name ?? null,
     documentCount: state.documents.length,
+    entityCount: 0, // TODO: track entities in anonymous store
     chatMessageCount: state.chatMessageCount,
   };
 }
 
 /**
  * Migrate anonymous session data to the authenticated user's account
- * Returns true if migration was successful
  */
-export async function migrateAnonymousData(): Promise<boolean> {
+export async function migrateAnonymousData(): Promise<MigrationResult> {
   const state = useAnonymousStore.getState();
 
   if (!state.project) {
-    return true; // Nothing to migrate
+    return { success: true }; // Nothing to migrate
   }
 
   try {
@@ -50,10 +57,10 @@ export async function migrateAnonymousData(): Promise<boolean> {
 
     // For now, just clear the anonymous state
     state.clearAllData();
-    return true;
+    return { success: true };
   } catch (error) {
     console.error("[anonymousMigration] Failed to migrate:", error);
-    return false;
+    return { success: false, error: String(error) };
   }
 }
 

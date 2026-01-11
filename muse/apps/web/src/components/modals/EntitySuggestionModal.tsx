@@ -48,6 +48,7 @@ import type {
   DetectedEntity,
   DetectionWarning,
   GraphEntityType,
+  WriterEntityType,
 } from "@mythos/core";
 import {
   WRITER_ENTITY_TYPE_CONFIG,
@@ -503,7 +504,7 @@ export function EntitySuggestionModal({
   const orderedTypes = useMemo(() => {
     const known = new Set(WRITER_ENTITY_TYPES);
     const extras = Object.keys(groupedEntities)
-      .filter((type) => !known.has(type as GraphEntityType))
+      .filter((type) => !known.has(type as WriterEntityType))
       .sort();
     return [...WRITER_ENTITY_TYPES, ...extras];
   }, [groupedEntities]);

@@ -8,7 +8,6 @@ const config: Config = {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
     "../../packages/ui/src/**/*.{js,ts,jsx,tsx}",
-    "../website/src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     ...baseConfig.theme,

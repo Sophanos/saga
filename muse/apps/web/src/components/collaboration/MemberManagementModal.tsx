@@ -20,6 +20,8 @@ import {
   type ProjectMember,
   type ProjectRole,
 } from "@mythos/state";
+
+type EditableRole = "editor" | "viewer";
 import { useCurrentProject } from "../../stores";
 import { useAuthStore } from "../../stores/auth";
 
@@ -44,7 +46,7 @@ interface Feedback {
 // Constants
 // ============================================================================
 
-const ROLE_OPTIONS: { value: ProjectRole; label: string }[] = [
+const ROLE_OPTIONS: { value: EditableRole; label: string }[] = [
   { value: "editor", label: "Editor" },
   { value: "viewer", label: "Viewer" },
 ];
@@ -71,7 +73,7 @@ interface MemberRowProps {
   isCurrentUser: boolean;
   isUpdating: boolean;
   isConfirmingRemove: boolean;
-  onRoleChange: (newRole: ProjectRole) => void;
+  onRoleChange: (newRole: EditableRole) => void;
   onRemoveClick: () => void;
   onConfirmRemove: () => void;
   onCancelRemove: () => void;
@@ -144,7 +146,7 @@ function MemberRow({
         {canChangeRole ? (
           <Select
             value={member.role}
-            onChange={(v) => onRoleChange(v as ProjectRole)}
+            onChange={(v) => onRoleChange(v as EditableRole)}
             options={ROLE_OPTIONS}
             disabled={isUpdating}
             className="w-24 text-xs"
@@ -354,7 +356,7 @@ export function MemberManagementModal({
   }, [isOpen]);
 
   const handleRoleChange = useCallback(
-    async (userId: string, newRole: ProjectRole) => {
+    async (userId: string, newRole: EditableRole) => {
       if (!project?.id) return;
 
       setUpdatingUserId(userId);

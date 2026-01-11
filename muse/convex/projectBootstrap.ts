@@ -226,72 +226,18 @@ export const bootstrap = mutation({
       });
     }
 
-    let genesisPersisted: {
-      success: boolean;
-      entitiesCreated: number;
-      relationshipsCreated: number;
-    } | null = null;
-
+    // Schedule genesis work asynchronously if requested
+    // Note: Mutations cannot call actions directly, so genesis runs in background
     if (args.genesis?.prompt) {
-      const genesisResult = await ctx.runAction((internal as any)["ai/genesis"].runGenesis, {
+      await ctx.scheduler.runAfter(0, (internal as any)["ai/genesis"].runGenesisAndPersist, {
+        projectId,
         prompt: args.genesis.prompt,
         genre: args.genre,
         entityCount: args.genesis.entityCount,
         detailLevel: args.genesis.detailLevel,
         includeOutline: args.genesis.includeOutline ?? true,
+        seedDocumentId,
       });
-
-      const persistence = await ctx.runAction((internal as any)["ai/genesis"].persistGenesisWorld, {
-        projectId,
-        result: genesisResult,
-      });
-
-      genesisPersisted = {
-        success: !!persistence?.success,
-        entitiesCreated: persistence?.entitiesCreated ?? 0,
-        relationshipsCreated: persistence?.relationshipsCreated ?? 0,
-      };
-
-      if (Array.isArray(genesisResult?.outline) && genesisResult.outline.length > 0) {
-        let outlineIndex = seedDocumentId ? 2 : 1;
-        for (const chapter of genesisResult.outline) {
-          const summary =
-            typeof chapter?.summary === "string" ? chapter.summary : "Outline summary";
-          const title =
-            typeof chapter?.title === "string" ? chapter.title : `Chapter ${outlineIndex}`;
-
-          const contentText = `// ${summary}`;
-
-          const outlineId = await ctx.db.insert("documents", {
-            projectId,
-            type: "chapter",
-            title,
-            content: {
-              type: "doc",
-              content: [
-                {
-                  type: "paragraph",
-                  content: [{ type: "text", text: contentText }],
-                },
-              ],
-            },
-            contentText,
-            parentId: undefined,
-            orderIndex: outlineIndex,
-            wordCount: countWords(summary),
-            createdAt: now,
-            updatedAt: now,
-          });
-
-          await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
-            projectId,
-            targetType: "document",
-            targetId: outlineId,
-          });
-
-          outlineIndex += 1;
-        }
-      }
     }
 
     return {
@@ -299,7 +245,7 @@ export const bootstrap = mutation({
       initialDocumentId,
       seedDocumentId,
       seedContentText,
-      genesis: genesisPersisted,
+      genesis: args.genesis?.prompt ? "scheduled" : null,
     };
   },
 });

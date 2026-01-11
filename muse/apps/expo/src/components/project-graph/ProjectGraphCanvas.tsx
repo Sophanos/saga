@@ -48,7 +48,7 @@ export function ProjectGraphCanvas({ nodes: graphNodes, edges: graphEdges, onLay
         animated: allowEdgeAnimation ? edge.animated : false,
       }));
 
-      setNodes(layoutedNodes);
+      setNodes(layoutedNodes as EntityNodeType[]);
       setEdges(nextEdges);
       onLayoutComplete?.();
     };
@@ -56,13 +56,14 @@ export function ProjectGraphCanvas({ nodes: graphNodes, edges: graphEdges, onLay
     void applyLayout();
   }, [graphEdges, graphNodes, layout, onLayoutComplete, setEdges, setNodes]);
 
+  // Cast to any to avoid React types version conflicts between @xyflow/react and @types/react
   const nodeTypes = useMemo(() => ({
     entityNode: EntityNode,
-  }), []);
+  }) as any, []);
 
   const edgeTypes = useMemo(() => ({
     relationshipEdge: RelationshipEdge,
-  }), []);
+  }) as any, []);
 
   const handleNodeClick: NodeMouseHandler<EntityNodeType> = () => {};
 

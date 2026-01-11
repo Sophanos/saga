@@ -525,6 +525,23 @@ export default defineSchema({
     .index("by_thread", ["threadId"]),
 
   // ============================================================
+  // TEMPLATE BUILDER SESSIONS (AI onboarding continuity)
+  // ============================================================
+  templateBuilderSessions: defineTable({
+    userId: v.string(),
+    threadId: v.string(),
+    projectType: v.optional(v.string()),
+    phase: v.string(),
+    partialDraft: v.optional(v.any()),
+    detectedElements: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_thread", ["threadId"])
+    .index("by_updated", ["updatedAt"]),
+
+  // ============================================================
   // CHAT MESSAGES
   // ============================================================
   chatMessages: defineTable({
@@ -1144,6 +1161,41 @@ export default defineSchema({
     .index("by_thread", ["threadId"])
     .index("by_user_date", ["userId", "createdAt"])
     .index("by_endpoint", ["endpoint"]),
+
+  // ============================================================
+  // FLOW SESSIONS (Focus mode tracking)
+  // ============================================================
+  flowSessions: defineTable({
+    projectId: v.id("projects"),
+    documentId: v.optional(v.id("documents")),
+    userId: v.string(),
+
+    // Timing
+    startedAtMs: v.number(),
+    endedAtMs: v.number(),
+    durationSeconds: v.number(),
+
+    // Word metrics
+    startingWordCount: v.number(),
+    endingWordCount: v.number(),
+    wordsWritten: v.number(),
+
+    // Timer stats
+    completedPomodoros: v.number(),
+    totalFocusedSeconds: v.number(),
+
+    // Session settings (captured at time of session)
+    focusLevel: v.optional(v.string()), // 'none' | 'sentence' | 'paragraph'
+    typewriterScrolling: v.optional(v.boolean()),
+    timerMode: v.optional(v.string()), // 'pomodoro' | 'sprint' | 'custom' | 'none'
+
+    createdAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_project_createdAt", ["projectId", "createdAt"])
+    .index("by_project_user_createdAt", ["projectId", "userId", "createdAt"])
+    .index("by_document_createdAt", ["documentId", "createdAt"])
+    .index("by_user_createdAt", ["userId", "createdAt"]),
 
   // ============================================================
   // VECTOR DELETE OUTBOX

@@ -163,9 +163,9 @@ export function ModalHost() {
     }
   }, [
     modal?.type,
-    modal?.entityId,
-    modal?.relationshipId,
-    modal?.mode,
+    modal && "entityId" in modal ? modal.entityId : undefined,
+    modal && "relationshipId" in modal ? modal.relationshipId : undefined,
+    modal && "mode" in modal ? modal.mode : undefined,
     clearEntityError,
     clearRelationshipError,
   ]);

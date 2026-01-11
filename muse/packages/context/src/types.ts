@@ -83,6 +83,11 @@ export interface UnifiedContextHints {
   conversationId?: string;
   /** Project-level personalization hints */
   project?: ProjectPersonalizationContext;
+  /** Template builder onboarding hints */
+  templateBuilder?: {
+    projectType?: string;
+    phase?: string;
+  };
 }
 
 // Re-export relevant types

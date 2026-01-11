@@ -193,7 +193,6 @@ describe("Saga agent runtime", () => {
     });
 
     const { chunks } = await drainStream(t, streamId);
-    // @ts-expect-error Type instantiation deep - generated API types are complex
     const replay = await t.query(api.ai.streams.replay, {
       streamId,
       afterIndex: chunks[1]?.index ?? 0,

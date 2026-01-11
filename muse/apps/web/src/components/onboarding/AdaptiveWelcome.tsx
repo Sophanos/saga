@@ -82,7 +82,7 @@ const VARIANT_CONFIG: Record<
 };
 
 export function AdaptiveWelcome({
-  userId,
+  userId: _userId,
   userName,
   onComplete,
   onSkipToWizard,
@@ -102,7 +102,7 @@ export function AdaptiveWelcome({
       setIsMigrating(true);
       setMigrationError(null);
 
-      const result = await migrateAnonymousData(userId);
+      const result = await migrateAnonymousData();
 
       setIsMigrating(false);
 

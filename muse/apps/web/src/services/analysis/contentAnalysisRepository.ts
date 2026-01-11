@@ -15,8 +15,8 @@ async function getConvexClient(): Promise<ConvexHttpClient> {
     cachedClient = new ConvexHttpClient(CONVEX_URL);
   }
 
-  const token = await authClient.$fetch("/api/auth/convex-token", { method: "GET" });
-  const nextToken = token?.data?.token ?? null;
+  const response = await authClient.$fetch("/api/auth/convex-token", { method: "GET" });
+  const nextToken = (response?.data as { token?: string } | undefined)?.token ?? null;
   if (!nextToken) {
     throw new Error("Missing Convex auth token");
   }

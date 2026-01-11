@@ -24,7 +24,15 @@ export interface UseProjectsResult {
 export function useProjects(): UseProjectsResult {
   const projectsQuery = useQuery(api.projects.list);
 
-  const projects: ProjectSummary[] = (projectsQuery ?? []).map((p) => ({
+  const projects: ProjectSummary[] = (projectsQuery ?? []).map((p: {
+    _id: string;
+    name: string;
+    description?: string;
+    genre?: string;
+    updatedAt: number;
+    createdAt: number;
+    role?: "owner" | "editor" | "viewer";
+  }) => ({
     id: p._id,
     name: p.name,
     description: p.description ?? null,

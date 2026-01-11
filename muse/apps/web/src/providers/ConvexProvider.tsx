@@ -35,10 +35,10 @@ function useConvexAuth() {
       fetchAccessToken: async () => {
         // convexClient plugin handles token exchange with Better Auth
         // The token is automatically managed by the crossDomainClient plugin
-        const token = await authClient.$fetch("/api/auth/convex-token", {
+        const response = await authClient.$fetch("/api/auth/convex-token", {
           method: "GET",
         });
-        return token?.data?.token ?? null;
+        return (response?.data as { token?: string } | undefined)?.token ?? null;
       },
     }),
     [session, isPending]

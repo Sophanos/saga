@@ -353,12 +353,19 @@ http.route({
         });
       }
 
-      if (threadId && !isTemplateBuilder) {
-        await ctx.runQuery((internal as any)["ai/threads"].assertThreadAccess, {
-          threadId,
-          projectId: projectIdValue,
-          userId: auth.userId,
-        });
+      if (threadId) {
+        if (isTemplateBuilder) {
+          await ctx.runQuery((internal as any).templateBuilderSessions.assertThreadOwner, {
+            threadId,
+            userId: auth.userId,
+          });
+        } else {
+          await ctx.runQuery((internal as any)["ai/threads"].assertThreadAccess, {
+            threadId,
+            projectId: projectIdValue,
+            userId: auth.userId,
+          });
+        }
       }
 
       // Route by kind
@@ -646,7 +653,7 @@ http.route({
         })
         .slice(0, options?.maxEntities ?? result.entities.length);
 
-      const matchedToExisting = detectedEntities.filter((entity) => entity.matchedExistingId).length;
+      const matchedToExisting = detectedEntities.filter((entity: { matchedExistingId?: string }) => entity.matchedExistingId).length;
       const byType = result.stats?.byType ?? {};
       const stats = {
         charactersAnalyzed: text.length,

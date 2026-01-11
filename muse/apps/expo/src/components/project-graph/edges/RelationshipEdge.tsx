@@ -15,6 +15,7 @@ export interface RelationshipEdgeData {
   label: string;
   category: RelationshipCategory;
   bidirectional?: boolean;
+  [key: string]: unknown;
 }
 
 export type RelationshipEdgeType = Edge<RelationshipEdgeData>;

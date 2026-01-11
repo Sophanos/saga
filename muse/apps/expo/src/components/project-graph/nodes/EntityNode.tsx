@@ -8,6 +8,7 @@ export interface EntityNodeData {
   iconName?: string;
   displayName?: string;
   color: string;
+  [key: string]: unknown;
 }
 
 export type EntityNodeType = Node<EntityNodeData>;

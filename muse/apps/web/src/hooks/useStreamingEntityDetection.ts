@@ -91,15 +91,15 @@ function mapToDetectedEntity(
     occurrences: entity.textSpan
       ? [
           {
-            start: entity.textSpan.start,
-            end: entity.textSpan.end,
-            text: entity.textSpan.text,
-            variant: entity.name,
+            startOffset: entity.textSpan.start,
+            endOffset: entity.textSpan.end,
+            matchedText: entity.textSpan.text,
+            context: entity.name,
           },
         ]
       : [],
     suggestedAliases: entity.aliases,
-    properties: entity.properties as Record<string, string | number | boolean>,
+    inferredProperties: entity.properties as Record<string, unknown>,
   };
 }
 
@@ -182,9 +182,14 @@ export function useStreamingEntityDetection() {
         }
 
         // Map result entities to DetectedEntity type
-        const detectedEntities: DetectedEntity[] = result.entities.map((e, i) =>
-          mapToDetectedEntity(e, i)
-        );
+        const detectedEntities: DetectedEntity[] = result.entities.map((e: {
+          name: string;
+          type: string;
+          aliases: string[];
+          confidence: number;
+          properties: Record<string, unknown>;
+          textSpan?: { start: number; end: number; text: string };
+        }, i: number) => mapToDetectedEntity(e, i));
 
         // Progressive UI feedback - add entities one by one
         const progressiveDelay = options?.progressiveDelayMs ?? 50;
@@ -285,9 +290,14 @@ export async function detectEntitiesSimple(
     contextLength: options?.contextLength,
   });
 
-  const entities: DetectedEntity[] = result.entities.map((e, i) =>
-    mapToDetectedEntity(e, i)
-  );
+  const entities: DetectedEntity[] = result.entities.map((e: {
+    name: string;
+    type: string;
+    aliases: string[];
+    confidence: number;
+    properties: Record<string, unknown>;
+    textSpan?: { start: number; end: number; text: string };
+  }, i: number) => mapToDetectedEntity(e, i));
 
   const stats = mapToDetectionStats(result.stats, text.length);
 
