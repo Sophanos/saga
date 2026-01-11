@@ -25,6 +25,15 @@ export const subscriptionStore = v.union(
   v.literal("PROMOTIONAL")
 );
 
+const artifactSourceSchema = v.object({
+  type: v.union(v.literal("document"), v.literal("entity"), v.literal("memory")),
+  id: v.string(),
+  title: v.optional(v.string()),
+  manual: v.boolean(),
+  addedAt: v.number(),
+  sourceUpdatedAt: v.optional(v.number()),
+});
+
 /**
  * Saga Convex Schema
  *
@@ -212,6 +221,66 @@ export default defineSchema({
     .index("by_document_createdAt", ["documentId", "createdAt"])
     .index("by_suggestion_id", ["suggestionId"])
     .index("by_project", ["projectId"]),
+
+  // ============================================================
+  // WIDGET EXECUTIONS + ARTIFACTS (MVP1)
+  // ============================================================
+  widgetExecutions: defineTable({
+    projectId: v.id("projects"),
+    userId: v.string(),
+    widgetId: v.string(),
+    widgetVersion: v.string(),
+    widgetType: v.union(v.literal("inline"), v.literal("artifact")),
+    documentId: v.optional(v.id("documents")),
+    selectionText: v.optional(v.string()),
+    selectionRange: v.optional(v.object({ from: v.number(), to: v.number() })),
+    parameters: v.optional(v.any()),
+    status: v.string(),
+    model: v.optional(v.string()),
+    output: v.optional(v.string()),
+    sources: v.array(artifactSourceSchema),
+    error: v.optional(v.string()),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_project_startedAt", ["projectId", "startedAt"])
+    .index("by_project_widget", ["projectId", "widgetId"])
+    .index("by_project_user", ["projectId", "userId"]),
+
+  artifacts: defineTable({
+    projectId: v.id("projects"),
+    createdBy: v.string(),
+    type: v.string(),
+    status: v.union(v.literal("draft"), v.literal("manually_modified")),
+    title: v.string(),
+    content: v.string(),
+    sources: v.array(artifactSourceSchema),
+    executionContext: v.object({
+      widgetId: v.string(),
+      widgetVersion: v.string(),
+      model: v.string(),
+      inputs: v.any(),
+      startedAt: v.number(),
+      completedAt: v.number(),
+    }),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project_updatedAt", ["projectId", "updatedAt"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_project_type", ["projectId", "type"]),
+
+  artifactVersions: defineTable({
+    projectId: v.id("projects"),
+    artifactId: v.id("artifacts"),
+    version: v.number(),
+    content: v.string(),
+    sources: v.array(artifactSourceSchema),
+    executionContext: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_artifact_version", ["artifactId", "version"])
+    .index("by_project_createdAt", ["projectId", "createdAt"]),
 
   // ============================================================
   // KNOWLEDGE SUGGESTIONS (Graph + memory proposals / review)

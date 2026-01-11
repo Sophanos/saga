@@ -35,6 +35,7 @@ import { CommandItem } from "./CommandItem";
 import { searchViaEdge, SearchApiError } from "../../services/ai";
 import { useGetEditorSelection, useIsCommandLocked } from "../../hooks";
 import { getEntityIconComponent } from "../../utils/entityConfig";
+import { useWidgetExecutionStore } from "../../stores/widgetExecution";
 import type { Editor } from "@mythos/editor";
 import type { EntityType } from "@mythos/core";
 
@@ -42,6 +43,7 @@ const FILTER_LABELS: Record<CommandPaletteFilter, string> = {
   all: "All",
   entity: "Entity",
   ai: "AI",
+  widget: "Widget",
   navigation: "Nav",
   general: "General",
 };
@@ -58,7 +60,6 @@ export function CommandPalette() {
   const query = useCommandPaletteQuery();
   const filter = useCommandPaletteFilter();
   const expanded = useCommandPaletteExpanded();
-  const recentCommandIds = useRecentCommandIds();
 
   const {
     close,
@@ -84,6 +85,7 @@ export function CommandPalette() {
   const projectId = useMythosStore((s) => s.project.currentProject?.id);
   const documents = useMythosStore((s) => s.document.documents);
   const entities = useMythosStore((s) => s.world.entities);
+  const recentCommandIds = useRecentCommandIds(projectId);
 
   // Get selection imperatively (for command execution)
   const getSelectedText = useGetEditorSelection(editorInstance);
@@ -156,6 +158,7 @@ export function CommandPalette() {
     const groups: Record<CommandCategory, Command[]> = {
       entity: [],
       ai: [],
+      widget: [],
       navigation: [],
       general: [],
     };
@@ -180,11 +183,11 @@ export function CommandPalette() {
       }
 
       const ctx = getCommandContext();
-      addRecentCommand(command.id);
+      addRecentCommand(projectId ?? "global", command.id);
       close();
       command.execute(ctx);
     },
-    [getCommandContext, addRecentCommand, close, isCommandLocked]
+    [getCommandContext, addRecentCommand, close, isCommandLocked, projectId]
   );
 
   // Handle document selection
@@ -290,6 +293,38 @@ export function CommandPalette() {
     };
   }, [query, projectId]);
 
+  const handleAskAIFallback = useCallback(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    const selectionText = getSelectedText();
+    if (selectionText && projectId) {
+      useWidgetExecutionStore.getState().start({
+        widgetId: "widget.ask-ai",
+        widgetType: "inline",
+        widgetLabel: "Ask AI",
+        projectId,
+        documentId: store.getState().document.currentDocument?.id,
+        selectionText,
+        selectionRange: editorInstance
+          ? {
+              from: editorInstance.state.selection.from,
+              to: editorInstance.state.selection.to,
+            }
+          : undefined,
+        parameters: { prompt: trimmed },
+      });
+      close();
+      return;
+    }
+
+    if (projectId) {
+      useMythosStore.getState().setChatDraft(trimmed);
+      setActiveTab("chat");
+      close();
+    }
+  }, [query, getSelectedText, projectId, editorInstance, close, setActiveTab, store]);
+
   // Handle keyboard events
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -328,6 +363,7 @@ export function CommandPalette() {
   const hasQuery = query.trim().length > 0;
   const showRecent = !hasQuery && !expanded && recentCommands.length > 0;
   const showSearchResults = hasQuery && (searchState.documents.length > 0 || searchState.entities.length > 0);
+  const showAskAIFallback = hasQuery && filteredCommands.length === 0 && !showSearchResults;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
@@ -560,6 +596,29 @@ export function CommandPalette() {
                 </CmdkCommand.Group>
               )}
             </>
+          )}
+
+          {showAskAIFallback && (
+            <CmdkCommand.Group heading="Ask AI">
+              <div className="px-2 py-1.5 text-xs font-medium text-mythos-text-muted uppercase tracking-wider">
+                Ask AI
+              </div>
+              <CmdkCommand.Item
+                value={`ask-ai-${query}`}
+                onSelect={handleAskAIFallback}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer",
+                  "text-mythos-text-secondary",
+                  "data-[selected=true]:bg-mythos-bg-tertiary",
+                  "data-[selected=true]:text-mythos-text-primary"
+                )}
+              >
+                <Search className="w-4 h-4 text-mythos-text-muted" />
+                <span className="flex-1 truncate text-sm">
+                  Ask AI: &quot;{query}&quot;
+                </span>
+              </CmdkCommand.Item>
+            </CmdkCommand.Group>
           )}
 
           {/* Expanded command groups */}

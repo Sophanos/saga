@@ -13,6 +13,8 @@ import {
   createSuggestionItems,
   SlashCommand,
   SceneList,
+  defaultSlashCommandItems,
+  filterSlashCommandItems,
   type SlashCommandItem,
   ReactRenderer,
 } from "@mythos/editor";
@@ -20,6 +22,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import { ScrollArea } from "@mythos/ui";
 import type { Entity, Document } from "@mythos/core";
+import { getCapabilitiesForSurface, isWidgetCapability } from "@mythos/capabilities";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -31,6 +34,8 @@ import { useDynamicsExtraction } from "../../hooks/useDynamicsExtraction";
 import { useAutoSave } from "../../hooks/useAutoSave";
 import { useAutoApplyEntityMarks } from "../../hooks/useEntityMarks";
 import { useMythosStore, useEntities, useCanvasView, useCurrentProject } from "../../stores";
+import { useCommandPaletteStore } from "../../stores/commandPalette";
+import { useWidgetExecutionStore } from "../../stores/widgetExecution";
 import {
   useMood,
   useStyleIssues,
@@ -235,18 +240,162 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     };
   }, [handleCreateScene]);
 
-  const slashItems = useMemo<SlashCommandItem[]>(
-    () => [
-      {
-        id: "scene",
-        label: "Scene",
-        description: "Create a scene under the current chapter",
-        keywords: ["scene", "chapter"],
-        action: () => createSceneRef.current(),
-      },
-    ],
-    []
+  useEffect(() => {
+    const handleAskAi = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        query?: string;
+        selectionText?: string;
+        selectionRange?: { from: number; to: number };
+      }>).detail;
+
+      const query = detail?.query?.trim();
+      if (!query) return;
+      const projectId = currentProject?.id;
+      if (!projectId) return;
+
+      if (detail?.selectionText) {
+        useWidgetExecutionStore.getState().start({
+          widgetId: "widget.ask-ai",
+          widgetType: "inline",
+          widgetLabel: "Ask AI",
+          projectId,
+          documentId: useMythosStore.getState().document.currentDocument?.id,
+          selectionText: detail.selectionText,
+          selectionRange: detail.selectionRange,
+          parameters: { prompt: query },
+        });
+        return;
+      }
+
+      const store = useMythosStore.getState();
+      store.setChatDraft(query);
+      store.setActiveTab("chat");
+    };
+
+    window.addEventListener("editor:ask-ai", handleAskAi as EventListener);
+    return () => {
+      window.removeEventListener("editor:ask-ai", handleAskAi as EventListener);
+    };
+  }, [currentProject?.id]);
+
+  useEffect(() => {
+    const handleOpenAi = () => {
+      const store = useMythosStore.getState();
+      store.setActiveTab("chat");
+    };
+
+    window.addEventListener("editor:open-ai-palette", handleOpenAi as EventListener);
+    return () => {
+      window.removeEventListener("editor:open-ai-palette", handleOpenAi as EventListener);
+    };
+  }, []);
+
+  const recentCommandIds = useCommandPaletteStore((state) =>
+    state.getRecentCommandIds(currentProject?.id)
   );
+
+  const slashItems = useMemo<SlashCommandItem[]>(() => {
+    const widgetItems: SlashCommandItem[] = getCapabilitiesForSurface("slash_menu")
+      .filter(isWidgetCapability)
+      .filter((cap) => cap.id !== "widget.ask-ai")
+      .map((cap) => {
+        const defaultParams = cap.parameters?.reduce<Record<string, unknown>>((acc, param) => {
+          if (param.type === "string" && param.default !== undefined) {
+            acc[param.name] = param.default;
+          }
+          if (param.type === "enum" && param.default !== undefined) {
+            acc[param.name] = param.default;
+          }
+          return acc;
+        }, {});
+
+        return {
+          id: cap.id,
+          label: cap.label,
+          description: cap.description,
+          icon: cap.icon,
+          category: cap.widgetType === "artifact" ? "Create" : "Widgets",
+          keywords: cap.keywords ?? [],
+          kind: "widget",
+          requiresSelection: cap.requiresSelection,
+          widgetId: cap.id,
+          action: (editor) => {
+            const projectId = currentProject?.id;
+            if (!projectId) return;
+            const selection = editor.state.selection;
+            const selectionText = editor.state.doc.textBetween(
+              selection.from,
+              selection.to,
+              " "
+            );
+
+            if (cap.requiresSelection && !selectionText) {
+              return;
+            }
+
+            useWidgetExecutionStore.getState().start({
+              widgetId: cap.id,
+              widgetType: cap.widgetType,
+              widgetLabel: cap.label,
+              projectId,
+              documentId: useMythosStore.getState().document.currentDocument?.id,
+              selectionText,
+              selectionRange: { from: selection.from, to: selection.to },
+              parameters: defaultParams,
+            });
+          },
+        };
+      });
+
+    const recentIds = new Set(recentCommandIds ?? []);
+    const recentWidgets = widgetItems.filter((item) => recentIds.has(item.id));
+    const orderedWidgets = [
+      ...recentWidgets,
+      ...widgetItems.filter((item) => !recentIds.has(item.id)),
+    ];
+
+    const sceneItem: SlashCommandItem = {
+      id: "scene",
+      label: "Scene",
+      description: "Create a scene under the current chapter",
+      keywords: ["scene", "chapter"],
+      category: "Create",
+      action: (editor) => {
+        const state = useMythosStore.getState();
+        const currentDoc = state.document.currentDocument;
+        const docList = state.document.documents;
+        let chapterId: string | null = null;
+
+        if (currentDoc?.type === "chapter") {
+          chapterId = currentDoc.id;
+        } else if (currentDoc?.type === "scene") {
+          chapterId = currentDoc.parentId ?? null;
+        } else {
+          const chapters = docList
+            .filter((doc) => doc.type === "chapter")
+            .sort((a, b) => a.orderIndex - b.orderIndex);
+          chapterId = chapters.length > 0 ? chapters[chapters.length - 1].id : null;
+        }
+
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: "sceneList",
+            attrs: {
+              chapterId,
+              mode: "list",
+              sortBy: "orderIndex",
+              sortDir: "asc",
+            },
+          })
+          .run();
+        createSceneRef.current();
+      },
+    };
+
+    return [...recentWidgets, ...orderedWidgets, ...defaultSlashCommandItems, sceneItem];
+  }, [currentProject?.id, recentCommandIds]);
 
   // Determine initial content based on currentDocument
   const initialContent = useMemo(() => {
@@ -291,50 +440,11 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
             const hasProject =
               !!useMythosStore.getState().project.currentProject;
             if (!hasProject) return [];
-            const lower = query.toLowerCase();
-            return slashItems.filter((item) => {
-              if (!lower) return true;
-              const keywords = item.keywords ?? [];
-              return (
-                item.label.toLowerCase().includes(lower) ||
-                keywords.some((k) => k.toLowerCase().includes(lower))
-              );
-            });
+            return filterSlashCommandItems(slashItems, query);
           },
           command: ({ editor, range, props }) => {
             editor.chain().focus().deleteRange(range).run();
-            if (props.id === "scene") {
-              const state = useMythosStore.getState();
-              const currentDoc = state.document.currentDocument;
-              const docList = state.document.documents;
-              let chapterId: string | null = null;
-
-              if (currentDoc?.type === "chapter") {
-                chapterId = currentDoc.id;
-              } else if (currentDoc?.type === "scene") {
-                chapterId = currentDoc.parentId ?? null;
-              } else {
-                const chapters = docList
-                  .filter((doc) => doc.type === "chapter")
-                  .sort((a, b) => a.orderIndex - b.orderIndex);
-                chapterId = chapters.length > 0 ? chapters[chapters.length - 1].id : null;
-              }
-
-              editor
-                .chain()
-                .focus()
-                .insertContent({
-                  type: "sceneList",
-                  attrs: {
-                    chapterId,
-                    mode: "list",
-                    sortBy: "orderIndex",
-                    sortDir: "asc",
-                  },
-                })
-                .run();
-              createSceneRef.current();
-            }
+            props.action(editor);
           },
           render: () => {
             let component: ReactRenderer<SlashCommandListRef> | null = null;

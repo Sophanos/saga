@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, type KeyboardEvent } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect, type KeyboardEvent } from "react";
 import { Send, AtSign, X, FileText, Paperclip, Globe, ArrowUp } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import { bg, text, border, accent } from "@mythos/theme";
@@ -38,6 +38,8 @@ export function ChatInput({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const chatDraft = useMythosStore((s) => s.chat.draft);
+  const setChatDraft = useMythosStore((s) => s.setChatDraft);
 
   // Get entity and document IDs for stable dependency tracking
   const entitiesMap = useMythosStore((s) => s.world.entities);
@@ -50,6 +52,13 @@ export function ChatInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entityIds]
   );
+
+  useEffect(() => {
+    if (!chatDraft) return;
+    setInput((prev) => (prev.trim().length === 0 ? chatDraft : prev));
+    setChatDraft("");
+    inputRef.current?.focus();
+  }, [chatDraft, setChatDraft]);
 
   // Build mention candidates (memoized)
   const candidates: MentionCandidate[] = useMemo(() => [

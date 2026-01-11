@@ -28,6 +28,31 @@ This document turns the Widgets MVP1 spec into an execution-ready engineering pl
 
 ---
 
+## 0.5) Implementation Update (2026-01-11)
+
+Implemented now (scaffold + working wedge):
+- Capability system: `widget` kind + `slash_menu` surface + MVP1 widget registry entries in `muse/packages/capabilities/src/types.ts` and `muse/packages/capabilities/src/registry.ts`.
+- Shared contract: widget execution types in `muse/packages/agent-protocol/src/widgets.ts`.
+- Convex schema: `widgetExecutions`, `artifacts`, and `artifactVersions` added in `muse/convex/schema.ts`.
+- Server registry + execution: `muse/convex/ai/widgets/registry.ts` + `muse/convex/ai/widgets/runWidgetToStream.ts` (server-authoritative prompts + streamed output).
+- HTTP streaming: `/ai/widgets` SSE route in `muse/convex/http.ts`.
+- Web UI wedge:
+  - Cmd+K widget filter + per-project recents + Ask AI fallback (`muse/apps/web/src/stores/commandPalette.ts`, `muse/apps/web/src/components/command-palette/CommandPalette.tsx`).
+  - Widget commands derived from capabilities (`muse/apps/web/src/commands/widget-commands.ts`).
+  - Widget execution store + SSE client (`muse/apps/web/src/stores/widgetExecution.ts`, `muse/apps/web/src/services/ai/widgetClient.ts`).
+  - Progress tile + preview modal + receipts block (`muse/apps/web/src/components/widgets/*`).
+  - Slash menu wiring for widgets + Ask AI fallback (`muse/apps/web/src/components/canvas/Canvas.tsx` + `muse/packages/editor/src/extensions/slash-command.ts`).
+
+Still pending (planned):
+- Inline execution markers + applied highlight + revert (`muse/packages/editor`).
+- Receipts source picker UI + manual add/remove wiring.
+- Staleness badges + regenerate flow UI.
+- Artifacts list/view route + filters.
+- Expo artifact widget flow (view/list/receipts).
+- MVP1.5 notifications + durable async jobs.
+
+---
+
 ## 1) Architecture Decisions (Socratic, then locked-in)
 
 1) **Where is the source of truth for widget prompts/models?**  

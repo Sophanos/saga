@@ -7,6 +7,7 @@
  * Routes:
  * - POST /ai/saga - Main Saga agent (SSE streaming)
  * - POST /ai/chat - Simple chat (SSE streaming or JSON)
+ * - POST /ai/widgets - Widget execution (SSE streaming)
  * - POST /ai/detect - Entity detection (JSON response)
  * - POST /ai/lint - Consistency linting (JSON response)
  * - POST /ai/dynamics - Interaction extraction (JSON response)
@@ -64,6 +65,17 @@ http.route({
 
 http.route({
   path: "/ai/chat",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/ai/widgets",
   method: "OPTIONS",
   handler: httpAction(async (_, request) => {
     return new Response(null, {
@@ -519,6 +531,77 @@ http.route({
       });
     } catch (error) {
       console.error("[http/ai/chat] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Widgets (SSE streaming)
+// ============================================================
+
+http.route({
+  path: "/ai/widgets",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: 401,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await request.json();
+      const { projectId, widgetId, documentId, selectionText, selectionRange, parameters } = body as {
+        projectId?: string;
+        widgetId?: string;
+        documentId?: string;
+        selectionText?: string;
+        selectionRange?: { from: number; to: number };
+        parameters?: Record<string, unknown>;
+      };
+
+      if (!projectId || !widgetId) {
+        return new Response(JSON.stringify({ error: "projectId and widgetId are required" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      if (!auth.userId) {
+        return new Response(JSON.stringify({ error: "Authenticated user required" }), {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
+
+      await ctx.runQuery(internal.projects.assertOwner, {
+        projectId: projectId as Id<"projects">,
+        userId: auth.userId,
+      });
+
+      return handleWidgetRun(ctx, {
+        projectId,
+        widgetId,
+        documentId,
+        selectionText,
+        selectionRange,
+        parameters,
+        auth,
+        origin,
+      });
+    } catch (error) {
+      console.error("[http/ai/widgets] Error:", error);
       return new Response(
         JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
         {
@@ -1748,6 +1831,65 @@ async function handleSagaChat(
       await streamDeltasToSSE(ctx, streamId, sse);
     } catch (error) {
       console.error("[handleSagaChat] Stream error:", error);
+      sse.sendError(error instanceof Error ? error.message : "Stream error");
+    } finally {
+      sse.complete();
+    }
+  });
+
+  return new Response(stream, {
+    headers: getStreamingHeaders(origin),
+  });
+}
+
+interface WidgetRunParams {
+  projectId: string;
+  widgetId: string;
+  documentId?: string;
+  selectionText?: string;
+  selectionRange?: { from: number; to: number };
+  parameters?: Record<string, unknown>;
+  auth: AuthResult;
+  origin: string | null;
+}
+
+async function handleWidgetRun(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  params: WidgetRunParams
+): Promise<Response> {
+  const {
+    projectId,
+    widgetId,
+    documentId,
+    selectionText,
+    selectionRange,
+    parameters,
+    auth,
+    origin,
+  } = params;
+
+  const streamId = await ctx.runMutation((internal as any)["ai/streams"].create, {
+    projectId,
+    userId: auth.userId!,
+    type: "widget",
+  });
+
+  const stream = createSSEStream(async (sse: SSEStreamController) => {
+    try {
+      await ctx.runAction((internal as any)["ai/widgets/runWidgetToStream"].runWidgetToStream, {
+        streamId,
+        projectId,
+        userId: auth.userId!,
+        widgetId,
+        documentId,
+        selectionText,
+        selectionRange,
+        parameters,
+      });
+
+      await streamDeltasToSSE(ctx, streamId, sse);
+    } catch (error) {
+      console.error("[handleWidgetRun] Stream error:", error);
       sse.sendError(error instanceof Error ? error.message : "Stream error");
     } finally {
       sse.complete();

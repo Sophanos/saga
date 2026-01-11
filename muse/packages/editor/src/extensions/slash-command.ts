@@ -10,6 +10,9 @@ export interface SlashCommandItem {
   shortcut?: string;
   category?: string;
   keywords?: string[];
+  kind?: "editor" | "widget" | "ai";
+  requiresSelection?: boolean;
+  widgetId?: string;
   action: (editor: Editor) => void;
 }
 
@@ -171,11 +174,32 @@ export function filterSlashCommandItems(
 ): SlashCommandItem[] {
   if (!query) return items;
   const lowerQuery = query.toLowerCase();
-  return items.filter(
+  const filtered = items.filter(
     (item) =>
       item.label.toLowerCase().includes(lowerQuery) ||
-      item.keywords?.some((k) => k.includes(lowerQuery))
+      item.keywords?.some((k) => k.toLowerCase().includes(lowerQuery))
   );
+
+  if (filtered.length > 0) return filtered;
+
+  return [
+    {
+      id: "ask-ai-fallback",
+      label: `Ask AI: \"${query}\"`,
+      description: "Send this prompt to AI",
+      icon: "Sparkles",
+      category: "AI",
+      keywords: [],
+      kind: "ai",
+      action: (editor) => {
+        const { from, to } = editor.state.selection;
+        const selectionText = editor.state.doc.textBetween(from, to, " ");
+        window.dispatchEvent(new CustomEvent("editor:ask-ai", {
+          detail: { query, selectionText, selectionRange: { from, to } },
+        }));
+      },
+    },
+  ];
 }
 
 export function groupByCategory(

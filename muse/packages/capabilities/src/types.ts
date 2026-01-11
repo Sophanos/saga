@@ -23,12 +23,16 @@ import type {
 /**
  * Where a capability can be surfaced in the UI.
  */
-export type CapabilitySurface = "quick_actions" | "command_palette" | "chat";
+export type CapabilitySurface =
+  | "quick_actions"
+  | "command_palette"
+  | "chat"
+  | "slash_menu";
 
 /**
  * The kind of action a capability represents.
  */
-export type CapabilityKind = "tool" | "chat_prompt" | "ui";
+export type CapabilityKind = "tool" | "chat_prompt" | "ui" | "widget";
 
 /**
  * Category for organizing capabilities.
@@ -38,6 +42,31 @@ export type CapabilityCategory =
   | "generation"
   | "knowledge"
   | "navigation";
+
+// =============================================================================
+// Widgets
+// =============================================================================
+
+export type WidgetType = "inline" | "artifact";
+
+export type PromptVariableType = "string" | "entity" | "selection" | "document";
+
+export interface PromptVariable {
+  name: string;
+  type: PromptVariableType;
+  required: boolean;
+  description?: string;
+}
+
+export interface StructuredPrompt {
+  system: string;
+  user: string;
+  variables: PromptVariable[];
+}
+
+export type WidgetParam =
+  | { name: string; type: "enum"; options: string[]; default?: string }
+  | { name: string; type: "string"; default?: string };
 
 // =============================================================================
 // Context
@@ -140,9 +169,28 @@ export interface UIActionCapability extends CapabilityBase {
 }
 
 /**
+ * A capability that runs a widget recipe.
+ */
+export interface WidgetCapability extends CapabilityBase {
+  kind: "widget";
+  widgetType: WidgetType;
+  prompt: StructuredPrompt;
+  defaultModel: string;
+  contextBudget: "adaptive" | number;
+  clarifyOnAmbiguity: boolean;
+  costWeight: number;
+  parameters?: WidgetParam[];
+  outputSchemaId?: string;
+}
+
+/**
  * Union of all capability types.
  */
-export type Capability = ToolCapability | PromptCapability | UIActionCapability;
+export type Capability =
+  | ToolCapability
+  | PromptCapability
+  | UIActionCapability
+  | WidgetCapability;
 
 // =============================================================================
 // Type Guards
@@ -158,4 +206,8 @@ export function isPromptCapability(cap: Capability): cap is PromptCapability {
 
 export function isUIActionCapability(cap: Capability): cap is UIActionCapability {
   return cap.kind === "ui";
+}
+
+export function isWidgetCapability(cap: Capability): cap is WidgetCapability {
+  return cap.kind === "widget";
 }

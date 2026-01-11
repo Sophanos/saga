@@ -5,7 +5,7 @@ import type { ModalState } from "../stores";
 import type { UIModuleId } from "@mythos/state";
 
 // Command categories
-export type CommandCategory = "entity" | "ai" | "navigation" | "general";
+export type CommandCategory = "entity" | "ai" | "widget" | "navigation" | "general";
 
 // Command context passed to execute and when functions
 export interface CommandContext {
@@ -28,6 +28,7 @@ export interface Command {
   category: CommandCategory;
   keywords: string[];
   shortcut?: string;
+  requiresSelection?: boolean;
   /** Condition for when command is visible */
   when?: (ctx: CommandContext) => boolean;
   /** Execute the command */

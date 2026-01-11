@@ -75,6 +75,14 @@ export {
 } from "./chatClient";
 
 export {
+  sendWidgetRunStreaming,
+  WidgetApiError,
+  type WidgetStreamEvent,
+  type WidgetStreamEventType,
+  type WidgetStreamOptions,
+} from "./widgetClient";
+
+export {
   sendAgentMessageStreaming,
   AgentApiError,
   type AgentMessagePayload,

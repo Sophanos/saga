@@ -202,6 +202,10 @@ function getIcon(iconName?: string): string {
     Minus: '—',
     Table: '⊞',
     Image: '🖼',
+    FileText: '📄',
+    FileCode: '<>',
+    Maximize2: '⤢',
+    RefreshCw: '↻',
   };
   return icons[iconName || ''] || '•';
 }

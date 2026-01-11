@@ -32,13 +32,14 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Web Research Tools | Done | 100 |
 | Supabase -> Convex Migration | Done | 100 |
 | Real-Time Collaboration | In progress | 80 |
-| Widgets & Artifacts (MVP1) | Planned | 0 |
+| Widgets & Artifacts (MVP1) | In progress | 20 |
 | Async Jobs + Notifications (MVP1.5) | Planned | 0 |
 | Overall MLP 1 | In progress | 95 |
 
 ## Recent Updates (condensed)
 
 **2026-01-11 (night)**
+- Widgets MVP1: added widget capability kind + shared contract, Convex schema + `/ai/widgets` stream, and web wedge (Cmd+K filter, slash menu wiring, progress/preview, receipts block).
 - Flow Mode: added FlowFocus extension (iA Writer-style sentence/paragraph dimming), TypewriterScroll extension, FlowTimerPanel with break reminders, EditorMetrics store for word count tracking.
 - Template Builder: enhanced with project type selection, PhaseIndicator for build phases, ProgressiveTemplatePreview for live preview, domain-specific questions per project type.
 - Project setup: unified `project_manage` tool - bootstrap always generates template structure; `seed` flag controls starter content (default true); restructure/pivot stubbed.
@@ -81,7 +82,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | 2 | Knowledge PRs review surface + hardening | In progress | [Phase 2](#phase-2-knowledge-prs-hardening) |
 | 3 | Integrations + Citations (MCP) | Planned | [Phase 3](#phase-3-integrations--citations) |
 | 4 | Clarity/Policy Coach | Complete | [Phase 4](#phase-4-claritypolicy-coach) |
-| 5 | Widgets & Artifacts (MVP1) | Planned | [Phase 5](#phase-5-widgets--artifacts-mvp1) |
+| 5 | Widgets & Artifacts (MVP1) | In progress | [Phase 5](#phase-5-widgets--artifacts-mvp1) |
 
 ## UI Integration Analysis (MLP1 Phase 1)
 

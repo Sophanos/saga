@@ -20,3 +20,6 @@ export * from "./events";
 
 // Memory system (MLP 1.5) types
 export * from "./memory";
+
+// Widget execution contract
+export * from "./widgets";

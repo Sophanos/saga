@@ -5,7 +5,7 @@
  * QuickActions, Command Palette, and Chat UI all derive from this registry.
  */
 
-import type { Capability, CapabilitySurface, ToolCapability, CapabilityContext } from "./types";
+import type { Capability, CapabilitySurface, ToolCapability, CapabilityContext, WidgetCapability } from "./types";
 
 export type ProjectTemplateId =
   | "writer"
@@ -441,6 +441,271 @@ const CAPABILITIES_BASE: Capability[] = [
   },
 ];
 
+const CAPABILITIES_WIDGETS: WidgetCapability[] = [
+  {
+    id: "widget.summarize",
+    kind: "widget",
+    label: "Summarize",
+    description: "Condense the selected text",
+    icon: "FileText",
+    category: "generation",
+    surfaces: ["slash_menu", "command_palette"],
+    requiresSelection: true,
+    requiresProject: true,
+    widgetType: "inline",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    costWeight: 1,
+    prompt: {
+      system: "You are a concise summarizer.",
+      user: "Summarize the following text:\n\n{{selection}}",
+      variables: [
+        { name: "selection", type: "selection", required: true },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-haiku",
+    order: 20,
+  },
+  {
+    id: "widget.expand",
+    kind: "widget",
+    label: "Expand",
+    description: "Expand the selected text with more detail",
+    icon: "Maximize2",
+    category: "generation",
+    surfaces: ["slash_menu", "command_palette"],
+    requiresSelection: true,
+    requiresProject: true,
+    widgetType: "inline",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    costWeight: 2,
+    prompt: {
+      system: "You expand text while keeping the original intent and style.",
+      user: "Expand the following text with more detail:\n\n{{selection}}",
+      variables: [
+        { name: "selection", type: "selection", required: true },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-haiku",
+    order: 30,
+  },
+  {
+    id: "widget.rewrite",
+    kind: "widget",
+    label: "Rewrite",
+    description: "Rewrite the selected text in a new tone",
+    icon: "RefreshCw",
+    category: "generation",
+    surfaces: ["slash_menu", "command_palette"],
+    requiresSelection: true,
+    requiresProject: true,
+    widgetType: "inline",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    costWeight: 2,
+    parameters: [
+      { name: "tone", type: "enum", options: ["formal", "casual", "concise", "expanded"], default: "formal" },
+    ],
+    prompt: {
+      system: "You rewrite text while preserving the original meaning.",
+      user: "Rewrite the following text in a {{tone}} tone:\n\n{{selection}}",
+      variables: [
+        { name: "tone", type: "string", required: true },
+        { name: "selection", type: "selection", required: true },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-haiku",
+    order: 40,
+  },
+  {
+    id: "widget.outline",
+    kind: "widget",
+    label: "Outline",
+    description: "Turn the selection into a structured outline",
+    icon: "List",
+    category: "generation",
+    surfaces: ["slash_menu", "command_palette"],
+    requiresSelection: true,
+    requiresProject: true,
+    widgetType: "inline",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    costWeight: 2,
+    prompt: {
+      system: "You create clear markdown outlines using ## headings.",
+      user: "Create a structured outline for the following text using markdown headings:\n\n{{selection}}",
+      variables: [
+        { name: "selection", type: "selection", required: true },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-haiku",
+    order: 50,
+  },
+  {
+    id: "widget.generate-name",
+    kind: "widget",
+    label: "Generate Names",
+    description: "Suggest names based on the current context",
+    icon: "Sparkles",
+    category: "generation",
+    surfaces: ["slash_menu", "command_palette"],
+    requiresProject: true,
+    widgetType: "inline",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    costWeight: 1,
+    prompt: {
+      system: "You generate concise name suggestions.",
+      user: "Suggest 8 names based on this context:\n\n{{selection}}",
+      variables: [
+        { name: "selection", type: "selection", required: false },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-haiku",
+    order: 60,
+  },
+  {
+    id: "widget.ask-ai",
+    kind: "widget",
+    label: "Ask AI",
+    description: "Answer the prompt with project context",
+    icon: "Sparkles",
+    category: "generation",
+    surfaces: ["command_palette"],
+    requiresProject: true,
+    widgetType: "inline",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    costWeight: 1,
+    prompt: {
+      system: "You are a helpful co-author responding to the user's prompt.",
+      user: "Prompt: {{prompt}}\n\nSelection:\n{{selection}}",
+      variables: [
+        { name: "prompt", type: "string", required: true },
+        { name: "selection", type: "selection", required: false },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-haiku",
+    order: 70,
+  },
+  {
+    id: "widget.create-spec",
+    kind: "widget",
+    label: "Create Spec",
+    description: "Generate a specification document",
+    icon: "FileCode",
+    category: "generation",
+    surfaces: ["slash_menu", "command_palette"],
+    requiresProject: true,
+    widgetType: "artifact",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: true,
+    costWeight: 5,
+    prompt: {
+      system: "You draft clear, concise specification documents.",
+      user: "Create a specification based on the current document context:\n\n{{document}}",
+      variables: [
+        { name: "document", type: "document", required: false },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    order: 100,
+  },
+  {
+    id: "widget.create-summary",
+    kind: "widget",
+    label: "Create Summary",
+    description: "Generate a summary document",
+    icon: "FileText",
+    category: "generation",
+    surfaces: ["slash_menu", "command_palette"],
+    requiresProject: true,
+    widgetType: "artifact",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    costWeight: 3,
+    prompt: {
+      system: "You draft clear, concise summaries.",
+      user: "Summarize the current document context:\n\n{{document}}",
+      variables: [
+        { name: "document", type: "document", required: false },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    order: 110,
+  },
+  {
+    id: "widget.create-brief",
+    kind: "widget",
+    label: "Create Brief",
+    description: "Generate a project brief",
+    icon: "FileText",
+    category: "generation",
+    surfaces: ["slash_menu", "command_palette"],
+    requiresProject: true,
+    widgetType: "artifact",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    costWeight: 4,
+    prompt: {
+      system: "You draft tight creative briefs.",
+      user: "Create a brief based on the current document context:\n\n{{document}}",
+      variables: [
+        { name: "document", type: "document", required: false },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    order: 120,
+  },
+  {
+    id: "widget.create-notes",
+    kind: "widget",
+    label: "Create Notes",
+    description: "Generate structured notes",
+    icon: "FileText",
+    category: "generation",
+    surfaces: ["slash_menu", "command_palette"],
+    requiresProject: true,
+    widgetType: "artifact",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    costWeight: 3,
+    prompt: {
+      system: "You turn raw context into clear notes.",
+      user: "Generate notes from the current document context:\n\n{{document}}",
+      variables: [
+        { name: "document", type: "document", required: false },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    order: 130,
+  },
+  {
+    id: "widget.create-release-notes",
+    kind: "widget",
+    label: "Create Release Notes",
+    description: "Generate release notes",
+    icon: "FileText",
+    category: "generation",
+    surfaces: ["slash_menu", "command_palette"],
+    requiresProject: true,
+    widgetType: "artifact",
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    costWeight: 4,
+    prompt: {
+      system: "You write concise release notes.",
+      user: "Create release notes from the current document context:\n\n{{document}}",
+      variables: [
+        { name: "document", type: "document", required: false },
+      ],
+    },
+    defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    order: 140,
+  },
+];
+
 const CAPABILITIES_WRITER: Capability[] = [];
 const CAPABILITIES_PRODUCT: Capability[] = [];
 const CAPABILITIES_ENGINEERING: Capability[] = [];
@@ -449,6 +714,7 @@ const CAPABILITIES_COMMS: Capability[] = [];
 
 export const CAPABILITIES: Capability[] = [
   ...CAPABILITIES_BASE,
+  ...CAPABILITIES_WIDGETS,
   ...CAPABILITIES_WRITER,
 ];
 
@@ -457,18 +723,18 @@ export function getCapabilitiesForTemplate(
 ): Capability[] {
   switch (templateId) {
     case "product":
-      return [...CAPABILITIES_BASE, ...CAPABILITIES_PRODUCT];
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_WIDGETS, ...CAPABILITIES_PRODUCT];
     case "engineering":
-      return [...CAPABILITIES_BASE, ...CAPABILITIES_ENGINEERING];
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_WIDGETS, ...CAPABILITIES_ENGINEERING];
     case "design":
-      return [...CAPABILITIES_BASE, ...CAPABILITIES_DESIGN];
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_WIDGETS, ...CAPABILITIES_DESIGN];
     case "comms":
-      return [...CAPABILITIES_BASE, ...CAPABILITIES_COMMS];
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_WIDGETS, ...CAPABILITIES_COMMS];
     case "custom":
-      return [...CAPABILITIES_BASE];
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_WIDGETS];
     case "writer":
     default:
-      return [...CAPABILITIES_BASE, ...CAPABILITIES_WRITER];
+      return [...CAPABILITIES_BASE, ...CAPABILITIES_WIDGETS, ...CAPABILITIES_WRITER];
   }
 }
 

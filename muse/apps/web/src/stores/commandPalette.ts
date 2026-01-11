@@ -3,16 +3,30 @@ import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
 // Filter categories for the command palette
-export type CommandPaletteFilter = "all" | "entity" | "ai" | "navigation" | "general";
+export type CommandPaletteFilter =
+  | "all"
+  | "entity"
+  | "ai"
+  | "widget"
+  | "navigation"
+  | "general";
 
-const FILTER_ORDER: CommandPaletteFilter[] = ["all", "entity", "ai", "navigation", "general"];
+const FILTER_ORDER: CommandPaletteFilter[] = [
+  "all",
+  "entity",
+  "ai",
+  "widget",
+  "navigation",
+  "general",
+];
 
 interface CommandPaletteState {
   isOpen: boolean;
   query: string;
   filter: CommandPaletteFilter;
   expanded: boolean;
-  recentCommandIds: string[];
+  recentByProjectId: Record<string, string[]>;
+  legacyRecentCommandIds?: string[];
 }
 
 interface CommandPaletteActions {
@@ -23,7 +37,8 @@ interface CommandPaletteActions {
   setFilter: (filter: CommandPaletteFilter) => void;
   cycleFilter: (direction: 1 | -1) => void;
   setExpanded: (expanded: boolean) => void;
-  addRecentCommand: (id: string) => void;
+  addRecentCommand: (projectId: string, id: string) => void;
+  getRecentCommandIds: (projectId: string | null | undefined) => string[];
   reset: () => void;
 }
 
@@ -34,12 +49,13 @@ const initialState: CommandPaletteState = {
   query: "",
   filter: "all",
   expanded: false,
-  recentCommandIds: [],
+  recentByProjectId: {},
+  legacyRecentCommandIds: undefined,
 };
 
 export const useCommandPaletteStore = create<CommandPaletteStore>()(
   persist(
-    immer((set) => ({
+    immer((set, get) => ({
       ...initialState,
 
       open: () =>
@@ -90,11 +106,26 @@ export const useCommandPaletteStore = create<CommandPaletteStore>()(
           state.expanded = expanded;
         }),
 
-      addRecentCommand: (id) =>
+      addRecentCommand: (projectId, id) =>
         set((state) => {
-          const filtered = state.recentCommandIds.filter((rid) => rid !== id);
-          state.recentCommandIds = [id, ...filtered].slice(0, 10);
+          const key = projectId || "global";
+          const existing = state.recentByProjectId[key] ?? [];
+
+          if (existing.length === 0 && state.legacyRecentCommandIds?.length) {
+            state.recentByProjectId[key] = state.legacyRecentCommandIds;
+            state.legacyRecentCommandIds = [];
+          }
+
+          const current = state.recentByProjectId[key] ?? [];
+          const filtered = current.filter((rid) => rid !== id);
+          state.recentByProjectId[key] = [id, ...filtered].slice(0, 10);
         }),
+
+      getRecentCommandIds: (projectId) => {
+        const key = projectId || "global";
+        const state = get();
+        return state.recentByProjectId[key] ?? state.legacyRecentCommandIds ?? [];
+      },
 
       reset: () =>
         set((state) => {
@@ -106,8 +137,23 @@ export const useCommandPaletteStore = create<CommandPaletteStore>()(
     })),
     {
       name: "mythos-command-palette",
+      version: 2,
+      migrate: (persistedState, version) => {
+        if (version < 2 && persistedState && typeof persistedState === "object") {
+          const legacy = persistedState as CommandPaletteState & {
+            recentCommandIds?: string[];
+          };
+          return {
+            ...legacy,
+            recentByProjectId: {},
+            legacyRecentCommandIds: legacy.recentCommandIds ?? [],
+          };
+        }
+        return persistedState as CommandPaletteState;
+      },
       partialize: (state) => ({
-        recentCommandIds: state.recentCommandIds,
+        recentByProjectId: state.recentByProjectId,
+        legacyRecentCommandIds: state.legacyRecentCommandIds,
       }),
     }
   )
@@ -126,5 +172,7 @@ export const useCommandPaletteFilter = () =>
 export const useCommandPaletteExpanded = () =>
   useCommandPaletteStore((s) => s.expanded);
 
-export const useRecentCommandIds = () =>
-  useCommandPaletteStore((s) => s.recentCommandIds);
+export const useRecentCommandIds = (projectId?: string | null) =>
+  useCommandPaletteStore((s) =>
+    s.getRecentCommandIds(projectId ?? "global")
+  );

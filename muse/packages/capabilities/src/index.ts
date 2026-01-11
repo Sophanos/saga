@@ -15,6 +15,12 @@ export type {
   ToolCapability,
   PromptCapability,
   UIActionCapability,
+  WidgetCapability,
+  WidgetType,
+  StructuredPrompt,
+  PromptVariable,
+  PromptVariableType,
+  WidgetParam,
   Capability,
 } from "./types";
 
@@ -22,6 +28,7 @@ export {
   isToolCapability,
   isPromptCapability,
   isUIActionCapability,
+  isWidgetCapability,
 } from "./types";
 
 // Registry

@@ -2,6 +2,7 @@ import type { Command } from "./registry";
 import {
   getCapabilitiesForSurface,
   getCapabilityIcon,
+  isWidgetCapability,
   type Capability,
 } from "@mythos/capabilities";
 import {
@@ -65,7 +66,7 @@ function capabilityToCommand(capability: Capability): Command {
  */
 function generateAICommands(): Command[] {
   const capabilities = getCapabilitiesForSurface("command_palette");
-  return capabilities.map(capabilityToCommand);
+  return capabilities.filter((cap) => !isWidgetCapability(cap)).map(capabilityToCommand);
 }
 
 // Export the generated commands

@@ -286,6 +286,7 @@ interface ChatState {
   messages: ChatMessage[];
   isStreaming: boolean;
   error: string | null;
+  draft: string;
   /** Active conversation ID (server thread ID when known) */
   conversationId: string | null;
   /** User-defined conversation name */
@@ -394,6 +395,7 @@ interface MythosStore {
   setChatContext: (context: ChatContext | null) => void;
   setConversationName: (name: string | null) => void;
   setThreadId: (id: string) => void;
+  setChatDraft: (draft: string) => void;
   applyWriteContentSuggestion: (toolCallId: string) => Promise<{
     applied: boolean;
     appliedOperation?: WriteContentOperation;
@@ -476,6 +478,7 @@ export const useMythosStore = create<MythosStore>()(
       messages: [],
       isStreaming: false,
       error: null,
+      draft: "",
       conversationId: initialConversationId,
       conversationName: persistedSession?.conversationName ?? null,
       isNewConversation: initialIsNewConversation,
@@ -846,6 +849,10 @@ export const useMythosStore = create<MythosStore>()(
       const { conversationName } = get().chat;
       saveChatSession({ conversationId: id, conversationName, isNewConversation: false });
     },
+    setChatDraft: (draft) =>
+      set((state) => {
+        state.chat.draft = draft;
+      }),
     applyWriteContentSuggestion: async (toolCallId) => {
       const state = get();
       const editor = state.editor.editorInstance as Editor | null;
@@ -934,6 +941,7 @@ export const useMythosStore = create<MythosStore>()(
         state.chat.error = null;
         state.chat.isStreaming = false;
         state.chat.lastContext = null;
+        state.chat.draft = "";
       }),
     startNewConversation: () => {
       set((state) => {
@@ -944,6 +952,7 @@ export const useMythosStore = create<MythosStore>()(
         state.chat.conversationId = null;
         state.chat.conversationName = null;
         state.chat.isNewConversation = true;
+        state.chat.draft = "";
       });
       // Persist new session
       saveChatSession({
