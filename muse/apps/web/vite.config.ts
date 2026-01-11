@@ -40,6 +40,13 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port,
+      fs: {
+        // Allow serving files from bun's node_modules cache
+        allow: [
+          resolve(__dirname, "../.."),
+          resolve(__dirname, "../../node_modules/.bun"),
+        ],
+      },
     },
     build: {
       outDir: "dist",

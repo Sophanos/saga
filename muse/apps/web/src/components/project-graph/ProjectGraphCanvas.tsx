@@ -7,6 +7,8 @@ import {
   useNodesState,
   useEdgesState,
   type NodeMouseHandler,
+  type EdgeMouseHandler,
+  type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useMythosStore } from "../../stores";
@@ -121,6 +123,34 @@ export function ProjectGraphCanvas({
     [openModal]
   );
 
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      if (connection.source === connection.target) return;
+      openModal({
+        type: "relationshipForm",
+        mode: "create",
+        initial: {
+          sourceId: connection.source,
+          targetId: connection.target,
+        },
+      });
+    },
+    [openModal]
+  );
+
+  const handleEdgeClick: EdgeMouseHandler<RelationshipEdgeType> = useCallback(
+    (event, edge) => {
+      event.stopPropagation();
+      openModal({
+        type: "relationshipForm",
+        mode: "edit",
+        relationshipId: edge.id,
+      });
+    },
+    [openModal]
+  );
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -129,6 +159,8 @@ export function ProjectGraphCanvas({
       onEdgesChange={onEdgesChange}
       onNodeClick={handleNodeClick}
       onNodeDoubleClick={handleNodeDoubleClick}
+      onConnect={handleConnect}
+      onEdgeClick={handleEdgeClick}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView

@@ -3,7 +3,22 @@ import { Platform } from 'react-native';
 export type KnowledgeTargetType = 'document' | 'entity' | 'relationship' | 'memory';
 export type KnowledgeStatus = 'proposed' | 'accepted' | 'rejected' | 'resolved';
 export type KnowledgeRiskLevel = 'low' | 'high' | 'core';
+export type KnowledgeResolution =
+  | 'executed'
+  | 'user_rejected'
+  | 'execution_failed'
+  | 'rolled_back'
+  | 'applied_in_editor';
+export type SuggestionPreflightStatus = 'ok' | 'invalid' | 'conflict';
 export type KnowledgeCitationVisibility = 'project' | 'private' | 'redacted';
+
+export interface SuggestionPreflight {
+  status: SuggestionPreflightStatus;
+  errors?: string[];
+  warnings?: string[];
+  resolvedTargetId?: string;
+  computedAt: number;
+}
 
 export interface KnowledgeEditorContext {
   documentId?: string;
@@ -12,6 +27,54 @@ export interface KnowledgeEditorContext {
   selectionText?: string;
   selectionContext?: string;
 }
+
+export interface GraphPreviewChange {
+  key: string;
+  from?: unknown;
+  to?: unknown;
+}
+
+export type KnowledgeSuggestionPreview =
+  | {
+      kind: 'entity_create';
+      type: string;
+      name: string;
+      aliases?: string[];
+      notes?: string;
+      properties?: Record<string, unknown>;
+      source?: string;
+      note?: string;
+    }
+  | {
+      kind: 'entity_update';
+      entityId?: string;
+      name?: string;
+      type?: string;
+      changes: GraphPreviewChange[];
+      note?: string;
+    }
+  | {
+      kind: 'relationship_create';
+      type: string;
+      sourceName?: string;
+      targetName?: string;
+      sourceId?: string;
+      targetId?: string;
+      bidirectional?: boolean;
+      strength?: number;
+      notes?: string;
+      metadata?: Record<string, unknown>;
+      note?: string;
+    }
+  | {
+      kind: 'relationship_update';
+      relationshipId?: string;
+      type?: string;
+      sourceName?: string;
+      targetName?: string;
+      changes: GraphPreviewChange[];
+      note?: string;
+    };
 
 export interface KnowledgeCitation {
   _id: string;
@@ -41,6 +104,10 @@ export interface KnowledgeSuggestion {
   normalizedPatch?: unknown;
   editorContext?: KnowledgeEditorContext;
   status: KnowledgeStatus;
+  resolution?: KnowledgeResolution;
+  preflight?: SuggestionPreflight;
+  rolledBackAt?: number;
+  rolledBackByUserId?: string;
   actorType: string;
   actorUserId?: string;
   actorAgentId?: string;
@@ -50,6 +117,8 @@ export interface KnowledgeSuggestion {
   approvalType: string;
   danger?: string;
   riskLevel?: KnowledgeRiskLevel;
+  approvalReasons?: string[];
+  preview?: KnowledgeSuggestionPreview;
   streamId?: string;
   threadId?: string;
   promptMessageId?: string;

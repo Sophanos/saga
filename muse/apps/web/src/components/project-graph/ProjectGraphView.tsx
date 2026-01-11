@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import { FileText, Network } from "lucide-react";
+import { FileText, Network, Plus } from "lucide-react";
 import { Button } from "@mythos/ui";
 import { useMythosStore } from "../../stores";
 import { useProjectGraph } from "../../hooks/useProjectGraph";
@@ -18,6 +18,7 @@ import {
 
 export function ProjectGraphView() {
   const setCanvasView = useMythosStore((s) => s.setCanvasView);
+  const openModal = useMythosStore((s) => s.openModal);
   const registry = useProjectTypeRegistry();
 
   const allEntityTypes = useMemo(
@@ -89,6 +90,10 @@ export function ProjectGraphView() {
     setCanvasView("editor");
   }, [setCanvasView]);
 
+  const handleCreateEntity = useCallback(() => {
+    openModal({ type: "entityForm", mode: "create" });
+  }, [openModal]);
+
   return (
     <div
       className="h-full flex flex-col bg-mythos-bg-primary relative"
@@ -102,16 +107,28 @@ export function ProjectGraphView() {
             Project Graph
           </span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleBackToEditor}
-          className="gap-1.5 text-xs"
-          data-testid="project-graph-back-to-editor"
-        >
-          <FileText className="w-3.5 h-3.5" />
-          Editor
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCreateEntity}
+            className="gap-1.5 text-xs"
+            data-testid="project-graph-create-entity"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Entity
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleBackToEditor}
+            className="gap-1.5 text-xs"
+            data-testid="project-graph-back-to-editor"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Editor
+          </Button>
+        </div>
       </div>
 
       {/* Graph container */}

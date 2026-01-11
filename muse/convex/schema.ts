@@ -265,6 +265,8 @@ export default defineSchema({
     approvalType: v.string(),
     danger: v.optional(v.string()),
     riskLevel: v.optional(v.union(v.literal("low"), v.literal("high"), v.literal("core"))),
+    approvalReasons: v.optional(v.array(v.string())),
+    preview: v.optional(v.any()),
     streamId: v.optional(v.string()),
     threadId: v.optional(v.string()),
     promptMessageId: v.optional(v.string()),

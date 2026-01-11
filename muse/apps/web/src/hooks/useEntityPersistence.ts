@@ -133,11 +133,11 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
         // Add to store
         addEntity(createdEntity);
 
-        return { data: createdEntity };
+        return { data: createdEntity, error: null };
       } catch (err) {
         const message = formatGraphErrorMessage(err, "Failed to create entity");
         setError(message);
-        return { error: message };
+        return { data: null, error: message };
       } finally {
         setIsLoading(false);
       }
@@ -175,11 +175,11 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
         // Update store
         updateEntityStore(entityId, { ...updates, updatedAt: now });
 
-        return { data: updatedEntity };
+        return { data: updatedEntity, error: null };
       } catch (err) {
         const message = formatGraphErrorMessage(err, "Failed to update entity");
         setError(message);
-        return { error: message };
+        return { data: null, error: message };
       } finally {
         setIsLoading(false);
       }
@@ -213,11 +213,11 @@ export function useEntityPersistence(): UseEntityPersistenceResult {
           });
         }
 
-        return {};
+        return { data: null, error: null };
       } catch (err) {
         const message = formatGraphErrorMessage(err, "Failed to delete entity");
         setError(message);
-        return { error: message };
+        return { data: null, error: message };
       } finally {
         setIsLoading(false);
       }

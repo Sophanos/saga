@@ -57,8 +57,8 @@ export function formatGraphErrorMessage(
         : "Type is not in the registry.";
     case "SCHEMA_VALIDATION_FAILED":
       return parsed.detail
-        ? `Properties failed schema validation. ${parsed.detail}`
-        : "Properties failed schema validation.";
+        ? `Schema validation failed. ${parsed.detail}`
+        : "Schema validation failed.";
     case "ACCESS_DENIED":
       return "You do not have permission to perform this action.";
     case "REGISTRY_LOCKED":

@@ -7,7 +7,7 @@
 import { v } from "convex/values";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal, components } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { Agent } from "@convex-dev/agent";
 import { createOpenAI } from "@ai-sdk/openai";
 import { simulateReadableStream } from "ai";
@@ -311,6 +311,53 @@ type ToolApprovalType = "execution" | "input" | "apply";
 
 type ToolApprovalDanger = "safe" | "costly" | "destructive";
 
+type GraphApprovalChange = {
+  key: string;
+  from?: unknown;
+  to?: unknown;
+};
+
+type GraphApprovalPreview =
+  | {
+      kind: "entity_create";
+      type: string;
+      name: string;
+      aliases?: string[];
+      notes?: string;
+      properties?: Record<string, unknown>;
+      note?: string;
+    }
+  | {
+      kind: "entity_update";
+      entityId?: string;
+      name?: string;
+      type?: string;
+      changes: GraphApprovalChange[];
+      note?: string;
+    }
+  | {
+      kind: "relationship_create";
+      type: string;
+      sourceName?: string;
+      targetName?: string;
+      sourceId?: string;
+      targetId?: string;
+      bidirectional?: boolean;
+      strength?: number;
+      notes?: string;
+      metadata?: Record<string, unknown>;
+      note?: string;
+    }
+  | {
+      kind: "relationship_update";
+      relationshipId?: string;
+      type?: string;
+      sourceName?: string;
+      targetName?: string;
+      changes: GraphApprovalChange[];
+      note?: string;
+    };
+
 type KnowledgeSuggestionTargetType = "document" | "entity" | "relationship" | "memory";
 
 function classifyKnowledgeSuggestion(toolName: string): { targetType: KnowledgeSuggestionTargetType; operation: string } | null {
@@ -340,6 +387,402 @@ function isHighRiskLevel(level: RiskLevel | undefined): boolean {
 
 function getIdentityFields(def?: { approval?: { identityFields?: readonly string[] } }): readonly string[] {
   return def?.approval?.identityFields ?? [];
+}
+
+function buildEntityPropertiesFromArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const base =
+    args["properties"] && typeof args["properties"] === "object" && !Array.isArray(args["properties"])
+      ? (args["properties"] as Record<string, unknown>)
+      : {};
+  const next: Record<string, unknown> = { ...base };
+
+  const entries: Array<[string, string]> = [
+    ["archetype", "archetype"],
+    ["backstory", "backstory"],
+    ["goals", "goals"],
+    ["fears", "fears"],
+    ["voiceNotes", "voiceNotes"],
+    ["parentLocation", "parentLocation"],
+    ["climate", "climate"],
+    ["atmosphere", "atmosphere"],
+    ["category", "category"],
+    ["rarity", "rarity"],
+    ["abilities", "abilities"],
+    ["leader", "leader"],
+    ["headquarters", "headquarters"],
+    ["factionGoals", "factionGoals"],
+    ["rivals", "rivals"],
+    ["allies", "allies"],
+    ["rules", "rules"],
+    ["limitations", "limitations"],
+    ["costs", "costs"],
+  ];
+
+  for (const [key, propKey] of entries) {
+    if (args[key] !== undefined) {
+      next[propKey] = args[key];
+    }
+  }
+
+  return next;
+}
+
+function buildEntityUpdateChanges(
+  entity: Doc<"entities"> | null,
+  updates: Record<string, unknown>
+): GraphApprovalChange[] {
+  const changes: GraphApprovalChange[] = [];
+
+  if (updates["name"] !== undefined) {
+    changes.push({ key: "name", from: entity?.name, to: updates["name"] });
+  }
+  if (updates["aliases"] !== undefined) {
+    changes.push({ key: "aliases", from: entity?.aliases, to: updates["aliases"] });
+  }
+  if (updates["notes"] !== undefined) {
+    changes.push({ key: "notes", from: entity?.notes, to: updates["notes"] });
+  }
+
+  const propertyUpdates = buildEntityPropertiesFromArgs(updates);
+  for (const [key, value] of Object.entries(propertyUpdates)) {
+    changes.push({ key: `properties.${key}`, from: entity?.properties?.[key], to: value });
+  }
+
+  return changes;
+}
+
+function buildRelationshipUpdateChanges(
+  relationship: Doc<"relationships"> | null,
+  updates: Record<string, unknown>
+): GraphApprovalChange[] {
+  const changes: GraphApprovalChange[] = [];
+
+  if (updates["notes"] !== undefined) {
+    changes.push({ key: "notes", from: relationship?.notes, to: updates["notes"] });
+  }
+  if (updates["strength"] !== undefined) {
+    changes.push({ key: "strength", from: relationship?.strength, to: updates["strength"] });
+  }
+  if (updates["bidirectional"] !== undefined) {
+    changes.push({
+      key: "bidirectional",
+      from: relationship?.bidirectional ?? false,
+      to: updates["bidirectional"],
+    });
+  }
+  if (updates["metadata"] !== undefined) {
+    changes.push({ key: "metadata", from: relationship?.metadata, to: updates["metadata"] });
+  }
+
+  return changes;
+}
+
+async function resolveEntityForPreview(
+  ctx: ActionCtx,
+  projectId: Id<"projects">,
+  name: string,
+  type?: string
+): Promise<{ entity: Doc<"entities"> | null; error?: string }> {
+  const matches = (await ctx.runQuery(
+    // @ts-expect-error Deep types
+    internal["ai/tools/projectGraphHandlers"].findEntityByCanonical,
+    { projectId, name, type }
+  )) as Doc<"entities">[] | null;
+
+  if (!matches || matches.length === 0) {
+    return { entity: null };
+  }
+
+  if (matches.length > 1) {
+    const types = Array.from(new Set(matches.map((match) => match.type)));
+    return {
+      entity: null,
+      error: `Multiple entities named "${name}" found (${types.join(", ")})`,
+    };
+  }
+
+  return { entity: matches[0] };
+}
+
+function resolveGraphApprovalReasons(params: {
+  toolName: string;
+  args: Record<string, unknown>;
+  registry: ProjectTypeRegistryResolved | null;
+  resolvedType?: string;
+}): string[] {
+  const { toolName, args, registry, resolvedType } = params;
+  const reasons = new Set<string>();
+
+  if (!registry) {
+    reasons.add("registry_unknown");
+    return Array.from(reasons);
+  }
+
+  const addRiskReason = (level?: RiskLevel): void => {
+    if (level === "core") {
+      reasons.add("risk_core");
+    } else if (level === "high") {
+      reasons.add("risk_high");
+    }
+  };
+
+  if (toolName === "create_entity" || toolName === "create_node") {
+    const type = typeof args["type"] === "string" ? (args["type"] as string) : resolvedType;
+    if (!type) {
+      reasons.add("invalid_type");
+      return Array.from(reasons);
+    }
+    const def = registry.entityTypes[type];
+    if (!def) {
+      reasons.add("invalid_type");
+      return Array.from(reasons);
+    }
+    addRiskReason(def.riskLevel);
+    if (def.approval?.createRequiresApproval) {
+      reasons.add("create_requires_approval");
+    }
+    return Array.from(reasons);
+  }
+
+  if (toolName === "update_entity" || toolName === "update_node") {
+    const type =
+      resolvedType ??
+      (typeof args["entityType"] === "string" ? (args["entityType"] as string) : undefined) ??
+      (typeof args["nodeType"] === "string" ? (args["nodeType"] as string) : undefined);
+    if (!type) {
+      reasons.add("invalid_type");
+      return Array.from(reasons);
+    }
+    const def = registry.entityTypes[type];
+    if (!def) {
+      reasons.add("invalid_type");
+      return Array.from(reasons);
+    }
+    addRiskReason(def.riskLevel);
+    if (def.approval?.updateAlwaysRequiresApproval) {
+      reasons.add("update_requires_approval");
+    }
+    const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+    const identityFields = getIdentityFields(def);
+    if (identityFields.length > 0 && hasIdentityChange(updates, identityFields)) {
+      reasons.add("identity_change");
+    }
+    return Array.from(reasons);
+  }
+
+  if (toolName === "create_relationship" || toolName === "create_edge") {
+    const type = typeof args["type"] === "string" ? (args["type"] as string) : resolvedType;
+    if (!type) {
+      reasons.add("invalid_type");
+      return Array.from(reasons);
+    }
+    const def = registry.relationshipTypes[type];
+    if (!def) {
+      reasons.add("invalid_type");
+      return Array.from(reasons);
+    }
+    addRiskReason(def.riskLevel);
+    return Array.from(reasons);
+  }
+
+  if (toolName === "update_relationship" || toolName === "update_edge") {
+    const type = typeof args["type"] === "string" ? (args["type"] as string) : resolvedType;
+    if (!type) {
+      reasons.add("invalid_type");
+      return Array.from(reasons);
+    }
+    const def = registry.relationshipTypes[type];
+    if (!def) {
+      reasons.add("invalid_type");
+      return Array.from(reasons);
+    }
+    addRiskReason(def.riskLevel);
+
+    const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+    if (updates["bidirectional"] !== undefined) {
+      reasons.add("bidirectional_change");
+    }
+    if (isSignificantStrengthChange(updates["strength"] as number | undefined)) {
+      reasons.add("strength_sensitive");
+    }
+    return Array.from(reasons);
+  }
+
+  return Array.from(reasons);
+}
+
+async function buildProjectGraphApprovalPreview(
+  ctx: ActionCtx,
+  projectId: Id<"projects">,
+  toolName: string,
+  args: Record<string, unknown>,
+  registry: ProjectTypeRegistryResolved | null
+): Promise<{ preview: GraphApprovalPreview | null; reasons: string[] }> {
+  let preview: GraphApprovalPreview | null = null;
+  let resolvedType: string | undefined;
+
+  if (toolName === "create_entity" || toolName === "create_node") {
+    const type = typeof args["type"] === "string" ? (args["type"] as string) : "unknown";
+    const name = typeof args["name"] === "string" ? (args["name"] as string) : "";
+    const aliases = Array.isArray(args["aliases"]) ? (args["aliases"] as string[]) : undefined;
+    const notes = typeof args["notes"] === "string" ? (args["notes"] as string) : undefined;
+    const properties = buildEntityPropertiesFromArgs(args);
+    resolvedType = type;
+    preview = {
+      kind: "entity_create",
+      type,
+      name,
+      aliases,
+      notes,
+      properties: Object.keys(properties).length > 0 ? properties : undefined,
+    };
+  }
+
+  if (toolName === "update_entity" || toolName === "update_node") {
+    const nameKey = toolName === "update_entity" ? "entityName" : "nodeName";
+    const typeKey = toolName === "update_entity" ? "entityType" : "nodeType";
+    const name = typeof args[nameKey] === "string" ? (args[nameKey] as string) : undefined;
+    const typeHint = typeof args[typeKey] === "string" ? (args[typeKey] as string) : undefined;
+    const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+
+    let entity: Doc<"entities"> | null = null;
+    let note: string | undefined;
+    if (name) {
+      const resolved = await resolveEntityForPreview(ctx, projectId, name, typeHint);
+      entity = resolved.entity;
+      if (resolved.error) {
+        note = resolved.error;
+      } else if (!entity) {
+        note = `Entity "${name}" not found`;
+      }
+    } else {
+      note = "Entity name missing";
+    }
+
+    resolvedType = entity?.type ?? typeHint;
+
+    const changes = buildEntityUpdateChanges(entity, updates);
+    preview = {
+      kind: "entity_update",
+      entityId: entity?._id,
+      name: entity?.name ?? name,
+      type: resolvedType,
+      changes,
+      note,
+    };
+  }
+
+  if (toolName === "create_relationship" || toolName === "create_edge") {
+    const type = typeof args["type"] === "string" ? (args["type"] as string) : "unknown";
+    const sourceName = typeof args["sourceName"] === "string" ? (args["sourceName"] as string) : undefined;
+    const targetName = typeof args["targetName"] === "string" ? (args["targetName"] as string) : undefined;
+    const bidirectional = typeof args["bidirectional"] === "boolean" ? (args["bidirectional"] as boolean) : undefined;
+    const strength = typeof args["strength"] === "number" ? (args["strength"] as number) : undefined;
+    const notes = typeof args["notes"] === "string" ? (args["notes"] as string) : undefined;
+    const metadata =
+      args["metadata"] && typeof args["metadata"] === "object" && !Array.isArray(args["metadata"])
+        ? (args["metadata"] as Record<string, unknown>)
+        : undefined;
+
+    let note: string | undefined;
+    let sourceEntity: Doc<"entities"> | null = null;
+    let targetEntity: Doc<"entities"> | null = null;
+
+    if (sourceName) {
+      const resolvedSource = await resolveEntityForPreview(ctx, projectId, sourceName);
+      sourceEntity = resolvedSource.entity;
+      if (resolvedSource.error) {
+        note = resolvedSource.error;
+      } else if (!sourceEntity) {
+        note = `Source entity "${sourceName}" not found`;
+      }
+    }
+
+    if (targetName) {
+      const resolvedTarget = await resolveEntityForPreview(ctx, projectId, targetName);
+      targetEntity = resolvedTarget.entity;
+      if (!note && resolvedTarget.error) {
+        note = resolvedTarget.error;
+      } else if (!note && !targetEntity) {
+        note = `Target entity "${targetName}" not found`;
+      }
+    }
+
+    resolvedType = type;
+    preview = {
+      kind: "relationship_create",
+      type,
+      sourceName: sourceEntity?.name ?? sourceName,
+      targetName: targetEntity?.name ?? targetName,
+      sourceId: sourceEntity?._id,
+      targetId: targetEntity?._id,
+      bidirectional,
+      strength,
+      notes,
+      metadata,
+      note,
+    };
+  }
+
+  if (toolName === "update_relationship" || toolName === "update_edge") {
+    const type = typeof args["type"] === "string" ? (args["type"] as string) : "unknown";
+    const sourceName = typeof args["sourceName"] === "string" ? (args["sourceName"] as string) : undefined;
+    const targetName = typeof args["targetName"] === "string" ? (args["targetName"] as string) : undefined;
+    const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+
+    let note: string | undefined;
+    let sourceEntity: Doc<"entities"> | null = null;
+    let targetEntity: Doc<"entities"> | null = null;
+
+    if (sourceName) {
+      const resolvedSource = await resolveEntityForPreview(ctx, projectId, sourceName);
+      sourceEntity = resolvedSource.entity;
+      if (resolvedSource.error) {
+        note = resolvedSource.error;
+      } else if (!sourceEntity) {
+        note = `Source entity "${sourceName}" not found`;
+      }
+    }
+
+    if (targetName) {
+      const resolvedTarget = await resolveEntityForPreview(ctx, projectId, targetName);
+      targetEntity = resolvedTarget.entity;
+      if (!note && resolvedTarget.error) {
+        note = resolvedTarget.error;
+      } else if (!note && !targetEntity) {
+        note = `Target entity "${targetName}" not found`;
+      }
+    }
+
+    let relationship: Doc<"relationships"> | null = null;
+    if (sourceEntity && targetEntity && type !== "unknown") {
+      relationship = (await ctx.runQuery(
+        // @ts-expect-error Deep types
+        internal["ai/tools/projectGraphHandlers"].findRelationship,
+        { projectId, sourceId: sourceEntity._id, targetId: targetEntity._id, type }
+      )) as Doc<"relationships"> | null;
+      if (!relationship && !note) {
+        note = "Relationship not found";
+      }
+    } else if (!note) {
+      note = "Relationship lookup incomplete";
+    }
+
+    resolvedType = type;
+    const changes = buildRelationshipUpdateChanges(relationship, updates);
+    preview = {
+      kind: "relationship_update",
+      relationshipId: relationship?._id,
+      type,
+      sourceName: sourceEntity?.name ?? sourceName,
+      targetName: targetEntity?.name ?? targetName,
+      changes,
+      note,
+    };
+  }
+
+  const reasons = resolveGraphApprovalReasons({ toolName, args, registry, resolvedType });
+  return { preview, reasons };
 }
 
 async function resolveUniqueEntityTypeForUpdate(
@@ -1023,6 +1466,13 @@ export const runSagaAgentChatToStream = internalAction({
                 approvalArgs,
                 registry
               );
+              const { preview, reasons } = await buildProjectGraphApprovalPreview(
+                ctx,
+                projectIdValue,
+                call.toolName,
+                approvalArgs,
+                registry
+              );
               suggestionId = (await ctx.runMutation(
                 (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
                 {
@@ -1032,6 +1482,8 @@ export const runSagaAgentChatToStream = internalAction({
                   approvalType: resolveApprovalType(call.toolName),
                   danger: resolveApprovalDanger(call.toolName, approvalArgs),
                   riskLevel,
+                  approvalReasons: reasons.length > 0 ? reasons : undefined,
+                  preview: preview ?? undefined,
                   operation: suggestion.operation,
                   targetType: suggestion.targetType,
                   targetId: suggestionTargetId,
