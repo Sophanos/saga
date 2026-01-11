@@ -13,6 +13,10 @@ import {
   Quote,
   Eraser,
   AlignLeft,
+  Shield,
+  FileQuestion,
+  Target,
+  Lightbulb,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -119,6 +123,31 @@ const STYLE_TYPE_CONFIG: Record<
     bgClass: "bg-teal-500/20",
     textClass: "text-teal-400",
     icon: AlignLeft,
+  },
+  // Policy issues
+  policy_conflict: {
+    label: "Policy Conflict",
+    bgClass: "bg-mythos-accent-red/20",
+    textClass: "text-mythos-accent-red",
+    icon: Shield,
+  },
+  unverifiable: {
+    label: "Unverifiable",
+    bgClass: "bg-amber-500/20",
+    textClass: "text-amber-400",
+    icon: FileQuestion,
+  },
+  not_testable: {
+    label: "Not Testable",
+    bgClass: "bg-violet-500/20",
+    textClass: "text-violet-400",
+    icon: Target,
+  },
+  policy_gap: {
+    label: "Policy Gap",
+    bgClass: "bg-cyan-500/20",
+    textClass: "text-cyan-400",
+    icon: Lightbulb,
   },
 };
 

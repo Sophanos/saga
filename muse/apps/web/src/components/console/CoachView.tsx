@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo } from "react";
+import { useCallback, useState } from "react";
 import {
   RefreshCw,
   Lightbulb,
@@ -664,6 +664,17 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
     [openPinPolicyModal]
   );
 
+  // Jump to a canon citation in the manifest panel
+  const handleJumpToCanon = useCallback(
+    (memoryId: string) => {
+      setSelectedMemoryId(memoryId);
+      if (manifestCollapsed) {
+        toggleManifest();
+      }
+    },
+    [setSelectedMemoryId, manifestCollapsed, toggleManifest]
+  );
+
   return (
     <div className={cn("relative h-full flex flex-col", className)}>
       {/* Header */}
@@ -762,10 +773,13 @@ export function CoachView({ onRunAnalysis, className }: CoachViewProps) {
           {/* Style Issues Section - shown in all modes */}
           <section>
             <StyleIssuesList
+              mode={coachMode}
               onJumpToIssue={handleJumpToIssue}
               onApplyFix={openStyleFixPreview}
               onFixAll={handleFixAll}
               onSelectIssue={handleSelectIssue}
+              onJumpToCanon={handleJumpToCanon}
+              onPinPolicy={pinPolicyFromIssue}
             />
           </section>
 

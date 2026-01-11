@@ -24,6 +24,8 @@ import type {
   GenerateTemplateResult,
   ClarityCheckArgs,
   ClarityCheckResult,
+  PolicyCheckArgs,
+  PolicyCheckResult,
   CheckLogicArgs,
   CheckLogicResult,
   NameGeneratorArgs,
@@ -619,6 +621,17 @@ export async function executeClarityCheck(
   opts: ExecuteToolOptions
 ): Promise<ClarityCheckResult> {
   return executeSagaTool<ClarityCheckResult>("clarity_check", input, opts);
+}
+
+/**
+ * Execute policy_check tool.
+ * Checks prose against pinned style rules and policies.
+ */
+export async function executePolicyCheck(
+  input: PolicyCheckArgs,
+  opts: ExecuteToolOptions
+): Promise<PolicyCheckResult> {
+  return executeSagaTool<PolicyCheckResult>("policy_check", input, opts);
 }
 
 /**

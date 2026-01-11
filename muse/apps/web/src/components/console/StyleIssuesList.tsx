@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import {
   AlertTriangle,
   Pencil,
@@ -12,9 +12,14 @@ import {
   Quote,
   Eraser,
   AlignLeft,
+  Shield,
+  FileQuestion,
+  Target,
+  Lightbulb,
+  FileText,
 } from "lucide-react";
 import { cn, Button } from "@mythos/ui";
-import { useStyleIssues, useSelectedStyleIssueId } from "../../stores/analysis";
+import { useStyleIssues, useSelectedStyleIssueId, useCoachMode, type CoachMode } from "../../stores/analysis";
 import type { StyleIssue } from "@mythos/core";
 
 const issueTypeConfig: Record<
@@ -77,7 +82,51 @@ const issueTypeConfig: Record<
     textClass: "text-teal-400",
     icon: AlignLeft,
   },
+  // Policy issues
+  policy_conflict: {
+    label: "Conflict",
+    bgClass: "bg-mythos-accent-red/20",
+    textClass: "text-mythos-accent-red",
+    icon: Shield,
+  },
+  unverifiable: {
+    label: "Unverifiable",
+    bgClass: "bg-amber-500/20",
+    textClass: "text-amber-400",
+    icon: FileQuestion,
+  },
+  not_testable: {
+    label: "Not Testable",
+    bgClass: "bg-violet-500/20",
+    textClass: "text-violet-400",
+    icon: Target,
+  },
+  policy_gap: {
+    label: "Gap",
+    bgClass: "bg-cyan-500/20",
+    textClass: "text-cyan-400",
+    icon: Lightbulb,
+  },
 };
+
+/**
+ * Issue type categories by coach mode
+ */
+const ISSUE_TYPES_BY_MODE: Record<CoachMode, StyleIssue["type"][]> = {
+  writing: ["telling", "passive", "adverb", "repetition"],
+  clarity: ["ambiguous_pronoun", "unclear_antecedent", "cliche", "filler_word", "dangling_modifier"],
+  policy: ["policy_conflict", "unverifiable", "not_testable", "policy_gap"],
+};
+
+/**
+ * Get the test ID prefix based on issue type
+ */
+function getTestIdPrefix(issueType: StyleIssue["type"]): string {
+  if (ISSUE_TYPES_BY_MODE.writing.includes(issueType)) return "coach";
+  if (ISSUE_TYPES_BY_MODE.clarity.includes(issueType)) return "clarity";
+  if (ISSUE_TYPES_BY_MODE.policy.includes(issueType)) return "policy";
+  return "coach";
+}
 
 function IssueTypeBadge({ type }: { type: StyleIssue["type"] }) {
   const config = issueTypeConfig[type];
@@ -103,13 +152,18 @@ interface IssueItemProps {
   onJump?: (issue: StyleIssue) => void;
   onApplyFix?: (issue: StyleIssue) => void;
   onSelect?: (issue: StyleIssue) => void;
+  onJumpToCanon?: (memoryId: string) => void;
+  onPinPolicy?: (issue: StyleIssue) => void;
 }
 
-function IssueItem({ issue, isSelected, onJump, onApplyFix, onSelect }: IssueItemProps) {
+function IssueItem({ issue, isSelected, onJump, onApplyFix, onSelect, onJumpToCanon, onPinPolicy }: IssueItemProps) {
   const config = issueTypeConfig[issue.type];
   const canJump = issue.line !== undefined && onJump;
   const canFix = issue.fix && onApplyFix;
+  const isPolicyIssue = ISSUE_TYPES_BY_MODE.policy.includes(issue.type);
+  const hasCanonCitations = issue.canonCitations && issue.canonCitations.length > 0;
   const itemRef = useRef<HTMLDivElement>(null);
+  const testIdPrefix = getTestIdPrefix(issue.type);
 
   // Scroll selected item into view
   useEffect(() => {
@@ -129,6 +183,7 @@ function IssueItem({ issue, isSelected, onJump, onApplyFix, onSelect }: IssueIte
     <div
       ref={itemRef}
       onClick={handleClick}
+      data-testid={`${testIdPrefix}-issue-${issue.id}`}
       className={cn(
         "p-3 rounded-md border transition-colors cursor-pointer",
         "bg-mythos-bg-secondary/50 border-mythos-text-muted/10",
@@ -173,35 +228,102 @@ function IssueItem({ issue, isSelected, onJump, onApplyFix, onSelect }: IssueIte
         {issue.suggestion}
       </p>
 
-      {/* Apply Fix button */}
-      {canFix && (
-        <div className="flex justify-end">
+      {/* Canon citations - clickable links to jump to memory */}
+      {hasCanonCitations && (
+        <div className="mt-2 pt-2 border-t border-mythos-text-muted/10">
+          <p className="text-xs text-mythos-text-muted mb-1">Canon cited:</p>
+          <div className="flex flex-wrap gap-1">
+            {issue.canonCitations!.map((citation) => (
+              <button
+                key={citation.memoryId}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onJumpToCanon?.(citation.memoryId);
+                }}
+                data-testid={`coach-jump-canon-${citation.memoryId}`}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs",
+                  "bg-mythos-accent-cyan/10 text-mythos-accent-cyan",
+                  "hover:bg-mythos-accent-cyan/20 transition-colors"
+                )}
+                title={citation.reason ?? citation.excerpt}
+              >
+                <FileText className="w-3 h-3" />
+                <span className="truncate max-w-[120px]">
+                  {citation.excerpt || citation.memoryId.slice(0, 8)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex justify-end gap-2 mt-2">
+        {/* Pin Policy button for policy issues */}
+        {isPolicyIssue && onPinPolicy && (
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => onApplyFix(issue)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPinPolicy(issue);
+            }}
+            data-testid={`coach-pin-policy-${issue.id}`}
+            className="text-xs h-7 px-2 text-mythos-accent-purple hover:text-mythos-accent-purple/80 hover:bg-mythos-accent-purple/10"
+          >
+            <Shield className="w-3 h-3 mr-1" />
+            Pin Policy
+          </Button>
+        )}
+        {/* Apply Fix button */}
+        {canFix && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              onApplyFix(issue);
+            }}
+            data-testid={`coach-apply-fix-${issue.id}`}
             className="text-xs h-7 px-2 text-mythos-accent-green hover:text-mythos-accent-green/80 hover:bg-mythos-accent-green/10"
           >
             <Wand2 className="w-3 h-3 mr-1" />
             Apply Fix
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
-function EmptyState() {
+const EMPTY_STATE_MESSAGES: Record<CoachMode, { title: string; description: string }> = {
+  writing: {
+    title: "Looking Great!",
+    description: "No style issues detected. Your prose is clean and engaging.",
+  },
+  clarity: {
+    title: "Crystal Clear!",
+    description: "No clarity issues found. Your prose is easy to read and understand.",
+  },
+  policy: {
+    title: "Policy Compliant!",
+    description: "No policy violations found. Your text aligns with all pinned rules.",
+  },
+};
+
+function EmptyState({ mode = "writing" }: { mode?: CoachMode }) {
+  const messages = EMPTY_STATE_MESSAGES[mode];
   return (
     <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
       <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center mb-3">
         <CheckCircle2 className="w-6 h-6 text-green-400" />
       </div>
       <h4 className="text-sm font-medium text-mythos-text-primary mb-1">
-        Looking Great!
+        {messages.title}
       </h4>
       <p className="text-xs text-mythos-text-muted max-w-[200px]">
-        No style issues detected. Your prose is clean and engaging.
+        {messages.description}
       </p>
     </div>
   );
@@ -249,6 +371,8 @@ function ListHeader({ count, fixableCount, onFixAll }: ListHeaderProps) {
 
 export interface StyleIssuesListProps {
   className?: string;
+  /** Coach mode to filter issues by (if not provided, uses store mode) */
+  mode?: CoachMode;
   /** Callback when user clicks to jump to an issue location */
   onJumpToIssue?: (issue: StyleIssue) => void;
   /** Callback when user clicks to apply a fix (triggers preview modal) */
@@ -257,28 +381,46 @@ export interface StyleIssuesListProps {
   onFixAll?: () => void;
   /** Callback when user selects an issue */
   onSelectIssue?: (issue: StyleIssue) => void;
+  /** Callback when user clicks to jump to a canon citation */
+  onJumpToCanon?: (memoryId: string) => void;
+  /** Callback when user clicks to pin a policy issue */
+  onPinPolicy?: (issue: StyleIssue) => void;
 }
 
 export function StyleIssuesList({
   className,
+  mode: modeProp,
   onJumpToIssue,
   onApplyFix,
   onFixAll,
   onSelectIssue,
+  onJumpToCanon,
+  onPinPolicy,
 }: StyleIssuesListProps) {
-  const issues = useStyleIssues();
+  const allIssues = useStyleIssues();
+  const storeMode = useCoachMode();
   const selectedStyleIssueId = useSelectedStyleIssueId();
-  const fixableCount = issues.filter((i) => Boolean(i.fix)).length;
+
+  // Use prop mode if provided, otherwise use store mode
+  const mode = modeProp ?? storeMode;
+
+  // Filter issues based on the current mode
+  const filteredIssues = useMemo(() => {
+    const validTypes = ISSUE_TYPES_BY_MODE[mode];
+    return allIssues.filter((issue) => validTypes.includes(issue.type));
+  }, [allIssues, mode]);
+
+  const fixableCount = filteredIssues.filter((i) => Boolean(i.fix)).length;
 
   return (
     <div className={cn("", className)}>
-      <ListHeader count={issues.length} fixableCount={fixableCount} onFixAll={onFixAll} />
+      <ListHeader count={filteredIssues.length} fixableCount={fixableCount} onFixAll={onFixAll} />
 
-      {issues.length === 0 ? (
-        <EmptyState />
+      {filteredIssues.length === 0 ? (
+        <EmptyState mode={mode} />
       ) : (
         <div className="space-y-2">
-          {issues.map((issue, index) => (
+          {filteredIssues.map((issue, index) => (
             <IssueItem
               key={issue.id || `${issue.type}-${issue.line ?? index}-${index}`}
               issue={issue}
@@ -286,6 +428,8 @@ export function StyleIssuesList({
               onJump={onJumpToIssue}
               onApplyFix={onApplyFix}
               onSelect={onSelectIssue}
+              onJumpToCanon={onJumpToCanon}
+              onPinPolicy={onPinPolicy}
             />
           ))}
         </div>

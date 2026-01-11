@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { writingCoach } from "@mythos/ai";
 import type { SceneMetrics, StyleIssue } from "@mythos/core";
-import { useAnalysisStore } from "../stores/analysis";
+import { useAnalysisStore, type CoachMode } from "../stores/analysis";
 import { useHistoryStore } from "../stores/history";
 import { useMythosStore } from "../stores";
 import { simpleHash } from "../utils/hash";
 import { getAnalysisPersistenceQueue, type PersistenceQueueState } from "../services/analysis";
-import { executeClarityCheck } from "../services/ai/agentRuntimeClient";
+import { executeClarityCheck, executePolicyCheck } from "../services/ai/agentRuntimeClient";
 import { useApiKey } from "./useApiKey";
 
 /**
@@ -25,6 +25,8 @@ const MIN_CONTENT_LENGTH = 50;
 interface UseContentAnalysisOptions {
   /** Content to analyze */
   content: string;
+  /** Coach mode: writing, clarity, or policy */
+  mode?: CoachMode;
   /** Whether auto-analysis is enabled */
   autoAnalyze?: boolean;
   /** Custom debounce delay */
@@ -92,7 +94,7 @@ interface UseContentAnalysisResult {
 export function useContentAnalysis(
   options: UseContentAnalysisOptions
 ): UseContentAnalysisResult {
-  const { content, autoAnalyze = true, debounceMs = DEBOUNCE_DELAY, enabled = true } = options;
+  const { content, mode = "writing", autoAnalyze = true, debounceMs = DEBOUNCE_DELAY, enabled = true } = options;
 
   const { key: apiKey } = useApiKey();
 
@@ -112,6 +114,10 @@ export function useContentAnalysis(
     setClarityIssues,
     setReadabilityMetrics,
     clearClarity,
+    setPolicyIssues,
+    setPolicyCompliance,
+    setPolicySummary,
+    clearPolicy,
   } = useAnalysisStore();
 
   // History store actions
@@ -160,7 +166,7 @@ export function useContentAnalysis(
   }, [updatePersistenceState]);
 
   /**
-   * Run the content analysis
+   * Run the content analysis based on the current mode
    */
   const runAnalysis = useCallback(async () => {
     // Don't analyze if disabled or content is too short
@@ -184,68 +190,112 @@ export function useContentAnalysis(
 
     setAnalyzing(true);
     setError(null);
-    clearClarity();
+
+    // Clear mode-specific data before running
+    if (mode === "clarity") {
+      clearClarity();
+    } else if (mode === "policy") {
+      clearPolicy();
+    }
 
     try {
-      const coachPromise = writingCoach.quickAnalyze(content);
-      const clarityPromise =
-        apiKey && currentProject?.id
-          ? executeClarityCheck(
-              { scope: "document", maxIssues: 25, text: content },
-              {
-                apiKey,
-                projectId: currentProject.id,
-                signal: abortControllerRef.current.signal,
-              }
-            )
-          : Promise.resolve(null);
+      // Mode-specific tool execution
+      if (mode === "writing") {
+        // Writing mode: run writing coach + optional clarity
+        const coachPromise = writingCoach.quickAnalyze(content);
+        const clarityPromise =
+          apiKey && currentProject?.id
+            ? executeClarityCheck(
+                { scope: "document", maxIssues: 25, text: content },
+                {
+                  apiKey,
+                  projectId: currentProject.id,
+                  signal: abortControllerRef.current.signal,
+                }
+              )
+            : Promise.resolve(null);
 
-      const [coachSettled, claritySettled] = await Promise.allSettled([
-        coachPromise,
-        clarityPromise,
-      ]);
+        const [coachSettled, claritySettled] = await Promise.allSettled([
+          coachPromise,
+          clarityPromise,
+        ]);
 
-      if (coachSettled.status === "rejected") {
-        throw coachSettled.reason;
-      }
+        if (coachSettled.status === "rejected") {
+          throw coachSettled.reason;
+        }
 
-      const result = coachSettled.value;
+        const result = coachSettled.value;
 
-      // Check if we were aborted
-      if (abortControllerRef.current?.signal.aborted) {
-        return;
-      }
+        // Check if we were aborted
+        if (abortControllerRef.current?.signal.aborted) {
+          return;
+        }
 
-      updateAnalysis({
-        metrics: result.metrics,
-        issues: result.issues,
-        insights: result.insights,
-        contentHash,
-      });
+        updateAnalysis({
+          metrics: result.metrics,
+          issues: result.issues,
+          insights: result.insights,
+          contentHash,
+        });
 
-      // Save to history store for historical tracking
-      addAnalysisRecord({
-        sceneId: contentHash, // Use content hash as scene identifier
-        metrics: result.metrics,
-      });
-
-      // Persist to database if we have a project context
-      // Uses persistence queue with retry logic to prevent data loss
-      if (currentProject?.id) {
-        queueRef.current.enqueue({
-          projectId: currentProject.id,
-          documentId: currentDocument?.id,
+        // Save to history store for historical tracking
+        addAnalysisRecord({
           sceneId: contentHash,
           metrics: result.metrics,
-          wordCount: content.split(/\s+/).filter(Boolean).length,
         });
-      }
 
-      // Update last analyzed content
-      lastContentRef.current = content;
+        // Persist to database if we have a project context
+        if (currentProject?.id) {
+          queueRef.current.enqueue({
+            projectId: currentProject.id,
+            documentId: currentDocument?.id,
+            sceneId: contentHash,
+            metrics: result.metrics,
+            wordCount: content.split(/\s+/).filter(Boolean).length,
+          });
+        }
 
-      if (claritySettled.status === "fulfilled" && claritySettled.value) {
-        const clarityResult = claritySettled.value;
+        // Update last analyzed content
+        lastContentRef.current = content;
+
+        // Process clarity results
+        if (claritySettled.status === "fulfilled" && claritySettled.value) {
+          const clarityResult = claritySettled.value;
+          const clarityIssues: StyleIssue[] = clarityResult.issues.map((issue) => ({
+            id: issue.id,
+            type: issue.type as StyleIssue["type"],
+            text: issue.text,
+            line: issue.line,
+            position: issue.position,
+            suggestion: issue.suggestion,
+            fix: issue.fix,
+          }));
+          setClarityIssues(clarityIssues);
+          setReadabilityMetrics(clarityResult.metrics);
+        } else {
+          setClarityIssues([]);
+          setReadabilityMetrics(null);
+        }
+      } else if (mode === "clarity") {
+        // Clarity mode: run clarity_check only
+        if (!apiKey || !currentProject?.id) {
+          setError("API key or project required for clarity check");
+          return;
+        }
+
+        const clarityResult = await executeClarityCheck(
+          { scope: "document", maxIssues: 25, text: content },
+          {
+            apiKey,
+            projectId: currentProject.id,
+            signal: abortControllerRef.current.signal,
+          }
+        );
+
+        // Check if we were aborted
+        if (abortControllerRef.current?.signal.aborted) {
+          return;
+        }
 
         const clarityIssues: StyleIssue[] = clarityResult.issues.map((issue) => ({
           id: issue.id,
@@ -259,14 +309,43 @@ export function useContentAnalysis(
 
         setClarityIssues(clarityIssues);
         setReadabilityMetrics(clarityResult.metrics);
-      } else if (claritySettled.status === "rejected") {
-        console.warn("[useContentAnalysis] Clarity check failed:", claritySettled.reason);
-        setReadabilityMetrics(null);
-        setClarityIssues([]);
-      } else {
-        // No clarity check (missing apiKey or project context)
-        setReadabilityMetrics(null);
-        setClarityIssues([]);
+        lastContentRef.current = content;
+      } else if (mode === "policy") {
+        // Policy mode: run policy_check only
+        if (!apiKey || !currentProject?.id) {
+          setError("API key or project required for policy check");
+          return;
+        }
+
+        const policyResult = await executePolicyCheck(
+          { text: content, maxIssues: 25 },
+          {
+            apiKey,
+            projectId: currentProject.id,
+            signal: abortControllerRef.current.signal,
+          }
+        );
+
+        // Check if we were aborted
+        if (abortControllerRef.current?.signal.aborted) {
+          return;
+        }
+
+        const policyIssues: StyleIssue[] = policyResult.issues.map((issue) => ({
+          id: issue.id ?? `policy-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          type: issue.type as StyleIssue["type"],
+          text: issue.text,
+          line: issue.line,
+          suggestion: issue.suggestion,
+          canonCitations: issue.canonCitations,
+        }));
+
+        setPolicyIssues(policyIssues);
+        setPolicySummary(policyResult.summary);
+        if (policyResult.compliance) {
+          setPolicyCompliance(policyResult.compliance);
+        }
+        lastContentRef.current = content;
       }
     } catch (err) {
       // Ignore abort errors
@@ -280,7 +359,26 @@ export function useContentAnalysis(
     } finally {
       setAnalyzing(false);
     }
-  }, [content, lastAnalyzedHash, setAnalyzing, setError, updateAnalysis, addAnalysisRecord, currentProject, currentDocument]);
+  }, [
+    content,
+    mode,
+    enabled,
+    lastAnalyzedHash,
+    apiKey,
+    currentProject,
+    currentDocument,
+    setAnalyzing,
+    setError,
+    updateAnalysis,
+    addAnalysisRecord,
+    clearClarity,
+    clearPolicy,
+    setClarityIssues,
+    setReadabilityMetrics,
+    setPolicyIssues,
+    setPolicyCompliance,
+    setPolicySummary,
+  ]);
 
   /**
    * Debounced auto-analysis effect

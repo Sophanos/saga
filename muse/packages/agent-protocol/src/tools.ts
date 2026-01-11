@@ -47,6 +47,7 @@ export type ToolName =
   | "check_consistency"
   | "generate_template"
   | "clarity_check"
+  | "policy_check"
   | "check_logic"
   | "name_generator"
   | "commit_decision"
@@ -462,6 +463,17 @@ export interface ClarityCheckArgs {
 }
 
 /**
+ * Arguments for policy_check tool.
+ * Checks prose against pinned style rules and policies.
+ */
+export interface PolicyCheckArgs {
+  /** Text to analyze */
+  text: string;
+  /** Maximum number of issues to return (default 25) */
+  maxIssues?: number;
+}
+
+/**
  * Arguments for check_logic tool.
  * Validates story logic against explicit rules and world state.
  */
@@ -793,6 +805,7 @@ export interface ToolArgsMap {
   check_consistency: CheckConsistencyArgs;
   generate_template: GenerateTemplateArgs;
   clarity_check: ClarityCheckArgs;
+  policy_check: PolicyCheckArgs;
   check_logic: CheckLogicArgs;
   name_generator: NameGeneratorArgs;
   commit_decision: CommitDecisionArgs;
@@ -1167,6 +1180,61 @@ export interface ClarityCheckResult {
 }
 
 // =============================================================================
+// policy_check Tool Results
+// =============================================================================
+
+/**
+ * Policy issue type for policy_check tool.
+ */
+export type PolicyIssueType =
+  | "policy_conflict"
+  | "unverifiable"
+  | "not_testable"
+  | "policy_gap";
+
+/**
+ * A policy issue detected in the text.
+ */
+export interface PolicyCheckIssue {
+  /** Unique identifier */
+  id: string;
+  /** Type of policy issue */
+  type: PolicyIssueType;
+  /** The problematic text snippet */
+  text: string;
+  /** Line number where the issue occurs */
+  line?: number;
+  /** Suggested improvement */
+  suggestion: string;
+  /** Canon citations for the policy violation */
+  canonCitations?: CanonCitation[];
+}
+
+/**
+ * Policy compliance metrics.
+ */
+export interface PolicyComplianceMetrics {
+  /** Compliance score (0-100) */
+  score: number;
+  /** Number of policies checked */
+  policiesChecked: number;
+  /** Number of conflicts found */
+  conflictsFound: number;
+}
+
+/**
+ * Result of policy_check tool.
+ */
+export interface PolicyCheckResult {
+  /** Detected policy issues */
+  issues: PolicyCheckIssue[];
+  /** Summary of the analysis */
+  summary: string;
+  /** Compliance metrics */
+  compliance?: PolicyComplianceMetrics;
+}
+
+// =============================================================================
 // check_logic Tool Results
 // =============================================================================
 
@@ -1310,6 +1378,7 @@ export interface ToolResultsMap {
   check_consistency: CheckConsistencyResult;
   generate_template: GenerateTemplateResult;
   clarity_check: ClarityCheckResult;
+  policy_check: PolicyCheckResult;
   check_logic: CheckLogicResult;
   name_generator: NameGeneratorResult;
   commit_decision: CommitDecisionResult;

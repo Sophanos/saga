@@ -60,6 +60,14 @@ Reference: `../DB_MIGRATION_REPORT.md`.
   - Two-step approval modal for pinning policies (`muse/apps/web/src/components/modals/PinPolicyModal.tsx`)
   - Analysis store extended with coachMode, policyIssues, policyCompliance, policySummary state (`muse/apps/web/src/stores/analysis.ts`)
   - Expo Quick Actions: added `clarity_check` and `policy_check` actions (`muse/packages/state/src/ai.ts`, `muse/apps/expo/src/components/ai/QuickActions.tsx`, `muse/apps/expo/src/components/ai/AIPanel.tsx`)
+  - **UI Polish (2026-01-11):**
+    - Mode-aware analysis hook: `useContentAnalysis` accepts `mode` param, runs correct backend tool per mode (`muse/apps/web/src/hooks/useContentAnalysis.ts`)
+    - `executePolicyCheck` added to agent runtime client (`muse/apps/web/src/services/ai/agentRuntimeClient.ts`)
+    - `PolicyCheckArgs`/`PolicyCheckResult` types added to agent-protocol (`muse/packages/agent-protocol/src/tools.ts`)
+    - Policy issue types added to `StyleIssueType` + `canonCitations` to `StyleIssue` (`muse/packages/core/src/analysis/types.ts`)
+    - Mode-specific issue filtering in `StyleIssuesList` with mode-appropriate empty states
+    - Canon citation navigation (jump-to-canon) for policy issues with `onJumpToCanon` callback
+    - E2E test IDs per contract: `coach-issue-*`, `clarity-issue-*`, `policy-issue-*`, `coach-apply-fix-*`, `coach-pin-policy-*`, `coach-jump-canon-*`
 
 ### UI Integration (Design Checklist)
 

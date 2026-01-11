@@ -41,7 +41,24 @@ export type StyleIssueType =
   | "unclear_antecedent"
   | "cliche"
   | "filler_word"
-  | "dangling_modifier";
+  | "dangling_modifier"
+  // Policy issue types
+  | "policy_conflict"
+  | "unverifiable"
+  | "not_testable"
+  | "policy_gap";
+
+/**
+ * Canon citation reference for policy violations
+ */
+export interface CanonCitation {
+  /** Memory ID of the referenced canon */
+  memoryId: string;
+  /** Excerpt from the canon text */
+  excerpt?: string;
+  /** Reason for the citation */
+  reason?: string;
+}
 
 /**
  * Fix suggestion with old and new text for replacement
@@ -71,6 +88,8 @@ export interface StyleIssue {
   suggestion: string;
   /** Optional fix that can be applied automatically */
   fix?: StyleIssueFix;
+  /** Canon citations for policy violations (links to pinned memories) */
+  canonCitations?: CanonCitation[];
 }
 
 /**
