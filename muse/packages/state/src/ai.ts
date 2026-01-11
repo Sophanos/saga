@@ -55,7 +55,9 @@ export type QuickAction =
   | 'draft_next'
   | 'create_entity'
   | 'brainstorm'
-  | 'analyze_structure';
+  | 'analyze_structure'
+  | 'clarity_check'
+  | 'policy_check';
 
 export const QUICK_ACTIONS: Record<QuickAction, { label: string; description: string; icon: string; badge?: string }> = {
   search: { label: 'Search your project', description: 'Find anything in your project', icon: 'magnifyingglass' },
@@ -64,6 +66,8 @@ export const QUICK_ACTIONS: Record<QuickAction, { label: string; description: st
   create_entity: { label: 'Create an entity', description: 'Add a node to the project graph', icon: 'person.badge.plus', badge: 'New' },
   brainstorm: { label: 'Brainstorm ideas', description: 'Explore next steps and options', icon: 'lightbulb' },
   analyze_structure: { label: 'Analyze structure', description: 'Review flow and structure', icon: 'chart.line.uptrend.xyaxis' },
+  clarity_check: { label: 'Check clarity', description: 'Find ambiguous pronouns and clichés', icon: 'sparkles' },
+  policy_check: { label: 'Check policies', description: 'Verify against pinned style rules', icon: 'shield' },
 };
 
 // Tool call in message

@@ -39,6 +39,8 @@ export function AIPanel({ mode = 'side' }: AIPanelProps) {
       create_entity: 'Help me create a new entity',
       brainstorm: "Let's brainstorm ideas for this project",
       analyze_structure: 'Analyze the structure and flow',
+      clarity_check: 'Check this text for clarity issues like ambiguous pronouns and clichés',
+      policy_check: 'Check this text against my pinned style policies',
     };
     sendMessage(actionMessages[action]);
   }, [sendMessage]);

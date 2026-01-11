@@ -19,6 +19,8 @@ const ICONS: Record<QuickAction, string> = {
   create_entity: '👤',
   brainstorm: '💡',
   analyze_structure: '📈',
+  clarity_check: '✨',
+  policy_check: '🛡️',
 };
 
 export function QuickActions({ onAction }: QuickActionsProps) {

@@ -4,6 +4,11 @@ import { immer } from "zustand/middleware/immer";
 import type { SceneMetrics, StyleIssue, ReadabilityMetrics } from "@mythos/core";
 
 /**
+ * Coach mode types for Writing / Clarity / Policy modes
+ */
+export type CoachMode = "writing" | "clarity" | "policy";
+
+/**
  * Persistence operation state for tracking pending DB operations
  */
 interface PersistenceState {
@@ -18,15 +23,32 @@ interface PersistenceState {
 }
 
 /**
+ * Policy compliance metrics from policy_check tool
+ */
+export interface PolicyComplianceMetrics {
+  score: number;
+  policiesChecked: number;
+  conflictsFound: number;
+}
+
+/**
  * Analysis store state interface
  */
 interface AnalysisState {
+  /** Current coach mode (writing/clarity/policy) */
+  coachMode: CoachMode;
   /** Current scene metrics from the writing coach */
   metrics: SceneMetrics | null;
   /** List of detected style issues (from coach) */
   issues: StyleIssue[];
   /** List of clarity issues (from clarity_check tool) */
   clarityIssues: StyleIssue[];
+  /** List of policy issues (from policy_check tool) */
+  policyIssues: StyleIssue[];
+  /** Policy compliance metrics */
+  policyCompliance: PolicyComplianceMetrics | null;
+  /** Summary from policy check */
+  policySummary: string | null;
   /** Readability metrics from clarity analysis */
   readabilityMetrics: ReadabilityMetrics | null;
   /** AI-generated insights about the writing */
@@ -69,6 +91,16 @@ interface AnalysisActions {
   setReadabilityMetrics: (metrics: ReadabilityMetrics | null) => void;
   /** Clear all clarity data */
   clearClarity: () => void;
+  /** Set coach mode (writing/clarity/policy) */
+  setCoachMode: (mode: CoachMode) => void;
+  /** Set policy issues */
+  setPolicyIssues: (issues: StyleIssue[]) => void;
+  /** Set policy compliance metrics */
+  setPolicyCompliance: (metrics: PolicyComplianceMetrics | null) => void;
+  /** Set policy summary */
+  setPolicySummary: (summary: string | null) => void;
+  /** Clear all policy data */
+  clearPolicy: () => void;
   /** Update all analysis data at once */
   updateAnalysis: (data: {
     metrics: SceneMetrics;
@@ -117,9 +149,13 @@ const defaultMetrics: SceneMetrics = {
 export const useAnalysisStore = create<AnalysisStore>()(
   immer((set, get) => ({
     // Initial state
+    coachMode: "writing" as CoachMode,
     metrics: null,
     issues: [],
     clarityIssues: [],
+    policyIssues: [],
+    policyCompliance: null,
+    policySummary: null,
     readabilityMetrics: null,
     insights: [],
     isAnalyzing: false,
@@ -175,9 +211,13 @@ export const useAnalysisStore = create<AnalysisStore>()(
 
     clearAnalysis: () =>
       set((state) => {
+        state.coachMode = "writing";
         state.metrics = null;
         state.issues = [];
         state.clarityIssues = [];
+        state.policyIssues = [];
+        state.policyCompliance = null;
+        state.policySummary = null;
         state.readabilityMetrics = null;
         state.insights = [];
         state.lastAnalyzedAt = null;
@@ -237,6 +277,42 @@ export const useAnalysisStore = create<AnalysisStore>()(
         state.readabilityMetrics = null;
       }),
 
+    setCoachMode: (mode) =>
+      set((state) => {
+        state.coachMode = mode;
+      }),
+
+    setPolicyIssues: (issues) =>
+      set((state) => {
+        state.policyIssues = issues;
+        // Clear selection if the selected issue no longer exists in combined list
+        if (
+          state.selectedStyleIssueId &&
+          ![...state.issues, ...state.clarityIssues, ...issues].some(
+            (i) => i.id === state.selectedStyleIssueId
+          )
+        ) {
+          state.selectedStyleIssueId = null;
+        }
+      }),
+
+    setPolicyCompliance: (metrics) =>
+      set((state) => {
+        state.policyCompliance = metrics;
+      }),
+
+    setPolicySummary: (summary) =>
+      set((state) => {
+        state.policySummary = summary;
+      }),
+
+    clearPolicy: () =>
+      set((state) => {
+        state.policyIssues = [];
+        state.policyCompliance = null;
+        state.policySummary = null;
+      }),
+
     updateAnalysis: (data) =>
       set((state) => {
         state.metrics = data.metrics;
@@ -268,8 +344,8 @@ export const useAnalysisStore = create<AnalysisStore>()(
       }),
 
     selectNextStyleIssue: () => {
-      const { issues, clarityIssues, selectedStyleIssueId } = get();
-      const allIssues = [...issues, ...clarityIssues];
+      const { issues, clarityIssues, policyIssues, selectedStyleIssueId } = get();
+      const allIssues = [...issues, ...clarityIssues, ...policyIssues];
       if (allIssues.length === 0) return;
 
       // Sort issues by line (document order)
@@ -296,8 +372,8 @@ export const useAnalysisStore = create<AnalysisStore>()(
     },
 
     selectPreviousStyleIssue: () => {
-      const { issues, clarityIssues, selectedStyleIssueId } = get();
-      const allIssues = [...issues, ...clarityIssues];
+      const { issues, clarityIssues, policyIssues, selectedStyleIssueId } = get();
+      const allIssues = [...issues, ...clarityIssues, ...policyIssues];
       if (allIssues.length === 0) return;
 
       // Sort issues by line (document order)
@@ -379,8 +455,32 @@ export const useShowDontTellGrade = () =>
  */
 export const useStyleIssues = () =>
   useAnalysisStore(
-    useShallow((state) => [...state.issues, ...state.clarityIssues])
+    useShallow((state) => [...state.issues, ...state.clarityIssues, ...state.policyIssues])
   );
+
+/**
+ * Get current coach mode
+ */
+export const useCoachMode = () =>
+  useAnalysisStore((state) => state.coachMode);
+
+/**
+ * Get policy issues
+ */
+export const usePolicyIssues = () =>
+  useAnalysisStore(useShallow((state) => state.policyIssues));
+
+/**
+ * Get policy compliance metrics
+ */
+export const usePolicyCompliance = () =>
+  useAnalysisStore(useShallow((state) => state.policyCompliance));
+
+/**
+ * Get policy summary
+ */
+export const usePolicySummary = () =>
+  useAnalysisStore((state) => state.policySummary);
 
 /**
  * Get readability metrics from clarity analysis
@@ -422,17 +522,24 @@ export const useTotalSensoryCount = () =>
 export const useIssueCountByType = () =>
   useAnalysisStore((state) => {
     const counts: Record<string, number> = {
+      // Writing coach types
       telling: 0,
       passive: 0,
       adverb: 0,
       repetition: 0,
+      // Clarity types
       ambiguous_pronoun: 0,
       unclear_antecedent: 0,
       cliche: 0,
       filler_word: 0,
       dangling_modifier: 0,
+      // Policy types
+      policy_conflict: 0,
+      unverifiable: 0,
+      not_testable: 0,
+      policy_gap: 0,
     };
-    [...state.issues, ...state.clarityIssues].forEach((issue) => {
+    [...state.issues, ...state.clarityIssues, ...state.policyIssues].forEach((issue) => {
       if (counts[issue.type] !== undefined) {
         counts[issue.type]++;
       }
@@ -458,7 +565,7 @@ export const useSelectedStyleIssueId = () =>
 export const useSelectedStyleIssue = () =>
   useAnalysisStore((state) => {
     if (!state.selectedStyleIssueId) return null;
-    const allIssues = [...state.issues, ...state.clarityIssues];
+    const allIssues = [...state.issues, ...state.clarityIssues, ...state.policyIssues];
     return allIssues.find((i) => i.id === state.selectedStyleIssueId) ?? null;
   });
 

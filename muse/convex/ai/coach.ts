@@ -10,6 +10,7 @@ import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { WRITING_COACH_SYSTEM, GENRE_COACH_CONTEXTS } from "./prompts/coach";
+import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
 import { getModelForTaskSync, checkTaskAccess, type TierId } from "../lib/providers";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -62,7 +63,8 @@ function buildAnalysisPrompt(
   documentContent: string,
   entities?: unknown[],
   relationships?: unknown[],
-  genre?: string
+  genre?: string,
+  canonDecisions?: string
 ): string {
   let prompt = "";
 
@@ -71,6 +73,10 @@ function buildAnalysisPrompt(
   }
 
   prompt += `## Document Content:\n${documentContent}`;
+
+  if (canonDecisions) {
+    prompt += `\n\n## Canon Decisions / Policies (cite [M:...] tags when relevant):\n${canonDecisions}`;
+  }
 
   if (entities && entities.length > 0) {
     prompt += `\n\n## Known Entities:\n${JSON.stringify(entities, null, 2)}`;
@@ -265,7 +271,21 @@ export const runCoach = internalAction({
     }
 
     const resolved = getModelForTaskSync("coach", tierId);
-    const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre);
+
+    // Fetch pinned canon (decisions + policies) for canon-aware coaching
+    let canonDecisionsText: string | undefined;
+    try {
+      const pinnedCanon = await fetchPinnedProjectMemories(projectId, {
+        limit: 25,
+        categories: ["decision", "policy"],
+      });
+      canonDecisionsText = pinnedCanon.length ? formatMemoriesForPrompt(pinnedCanon) : undefined;
+    } catch (error) {
+      console.warn("[ai/coach] Failed to fetch pinned canon:", error);
+      // Continue without canon context
+    }
+
+    const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre, canonDecisionsText);
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
@@ -356,7 +376,21 @@ export const runCoachToStream = internalAction({
       }
 
       const resolved = getModelForTaskSync("coach", tierId);
-      const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre);
+
+      // Fetch pinned canon (decisions + policies) for canon-aware coaching
+      let canonDecisionsText: string | undefined;
+      try {
+        const pinnedCanon = await fetchPinnedProjectMemories(projectId, {
+          limit: 25,
+          categories: ["decision", "policy"],
+        });
+        canonDecisionsText = pinnedCanon.length ? formatMemoriesForPrompt(pinnedCanon) : undefined;
+      } catch (error) {
+        console.warn("[ai/coach] Failed to fetch pinned canon:", error);
+        // Continue without canon context
+      }
+
+      const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre, canonDecisionsText);
 
       const response = await fetch(OPENROUTER_API_URL, {
         method: "POST",

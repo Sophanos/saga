@@ -11,6 +11,9 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateEmbedding, isDeepInfraConfigured } from "../lib/embeddings";
 import { searchPoints, isQdrantConfigured, upsertPoints, type QdrantFilter } from "../lib/qdrant";
+import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
+import { CLARITY_CHECK_SYSTEM } from "./prompts/clarity";
+import { POLICY_CHECK_SYSTEM } from "./prompts/policy";
 
 // ============================================================
 // Constants
@@ -90,7 +93,10 @@ export const execute = internalAction({
         return executeGenerateTemplate(input);
 
       case "clarity_check":
-        return executeClarityCheck(input);
+        return executeClarityCheck(input, projectId);
+
+      case "policy_check":
+        return executePolicyCheck(input, projectId);
 
       case "name_generator":
         return executeNameGenerator(input);
@@ -104,9 +110,18 @@ export const execute = internalAction({
       case "find_similar_images":
         return executeFindSimilarImages(input, projectId);
 
+      case "check_logic":
+        return executeCheckLogic(input, projectId);
+
+      case "generate_content":
+        return executeGenerateContent(input, projectId);
+
+      case "analyze_image":
+        return executeAnalyzeImage(input, projectId);
+
       default:
         throw new Error(
-          `Unknown tool: ${toolName}. Supported tools: detect_entities, check_consistency, genesis_world, genesis_world_enhanced, persist_genesis_world, generate_template, clarity_check, name_generator, commit_decision, search_images, find_similar_images`
+          `Unknown tool: ${toolName}. Supported tools: detect_entities, check_consistency, genesis_world, genesis_world_enhanced, persist_genesis_world, generate_template, clarity_check, policy_check, name_generator, commit_decision, search_images, find_similar_images, check_logic, generate_content, analyze_image`
         );
     }
   },
@@ -269,34 +284,50 @@ Respond with JSON containing: template, entityTypes, plotPoints.`;
   return JSON.parse(data.choices?.[0]?.message?.content || "{}");
 }
 
-async function executeClarityCheck(input: {
-  text: string;
-  maxIssues?: number;
-}): Promise<{
+interface ClarityCheckResult {
   issues: Array<{
+    id?: string;
     type: string;
     text: string;
+    line?: number;
     suggestion: string;
-    location?: { start: number; end: number };
+    fix?: { oldText: string; newText: string };
   }>;
-  score: number;
-}> {
+  summary: string;
+  readability?: {
+    wordCount: number;
+    sentenceCount: number;
+    avgWordsPerSentence: number;
+    fleschReadingEase: number;
+    fleschKincaidGrade: number;
+    longSentencePct: number;
+  };
+}
+
+async function executeClarityCheck(
+  input: { text: string; maxIssues?: number },
+  projectId: string
+): Promise<ClarityCheckResult> {
   const apiKey = process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
-  const maxIssues = input.maxIssues || 10;
+  // Fetch pinned policies for policy-aware clarity checking
+  let policyText: string | undefined;
+  try {
+    const pinned = await fetchPinnedProjectMemories(projectId, {
+      limit: 25,
+      categories: ["policy"],
+    });
+    policyText = pinned.length ? formatMemoriesForPrompt(pinned) : undefined;
+  } catch (error) {
+    console.warn("[tools.clarity_check] Failed to fetch pinned policies:", error);
+    // Continue without policy context
+  }
 
-  const systemPrompt = `You are a writing clarity checker. Analyze text for clarity issues.
-
-Look for:
-- Ambiguous pronouns
-- Unclear references
-- Confusing sentence structure
-- Missing context
-
-Return up to ${maxIssues} issues, plus an overall clarity score (0-100).
-
-Respond with JSON containing: issues array and score number.`;
+  // Build user content with optional policy context
+  const userContent = policyText
+    ? `## Pinned Policies:\n${policyText}\n\n## Text to Analyze:\n${input.text}`
+    : input.text;
 
   const response = await fetch(OPENROUTER_API_URL, {
     method: "POST",
@@ -309,8 +340,8 @@ Respond with JSON containing: issues array and score number.`;
     body: JSON.stringify({
       model: DEFAULT_MODEL,
       messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: input.text },
+        { role: "system", content: CLARITY_CHECK_SYSTEM },
+        { role: "user", content: userContent },
       ],
       response_format: { type: "json_object" },
       max_tokens: 4096,
@@ -323,7 +354,32 @@ Respond with JSON containing: issues array and score number.`;
   }
 
   const data = await response.json();
-  return JSON.parse(data.choices?.[0]?.message?.content || '{"issues":[],"score":100}');
+  const content = data.choices?.[0]?.message?.content;
+  
+  if (!content) {
+    return {
+      issues: [],
+      summary: "Unable to analyze text.",
+    };
+  }
+
+  const parsed = JSON.parse(content);
+  
+  // Add IDs to issues for UI tracking
+  const issues = (parsed.issues || []).map((issue: Record<string, unknown>, idx: number) => ({
+    id: `clarity-${Date.now()}-${idx}`,
+    type: issue.type as string,
+    text: issue.text as string,
+    line: issue.line as number | undefined,
+    suggestion: issue.suggestion as string,
+    fix: issue.fix as { oldText: string; newText: string } | undefined,
+  }));
+
+  return {
+    issues,
+    summary: parsed.summary || "Clarity analysis complete.",
+    readability: parsed.readability,
+  };
 }
 
 async function executeNameGenerator(input: {
@@ -384,6 +440,129 @@ Respond with JSON containing a "names" array.`;
 
   const data = await response.json();
   return JSON.parse(data.choices?.[0]?.message?.content || '{"names":[]}');
+}
+
+// ============================================================
+// Policy Check Tool
+// ============================================================
+
+interface PolicyCheckResult {
+  issues: Array<{
+    id?: string;
+    type: "policy_conflict" | "unverifiable" | "not_testable" | "policy_gap";
+    text: string;
+    line?: number;
+    suggestion: string;
+    canonCitations?: Array<{
+      memoryId: string;
+      excerpt?: string;
+      reason?: string;
+    }>;
+  }>;
+  summary: string;
+  compliance?: {
+    score: number;
+    policiesChecked: number;
+    conflictsFound: number;
+  };
+}
+
+async function executePolicyCheck(
+  input: { text: string; maxIssues?: number },
+  projectId: string
+): Promise<PolicyCheckResult> {
+  const apiKey = process.env["OPENROUTER_API_KEY"];
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+
+  // Fetch pinned policies - this is REQUIRED for policy check
+  let policies: Awaited<ReturnType<typeof fetchPinnedProjectMemories>> = [];
+  try {
+    policies = await fetchPinnedProjectMemories(projectId, {
+      limit: 50,
+      categories: ["policy", "decision"],
+    });
+  } catch (error) {
+    console.warn("[tools.policy_check] Failed to fetch pinned policies:", error);
+  }
+
+  // If no policies exist, return early with helpful message
+  if (policies.length === 0) {
+    return {
+      issues: [],
+      summary: "No policies pinned; nothing to check. Pin some style rules or project policies first.",
+      compliance: {
+        score: 100,
+        policiesChecked: 0,
+        conflictsFound: 0,
+      },
+    };
+  }
+
+  const policyText = formatMemoriesForPrompt(policies);
+
+  // Build user content with policy context
+  const userContent = `## Pinned Policies (${policies.length}):\n${policyText}\n\n## Text to Check:\n${input.text}`;
+
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://mythos.app",
+      "X-Title": "Saga AI",
+    },
+    body: JSON.stringify({
+      model: DEFAULT_MODEL,
+      messages: [
+        { role: "system", content: POLICY_CHECK_SYSTEM },
+        { role: "user", content: userContent },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 4096,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    return {
+      issues: [],
+      summary: "Unable to analyze text against policies.",
+      compliance: {
+        score: 100,
+        policiesChecked: policies.length,
+        conflictsFound: 0,
+      },
+    };
+  }
+
+  const parsed = JSON.parse(content);
+
+  // Add IDs to issues for UI tracking
+  const issues = (parsed.issues || []).map((issue: Record<string, unknown>, idx: number) => ({
+    id: `policy-${Date.now()}-${idx}`,
+    type: issue.type as PolicyCheckResult["issues"][0]["type"],
+    text: issue.text as string,
+    line: issue.line as number | undefined,
+    suggestion: issue.suggestion as string,
+    canonCitations: issue.canonCitations as PolicyCheckResult["issues"][0]["canonCitations"],
+  }));
+
+  return {
+    issues,
+    summary: parsed.summary || `Checked against ${policies.length} policies.`,
+    compliance: parsed.compliance || {
+      score: 100 - issues.filter((i: { type: string }) => i.type === "policy_conflict").length * 10,
+      policiesChecked: policies.length,
+      conflictsFound: issues.filter((i: { type: string }) => i.type === "policy_conflict").length,
+    },
+  };
 }
 
 // ============================================================
@@ -671,13 +850,12 @@ async function executeFindSimilarImages(
   const limit = Math.min(input.limit ?? 10, 50);
 
   // First, get the source image's vector from Qdrant
-  // We need to scroll to find the source point
   const sourceFilter: QdrantFilter = {
     must: [{ has_id: [input.assetId] }],
   };
 
   const sourceResults = await searchPoints(
-    [], // Empty vector - we'll use filter
+    [],
     1,
     sourceFilter,
     { collection: SAGA_IMAGES_COLLECTION }
@@ -700,14 +878,13 @@ async function executeFindSimilarImages(
       { key: "project_id", match: { value: projectId } },
       { key: "type", match: { value: "image" } },
     ],
-    must_not: [{ has_id: [input.assetId] }], // Exclude source image
+    must_not: [{ has_id: [input.assetId] }],
   };
 
   if (input.assetType) {
     filter.must!.push({ key: "asset_type", match: { value: input.assetType } });
   }
 
-  // Search for similar images
   const results = await searchPoints(
     sourceVector,
     limit,
@@ -730,6 +907,359 @@ async function executeFindSimilarImages(
       id: sourceImage.id,
       url: sourceImage.payload["url"] as string,
       description: sourceImage.payload["description"] as string | undefined,
+    },
+  };
+}
+
+// ============================================================
+// Check Logic Tool
+// ============================================================
+
+interface CheckLogicInput {
+  text: string;
+  focus?: ("magic_rules" | "causality" | "knowledge_state" | "power_scaling")[];
+  strictness?: "strict" | "balanced" | "lenient";
+  magicSystems?: Array<{
+    id: string;
+    name: string;
+    rules: string[];
+    limitations: string[];
+    costs?: string[];
+  }>;
+  characters?: Array<{
+    id: string;
+    name: string;
+    powerLevel?: number;
+    knowledge?: string[];
+  }>;
+}
+
+interface LogicIssue {
+  id: string;
+  type: "magic_rule_violation" | "causality_break" | "knowledge_violation" | "power_scaling_violation";
+  severity: "error" | "warning" | "info";
+  message: string;
+  violatedRule?: {
+    source: string;
+    ruleText: string;
+    sourceEntityId?: string;
+    sourceEntityName?: string;
+  };
+  suggestion?: string;
+  locations?: Array<{
+    line?: number;
+    startOffset?: number;
+    endOffset?: number;
+    text: string;
+  }>;
+}
+
+interface CheckLogicResult {
+  issues: LogicIssue[];
+  summary?: string;
+}
+
+const CHECK_LOGIC_SYSTEM = `You are a story logic validator. Check text for logical consistency against established rules and world state.
+
+Analyze for:
+1. Magic rule violations - actions that break the magic system's rules or limitations
+2. Causality breaks - effects without causes, or impossible sequences of events
+3. Knowledge violations - characters knowing things they shouldn't
+4. Power scaling violations - characters doing things beyond their established abilities
+
+For each issue, provide:
+- type: magic_rule_violation, causality_break, knowledge_violation, power_scaling_violation
+- severity: error (definitely wrong), warning (likely wrong), info (might be intentional)
+- message: What the issue is
+- violatedRule: { source, ruleText, sourceEntityId?, sourceEntityName? } if applicable
+- suggestion: How to fix it
+- locations: Array of { line?, text } showing where the issue occurs
+
+Respond with JSON containing an "issues" array and optional "summary".`;
+
+async function executeCheckLogic(
+  input: CheckLogicInput,
+  projectId: string
+): Promise<CheckLogicResult> {
+  const apiKey = process.env["OPENROUTER_API_KEY"];
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+
+  const strictness = input.strictness ?? "balanced";
+  const focusAreas = input.focus?.length
+    ? `Focus on: ${input.focus.join(", ")}`
+    : "Check all logic areas";
+
+  // Build context from magic systems and characters
+  let contextParts: string[] = [];
+  
+  if (input.magicSystems?.length) {
+    const magicContext = input.magicSystems.map((ms) => {
+      const parts = [`Magic System: ${ms.name} (${ms.id})`];
+      parts.push(`Rules: ${ms.rules.join("; ")}`);
+      parts.push(`Limitations: ${ms.limitations.join("; ")}`);
+      if (ms.costs?.length) parts.push(`Costs: ${ms.costs.join("; ")}`);
+      return parts.join("\n");
+    }).join("\n\n");
+    contextParts.push(`## Magic Systems:\n${magicContext}`);
+  }
+
+  if (input.characters?.length) {
+    const charContext = input.characters.map((c) => {
+      const parts = [`Character: ${c.name} (${c.id})`];
+      if (c.powerLevel !== undefined) parts.push(`Power Level: ${c.powerLevel}`);
+      if (c.knowledge?.length) parts.push(`Known: ${c.knowledge.join(", ")}`);
+      return parts.join(" | ");
+    }).join("\n");
+    contextParts.push(`## Characters:\n${charContext}`);
+  }
+
+  const contextBlock = contextParts.length
+    ? `\n\n${contextParts.join("\n\n")}`
+    : "";
+
+  const userContent = `${focusAreas}\nStrictness: ${strictness}${contextBlock}\n\n## Text to Analyze:\n${input.text}`;
+
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://mythos.app",
+      "X-Title": "Saga AI",
+    },
+    body: JSON.stringify({
+      model: DEFAULT_MODEL,
+      messages: [
+        { role: "system", content: CHECK_LOGIC_SYSTEM },
+        { role: "user", content: userContent },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 4096,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    return { issues: [], summary: "Unable to analyze text." };
+  }
+
+  const parsed = JSON.parse(content);
+  const issues = (parsed.issues || []).map((issue: Record<string, unknown>, idx: number) => ({
+    id: `logic-${Date.now()}-${idx}`,
+    type: issue.type as LogicIssue["type"],
+    severity: issue.severity as LogicIssue["severity"],
+    message: issue.message as string,
+    violatedRule: issue.violatedRule as LogicIssue["violatedRule"],
+    suggestion: issue.suggestion as string | undefined,
+    locations: issue.locations as LogicIssue["locations"],
+  }));
+
+  return {
+    issues,
+    summary: parsed.summary || `Found ${issues.length} logic issues.`,
+  };
+}
+
+// ============================================================
+// Generate Content Tool
+// ============================================================
+
+interface GenerateContentInput {
+  entityId: string;
+  contentType: "description" | "backstory" | "dialogue" | "scene";
+  context?: string;
+  length?: "short" | "medium" | "long";
+}
+
+interface GenerateContentResult {
+  content: string;
+  contentType: string;
+  entityId: string;
+  wordCount: number;
+}
+
+const GENERATE_CONTENT_SYSTEM = `You are a creative writing assistant. Generate high-quality content for worldbuilding entities.
+
+Content types:
+- description: Vivid, sensory description of appearance/location/object
+- backstory: Character history and formative experiences
+- dialogue: In-character speech samples that reveal personality
+- scene: A short narrative scene featuring the entity
+
+Write in a literary style appropriate for fiction. Focus on showing rather than telling.
+Be specific and evocative. Avoid generic descriptions.
+
+Respond with JSON containing:
+- content: The generated text
+- wordCount: Approximate word count`;
+
+async function executeGenerateContent(
+  input: GenerateContentInput,
+  projectId: string
+): Promise<GenerateContentResult> {
+  const apiKey = process.env["OPENROUTER_API_KEY"];
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+
+  const length = input.length ?? "medium";
+  const wordTargets = { short: 100, medium: 250, long: 500 };
+  const targetWords = wordTargets[length];
+
+  const userContent = `Generate ${input.contentType} content for entity ${input.entityId}.
+
+Target length: ~${targetWords} words (${length})
+${input.context ? `\nContext: ${input.context}` : ""}
+
+Generate ${input.contentType} content now.`;
+
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://mythos.app",
+      "X-Title": "Saga AI",
+    },
+    body: JSON.stringify({
+      model: DEFAULT_MODEL,
+      messages: [
+        { role: "system", content: GENERATE_CONTENT_SYSTEM },
+        { role: "user", content: userContent },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 2048,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error("No content generated");
+  }
+
+  const parsed = JSON.parse(content);
+
+  return {
+    content: parsed.content || "",
+    contentType: input.contentType,
+    entityId: input.entityId,
+    wordCount: parsed.wordCount || parsed.content?.split(/\s+/).length || 0,
+  };
+}
+
+// ============================================================
+// Analyze Image Tool
+// ============================================================
+
+interface AnalyzeImageInput {
+  imageSource: string; // Base64 data URL or storage path
+  entityTypeHint?: string;
+  extractionFocus?: "full" | "appearance" | "environment" | "object";
+}
+
+interface AnalyzeImageResult {
+  analysis: {
+    description: string;
+    extractedDetails: Record<string, unknown>;
+    suggestedEntityType?: string;
+    suggestedName?: string;
+    colors: string[];
+    mood?: string;
+    style?: string;
+  };
+}
+
+const ANALYZE_IMAGE_SYSTEM = `You are a visual analysis AI for worldbuilding. Analyze images to extract details useful for creating story entities.
+
+Extract:
+- description: Detailed visual description
+- extractedDetails: Structured data (appearance, clothing, environment, objects, etc.)
+- suggestedEntityType: character, location, item, etc.
+- suggestedName: If text or obvious name is visible
+- colors: Dominant colors
+- mood: Overall mood/atmosphere
+- style: Art style (realistic, anime, fantasy, etc.)
+
+Be specific and thorough. Focus on details that would be useful for worldbuilding.`;
+
+async function executeAnalyzeImage(
+  input: AnalyzeImageInput,
+  projectId: string
+): Promise<AnalyzeImageResult> {
+  const apiKey = process.env["OPENROUTER_API_KEY"];
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+
+  const focus = input.extractionFocus ?? "full";
+  const typeHint = input.entityTypeHint ? `\nEntity type hint: ${input.entityTypeHint}` : "";
+
+  // Check if imageSource is a data URL
+  const isDataUrl = input.imageSource.startsWith("data:");
+  if (!isDataUrl) {
+    throw new Error("Image analysis requires a base64 data URL. Storage path lookup not yet implemented.");
+  }
+
+  const userContent = `Analyze this image for worldbuilding details.\nFocus: ${focus}${typeHint}`;
+
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://mythos.app",
+      "X-Title": "Saga AI",
+    },
+    body: JSON.stringify({
+      model: "anthropic/claude-sonnet-4", // Vision-capable model
+      messages: [
+        { role: "system", content: ANALYZE_IMAGE_SYSTEM },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: userContent },
+            { type: "image_url", image_url: { url: input.imageSource } },
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 2048,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error("No analysis generated");
+  }
+
+  const parsed = JSON.parse(content);
+
+  return {
+    analysis: {
+      description: parsed.description || "",
+      extractedDetails: parsed.extractedDetails || {},
+      suggestedEntityType: parsed.suggestedEntityType,
+      suggestedName: parsed.suggestedName,
+      colors: parsed.colors || [],
+      mood: parsed.mood,
+      style: parsed.style,
     },
   };
 }

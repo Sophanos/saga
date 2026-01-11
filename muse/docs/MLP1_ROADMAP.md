@@ -50,9 +50,14 @@ Reference: `../DB_MIGRATION_REPORT.md`.
 - Phase 3: Canon Promotion + Citations
   - Contradiction resolution now promotes user choices into pinned canon memories (`commit_decision`) (`muse/convex/ai/tools.ts`, `muse/convex/ai/canon.ts`)
   - Linter consumes pinned canon decisions and emits `canonCitations` for jump-to-canon UX (`muse/convex/ai/lint.ts`, `muse/convex/ai/prompts/linter.ts`, `muse/apps/web/src/components/modals/ConsistencyChoiceModal.tsx`)
-- Phase 4: Clarity/Policy Coach
-  - “Coach” refocused as “Clarity” with readability + clarity issues (`clarity_check`) (`muse/convex/ai/tools.ts`, `muse/apps/web/src/components/console/CoachView.tsx`)
-  - Policy rules can be pinned as project memory (`commit_decision` with `category="policy"`) (`muse/convex/ai/tools.ts`)
+- Phase 4: Clarity/Policy Coach ✅
+  - Coach mode selector (Writing / Clarity / Policy) with mode-aware UI rendering (`muse/apps/web/src/components/console/CoachView.tsx`)
+  - Clarity check prompt with readability metrics + issue taxonomy (`muse/convex/ai/prompts/clarity.ts`, `muse/convex/ai/tools.ts`)
+  - Policy check prompt with conflict/unverifiable/not-testable/gap taxonomy (`muse/convex/ai/prompts/policy.ts`, `muse/convex/ai/tools.ts`)
+  - Writing coach now fetches pinned canon (decisions + policies) for canon-aware analysis (`muse/convex/ai/coach.ts`, `muse/convex/ai/prompts/coach.ts`)
+  - Two-step approval modal for pinning policies (`muse/apps/web/src/components/modals/PinPolicyModal.tsx`)
+  - Analysis store extended with coachMode, policyIssues, policyCompliance, policySummary state (`muse/apps/web/src/stores/analysis.ts`)
+  - Expo Quick Actions: added `clarity_check` and `policy_check` actions (`muse/packages/state/src/ai.ts`, `muse/apps/expo/src/components/ai/QuickActions.tsx`, `muse/apps/expo/src/components/ai/AIPanel.tsx`)
 
 ### UI Integration (Design Checklist)
 
@@ -112,6 +117,104 @@ Reference: `../DB_MIGRATION_REPORT.md`.
 **Phase 4: Clarity/Policy Coach**
 - Coach mode selector (Writing / Clarity / Policy) with taxonomy-aware labels.
 - Issue UI: ambiguity/unverifiable/not-testable/policy-conflict categories while preserving the same “issue + suggested fix” structure.
+
+### Phase 2: Knowledge PRs - Remaining Tasks (Production Hardening)
+
+Goal: make Knowledge PRs a production-grade review surface: every PR is actionable, diffs are readable, approvals are safe, rollbacks are reliable, and provenance is navigable.
+
+#### P0 - Production blockers (ship before beta)
+
+1) Document PRs must be actionable (fix write_content approval UX) - Scope: M/L
+   - Problem: applyDecisions cannot apply write_content ("Apply document changes from the editor UI."), but inbox UIs still show Approve.
+   - Fix: in the inbox, replace Approve with Apply in editor for write_content suggestions; keep Reject supported from the inbox.
+   - Add an editor -> backend resolution hook so applying in the editor marks the suggestion accepted and creates a revision with provenance (sourceSuggestionId).
+   - Files:
+     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
+     - muse/apps/expo/src/components/knowledge/KnowledgeSuggestionDetails.tsx
+     - muse/convex/knowledgeSuggestions.ts (new: resolveWriteContentFromEditor)
+     - muse/convex/revisions.ts (ensure revision provenance supports sourceSuggestionId)
+     - Editor bridge: muse/packages/editor-webview/src/... (apply/resolve wiring)
+
+2) Server-side preflight validation + conflict detection (block unsafe approvals) - Scope: L
+   - Add a preflight step before apply that validates:
+     - tool args shape (required fields present; updates/metadata types sane)
+     - schema/registry constraints using resolved projectTypeRegistry
+     - target resolution (entity/relationship uniqueness; source/target existence)
+     - rollback safety (ensure "before" snapshot can be captured for updates)
+     - conflict detection (fingerprint/hash of target fields being edited)
+   - Persist preflight result on the suggestion so UI can disable Approve and surface errors/warnings.
+   - Files:
+     - muse/convex/knowledgeSuggestions.ts (preflight + apply gating)
+     - muse/convex/schema.ts (optional: preflight, conflict, resolvedTargetId fields)
+     - muse/convex/lib/typeRegistry.ts (reuse validateEntityProperties / validateRelationshipMetadata)
+     - muse/convex/ai/agentRuntime.ts (optional: resolve targetId earlier for better UX)
+   - Depends on: none (but improves rollback + diff UX).
+
+3) Rollback hardening + explicit rolled-back state + audit events - Scope: M
+   - Add idempotency guard (rollback called twice should be a no-op).
+   - Store explicit rollback metadata (rolledBackAt, rolledBackByUserId, resolutionReason="rollback") for UI and filtering.
+   - Emit activity events on rollback success/failure.
+   - Optionally store minimal after snapshot at apply-time for better audit/diff.
+   - Files:
+     - muse/convex/knowledgeSuggestions.ts (rollbackSuggestion, markRolledBackInternal, applySuggestionApprove)
+     - muse/convex/activity.ts (use existing emit)
+     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
+     - muse/apps/expo/src/components/knowledge/KnowledgeSuggestionDetails.tsx
+
+4) Inbox scalability: server-side filters + pagination - Scope: M
+   - Add query-level filters for targetType, riskLevel, and optional rolled-back inclusion.
+   - Add indexes for by_project_targetType_createdAt and by_project_status_targetType_createdAt.
+   - Convert UIs from limit=200 to cursor-based paging.
+   - Files:
+     - muse/convex/knowledgeSuggestions.ts (listByProject)
+     - muse/convex/schema.ts (indexes)
+     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
+     - muse/apps/expo/src/components/knowledge/KnowledgePRsPanel.tsx
+
+#### P1 - Important (post-beta)
+
+5) Web parity for graph diffs (entity + relationship + metadata) - Scope: M
+   - Port Expo field-by-field entity/relationship diff into Web details panel.
+   - Add a readable metadata diff presentation (collapsed JSON with expand).
+   - Files:
+     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
+     - muse/apps/web/src/components/console/DiffViews.tsx (reuse/extend)
+
+6) JSON Patch visualization for normalizedPatch - Scope: S/M
+   - Add a compact JSON Patch viewer (op/path/value) for opaque operations.
+   - Files:
+     - muse/apps/web/src/components/console/KnowledgePRsView.tsx (new component usage)
+     - muse/apps/web/src/components/console/JsonPatchView.tsx
+
+7) Provenance + citations deep-links - Scope: M
+   - Surface: model, threadId, streamId, toolCallId, promptMessageId prominently.
+   - Add Open memory / Copy memory id for citations; add Copy provenance on Web.
+   - Files:
+     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
+     - muse/apps/expo/src/components/knowledge/KnowledgeSuggestionDetails.tsx
+
+8) Inbox UX upgrades (filters, shortcuts, batch actions) - Scope: M
+   - Add target-type filters (document/entity/relationship/memory).
+   - Add keyboard shortcuts (approve/reject).
+   - Add multi-select + batch approve/reject to Web (Expo already supports batch).
+   - Files:
+     - muse/apps/web/src/components/console/KnowledgePRsView.tsx
+     - muse/apps/expo/src/components/knowledge/KnowledgePRsPanel.tsx
+
+#### P2 - Nice-to-have / strategic cleanup
+
+9) Clarify documentSuggestions vs knowledgeSuggestions (unify inbox or formalize split) - Scope: L
+   - Decision target: keep document application on editor surface (intentional for MLP1), but keep review state in a unified inbox.
+   - Either migrate documentSuggestions into knowledgeSuggestions, or provide a unified query/feed that merges both.
+   - Files:
+     - muse/convex/schema.ts
+     - muse/convex/*Suggestions*.ts (depending on current documentSuggestions implementation)
+
+10) Best-effort late-apply anchoring for write_content - Scope: M/L
+   - If apply later must work, add stronger selection anchoring (prefix/suffix windows, offsets, or fuzzy matching).
+   - Files:
+     - muse/convex/ai/agentRuntime.ts (editorContext capture)
+     - muse/apps/*/knowledge/* (apply UX)
 
 ### Recent Updates (2026-01-09)
 
@@ -1041,7 +1144,7 @@ embeddingJobs: defineTable({
 | Knowledge PRs review UX (polish) | ✅ (MVP, not production-ready) | Approve/reject + batch actions + provenance + undo (graph/memory); document apply remains editor UI |
 | Project Graph editor UX | 🔲 | Create/edit nodes/edges; registry-aware type picker + properties editor |
 | Lint → “jump to canon” UX | 🔲 | Canon citations link to Decision Ledger items |
-| Clarity/Policy Coach UX | 🔲 | Mode selector + taxonomy-aware issues + apply/dismiss |
+| Clarity/Policy Coach UX | ✅ | Mode selector + taxonomy-aware issues + two-step pin approval modal |
 | E2E coverage for new surfaces | 🔲 | Stable `data-testid` hooks per `muse/docs/E2E_TESTABILITY_CONTRACT.md` |
 
 ### P1: Living Model UI (Design)
@@ -1056,7 +1159,7 @@ embeddingJobs: defineTable({
 | Integrations settings UX | 🔲 | Connections, scopes, status, and audit trail for external sources |
 | Evidence + citations UX | 🔲 | Knowledge PR detail shows citations (Expo + web console); jump-to-canon from lint/coach still missing |
 | Promote-to-model flow UX | 🔲 | From evidence/context inspector → create Knowledge PR with citations |
-| Coach mode selector UX | 🔲 | Writing / Clarity / Policy and taxonomy-aware issue labels |
+| Coach mode selector UX | ✅ | Writing / Clarity / Policy modes with mode-specific content + issue taxonomy |
 
 ### P2: Collaboration UI (Expo Web)
 

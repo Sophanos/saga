@@ -104,7 +104,14 @@ Return ONLY valid JSON matching this exact structure:
 - If the text is too short (< 50 words), provide partial analysis with a note
 - **ALWAYS include the fix object for issues where a rewrite is possible**
 - The "oldText" MUST exactly match the "text" field for the fix to work
-- Provide creative, genre-appropriate rewrites that maintain the author's voice`;
+- Provide creative, genre-appropriate rewrites that maintain the author's voice
+
+## Canon Awareness
+If Canon Decisions / Policies are provided in the input:
+- Treat them as authoritative project truth (marked with [M:...] tags)
+- Do NOT propose rewrites that contradict pinned canon
+- If a rewrite would violate a pinned policy, either avoid it or downgrade severity
+- You may cite relevant canon in insights using the [M:memoryId] format`;
 
 export const GENRE_COACH_CONTEXTS: Record<string, string> = {
   fantasy: `Genre context: Fantasy fiction. Poetic language and world-building are valued.
