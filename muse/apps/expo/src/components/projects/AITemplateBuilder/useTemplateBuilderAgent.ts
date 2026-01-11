@@ -1,7 +1,7 @@
 /**
- * useTemplateBuilderAgent - Web platform wrapper
+ * useTemplateBuilderAgent - Expo platform wrapper
  *
- * Configures shared hook with web-specific settings.
+ * Configures shared hook with Expo-specific settings.
  */
 
 import {
@@ -10,13 +10,13 @@ import {
   type BuilderMessage,
   type BuilderToolInvocation,
 } from '@mythos/ai/hooks';
-import { useApiKey } from '../../../../hooks/useApiKey';
-import { api } from '../../../../../../../convex/_generated/api';
-import type { ProjectType } from '../projectTypes';
+import { useApiKey } from '../../../hooks/useApiKey';
+import { api } from '../../../../../../convex/_generated/api';
+import type { ProjectType } from '@mythos/core';
 
 export type { UseTemplateBuilderAgentResult, BuilderMessage, BuilderToolInvocation };
 
-const CONVEX_SITE_URL = import.meta.env['VITE_CONVEX_SITE_URL'] || 'https://cascada.vision';
+const CONVEX_SITE_URL = process.env.EXPO_PUBLIC_CONVEX_SITE_URL || 'https://cascada.vision';
 
 export interface UseTemplateBuilderAgentOptions {
   projectType: ProjectType;

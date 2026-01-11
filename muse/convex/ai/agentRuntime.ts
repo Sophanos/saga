@@ -21,16 +21,7 @@ import { buildSystemPrompt, retrieveRAGContext, type RAGContext } from "./rag";
 import { askQuestionTool, writeContentTool } from "./tools/editorTools";
 import { commitDecisionTool } from "./tools/memoryTools";
 import { searchContextTool, readDocumentTool, getEntityTool } from "./tools/ragTools";
-import {
-  createEntityTool,
-  updateEntityTool,
-  createRelationshipTool,
-  updateRelationshipTool,
-  createNodeTool,
-  updateNodeTool,
-  createEdgeTool,
-  updateEdgeTool,
-} from "./tools/projectGraphTools";
+import { graphMutationTool } from "./tools/projectGraphTools";
 import { generateTemplateTool } from "./tools/templateTools";
 import { projectManageTool } from "./tools/projectManageTools";
 import { webSearchTool, webExtractTool } from "./tools/webSearchTools";
@@ -247,14 +238,7 @@ function createSagaAgent() {
       get_entity: getEntityTool,
       project_manage: projectManageTool,
       generate_template: generateTemplateTool,
-      create_entity: createEntityTool,
-      update_entity: updateEntityTool,
-      create_relationship: createRelationshipTool,
-      update_relationship: updateRelationshipTool,
-      create_node: createNodeTool,
-      update_node: updateNodeTool,
-      create_edge: createEdgeTool,
-      update_edge: updateEdgeTool,
+      graph_mutation: graphMutationTool,
       web_search: webSearchTool,
       web_extract: webExtractTool,
     },
@@ -274,23 +258,39 @@ export function setSagaTestScript(steps: SagaTestStreamStep[]) {
   _agent = null;
 }
 
-const autoExecuteTools = new Set([
-  "search_context",
-  "read_document",
-  "get_entity",
-  "web_search",
-  "web_extract",
-]);
-const projectGraphTools = new Set([
-  "create_entity",
-  "update_entity",
-  "create_relationship",
-  "update_relationship",
-  "create_node",
-  "update_node",
-  "create_edge",
-  "update_edge",
-]);
+type ToolCategory = "rag" | "graph" | "web" | "hitl" | "analysis" | "project";
+
+type ToolPolicy = {
+  category: ToolCategory;
+  autoExecute: boolean;
+};
+
+const TOOL_POLICY: Record<string, ToolPolicy> = {
+  ask_question: { category: "hitl", autoExecute: false },
+  write_content: { category: "hitl", autoExecute: false },
+  commit_decision: { category: "hitl", autoExecute: false },
+  search_context: { category: "rag", autoExecute: true },
+  read_document: { category: "rag", autoExecute: true },
+  get_entity: { category: "rag", autoExecute: true },
+  web_search: { category: "web", autoExecute: true },
+  web_extract: { category: "web", autoExecute: true },
+  project_manage: { category: "project", autoExecute: false },
+  generate_template: { category: "project", autoExecute: false },
+  graph_mutation: { category: "graph", autoExecute: false },
+  analyze_content: { category: "analysis", autoExecute: true },
+};
+
+function getToolPolicy(toolName: string): ToolPolicy | undefined {
+  return TOOL_POLICY[toolName];
+}
+
+function isAutoExecuteTool(toolName: string): boolean {
+  return getToolPolicy(toolName)?.autoExecute ?? false;
+}
+
+function isGraphTool(toolName: string): boolean {
+  return getToolPolicy(toolName)?.category === "graph";
+}
 
 type ToolActorContext = {
   actorType: "ai" | "user" | "system";
@@ -359,8 +359,17 @@ type GraphApprovalPreview =
 
 type KnowledgeSuggestionTargetType = "document" | "entity" | "relationship" | "memory";
 
-function classifyKnowledgeSuggestion(toolName: string): { targetType: KnowledgeSuggestionTargetType; operation: string } | null {
+function classifyKnowledgeSuggestion(
+  toolName: string,
+  args: Record<string, unknown>
+): { targetType: KnowledgeSuggestionTargetType; operation: string } | null {
   switch (toolName) {
+    case "graph_mutation": {
+      const action = typeof args["action"] === "string" ? (args["action"] as string) : "unknown";
+      const target = typeof args["target"] === "string" ? (args["target"] as string) : "unknown";
+      const targetType = target === "relationship" || target === "edge" ? "relationship" : "entity";
+      return { targetType, operation: `${action}_${target}` };
+    }
     case "create_entity":
     case "update_entity":
     case "create_node":
@@ -382,6 +391,101 @@ function classifyKnowledgeSuggestion(toolName: string): { targetType: KnowledgeS
 
 function getIdentityFields(def?: { approval?: { identityFields?: readonly string[] } }): readonly string[] {
   return def?.approval?.identityFields ?? [];
+}
+
+type NormalizedGraphToolCall = {
+  toolName:
+    | "create_entity"
+    | "update_entity"
+    | "create_relationship"
+    | "update_relationship"
+    | "create_node"
+    | "update_node"
+    | "create_edge"
+    | "update_edge";
+  args: Record<string, unknown>;
+  kind: "entity" | "relationship";
+};
+
+function normalizeGraphToolCall(
+  toolName: string,
+  args: Record<string, unknown>
+): NormalizedGraphToolCall | null {
+  if (toolName !== "graph_mutation") return null;
+  const action = typeof args["action"] === "string" ? (args["action"] as string) : undefined;
+  const target = typeof args["target"] === "string" ? (args["target"] as string) : undefined;
+  if (!action || !target || action === "delete") return null;
+
+  if (target === "entity" || target === "node") {
+    const baseArgs: Record<string, unknown> = {
+      type: args["type"],
+      name: args["name"],
+      aliases: args["aliases"],
+      notes: args["notes"],
+      properties: args["properties"],
+      archetype: args["archetype"],
+      backstory: args["backstory"],
+      goals: args["goals"],
+      fears: args["fears"],
+      citations: args["citations"],
+    };
+
+    if (action === "create") {
+      return {
+        toolName: target === "node" ? "create_node" : "create_entity",
+        args: baseArgs,
+        kind: "entity",
+      };
+    }
+
+    return {
+      toolName: target === "node" ? "update_node" : "update_entity",
+      args:
+        target === "node"
+          ? {
+              nodeName: args["entityName"],
+              nodeType: args["entityType"],
+              updates: args["updates"],
+              citations: args["citations"],
+            }
+          : {
+              entityName: args["entityName"],
+              entityType: args["entityType"],
+              updates: args["updates"],
+              citations: args["citations"],
+            },
+      kind: "entity",
+    };
+  }
+
+  if (action === "create") {
+    return {
+      toolName: target === "edge" ? "create_edge" : "create_relationship",
+      args: {
+        type: args["type"],
+        sourceName: args["sourceName"],
+        targetName: args["targetName"],
+        bidirectional: args["bidirectional"],
+        strength: args["strength"],
+        notes: args["notes"],
+        metadata: args["metadata"],
+        citations: args["citations"],
+      },
+      kind: "relationship",
+    };
+  }
+
+  return {
+    toolName: target === "edge" ? "update_edge" : "update_relationship",
+    args: {
+      type: args["type"],
+      sourceName: args["sourceName"],
+      targetName: args["targetName"],
+      updates: args["updates"],
+      citations: args["citations"],
+    },
+    kind: "relationship",
+  };
 }
 
 function buildEntityPropertiesFromArgs(args: Record<string, unknown>): Record<string, unknown> {
@@ -458,7 +562,7 @@ function buildRelationshipUpdateChanges(
   if (updates["strength"] !== undefined) {
     changes.push({ key: "strength", from: relationship?.strength, to: updates["strength"] });
   }
-  if (updates["bidirectional"] !== undefined) {
+    if (updates["bidirectional"] !== undefined) {
     changes.push({
       key: "bidirectional",
       from: relationship?.bidirectional ?? false,
@@ -513,6 +617,15 @@ function resolveGraphApprovalReasons(params: {
     return Array.from(reasons);
   }
 
+  const normalized = normalizeGraphToolCall(toolName, args);
+  if (toolName === "graph_mutation" && !normalized) {
+    reasons.add("mutation_unresolved");
+    return Array.from(reasons);
+  }
+
+  const effectiveToolName = normalized?.toolName ?? toolName;
+  const effectiveArgs = normalized?.args ?? args;
+
   const addRiskReason = (level?: RiskLevel): void => {
     if (level === "core") {
       reasons.add("risk_core");
@@ -521,8 +634,10 @@ function resolveGraphApprovalReasons(params: {
     }
   };
 
-  if (toolName === "create_entity" || toolName === "create_node") {
-    const type = typeof args["type"] === "string" ? (args["type"] as string) : resolvedType;
+  if (effectiveToolName === "create_entity" || effectiveToolName === "create_node") {
+    const type = typeof effectiveArgs["type"] === "string"
+      ? (effectiveArgs["type"] as string)
+      : resolvedType;
     if (!type) {
       reasons.add("invalid_type");
       return Array.from(reasons);
@@ -539,11 +654,11 @@ function resolveGraphApprovalReasons(params: {
     return Array.from(reasons);
   }
 
-  if (toolName === "update_entity" || toolName === "update_node") {
+  if (effectiveToolName === "update_entity" || effectiveToolName === "update_node") {
     const type =
       resolvedType ??
-      (typeof args["entityType"] === "string" ? (args["entityType"] as string) : undefined) ??
-      (typeof args["nodeType"] === "string" ? (args["nodeType"] as string) : undefined);
+      (typeof effectiveArgs["entityType"] === "string" ? (effectiveArgs["entityType"] as string) : undefined) ??
+      (typeof effectiveArgs["nodeType"] === "string" ? (effectiveArgs["nodeType"] as string) : undefined);
     if (!type) {
       reasons.add("invalid_type");
       return Array.from(reasons);
@@ -557,7 +672,7 @@ function resolveGraphApprovalReasons(params: {
     if (def.approval?.updateAlwaysRequiresApproval) {
       reasons.add("update_requires_approval");
     }
-    const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+    const updates = (effectiveArgs["updates"] as Record<string, unknown> | undefined) ?? {};
     const identityFields = getIdentityFields(def);
     if (identityFields.length > 0 && hasIdentityChange(updates, identityFields)) {
       reasons.add("identity_change");
@@ -565,8 +680,10 @@ function resolveGraphApprovalReasons(params: {
     return Array.from(reasons);
   }
 
-  if (toolName === "create_relationship" || toolName === "create_edge") {
-    const type = typeof args["type"] === "string" ? (args["type"] as string) : resolvedType;
+  if (effectiveToolName === "create_relationship" || effectiveToolName === "create_edge") {
+    const type = typeof effectiveArgs["type"] === "string"
+      ? (effectiveArgs["type"] as string)
+      : resolvedType;
     if (!type) {
       reasons.add("invalid_type");
       return Array.from(reasons);
@@ -580,8 +697,10 @@ function resolveGraphApprovalReasons(params: {
     return Array.from(reasons);
   }
 
-  if (toolName === "update_relationship" || toolName === "update_edge") {
-    const type = typeof args["type"] === "string" ? (args["type"] as string) : resolvedType;
+  if (effectiveToolName === "update_relationship" || effectiveToolName === "update_edge") {
+    const type = typeof effectiveArgs["type"] === "string"
+      ? (effectiveArgs["type"] as string)
+      : resolvedType;
     if (!type) {
       reasons.add("invalid_type");
       return Array.from(reasons);
@@ -593,7 +712,7 @@ function resolveGraphApprovalReasons(params: {
     }
     addRiskReason(def.riskLevel);
 
-    const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+    const updates = (effectiveArgs["updates"] as Record<string, unknown> | undefined) ?? {};
     if (updates["bidirectional"] !== undefined) {
       reasons.add("bidirectional_change");
     }
@@ -616,12 +735,21 @@ async function buildProjectGraphApprovalPreview(
   let preview: GraphApprovalPreview | null = null;
   let resolvedType: string | undefined;
 
-  if (toolName === "create_entity" || toolName === "create_node") {
-    const type = typeof args["type"] === "string" ? (args["type"] as string) : "unknown";
-    const name = typeof args["name"] === "string" ? (args["name"] as string) : "";
-    const aliases = Array.isArray(args["aliases"]) ? (args["aliases"] as string[]) : undefined;
-    const notes = typeof args["notes"] === "string" ? (args["notes"] as string) : undefined;
-    const properties = buildEntityPropertiesFromArgs(args);
+  const normalized = normalizeGraphToolCall(toolName, args);
+  if (toolName === "graph_mutation" && !normalized) {
+    const reasons = resolveGraphApprovalReasons({ toolName, args, registry, resolvedType });
+    return { preview: null, reasons };
+  }
+
+  const effectiveToolName = normalized?.toolName ?? toolName;
+  const effectiveArgs = normalized?.args ?? args;
+
+  if (effectiveToolName === "create_entity" || effectiveToolName === "create_node") {
+    const type = typeof effectiveArgs["type"] === "string" ? (effectiveArgs["type"] as string) : "unknown";
+    const name = typeof effectiveArgs["name"] === "string" ? (effectiveArgs["name"] as string) : "";
+    const aliases = Array.isArray(effectiveArgs["aliases"]) ? (effectiveArgs["aliases"] as string[]) : undefined;
+    const notes = typeof effectiveArgs["notes"] === "string" ? (effectiveArgs["notes"] as string) : undefined;
+    const properties = buildEntityPropertiesFromArgs(effectiveArgs);
     resolvedType = type;
     preview = {
       kind: "entity_create",
@@ -633,12 +761,12 @@ async function buildProjectGraphApprovalPreview(
     };
   }
 
-  if (toolName === "update_entity" || toolName === "update_node") {
-    const nameKey = toolName === "update_entity" ? "entityName" : "nodeName";
-    const typeKey = toolName === "update_entity" ? "entityType" : "nodeType";
-    const name = typeof args[nameKey] === "string" ? (args[nameKey] as string) : undefined;
-    const typeHint = typeof args[typeKey] === "string" ? (args[typeKey] as string) : undefined;
-    const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+  if (effectiveToolName === "update_entity" || effectiveToolName === "update_node") {
+    const nameKey = effectiveToolName === "update_entity" ? "entityName" : "nodeName";
+    const typeKey = effectiveToolName === "update_entity" ? "entityType" : "nodeType";
+    const name = typeof effectiveArgs[nameKey] === "string" ? (effectiveArgs[nameKey] as string) : undefined;
+    const typeHint = typeof effectiveArgs[typeKey] === "string" ? (effectiveArgs[typeKey] as string) : undefined;
+    const updates = (effectiveArgs["updates"] as Record<string, unknown> | undefined) ?? {};
 
     let entity: Doc<"entities"> | null = null;
     let note: string | undefined;
@@ -667,16 +795,16 @@ async function buildProjectGraphApprovalPreview(
     };
   }
 
-  if (toolName === "create_relationship" || toolName === "create_edge") {
-    const type = typeof args["type"] === "string" ? (args["type"] as string) : "unknown";
-    const sourceName = typeof args["sourceName"] === "string" ? (args["sourceName"] as string) : undefined;
-    const targetName = typeof args["targetName"] === "string" ? (args["targetName"] as string) : undefined;
-    const bidirectional = typeof args["bidirectional"] === "boolean" ? (args["bidirectional"] as boolean) : undefined;
-    const strength = typeof args["strength"] === "number" ? (args["strength"] as number) : undefined;
-    const notes = typeof args["notes"] === "string" ? (args["notes"] as string) : undefined;
+  if (effectiveToolName === "create_relationship" || effectiveToolName === "create_edge") {
+    const type = typeof effectiveArgs["type"] === "string" ? (effectiveArgs["type"] as string) : "unknown";
+    const sourceName = typeof effectiveArgs["sourceName"] === "string" ? (effectiveArgs["sourceName"] as string) : undefined;
+    const targetName = typeof effectiveArgs["targetName"] === "string" ? (effectiveArgs["targetName"] as string) : undefined;
+    const bidirectional = typeof effectiveArgs["bidirectional"] === "boolean" ? (effectiveArgs["bidirectional"] as boolean) : undefined;
+    const strength = typeof effectiveArgs["strength"] === "number" ? (effectiveArgs["strength"] as number) : undefined;
+    const notes = typeof effectiveArgs["notes"] === "string" ? (effectiveArgs["notes"] as string) : undefined;
     const metadata =
-      args["metadata"] && typeof args["metadata"] === "object" && !Array.isArray(args["metadata"])
-        ? (args["metadata"] as Record<string, unknown>)
+      effectiveArgs["metadata"] && typeof effectiveArgs["metadata"] === "object" && !Array.isArray(effectiveArgs["metadata"])
+        ? (effectiveArgs["metadata"] as Record<string, unknown>)
         : undefined;
 
     let note: string | undefined;
@@ -719,11 +847,11 @@ async function buildProjectGraphApprovalPreview(
     };
   }
 
-  if (toolName === "update_relationship" || toolName === "update_edge") {
-    const type = typeof args["type"] === "string" ? (args["type"] as string) : "unknown";
-    const sourceName = typeof args["sourceName"] === "string" ? (args["sourceName"] as string) : undefined;
-    const targetName = typeof args["targetName"] === "string" ? (args["targetName"] as string) : undefined;
-    const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+  if (effectiveToolName === "update_relationship" || effectiveToolName === "update_edge") {
+    const type = typeof effectiveArgs["type"] === "string" ? (effectiveArgs["type"] as string) : "unknown";
+    const sourceName = typeof effectiveArgs["sourceName"] === "string" ? (effectiveArgs["sourceName"] as string) : undefined;
+    const targetName = typeof effectiveArgs["targetName"] === "string" ? (effectiveArgs["targetName"] as string) : undefined;
+    const updates = (effectiveArgs["updates"] as Record<string, unknown> | undefined) ?? {};
 
     let note: string | undefined;
     let sourceEntity: Doc<"entities"> | null = null;
@@ -796,52 +924,6 @@ async function resolveUniqueEntityTypeForUpdate(
   return matches[0]?.type ?? null;
 }
 
-async function needsProjectGraphToolApproval(
-  ctx: ActionCtx,
-  projectId: Id<"projects">,
-  toolName: string,
-  args: Record<string, unknown>,
-  registry: ProjectTypeRegistryResolved | null
-): Promise<boolean> {
-  if (!registry) return true;
-
-  switch (toolName) {
-    case "update_entity":
-    case "update_node": {
-      const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
-      let typeHint: string | undefined;
-      if (typeof args["entityType"] === "string") {
-        typeHint = args["entityType"] as string;
-      } else if (typeof args["nodeType"] === "string") {
-        typeHint = args["nodeType"] as string;
-      }
-
-      let name: string | undefined;
-      if (typeof args["entityName"] === "string") {
-        name = args["entityName"] as string;
-      } else if (typeof args["nodeName"] === "string") {
-        name = args["nodeName"] as string;
-      }
-
-      if (!name) return true;
-
-      const resolvedType =
-        typeHint ??
-        (await resolveUniqueEntityTypeForUpdate(ctx, projectId, name, typeHint));
-      if (!resolvedType) return true;
-
-      const normalizedArgs =
-        toolName === "update_entity"
-          ? { ...args, entityType: resolvedType, updates }
-          : { ...args, nodeType: resolvedType, updates };
-
-      return needsToolApproval(registry, toolName, normalizedArgs);
-    }
-
-    default:
-      return needsToolApproval(registry, toolName, args);
-  }
-}
 
 function resolveApprovalType(toolName: string): ToolApprovalType {
   if (toolName === "ask_question") return "input";
@@ -866,7 +948,7 @@ function resolveApprovalDanger(toolName: string, args: Record<string, unknown>):
     }
     return "costly";
   }
-  if (projectGraphTools.has(toolName)) return "destructive";
+  if (isGraphTool(toolName)) return "destructive";
   return "safe";
 }
 
@@ -884,12 +966,18 @@ async function resolveSuggestionRiskLevel(
     return danger === "safe" ? "low" : "high";
   }
 
+  const normalized = normalizeGraphToolCall(toolName, args);
+  if (toolName === "graph_mutation" && !normalized) return "high";
+
+  const effectiveToolName = normalized?.toolName ?? toolName;
+  const effectiveArgs = normalized?.args ?? args;
+
   if (!registry) return "high";
 
-  switch (toolName) {
+  switch (effectiveToolName) {
     case "create_entity":
     case "create_node": {
-      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      const type = typeof effectiveArgs["type"] === "string" ? (effectiveArgs["type"] as string) : undefined;
       if (!type) return "high";
       const def = registry.entityTypes[type];
       if (!def) return "high";
@@ -898,19 +986,19 @@ async function resolveSuggestionRiskLevel(
     }
     case "update_entity":
     case "update_node": {
-      const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+      const updates = (effectiveArgs["updates"] as Record<string, unknown> | undefined) ?? {};
       let typeHint: string | undefined;
-      if (typeof args["entityType"] === "string") {
-        typeHint = args["entityType"] as string;
-      } else if (typeof args["nodeType"] === "string") {
-        typeHint = args["nodeType"] as string;
+      if (typeof effectiveArgs["entityType"] === "string") {
+        typeHint = effectiveArgs["entityType"] as string;
+      } else if (typeof effectiveArgs["nodeType"] === "string") {
+        typeHint = effectiveArgs["nodeType"] as string;
       }
 
       let name: string | undefined;
-      if (typeof args["entityName"] === "string") {
-        name = args["entityName"] as string;
-      } else if (typeof args["nodeName"] === "string") {
-        name = args["nodeName"] as string;
+      if (typeof effectiveArgs["entityName"] === "string") {
+        name = effectiveArgs["entityName"] as string;
+      } else if (typeof effectiveArgs["nodeName"] === "string") {
+        name = effectiveArgs["nodeName"] as string;
       }
 
       let resolvedType: string | null = null;
@@ -933,19 +1021,19 @@ async function resolveSuggestionRiskLevel(
     }
     case "create_relationship":
     case "create_edge": {
-      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      const type = typeof effectiveArgs["type"] === "string" ? (effectiveArgs["type"] as string) : undefined;
       if (!type) return "high";
       const def = registry.relationshipTypes[type];
       return def?.riskLevel ?? "high";
     }
     case "update_relationship":
     case "update_edge": {
-      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      const type = typeof effectiveArgs["type"] === "string" ? (effectiveArgs["type"] as string) : undefined;
       if (!type) return "high";
       const def = registry.relationshipTypes[type];
       if (!def) return "high";
       if (def.riskLevel === "core") return "core";
-      const updates = args["updates"] as Record<string, unknown> | undefined;
+      const updates = effectiveArgs["updates"] as Record<string, unknown> | undefined;
       if (updates?.["bidirectional"] !== undefined) return "high";
       if (isSignificantStrengthChange(updates?.["strength"] as number | undefined)) {
         return "high";
@@ -987,6 +1075,36 @@ async function executeRagTool(
   }
 }
 
+async function executeWebTool(
+  toolName: string,
+  args: Record<string, unknown>
+): Promise<unknown> {
+  switch (toolName) {
+    case "web_search":
+      return (webSearchTool as any).execute?.(args, {}) ?? Promise.reject(new Error("web_search executor unavailable"));
+    case "web_extract":
+      return (webExtractTool as any).execute?.(args, {}) ?? Promise.reject(new Error("web_extract executor unavailable"));
+    default:
+      throw new Error(`Unknown web tool: ${toolName}`);
+  }
+}
+
+async function executeAutoTool(
+  ctx: ActionCtx,
+  toolName: string,
+  args: Record<string, unknown>,
+  projectId: string
+): Promise<unknown> {
+  const category = getToolPolicy(toolName)?.category;
+  if (category === "web") {
+    return executeWebTool(toolName, args);
+  }
+  if (category === "rag") {
+    return executeRagTool(ctx, toolName, args, projectId);
+  }
+  throw new Error(`Unknown auto-execute tool: ${toolName}`);
+}
+
 async function executeProjectGraphTool(
   ctx: ActionCtx,
   toolName: string,
@@ -996,57 +1114,8 @@ async function executeProjectGraphTool(
   source?: ToolSourceContext
 ): Promise<unknown> {
   switch (toolName) {
-    case "create_entity":
-      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateEntity, {
-        projectId,
-        toolArgs: args,
-        actor,
-        source,
-      });
-    case "update_entity":
-      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateEntity, {
-        projectId,
-        toolArgs: args,
-        actor,
-        source,
-      });
-    case "create_relationship":
-      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateRelationship, {
-        projectId,
-        toolArgs: args,
-        actor,
-        source,
-      });
-    case "update_relationship":
-      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateRelationship, {
-        projectId,
-        toolArgs: args,
-        actor,
-        source,
-      });
-    case "create_node":
-      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateNode, {
-        projectId,
-        toolArgs: args,
-        actor,
-        source,
-      });
-    case "update_node":
-      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateNode, {
-        projectId,
-        toolArgs: args,
-        actor,
-        source,
-      });
-    case "create_edge":
-      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateEdge, {
-        projectId,
-        toolArgs: args,
-        actor,
-        source,
-      });
-    case "update_edge":
-      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateEdge, {
+    case "graph_mutation":
+      return ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeGraphMutation, {
         projectId,
         toolArgs: args,
         actor,
@@ -1361,15 +1430,27 @@ export const runSagaAgentChatToStream = internalAction({
       let currentPromptMessageId = promptMessageId;
 
       while (toolCalls.length > 0) {
-        const ragCalls = toolCalls.filter((c) => autoExecuteTools.has(c.toolName));
-        const projectGraphCalls = toolCalls.filter((c) => projectGraphTools.has(c.toolName));
+        const autoCalls = toolCalls.filter((c) => isAutoExecuteTool(c.toolName));
+        const projectGraphCalls = toolCalls.filter((c) => isGraphTool(c.toolName));
         const otherCalls = toolCalls.filter(
-          (c) => !autoExecuteTools.has(c.toolName) && !projectGraphTools.has(c.toolName)
+          (c) => !isAutoExecuteTool(c.toolName) && !isGraphTool(c.toolName)
         );
 
-        // Execute RAG tools (always auto)
-        for (const call of ragCalls) {
-          const toolResult = await executeRagTool(ctx, call.toolName, call.input as Record<string, unknown>, projectId);
+        // Execute auto tools (rag/web)
+        for (const call of autoCalls) {
+          let toolResult: unknown;
+          try {
+            toolResult = await executeAutoTool(
+              ctx,
+              call.toolName,
+              call.input as Record<string, unknown>,
+              projectId
+            );
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "Unknown tool error";
+            toolResult = { success: false, error: errorMessage };
+            console.warn(`[agentRuntime] Auto tool failed: ${call.toolName}`, error);
+          }
 
           await sagaAgent.saveMessage(ctx, {
             threadId: threadId!,
@@ -1414,13 +1495,7 @@ export const runSagaAgentChatToStream = internalAction({
 
         for (const call of projectGraphCalls) {
           const args = call.input as Record<string, unknown>;
-          const requiresApproval = await needsProjectGraphToolApproval(
-            ctx,
-            projectIdValue,
-            call.toolName,
-            args,
-            registry
-          );
+          const requiresApproval = needsToolApproval(registry, call.toolName, args);
           if (requiresApproval) {
             pendingProjectGraphCalls.push(call);
           } else {
@@ -1430,19 +1505,26 @@ export const runSagaAgentChatToStream = internalAction({
 
         // Auto-execute low-impact project graph tools
         for (const call of autoProjectGraphCalls) {
-          const toolResult = await executeProjectGraphTool(
-            ctx,
-            call.toolName,
-            call.input as Record<string, unknown>,
-            projectId,
-            aiActor,
-            {
-              streamId,
-              threadId,
-              toolCallId: call.toolCallId,
-              promptMessageId: currentPromptMessageId,
-            }
-          );
+          let toolResult: unknown;
+          try {
+            toolResult = await executeProjectGraphTool(
+              ctx,
+              call.toolName,
+              call.input as Record<string, unknown>,
+              projectId,
+              aiActor,
+              {
+                streamId,
+                threadId,
+                toolCallId: call.toolCallId,
+                promptMessageId: currentPromptMessageId,
+              }
+            );
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "Unknown tool error";
+            toolResult = { success: false, error: errorMessage };
+            console.warn(`[agentRuntime] Graph tool failed: ${call.toolName}`, error);
+          }
 
           await sagaAgent.saveMessage(ctx, {
             threadId: threadId!,
@@ -1485,7 +1567,7 @@ export const runSagaAgentChatToStream = internalAction({
         for (const call of pendingProjectGraphCalls) {
           const approvalArgs = call.input as Record<string, unknown>;
           let suggestionId: string | undefined;
-          const suggestion = classifyKnowledgeSuggestion(call.toolName);
+          const suggestion = classifyKnowledgeSuggestion(call.toolName, approvalArgs);
           if (suggestion && !isTemplateBuilder) {
             try {
               const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
@@ -1571,7 +1653,7 @@ export const runSagaAgentChatToStream = internalAction({
           const args = call.input as Record<string, unknown>;
           if (needsToolApproval(registry, call.toolName, args)) {
             let suggestionId: string | undefined;
-            const suggestion = classifyKnowledgeSuggestion(call.toolName);
+            const suggestion = classifyKnowledgeSuggestion(call.toolName, args);
           if (suggestion && !isTemplateBuilder) {
             try {
               const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
@@ -1673,7 +1755,7 @@ export const runSagaAgentChatToStream = internalAction({
 
         // Stop if there are pending approvals
         const pendingCalls = [...pendingProjectGraphCalls, ...otherCalls];
-        const autoExecutedCalls = [...ragCalls, ...autoProjectGraphCalls];
+        const autoExecutedCalls = [...autoCalls, ...autoProjectGraphCalls];
         if (pendingCalls.length > 0 || autoExecutedCalls.length === 0) {
           break;
         }
@@ -1906,14 +1988,11 @@ export const applyToolResultAndResumeToStream = internalAction({
       const toolCalls = await resumeResult.toolCalls;
       for (const call of toolCalls) {
         const callArgs = call.input as Record<string, unknown>;
-        const requiresApproval =
-          projectGraphTools.has(call.toolName)
-            ? await needsProjectGraphToolApproval(ctx, projectIdValue, call.toolName, callArgs, registry)
-            : needsToolApproval(registry, call.toolName, callArgs);
+        const requiresApproval = needsToolApproval(registry, call.toolName, callArgs);
 
         if (requiresApproval) {
           let suggestionId: string | undefined;
-          const suggestion = classifyKnowledgeSuggestion(call.toolName);
+          const suggestion = classifyKnowledgeSuggestion(call.toolName, callArgs);
           if (suggestion && !isTemplateBuilder) {
             try {
               const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);

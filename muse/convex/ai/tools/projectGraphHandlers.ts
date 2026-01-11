@@ -23,6 +23,7 @@ import type {
   UpdateNodeArgs,
   CreateEdgeArgs,
   UpdateEdgeArgs,
+  GraphMutationArgs,
 } from "./projectGraphTools";
 
 // =============================================================================
@@ -235,7 +236,8 @@ type ToolErrorCode =
   | "INVALID_TYPE"
   | "SCHEMA_VALIDATION_FAILED"
   | "NOT_FOUND"
-  | "CONFLICT";
+  | "CONFLICT"
+  | "NOT_IMPLEMENTED";
 
 type ToolFailure = {
   success: false;
@@ -373,6 +375,186 @@ async function getResolvedRegistry(
     projectId,
   })) as ProjectTypeRegistryResolved;
 }
+
+type NormalizedGraphMutation = {
+  legacyToolName:
+    | "create_entity"
+    | "update_entity"
+    | "create_relationship"
+    | "update_relationship"
+    | "create_node"
+    | "update_node"
+    | "create_edge"
+    | "update_edge";
+  toolArgs: Record<string, unknown>;
+  kind: "entity" | "relationship";
+};
+
+function normalizeGraphMutationArgs(args: GraphMutationArgs): NormalizedGraphMutation | ToolFailure {
+  if (args.action === "delete") {
+    return fail("NOT_IMPLEMENTED", "Graph deletion is not available yet.");
+  }
+
+  if (args.target === "entity" || args.target === "node") {
+    if (args.action === "create") {
+      return {
+        legacyToolName: args.target === "node" ? "create_node" : "create_entity",
+        toolArgs: {
+          type: args.type,
+          name: args.name,
+          aliases: args.aliases,
+          notes: args.notes,
+          properties: args.properties,
+          archetype: args.archetype,
+          backstory: args.backstory,
+          goals: args.goals,
+          fears: args.fears,
+          citations: args.citations,
+        },
+        kind: "entity",
+      };
+    }
+
+    return {
+      legacyToolName: args.target === "node" ? "update_node" : "update_entity",
+      toolArgs:
+        args.target === "node"
+          ? {
+              nodeName: args.entityName,
+              nodeType: args.entityType,
+              updates: args.updates,
+              citations: args.citations,
+            }
+          : {
+              entityName: args.entityName,
+              entityType: args.entityType,
+              updates: args.updates,
+              citations: args.citations,
+            },
+      kind: "entity",
+    };
+  }
+
+  if (args.action === "create") {
+    return {
+      legacyToolName: args.target === "edge" ? "create_edge" : "create_relationship",
+      toolArgs: {
+        type: args.type,
+        sourceName: args.sourceName,
+        targetName: args.targetName,
+        bidirectional: args.bidirectional,
+        strength: args.strength,
+        notes: args.notes,
+        metadata: args.metadata,
+        citations: args.citations,
+      },
+      kind: "relationship",
+    };
+  }
+
+  return {
+    legacyToolName: args.target === "edge" ? "update_edge" : "update_relationship",
+    toolArgs: {
+      type: args.type,
+      sourceName: args.sourceName,
+      targetName: args.targetName,
+      updates: args.updates,
+      citations: args.citations,
+    },
+    kind: "relationship",
+  };
+}
+
+export const executeGraphMutation = internalAction({
+  args: {
+    projectId: v.string(),
+    toolArgs: v.any(),
+    actor: v.optional(
+      v.object({
+        actorType: v.string(),
+        actorUserId: v.optional(v.string()),
+        actorAgentId: v.optional(v.string()),
+        actorName: v.optional(v.string()),
+      })
+    ),
+    source: v.optional(
+      v.object({
+        streamId: v.optional(v.string()),
+        threadId: v.optional(v.string()),
+        toolCallId: v.optional(v.string()),
+        promptMessageId: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (
+    ctx,
+    { projectId, toolArgs, actor, source: sourceContext }
+  ): Promise<{ success: true; targetId: string; message: string; kind: "entity" | "relationship" } | ToolFailure> => {
+    const args = toolArgs as GraphMutationArgs;
+    const normalized = normalizeGraphMutationArgs(args);
+
+    if ("success" in normalized && normalized.success === false) {
+      return normalized;
+    }
+
+    const { legacyToolName, toolArgs: legacyArgs, kind } = normalized;
+    const actionParams = {
+      projectId,
+      toolArgs: legacyArgs,
+      actor,
+      source: sourceContext,
+    };
+
+    let result: unknown;
+    switch (legacyToolName) {
+      case "create_entity":
+        result = await ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateEntity, actionParams);
+        break;
+      case "update_entity":
+        result = await ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateEntity, actionParams);
+        break;
+      case "create_relationship":
+        result = await ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateRelationship, actionParams);
+        break;
+      case "update_relationship":
+        result = await ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateRelationship, actionParams);
+        break;
+      case "create_node":
+        result = await ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateNode, actionParams);
+        break;
+      case "update_node":
+        result = await ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateNode, actionParams);
+        break;
+      case "create_edge":
+        result = await ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeCreateEdge, actionParams);
+        break;
+      case "update_edge":
+        result = await ctx.runAction((internal as any)["ai/tools/projectGraphHandlers"].executeUpdateEdge, actionParams);
+        break;
+      default:
+        return fail("CONFLICT", `Unsupported mutation: ${legacyToolName}`);
+    }
+
+    const resolved = result as
+      | { success: true; entityId?: string; relationshipId?: string; message: string }
+      | ToolFailure;
+
+    if ("success" in resolved && resolved.success) {
+      const targetId = (resolved.entityId ?? resolved.relationshipId) as string | undefined;
+      if (!targetId) {
+        return fail("CONFLICT", "Mutation completed without a target id.");
+      }
+      return {
+        success: true,
+        targetId,
+        message: resolved.message,
+        kind,
+      };
+    }
+
+    return resolved;
+  },
+});
 
 export const executeCreateEntity = internalAction({
   args: {

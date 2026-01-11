@@ -25,6 +25,9 @@ export {
   updateEdgeTool,
   type CreateEdgeArgs,
   type UpdateEdgeArgs,
+  // Consolidated graph tool
+  graphMutationTool,
+  type GraphMutationArgs,
   // Image tools
   generateImageTool,
   generateImageNeedsApproval,
@@ -37,6 +40,7 @@ export {
   type AnalyzeImageArgs,
 } from "./projectGraphTools";
 export { expandChunkContext } from "./ragHandlers";
+export { analyzeContentTool, type AnalyzeContentArgs } from "./analysisTools";
 export {
   executeCreateEntity,
   executeUpdateEntity,
@@ -46,4 +50,5 @@ export {
   executeUpdateNode,
   executeCreateEdge,
   executeUpdateEdge,
+  executeGraphMutation,
 } from "./projectGraphHandlers";

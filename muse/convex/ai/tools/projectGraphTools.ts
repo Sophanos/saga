@@ -23,6 +23,79 @@ const itemCategorySchema = z.enum([
 ]);
 
 // =============================================================================
+// Graph Mutation Tool
+// =============================================================================
+
+export const graphMutationParameters = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("create"),
+    target: z.enum(["entity", "node"]),
+    type: z.string().describe("Entity/node type"),
+    name: z.string().describe("Entity/node name"),
+    aliases: z.array(z.string()).optional().describe("Alternative names or nicknames"),
+    notes: z.string().optional().describe("General notes about the entity/node"),
+    properties: z.record(z.any()).optional().describe("Template-specific properties"),
+    archetype: z.string().optional().describe("Character archetype"),
+    backstory: z.string().optional().describe("Character backstory"),
+    goals: z.array(z.string()).optional().describe("Character goals"),
+    fears: z.array(z.string()).optional().describe("Character fears"),
+    citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
+  }),
+  z.object({
+    action: z.literal("update"),
+    target: z.enum(["entity", "node"]),
+    entityName: z.string().describe("Existing entity/node name"),
+    entityType: z.string().optional().describe("Entity/node type (for disambiguation)"),
+    updates: z.record(z.any()).describe("Fields to update"),
+    citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
+  }),
+  z.object({
+    action: z.literal("delete"),
+    target: z.enum(["entity", "node"]),
+    entityName: z.string().describe("Entity/node name to delete"),
+    entityType: z.string().optional().describe("Entity/node type (for disambiguation)"),
+    reason: z.string().optional().describe("Reason for deletion"),
+  }),
+  z.object({
+    action: z.literal("create"),
+    target: z.enum(["relationship", "edge"]),
+    type: z.string().describe("Relationship/edge type"),
+    sourceName: z.string().describe("Source entity/node name"),
+    targetName: z.string().describe("Target entity/node name"),
+    bidirectional: z.boolean().optional().describe("Whether the relationship is bidirectional"),
+    strength: z.number().min(0).max(1).optional().describe("Relationship strength (0-1)"),
+    notes: z.string().optional().describe("Notes about the relationship"),
+    metadata: z.record(z.any()).optional().describe("Relationship metadata"),
+    citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
+  }),
+  z.object({
+    action: z.literal("update"),
+    target: z.enum(["relationship", "edge"]),
+    type: z.string().describe("Relationship/edge type"),
+    sourceName: z.string().describe("Source entity/node name"),
+    targetName: z.string().describe("Target entity/node name"),
+    updates: z.record(z.any()).describe("Fields to update"),
+    citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
+  }),
+  z.object({
+    action: z.literal("delete"),
+    target: z.enum(["relationship", "edge"]),
+    type: z.string().describe("Relationship/edge type"),
+    sourceName: z.string().describe("Source entity/node name"),
+    targetName: z.string().describe("Target entity/node name"),
+    reason: z.string().optional().describe("Reason for deletion"),
+  }),
+]);
+
+export type GraphMutationArgs = z.infer<typeof graphMutationParameters>;
+
+export const graphMutationTool = tool({
+  description:
+    "Create, update, or delete entities/nodes and relationships/edges in the project graph. Some mutations require approval.",
+  inputSchema: graphMutationParameters,
+});
+
+// =============================================================================
 // Create Entity Tool
 // =============================================================================
 

@@ -15,6 +15,8 @@ import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
 import { CLARITY_CHECK_SYSTEM } from "./prompts/clarity";
 import { POLICY_CHECK_SYSTEM } from "./prompts/policy";
 import type {
+  AnalyzeContentArgs,
+  AnalyzeContentResult,
   GenerateTemplateArgs,
   GenerateTemplateResult,
   GenesisEntity,
@@ -37,6 +39,52 @@ const MAX_DECISION_LENGTH = 10000;
 const MAX_DECISION_EMBEDDING_CHARS = 8000;
 const SAGA_VECTORS_COLLECTION = "saga_vectors";
 const SAGA_IMAGES_COLLECTION = "saga_images";
+
+type OpenRouterJsonRequest = {
+  model: string;
+  system: string;
+  user: string;
+  maxTokens: number;
+  temperature?: number;
+};
+
+async function callOpenRouterJson<T>(params: OpenRouterJsonRequest): Promise<T> {
+  const apiKey = process.env["OPENROUTER_API_KEY"];
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://mythos.app",
+      "X-Title": "Saga AI",
+    },
+    body: JSON.stringify({
+      model: params.model,
+      messages: [
+        { role: "system", content: params.system },
+        { role: "user", content: params.user },
+      ],
+      response_format: { type: "json_object" },
+      temperature: params.temperature ?? 0.3,
+      max_tokens: params.maxTokens,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("OpenRouter returned empty content");
+  }
+
+  return JSON.parse(content) as T;
+}
 
 // ============================================================
 // Tool Execution Action
@@ -65,17 +113,47 @@ export const execute = internalAction({
     console.log(`[tools.execute] ${toolName}`, { projectId, userId });
 
     switch (toolName) {
-      case "detect_entities":
-        return ctx.runAction((internal as any)["ai/detect"].detectEntities, {
-          text: input.text,
-          projectId,
-          userId,
-          entityTypes: input.entityTypes,
-          minConfidence: input.minConfidence,
-        });
+      case "analyze_content":
+        return executeAnalyzeContent(ctx, input as AnalyzeContentArgs, projectId, userId);
 
-      case "check_consistency":
-        return executeCheckConsistency(input);
+      case "detect_entities": {
+        const result = await executeAnalyzeContent(
+          ctx,
+          {
+            mode: "entities",
+            text: input.text,
+            options: {
+              entityTypes: input.entityTypes,
+              minConfidence: input.minConfidence,
+            },
+          },
+          projectId,
+          userId
+        );
+        const stats = result.mode === "entities" ? (result.stats as { warnings?: unknown[] } | undefined) : undefined;
+        return {
+          entities: result.mode === "entities" ? result.entities : [],
+          warnings: stats?.warnings,
+        };
+      }
+
+      case "check_consistency": {
+        const result = await executeAnalyzeContent(
+          ctx,
+          {
+            mode: "consistency",
+            text: input.text,
+            options: { focus: input.focus },
+          },
+          projectId,
+          userId
+        );
+        const stats = result.mode === "consistency" ? (result.stats as { rawIssues?: unknown[] } | undefined) : undefined;
+        return {
+          issues: Array.isArray(stats?.rawIssues) ? stats?.rawIssues : [],
+          summary: result.summary,
+        };
+      }
 
       case "project_manage":
         return executeProjectManage(ctx, input, projectId);
@@ -83,11 +161,43 @@ export const execute = internalAction({
       case "generate_template":
         return executeGenerateTemplate(input);
 
-      case "clarity_check":
-        return executeClarityCheck(input, projectId);
+      case "clarity_check": {
+        const result = await executeAnalyzeContent(
+          ctx,
+          {
+            mode: "clarity",
+            text: input.text,
+            options: { maxIssues: input.maxIssues },
+          },
+          projectId,
+          userId
+        );
+        const stats = result.mode === "clarity" ? (result.stats as { rawIssues?: unknown[]; readability?: unknown } | undefined) : undefined;
+        return {
+          issues: Array.isArray(stats?.rawIssues) ? stats?.rawIssues : [],
+          summary: result.summary,
+          readability: stats?.readability,
+        };
+      }
 
-      case "policy_check":
-        return executePolicyCheck(input, projectId);
+      case "policy_check": {
+        const result = await executeAnalyzeContent(
+          ctx,
+          {
+            mode: "policy",
+            text: input.text,
+            options: { maxIssues: input.maxIssues },
+          },
+          projectId,
+          userId
+        );
+        const stats = result.mode === "policy" ? (result.stats as { rawIssues?: unknown[]; compliance?: unknown } | undefined) : undefined;
+        return {
+          issues: Array.isArray(stats?.rawIssues) ? stats?.rawIssues : [],
+          summary: result.summary,
+          compliance: stats?.compliance,
+        };
+      }
 
       case "name_generator":
         return executeNameGenerator(input);
@@ -101,18 +211,38 @@ export const execute = internalAction({
       case "find_similar_images":
         return executeFindSimilarImages(input, projectId);
 
-      case "check_logic":
-        return executeCheckLogic(input, projectId);
+      case "check_logic": {
+        const result = await executeAnalyzeContent(
+          ctx,
+          {
+            mode: "logic",
+            text: input.text,
+            options: { focus: input.focus, strictness: input.strictness },
+          },
+          projectId,
+          userId
+        );
+        const stats = result.mode === "logic" ? (result.stats as { rawIssues?: unknown[] } | undefined) : undefined;
+        return {
+          issues: Array.isArray(stats?.rawIssues) ? stats?.rawIssues : [],
+          summary: result.summary,
+        };
+      }
 
       case "generate_content":
         return executeGenerateContent(input, projectId);
 
       case "analyze_image":
-        return executeAnalyzeImage(input, projectId);
+        return ctx.runAction((internal as any)["ai/image"].analyzeImageAction, {
+          projectId,
+          userId,
+          imageUrl: input.imageUrl,
+          analysisPrompt: input.analysisPrompt,
+        });
 
       default:
         throw new Error(
-          `Unknown tool: ${toolName}. Supported tools: project_manage, detect_entities, check_consistency, generate_template, clarity_check, policy_check, name_generator, commit_decision, search_images, find_similar_images, check_logic, generate_content, analyze_image`
+          `Unknown tool: ${toolName}. Supported tools: project_manage, analyze_content, detect_entities, check_consistency, generate_template, clarity_check, policy_check, check_logic, name_generator, commit_decision, search_images, find_similar_images, generate_content, analyze_image`
         );
     }
   },
@@ -315,9 +445,6 @@ async function executeCheckConsistency(input: {
   }>;
   stats: { total: number; bySeverity: Record<string, number> };
 }> {
-  const apiKey = process.env["OPENROUTER_API_KEY"];
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
-
   const focusAreas = input.focus?.length
     ? `Focus on: ${input.focus.join(", ")}`
     : "Check all consistency areas: timeline, character behavior, world rules, relationships";
@@ -340,38 +467,13 @@ For each issue found, provide:
 
 Respond with JSON containing an "issues" array.`;
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://mythos.app",
-      "X-Title": "Saga AI",
-    },
-    body: JSON.stringify({
-      model: DEFAULT_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Check this text for consistency issues:\n\n${input.text}` },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 4096,
-    }),
+  const parsed = await callOpenRouterJson<{ issues?: Array<Record<string, unknown>> }>({
+    model: DEFAULT_MODEL,
+    system: systemPrompt,
+    user: `Check this text for consistency issues:\n\n${input.text}`,
+    maxTokens: 4096,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    return { issues: [], stats: { total: 0, bySeverity: {} } };
-  }
-
-  const parsed = JSON.parse(content);
   const issues = parsed.issues || [];
 
   const bySeverity: Record<string, number> = {};
@@ -380,6 +482,132 @@ Respond with JSON containing an "issues" array.`;
   }
 
   return { issues, stats: { total: issues.length, bySeverity } };
+}
+
+async function executeAnalyzeContent(
+  ctx: ActionCtx,
+  input: AnalyzeContentArgs,
+  projectId: string,
+  userId: string
+): Promise<AnalyzeContentResult> {
+  switch (input.mode) {
+    case "entities": {
+      const result = await ctx.runAction((internal as any)["ai/detect"].detectEntities, {
+        text: input.text,
+        projectId,
+        userId,
+        entityTypes: input.options?.entityTypes,
+        minConfidence: input.options?.minConfidence,
+      });
+      const entities = Array.isArray(result?.entities) ? result.entities : [];
+      const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
+      const summary = entities.length > 0
+        ? `Detected ${entities.length} entities.`
+        : "No entities detected.";
+      return {
+        mode: "entities",
+        summary,
+        entities,
+        stats: { warnings },
+      };
+    }
+    case "consistency": {
+      const result = await executeCheckConsistency({
+        text: input.text,
+        focus: input.options?.focus,
+      });
+      const issues = result.issues ?? [];
+      const normalized = issues.map((issue, index) => ({
+        id: `consistency-${Date.now()}-${index}`,
+        type: issue.type ?? "consistency",
+        severity: issue.severity ?? "warning",
+        message: issue.description ?? "",
+        suggestion: issue.suggestion,
+        locations: issue.location ? [{ text: issue.location }] : undefined,
+      }));
+      const summary = `Found ${issues.length} consistency issue${issues.length === 1 ? "" : "s"}.`;
+      return {
+        mode: "consistency",
+        summary,
+        issues: normalized,
+        stats: { rawIssues: issues, totals: result.stats },
+      };
+    }
+    case "logic": {
+      const result = await executeCheckLogic(
+        {
+          text: input.text,
+          focus: input.options?.focus as CheckLogicInput["focus"],
+          strictness: input.options?.strictness as CheckLogicInput["strictness"],
+        },
+        projectId
+      );
+      const issues = result.issues ?? [];
+      const normalized = issues.map((issue, index) => ({
+        id: issue.id ?? `logic-${Date.now()}-${index}`,
+        type: issue.type,
+        severity: issue.severity,
+        message: issue.message,
+        suggestion: issue.suggestion,
+        locations: issue.locations,
+      }));
+      const summary = result.summary ?? `Found ${issues.length} logic issue${issues.length === 1 ? "" : "s"}.`;
+      return {
+        mode: "logic",
+        summary,
+        issues: normalized,
+        stats: { rawIssues: issues },
+      };
+    }
+    case "clarity": {
+      const result = await executeClarityCheck(
+        { text: input.text, maxIssues: input.options?.maxIssues },
+        projectId
+      );
+      const issues = result.issues ?? [];
+      const normalized = issues.map((issue, index) => ({
+        id: issue.id ?? `clarity-${Date.now()}-${index}`,
+        type: issue.type,
+        severity: "warning",
+        message: issue.text,
+        suggestion: issue.suggestion,
+        locations: issue.line ? [{ line: issue.line, text: issue.text }] : undefined,
+      }));
+      return {
+        mode: "clarity",
+        summary: result.summary || `Found ${issues.length} clarity issue${issues.length === 1 ? "" : "s"}.`,
+        issues: normalized,
+        stats: { rawIssues: issues, readability: result.readability },
+      };
+    }
+    case "policy": {
+      const result = await executePolicyCheck(
+        { text: input.text, maxIssues: input.options?.maxIssues },
+        projectId
+      );
+      const issues = result.issues ?? [];
+      const normalized = issues.map((issue, index) => ({
+        id: issue.id ?? `policy-${Date.now()}-${index}`,
+        type: issue.type,
+        severity: "warning",
+        message: issue.text,
+        suggestion: issue.suggestion,
+        locations: issue.line ? [{ line: issue.line, text: issue.text }] : undefined,
+      }));
+      return {
+        mode: "policy",
+        summary: result.summary,
+        issues: normalized,
+        stats: { rawIssues: issues, compliance: result.compliance },
+      };
+    }
+    default:
+      return {
+        mode: "consistency",
+        summary: "Unsupported analysis mode.",
+        issues: [],
+      };
+  }
 }
 
 type NormalizedGenerateTemplateArgs = {
@@ -1335,6 +1563,25 @@ async function executeGenerateTemplate(input: GenerateTemplateArgs): Promise<Gen
   };
 }
 
+type PinnedPolicyContext = { text: string; count: number };
+
+async function getPinnedPoliciesForProject(
+  projectId: string,
+  options?: { limit?: number; categories?: string[] }
+): Promise<PinnedPolicyContext | null> {
+  try {
+    const pinned = await fetchPinnedProjectMemories(projectId, {
+      limit: options?.limit ?? 50,
+      categories: options?.categories ?? ["policy", "decision"],
+    });
+    if (pinned.length === 0) return null;
+    return { text: formatMemoriesForPrompt(pinned), count: pinned.length };
+  } catch (error) {
+    console.warn("[tools.policy_context] Failed to fetch pinned policies:", error);
+    return null;
+  }
+}
+
 interface ClarityCheckResult {
   issues: Array<{
     id?: string;
@@ -1353,6 +1600,14 @@ interface ClarityCheckResult {
     fleschKincaidGrade: number;
     longSentencePct: number;
   };
+  metrics?: {
+    wordCount: number;
+    sentenceCount: number;
+    avgWordsPerSentence: number;
+    fleschReadingEase: number;
+    fleschKincaidGrade: number;
+    longSentencePct: number;
+  };
 }
 
 async function executeClarityCheck(
@@ -1362,20 +1617,12 @@ async function executeClarityCheck(
   const apiKey = process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
-  // Fetch pinned policies for policy-aware clarity checking
-  let policyText: string | undefined;
-  try {
-    const pinned = await fetchPinnedProjectMemories(projectId, {
-      limit: 25,
-      categories: ["policy"],
-    });
-    policyText = pinned.length ? formatMemoriesForPrompt(pinned) : undefined;
-  } catch (error) {
-    console.warn("[tools.clarity_check] Failed to fetch pinned policies:", error);
-    // Continue without policy context
-  }
+  const policyContext = await getPinnedPoliciesForProject(projectId, {
+    limit: 25,
+    categories: ["policy"],
+  });
+  const policyText = policyContext?.text;
 
-  // Build user content with optional policy context
   const userContent = policyText
     ? `## Pinned Policies:\n${policyText}\n\n## Text to Analyze:\n${input.text}`
     : input.text;
@@ -1426,10 +1673,13 @@ async function executeClarityCheck(
     fix: issue["fix"] as { oldText: string; newText: string } | undefined,
   }));
 
+  const readability = parsed.readability as ClarityCheckResult["readability"] | undefined;
+
   return {
     issues,
     summary: parsed.summary || "Clarity analysis complete.",
-    readability: parsed.readability,
+    readability,
+    metrics: readability,
   };
 }
 
@@ -1525,19 +1775,12 @@ async function executePolicyCheck(
   const apiKey = process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
-  // Fetch pinned policies - this is REQUIRED for policy check
-  let policies: Awaited<ReturnType<typeof fetchPinnedProjectMemories>> = [];
-  try {
-    policies = await fetchPinnedProjectMemories(projectId, {
-      limit: 50,
-      categories: ["policy", "decision"],
-    });
-  } catch (error) {
-    console.warn("[tools.policy_check] Failed to fetch pinned policies:", error);
-  }
+  const policyContext = await getPinnedPoliciesForProject(projectId, {
+    limit: 50,
+    categories: ["policy", "decision"],
+  });
 
-  // If no policies exist, return early with helpful message
-  if (policies.length === 0) {
+  if (!policyContext) {
     return {
       issues: [],
       summary: "No policies pinned; nothing to check. Pin some style rules or project policies first.",
@@ -1549,10 +1792,8 @@ async function executePolicyCheck(
     };
   }
 
-  const policyText = formatMemoriesForPrompt(policies);
-
-  // Build user content with policy context
-  const userContent = `## Pinned Policies (${policies.length}):\n${policyText}\n\n## Text to Check:\n${input.text}`;
+  const { text: policyText, count: policyCount } = policyContext;
+  const userContent = `## Pinned Policies:\n${policyText}\n\n## Text to Check:\n${input.text}`;
 
   const response = await fetch(OPENROUTER_API_URL, {
     method: "POST",
@@ -1587,7 +1828,7 @@ async function executePolicyCheck(
       summary: "Unable to analyze text against policies.",
       compliance: {
         score: 100,
-        policiesChecked: policies.length,
+        policiesChecked: policyCount,
         conflictsFound: 0,
       },
     };
@@ -1607,10 +1848,10 @@ async function executePolicyCheck(
 
   return {
     issues,
-    summary: parsed.summary || `Checked against ${policies.length} policies.`,
+    summary: parsed.summary || `Checked against ${policyCount} policies.`,
     compliance: parsed.compliance || {
       score: 100 - issues.filter((i: { type: string }) => i.type === "policy_conflict").length * 10,
-      policiesChecked: policies.length,
+      policiesChecked: policyCount,
       conflictsFound: issues.filter((i: { type: string }) => i.type === "policy_conflict").length,
     },
   };
@@ -2210,107 +2451,3 @@ Generate ${input.contentType} content now.`;
   };
 }
 
-// ============================================================
-// Analyze Image Tool
-// ============================================================
-
-interface AnalyzeImageInput {
-  imageSource: string; // Base64 data URL or storage path
-  entityTypeHint?: string;
-  extractionFocus?: "full" | "appearance" | "environment" | "object";
-}
-
-interface AnalyzeImageResult {
-  analysis: {
-    description: string;
-    extractedDetails: Record<string, unknown>;
-    suggestedEntityType?: string;
-    suggestedName?: string;
-    colors: string[];
-    mood?: string;
-    style?: string;
-  };
-}
-
-const ANALYZE_IMAGE_SYSTEM = `You are a visual analysis AI for worldbuilding. Analyze images to extract details useful for creating story entities.
-
-Extract:
-- description: Detailed visual description
-- extractedDetails: Structured data (appearance, clothing, environment, objects, etc.)
-- suggestedEntityType: character, location, item, etc.
-- suggestedName: If text or obvious name is visible
-- colors: Dominant colors
-- mood: Overall mood/atmosphere
-- style: Art style (realistic, anime, fantasy, etc.)
-
-Be specific and thorough. Focus on details that would be useful for worldbuilding.`;
-
-async function executeAnalyzeImage(
-  input: AnalyzeImageInput,
-  _projectId: string
-): Promise<AnalyzeImageResult> {
-  const apiKey = process.env["OPENROUTER_API_KEY"];
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
-
-  const focus = input.extractionFocus ?? "full";
-  const typeHint = input.entityTypeHint ? `\nEntity type hint: ${input.entityTypeHint}` : "";
-
-  // Check if imageSource is a data URL
-  const isDataUrl = input.imageSource.startsWith("data:");
-  if (!isDataUrl) {
-    throw new Error("Image analysis requires a base64 data URL. Storage path lookup not yet implemented.");
-  }
-
-  const userContent = `Analyze this image for worldbuilding details.\nFocus: ${focus}${typeHint}`;
-
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://mythos.app",
-      "X-Title": "Saga AI",
-    },
-    body: JSON.stringify({
-      model: "anthropic/claude-sonnet-4", // Vision-capable model
-      messages: [
-        { role: "system", content: ANALYZE_IMAGE_SYSTEM },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: userContent },
-            { type: "image_url", image_url: { url: input.imageSource } },
-          ],
-        },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 2048,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error("No analysis generated");
-  }
-
-  const parsed = JSON.parse(content);
-
-  return {
-    analysis: {
-      description: parsed.description || "",
-      extractedDetails: parsed.extractedDetails || {},
-      suggestedEntityType: parsed.suggestedEntityType,
-      suggestedName: parsed.suggestedName,
-      colors: parsed.colors || [],
-      mood: parsed.mood,
-      style: parsed.style,
-    },
-  };
-}

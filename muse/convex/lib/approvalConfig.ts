@@ -100,6 +100,42 @@ export function needsToolApproval(
       return shouldApproveEntityUpdate(registry.entityTypes[type], updates);
     }
 
+    case "graph_mutation": {
+      if (!registry) return true;
+      const action = typeof args["action"] === "string" ? (args["action"] as string) : undefined;
+      const target = typeof args["target"] === "string" ? (args["target"] as string) : undefined;
+      if (!action || !target) return true;
+
+      if (target === "entity" || target === "node") {
+        const type =
+          typeof args["type"] === "string"
+            ? (args["type"] as string)
+            : typeof args["entityType"] === "string"
+              ? (args["entityType"] as string)
+              : undefined;
+        if (!type) return true;
+        if (action === "create") {
+          return shouldApproveEntityCreate(registry.entityTypes[type]);
+        }
+        if (action === "update") {
+          const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+          return shouldApproveEntityUpdate(registry.entityTypes[type], updates);
+        }
+        return true;
+      }
+
+      const relType = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      if (!relType) return true;
+      if (action === "create") {
+        return shouldApproveRelationshipCreate(registry.relationshipTypes[relType]);
+      }
+      if (action === "update") {
+        const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+        return shouldApproveRelationshipUpdate(registry.relationshipTypes[relType], updates);
+      }
+      return true;
+    }
+
     case "update_node": {
       if (!registry) return true;
       const type =

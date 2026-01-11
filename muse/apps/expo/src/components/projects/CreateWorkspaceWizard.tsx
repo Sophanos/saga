@@ -3,8 +3,9 @@
  *
  * Steps:
  * 1. Template selection (Work, Daily Life, Learning, AI Builder)
- * 2. Name + Icon input
- * 3. Project created → auto-selected
+ * 2. AI Builder (if selected)
+ * 3. Name + Icon input
+ * 4. Project created → auto-selected
  */
 
 import { useState, useCallback } from 'react';
@@ -24,9 +25,11 @@ import { useMutation } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { useTheme, spacing, typography, radii, shadows, palette } from '@/design-system';
 import { useProjectStore } from '@mythos/state';
-import { createProjectFromBootstrap } from '@mythos/core';
+import { createProjectFromBootstrap, type ProjectType } from '@mythos/core';
+import type { GenesisEntity, TemplateDraft } from '@mythos/agent-protocol';
+import { AITemplateBuilder } from './AITemplateBuilder';
 
-type WizardStep = 'template' | 'details';
+type WizardStep = 'template' | 'ai_builder' | 'details';
 
 type TemplateCategory = 'work' | 'daily' | 'learning' | 'ai';
 
@@ -96,31 +99,58 @@ export function CreateWorkspaceWizard({
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // AI Builder state
+  const [aiProjectType, setAiProjectType] = useState<ProjectType>('story');
+  const [templateDraft, setTemplateDraft] = useState<TemplateDraft | null>(null);
+  const [starterEntities, setStarterEntities] = useState<GenesisEntity[]>([]);
+
   const bootstrapProject = useMutation(api.projectBootstrap.bootstrap);
   const setProject = useProjectStore((s) => s.setProject);
 
   const handleSelectTemplate = useCallback((template: TemplateCategoryDef) => {
     setSelectedTemplate(template);
     if (template.id === 'ai') {
-      // TODO: Open AI Template Builder
-      // For now, just proceed to details
+      // Open AI Template Builder
+      setStep('ai_builder');
+    } else {
+      setStep('details');
+    }
+  }, []);
+
+  const handleAITemplateComplete = useCallback((draft: TemplateDraft, entities?: GenesisEntity[]) => {
+    setTemplateDraft(draft);
+    setStarterEntities(entities ?? []);
+    // Set project name from draft if available
+    if (draft.name) {
+      setProjectName(draft.name);
     }
     setStep('details');
   }, []);
 
   const handleBack = useCallback(() => {
     if (step === 'details') {
+      if (selectedTemplate?.id === 'ai' && templateDraft) {
+        // Go back to AI builder
+        setStep('ai_builder');
+      } else {
+        setStep('template');
+        setProjectName('');
+        setError(null);
+      }
+    } else if (step === 'ai_builder') {
       setStep('template');
-      setProjectName('');
-      setError(null);
+      setTemplateDraft(null);
+      setStarterEntities([]);
     }
-  }, [step]);
+  }, [step, selectedTemplate, templateDraft]);
 
   const handleClose = useCallback(() => {
     setStep('template');
     setSelectedTemplate(null);
     setProjectName('');
     setError(null);
+    setTemplateDraft(null);
+    setStarterEntities([]);
     onClose();
   }, [onClose]);
 
@@ -131,18 +161,36 @@ export function CreateWorkspaceWizard({
     setError(null);
 
     try {
-      const result = await bootstrapProject({
+      // Determine template ID and overrides
+      const isCustomTemplate = selectedTemplate.id === 'ai' && templateDraft;
+      const templateId = isCustomTemplate ? 'custom' : selectedTemplate.templateId;
+
+      // Build bootstrap args
+      const bootstrapArgs: Parameters<typeof bootstrapProject>[0] = {
         name: projectName.trim(),
-        templateId: selectedTemplate.templateId,
+        templateId,
         initialDocumentType: 'chapter',
         initialDocumentTitle: 'Chapter 1',
-      });
+      };
+
+      if (isCustomTemplate && templateDraft) {
+        bootstrapArgs.templateOverrides = {
+          entityKinds: templateDraft.entityKinds,
+          relationshipKinds: templateDraft.relationshipKinds,
+          documentKinds: templateDraft.documentKinds,
+          linterRules: templateDraft.linterRules,
+          uiModules: templateDraft.uiModules,
+          starterEntities: starterEntities.length > 0 ? starterEntities : undefined,
+        };
+      }
+
+      const result = await bootstrapProject(bootstrapArgs);
 
       // Use shared mapper to create properly typed project
       const project = createProjectFromBootstrap({
         projectId: result.projectId,
         name: projectName.trim(),
-        templateId: selectedTemplate.templateId,
+        templateId,
       });
 
       setProject(project);
@@ -155,7 +203,7 @@ export function CreateWorkspaceWizard({
     } finally {
       setIsCreating(false);
     }
-  }, [projectName, selectedTemplate, isCreating, bootstrapProject, setProject, handleClose, onCreated]);
+  }, [projectName, selectedTemplate, isCreating, bootstrapProject, setProject, handleClose, onCreated, templateDraft, starterEntities]);
 
   if (!visible) return null;
 
@@ -185,7 +233,7 @@ export function CreateWorkspaceWizard({
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: colors.border }]}>
               <View style={styles.headerLeft}>
-                {step === 'details' && (
+                {(step === 'details' || step === 'ai_builder') && (
                   <Pressable
                     style={({ pressed }) => [
                       styles.backButton,
@@ -197,7 +245,7 @@ export function CreateWorkspaceWizard({
                   </Pressable>
                 )}
                 <Text style={[styles.headerTitle, { color: colors.text }]}>
-                  {step === 'template' ? 'New Workspace' : 'Create Workspace'}
+                  {step === 'template' ? 'New Workspace' : step === 'ai_builder' ? 'AI Template Builder' : 'Create Workspace'}
                 </Text>
               </View>
               <Pressable
@@ -212,10 +260,18 @@ export function CreateWorkspaceWizard({
             </View>
 
             {/* Content */}
-            <View style={styles.content}>
+            <View style={step === 'ai_builder' ? styles.aiBuilderContent : styles.content}>
               {step === 'template' && (
                 <TemplateStep
                   onSelect={handleSelectTemplate}
+                />
+              )}
+
+              {step === 'ai_builder' && (
+                <AITemplateBuilder
+                  projectType={aiProjectType}
+                  onUseTemplate={handleAITemplateComplete}
+                  onCancel={() => setStep('template')}
                 />
               )}
 
@@ -227,6 +283,7 @@ export function CreateWorkspaceWizard({
                   onSubmit={handleCreate}
                   isCreating={isCreating}
                   error={error}
+                  hasCustomTemplate={!!templateDraft}
                 />
               )}
             </View>
@@ -301,6 +358,7 @@ interface DetailsStepProps {
   onSubmit: () => void;
   isCreating: boolean;
   error: string | null;
+  hasCustomTemplate?: boolean;
 }
 
 function DetailsStep({
@@ -310,6 +368,7 @@ function DetailsStep({
   onSubmit,
   isCreating,
   error,
+  hasCustomTemplate,
 }: DetailsStepProps) {
   const { colors } = useTheme();
   const initial = getInitial(projectName);
@@ -317,7 +376,7 @@ function DetailsStep({
   return (
     <View style={styles.detailsStep}>
       <Text style={[styles.stepTitle, { color: colors.text }]}>
-        Give your workspace a name
+        {hasCustomTemplate ? 'Finalize your workspace' : 'Give your workspace a name'}
       </Text>
       <Text style={[styles.stepSubtitle, { color: colors.textMuted }]}>
         Details help new members
@@ -451,6 +510,11 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing[4],
+  },
+  aiBuilderContent: {
+    flex: 1,
+    minHeight: 500,
+    maxHeight: 600,
   },
   templateStep: {
     gap: spacing[4],

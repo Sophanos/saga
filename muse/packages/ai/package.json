@@ -8,6 +8,14 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./client": {
+      "types": "./src/client/index.ts",
+      "default": "./src/client/index.ts"
+    },
+    "./hooks": {
+      "types": "./src/hooks/index.ts",
+      "default": "./src/hooks/index.ts"
+    },
     "./agents/*": {
       "types": "./src/agents/*.ts",
       "default": "./src/agents/*.ts"
@@ -25,13 +33,28 @@
     "@ai-sdk/google": "^3.0.0",
     "@ai-sdk/openai": "^3.0.0",
     "@ai-sdk/provider": "^3.0.0",
+    "@mythos/agent-protocol": "workspace:*",
+    "@mythos/context": "workspace:*",
+    "@mythos/core": "workspace:*",
     "@mythos/prompts": "workspace:*",
     "ai": "^6.0.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@mythos/core": "workspace:*",
+    "@types/react": "^18.2.0",
     "@mythos/typescript-config": "workspace:*",
     "typescript": "^5.7.2"
+  },
+  "peerDependencies": {
+    "convex": "^1.17.0",
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "convex": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   }
 }

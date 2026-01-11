@@ -38,6 +38,7 @@ export type ToolName =
   | "update_node"
   | "create_edge"
   | "update_edge"
+  | "graph_mutation"
   | "generate_content"
   | "generate_image"
   | "edit_image"
@@ -50,6 +51,7 @@ export type ToolName =
   | "clarity_check"
   | "policy_check"
   | "check_logic"
+  | "analyze_content"
   | "name_generator"
   | "commit_decision"
   // Human-in-the-loop editor tools
@@ -152,6 +154,110 @@ export interface ToolInvocation {
 // =============================================================================
 // Tool Arguments (per-tool typing)
 // =============================================================================
+
+export type GraphMutationAction = "create" | "update" | "delete";
+export type GraphMutationTarget = "entity" | "node" | "relationship" | "edge";
+
+export type GraphMutationArgs =
+  | {
+      action: "create";
+      target: "entity" | "node";
+      type: string;
+      name: string;
+      aliases?: string[];
+      notes?: string;
+      properties?: Record<string, unknown>;
+      archetype?: string;
+      backstory?: string;
+      goals?: string[];
+      fears?: string[];
+      citations?: CanonCitation[];
+    }
+  | {
+      action: "update";
+      target: "entity" | "node";
+      entityName: string;
+      entityType?: string;
+      updates: Record<string, unknown>;
+      citations?: CanonCitation[];
+    }
+  | {
+      action: "delete";
+      target: "entity" | "node";
+      entityName: string;
+      entityType?: string;
+      reason?: string;
+    }
+  | {
+      action: "create";
+      target: "relationship" | "edge";
+      type: string;
+      sourceName: string;
+      targetName: string;
+      bidirectional?: boolean;
+      strength?: number;
+      notes?: string;
+      metadata?: Record<string, unknown>;
+      citations?: CanonCitation[];
+    }
+  | {
+      action: "update";
+      target: "relationship" | "edge";
+      type: string;
+      sourceName: string;
+      targetName: string;
+      updates: Record<string, unknown>;
+      citations?: CanonCitation[];
+    }
+  | {
+      action: "delete";
+      target: "relationship" | "edge";
+      type: string;
+      sourceName: string;
+      targetName: string;
+      reason?: string;
+    };
+
+export type GraphMutationResult =
+  | { success: true; targetId: string; message: string; kind: "entity" | "relationship" }
+  | { success: false; code: string; message: string; details?: unknown };
+
+export type AnalyzeContentMode = "consistency" | "entities" | "logic" | "clarity" | "policy";
+
+export interface AnalyzeContentArgs {
+  mode: AnalyzeContentMode;
+  text: string;
+  options?: {
+    focus?: string[];
+    strictness?: "strict" | "balanced" | "lenient";
+    maxIssues?: number;
+    entityTypes?: EntityType[];
+    minConfidence?: number;
+  };
+}
+
+export type AnalyzeContentIssue = {
+  id: string;
+  type: string;
+  severity: string;
+  message: string;
+  suggestion?: string;
+  locations?: unknown[];
+};
+
+export type AnalyzeContentResult =
+  | {
+      mode: "entities";
+      summary: string;
+      entities: DetectedEntity[];
+      stats?: unknown;
+    }
+  | {
+      mode: Exclude<AnalyzeContentMode, "entities">;
+      summary: string;
+      issues: AnalyzeContentIssue[];
+      stats?: unknown;
+    };
 
 /**
  * Arguments for create_entity tool.
@@ -962,6 +1068,7 @@ export interface ToolArgsMap {
   update_node: UpdateNodeArgs;
   create_edge: CreateEdgeArgs;
   update_edge: UpdateEdgeArgs;
+  graph_mutation: GraphMutationArgs;
   generate_content: GenerateContentArgs;
   generate_image: GenerateImageArgs;
   edit_image: EditImageArgs;
@@ -974,6 +1081,7 @@ export interface ToolArgsMap {
   clarity_check: ClarityCheckArgs;
   policy_check: PolicyCheckArgs;
   check_logic: CheckLogicArgs;
+  analyze_content: AnalyzeContentArgs;
   name_generator: NameGeneratorArgs;
   commit_decision: CommitDecisionArgs;
   // Human-in-the-loop editor tools
@@ -1583,6 +1691,7 @@ export interface ToolResultsMap {
   update_node: UpdateNodeResult;
   create_edge: CreateEdgeResult;
   update_edge: UpdateEdgeResult;
+  graph_mutation: GraphMutationResult;
   generate_content: GenerateContentResult;
   generate_image: GenerateImageResult;
   edit_image: EditImageResult;
@@ -1595,6 +1704,7 @@ export interface ToolResultsMap {
   clarity_check: ClarityCheckResult;
   policy_check: PolicyCheckResult;
   check_logic: CheckLogicResult;
+  analyze_content: AnalyzeContentResult;
   name_generator: NameGeneratorResult;
   commit_decision: CommitDecisionResult;
   // Human-in-the-loop editor tools
