@@ -2,10 +2,11 @@
  * FlowHeader - Minimal header for flow mode (Expo)
  *
  * Clean, distraction-free header with:
- * - Timer visualization (tick-based)
- * - Word count
+ * - Word count (center)
  * - Focus level toggle
  * - Exit button
+ *
+ * Timer is now rendered separately in the left side rail.
  */
 
 import { useCallback } from 'react';
@@ -20,7 +21,6 @@ import {
   useFlowPreferences,
   type FocusLevel,
 } from '@mythos/state';
-import { FlowTimerVisual } from './FlowTimerVisual';
 
 interface FlowHeaderProps {
   onExit: () => void;
@@ -66,10 +66,8 @@ export function FlowHeader({ onExit }: FlowHeaderProps) {
       exiting={FadeOut.duration(150)}
       style={[styles.container, { borderBottomColor: colors.borderSubtle }]}
     >
-      {/* Left: Timer visualization */}
-      <View style={styles.leftSection}>
-        <FlowTimerVisual orientation="horizontal" size={160} />
-      </View>
+      {/* Left: Spacer for balance */}
+      <View style={styles.leftSection} />
 
       {/* Center: Word count */}
       <View style={styles.centerSection}>
@@ -147,7 +145,6 @@ const styles = StyleSheet.create({
   },
   leftSection: {
     flex: 1,
-    alignItems: 'flex-start',
   },
   centerSection: {
     alignItems: 'center',

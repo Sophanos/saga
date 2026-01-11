@@ -1,23 +1,25 @@
 /**
  * FlowOverlay - Distraction-free writing overlay (Expo)
  *
- * Instead of a Modal, this component:
- * 1. Renders a header bar when flow mode is enabled
- * 2. The parent (AppShell) hides sidebar/panels based on flow state
- * 3. Children (the editor) render normally underneath
+ * Layout:
+ * - Header: Word count, focus toggle, exit button
+ * - Left edge: Vertical timer rail (hides when running)
+ * - Main: Editor content
  */
 
 import { useEffect, useState, useCallback, type ReactNode } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { useTheme } from '@/design-system';
+import { useTheme, spacing } from '@/design-system';
 import {
   useFlowStore,
   useFlowEnabled,
   useFlowPreferences,
+  useFlowTimer,
   type SessionStats,
 } from '@mythos/state';
 import { FlowHeader } from './FlowHeader';
+import { FlowTimerVisual } from './FlowTimerVisual';
 import { FlowSummaryModal } from './FlowSummaryModal';
 
 interface FlowOverlayProps {
@@ -31,8 +33,10 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
   const { colors } = useTheme();
   const enabled = useFlowEnabled();
   const preferences = useFlowPreferences();
+  const timer = useFlowTimer();
   const exitFlowMode = useFlowStore((s) => s.exitFlowMode);
   const updateWordCount = useFlowStore((s) => s.updateWordCount);
+  const tickTimer = useFlowStore((s) => s.tickTimer);
 
   const [showSummary, setShowSummary] = useState(false);
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
@@ -43,6 +47,17 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
       updateWordCount(wordCount);
     }
   }, [enabled, wordCount, updateWordCount]);
+
+  // Timer tick interval
+  useEffect(() => {
+    if (!enabled || timer.state !== 'running') return;
+
+    const interval = setInterval(() => {
+      tickTimer();
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [enabled, timer.state, tickTimer]);
 
   // Handle exit
   const handleExit = useCallback(() => {
@@ -85,18 +100,26 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
     );
   }
 
-  // Flow mode: show header + children (editor)
+  // Flow mode: show header + side timer + children (editor)
   if (enabled) {
     return (
       <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
-        {/* Flow header with timer, word count, exit */}
+        {/* Flow header with word count, focus toggle, exit */}
         <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
           <FlowHeader onExit={handleExit} />
         </Animated.View>
 
-        {/* Editor content */}
-        <View style={styles.content}>
-          {children}
+        {/* Main content area with side timer */}
+        <View style={styles.mainArea}>
+          {/* Left side: Timer rail */}
+          <View style={styles.timerSide}>
+            <FlowTimerVisual height={240} />
+          </View>
+
+          {/* Editor content */}
+          <View style={styles.content}>
+            {children}
+          </View>
         </View>
       </View>
     );
@@ -109,6 +132,15 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  mainArea: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  timerSide: {
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[4],
+    justifyContent: 'center',
   },
   content: {
     flex: 1,

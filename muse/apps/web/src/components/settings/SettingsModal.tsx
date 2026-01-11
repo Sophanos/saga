@@ -16,7 +16,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Button, Input, FormField, Select, ScrollArea, cn } from "@mythos/ui";
-import { api } from "../../../../convex/_generated/api";
+import { api } from "../../../../../convex/_generated/api";
 import { useMythosStore } from "../../stores";
 import { useAuthStore } from "../../stores/auth";
 import { signOut as authSignOut, authClient } from "../../lib/auth";

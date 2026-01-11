@@ -6,7 +6,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useConvex, useConvexConnectionState, useMutation, useQuery } from "convex/react";
 import usePresence from "@convex-dev/presence/react";
-import { api } from "../../../../../convex/_generated/api";
+import { api } from "../../../../convex/_generated/api";
 import {
   useCollaborationStore,
   generateCollaboratorColor,
@@ -101,17 +101,17 @@ function mapPresenceToCollaboratorPresence(
   fallbackColor: string
 ): CollaboratorPresence {
   const data = (entry.data as Record<string, unknown> | undefined) ?? {};
-  const name = (data.name as string | undefined) ?? entry.name ?? "Unknown";
+  const name = (data["name"] as string | undefined) ?? entry.name ?? "Unknown";
   const avatarUrl =
-    (data.avatarUrl as string | undefined) ??
-    (data.image as string | undefined) ??
+    (data["avatarUrl"] as string | undefined) ??
+    (data["image"] as string | undefined) ??
     entry.image ??
     undefined;
-  const color = (data.color as string | undefined) ?? fallbackColor;
-  const cursor = data.cursor as { from: number; to: number } | undefined;
-  const documentId = data.documentId as string | undefined;
-  const status = data.status as string | undefined;
-  const isAi = data.isAi as boolean | undefined;
+  const color = (data["color"] as string | undefined) ?? fallbackColor;
+  const cursor = data["cursor"] as { from: number; to: number } | undefined;
+  const documentId = data["documentId"] as string | undefined;
+  const status = data["status"] as string | undefined;
+  const isAi = data["isAi"] as boolean | undefined;
   const lastSeen = entry.online
     ? new Date().toISOString()
     : new Date(entry.lastDisconnected).toISOString();
@@ -184,7 +184,7 @@ export function useCollaboration(projectId: string): UseCollaborationResult {
       const mappedMembers = nextMembers.map(mapMemberToProjectMember);
       setMembers(mappedMembers);
 
-      const myMembership = nextMembers.find((m) => m.userId === currentUser.id);
+      const myMembership = nextMembers.find((m: { userId: string }) => m.userId === currentUser.id);
       setMyRole(myMembership?.role ?? null);
     } catch (error) {
       console.error("[Collaboration] Failed to fetch members:", error);
@@ -206,7 +206,7 @@ export function useCollaboration(projectId: string): UseCollaborationResult {
     const mappedMembers = members.map(mapMemberToProjectMember);
     setMembers(mappedMembers);
 
-    const myMembership = members.find((m) => m.userId === currentUser.id);
+    const myMembership = members.find((m: { userId: string }) => m.userId === currentUser.id);
     setMyRole(myMembership?.role ?? null);
   }, [members, currentUser, setMembers, setMyRole]);
 
@@ -251,13 +251,14 @@ export function useCollaboration(projectId: string): UseCollaborationResult {
       return;
     }
 
-    if (connectionState === "connected") {
+    const stateStr = String(connectionState);
+    if (stateStr === "Connected") {
       setConnectionStatus("connected");
       setConnected(true);
       setConnectionError(null);
-    } else if (connectionState === "connecting") {
+    } else if (stateStr === "Connecting" || stateStr === "Reconnecting") {
       setConnectionStatus("connecting");
-    } else if (connectionState === "disconnected") {
+    } else if (stateStr === "Disconnected") {
       setConnectionStatus("disconnected");
       setConnected(false);
     } else {

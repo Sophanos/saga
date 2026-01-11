@@ -24,7 +24,11 @@ import type { ToolName, ToolArgsMap } from "@mythos/agent-protocol";
 // =============================================================================
 
 export type ConsoleTab = "chat" | "linter" | "search" | "dynamics" | "coach";
-export type ModalType = "profile" | "settings" | "entityForm";
+export type ModalType =
+  | "profile"
+  | "settings"
+  | "entityForm"
+  | "relationshipForm";
 
 export interface CapabilityInvokerContext {
   /** Context for building prompts and default args */

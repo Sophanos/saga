@@ -11,6 +11,12 @@ import { simpleHash } from "../utils/hash";
  */
 const DEFAULT_DEBOUNCE_MS = 2000;
 
+/**
+ * E2E test mode flag
+ */
+const E2E_MODE =
+  import.meta.env["VITE_E2E_TEST_MODE"] === "true" ||
+  import.meta.env["VITE_E2E_MOCK_AI"] === "true";
 
 /**
  * Options for the useAutoSave hook

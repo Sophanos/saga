@@ -21,7 +21,7 @@ import { useMythosStore, useCurrentProject, useChatMode } from "../stores";
 import { useGlobalShortcuts, useProgressiveLinter } from "../hooks";
 import { useCollaboration } from "../hooks/useCollaboration";
 import { useAuthStore } from "../stores/auth";
-import { useProgressivePanelVisibility, useFlowEnabled } from "@mythos/state";
+import { useProgressivePanelVisibility } from "@mythos/state";
 
 interface LayoutProps {
   /** Anonymous trial mode - shows trial variant of FloatingChat */
@@ -59,7 +59,6 @@ export function Layout({
   const chatMode = useChatMode();
 
   // Flow mode (distraction-free writing)
-  const flowEnabled = useFlowEnabled();
   const wordCount = useMythosStore((s) => s.editor.wordCount);
 
   // Progressive panel visibility (gardener mode hides panels until unlocked)

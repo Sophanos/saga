@@ -58,6 +58,12 @@ export interface FlowTimerData {
   remainingSeconds: number;
   /** Is this a break period? */
   isBreak: boolean;
+  /** User's selected duration in minutes */
+  selectedDurationMin: number;
+  /** Whether timer UI is visible (auto-hides when running) */
+  isVisible: boolean;
+  /** Auto-reveal threshold in minutes (2/5/10) */
+  revealThresholdMin: number;
 }
 
 export interface SessionStats {
@@ -100,6 +106,10 @@ interface FlowState {
   tickTimer: () => void;
   skipToBreak: () => void;
   skipBreak: () => void;
+  setSelectedDuration: (minutes: number) => void;
+  setRevealThreshold: (minutes: number) => void;
+  setTimerVisible: (visible: boolean) => void;
+  toggleTimerVisible: () => void;
 
   // Actions - Session
   updateWordCount: (count: number) => void;
@@ -129,6 +139,9 @@ const DEFAULT_TIMER: FlowTimerData = {
   state: 'idle',
   remainingSeconds: 0,
   isBreak: false,
+  selectedDurationMin: 25,
+  isVisible: true,
+  revealThresholdMin: 5,
 };
 
 const initialState = {
@@ -153,7 +166,7 @@ export const useFlowStore = create<FlowState>()(
       // ========================================
 
       enterFlowMode: (startingWordCount = 0) => {
-        const { preferences } = get();
+        const { preferences, timer } = get();
         set({
           enabled: true,
           session: {
@@ -166,8 +179,11 @@ export const useFlowStore = create<FlowState>()(
           timer: {
             mode: preferences.defaultTimerMode,
             state: 'idle',
-            remainingSeconds: preferences.workDurationMin * 60,
+            remainingSeconds: timer.selectedDurationMin * 60,
             isBreak: false,
+            selectedDurationMin: timer.selectedDurationMin,
+            isVisible: true,
+            revealThresholdMin: timer.revealThresholdMin,
           },
         });
       },
@@ -252,18 +268,14 @@ export const useFlowStore = create<FlowState>()(
 
         if (timerMode === 'none') return;
 
-        const durationMin = timerMode === 'pomodoro'
-          ? preferences.workDurationMin
-          : timerMode === 'sprint'
-            ? 15
-            : preferences.workDurationMin;
-
         set({
           timer: {
+            ...timer,
             mode: timerMode,
             state: 'running',
-            remainingSeconds: timer.state === 'paused' ? timer.remainingSeconds : durationMin * 60,
+            remainingSeconds: timer.state === 'paused' ? timer.remainingSeconds : timer.selectedDurationMin * 60,
             isBreak: false,
+            isVisible: false, // Hide when running
           },
         });
       },
@@ -279,13 +291,15 @@ export const useFlowStore = create<FlowState>()(
         })),
 
       resetTimer: () => {
-        const { preferences } = get();
+        const { preferences, timer } = get();
         set({
           timer: {
+            ...timer,
             mode: preferences.defaultTimerMode,
             state: 'idle',
-            remainingSeconds: preferences.workDurationMin * 60,
+            remainingSeconds: timer.selectedDurationMin * 60,
             isBreak: false,
+            isVisible: true,
           },
         });
       },
@@ -296,6 +310,10 @@ export const useFlowStore = create<FlowState>()(
         if (timer.state !== 'running' || timer.remainingSeconds <= 0) return;
 
         const newRemaining = timer.remainingSeconds - 1;
+        const thresholdSeconds = timer.revealThresholdMin * 60;
+
+        // Auto-reveal when threshold reached
+        const shouldAutoReveal = !timer.isVisible && newRemaining <= thresholdSeconds && newRemaining > 0;
 
         // Timer completed
         if (newRemaining <= 0) {
@@ -305,8 +323,9 @@ export const useFlowStore = create<FlowState>()(
               timer: {
                 ...timer,
                 state: 'idle',
-                remainingSeconds: preferences.workDurationMin * 60,
+                remainingSeconds: timer.selectedDurationMin * 60,
                 isBreak: false,
+                isVisible: true,
               },
             });
           } else {
@@ -318,29 +337,36 @@ export const useFlowStore = create<FlowState>()(
                 state: 'break',
                 remainingSeconds: preferences.breakDurationMin * 60,
                 isBreak: true,
+                isVisible: true,
               },
               session: session ? {
                 ...session,
                 completedPomodoros: newPomodoros,
-                totalFocusedSeconds: session.totalFocusedSeconds + preferences.workDurationMin * 60,
+                totalFocusedSeconds: session.totalFocusedSeconds + timer.selectedDurationMin * 60,
               } : null,
             });
           }
         } else {
           set({
-            timer: { ...timer, remainingSeconds: newRemaining },
+            timer: {
+              ...timer,
+              remainingSeconds: newRemaining,
+              isVisible: shouldAutoReveal ? true : timer.isVisible,
+            },
           });
         }
       },
 
       skipToBreak: () => {
-        const { preferences, session } = get();
+        const { preferences, session, timer } = get();
         set({
           timer: {
+            ...timer,
             mode: 'pomodoro',
             state: 'break',
             remainingSeconds: preferences.breakDurationMin * 60,
             isBreak: true,
+            isVisible: true,
           },
           session: session ? {
             ...session,
@@ -350,15 +376,48 @@ export const useFlowStore = create<FlowState>()(
       },
 
       skipBreak: () => {
-        const { preferences } = get();
+        const { timer } = get();
         set({
           timer: {
+            ...timer,
             mode: 'pomodoro',
             state: 'idle',
-            remainingSeconds: preferences.workDurationMin * 60,
+            remainingSeconds: timer.selectedDurationMin * 60,
             isBreak: false,
+            isVisible: true,
           },
         });
+      },
+
+      setSelectedDuration: (minutes) => {
+        set((s) => ({
+          timer: {
+            ...s.timer,
+            selectedDurationMin: Math.max(5, Math.min(60, minutes)),
+            remainingSeconds: s.timer.state === 'idle' ? minutes * 60 : s.timer.remainingSeconds,
+          },
+        }));
+      },
+
+      setRevealThreshold: (minutes) => {
+        set((s) => ({
+          timer: {
+            ...s.timer,
+            revealThresholdMin: minutes,
+          },
+        }));
+      },
+
+      setTimerVisible: (visible) => {
+        set((s) => ({
+          timer: { ...s.timer, isVisible: visible },
+        }));
+      },
+
+      toggleTimerVisible: () => {
+        set((s) => ({
+          timer: { ...s.timer, isVisible: !s.timer.isVisible },
+        }));
       },
 
       // ========================================
@@ -421,6 +480,15 @@ export const useIsTimerActive = () =>
 
 /** Check if currently in break */
 export const useIsBreak = () => useFlowStore((s) => s.timer.isBreak);
+
+/** Check if timer UI is visible */
+export const useIsTimerVisible = () => useFlowStore((s) => s.timer.isVisible);
+
+/** Get selected duration in minutes */
+export const useSelectedDuration = () => useFlowStore((s) => s.timer.selectedDurationMin);
+
+/** Get reveal threshold in minutes */
+export const useRevealThreshold = () => useFlowStore((s) => s.timer.revealThresholdMin);
 
 /** Format remaining time as MM:SS */
 export function formatFlowTime(seconds: number): string {

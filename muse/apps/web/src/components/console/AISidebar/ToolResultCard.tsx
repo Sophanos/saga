@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useAction } from "convex/react";
 import {
   GitBranch,
   FileText,
@@ -41,6 +42,7 @@ import type {
   ToolName,
 } from "@mythos/agent-protocol";
 import type { SagaSessionWriter } from "../../../hooks/useSessionHistory";
+import { api } from "../../../../../../convex/_generated/api";
 
 interface ToolResultCardProps {
   messageId: string;
@@ -134,6 +136,10 @@ function getApprovalBadgeLabel(approvalType?: ToolApprovalType): string | null {
 export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCardProps) {
   const { acceptTool, rejectTool, retryTool, cancelTool } = useToolRuntime();
   const { key: apiKey } = useApiKey();
+  const apiAny: any = api;
+  const resolveWriteContentFromEditor = useAction(
+    apiAny.knowledgeSuggestions.resolveWriteContentFromEditor as any
+  );
 
   const projectId = useMythosStore((s) => s.project.currentProject?.id);
   const threadId = useMythosStore((s) => s.chat.conversationId);
@@ -409,6 +415,19 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
       updateToolInvocation(messageId, { status: "failed", error: applyResult.error });
       return;
     }
+    if (applyResult.documentId && applyResult.snapshotJson) {
+      try {
+        await resolveWriteContentFromEditor({
+          toolCallId: tool.toolCallId,
+          applied: true,
+          documentId: applyResult.documentId,
+          snapshotJson: applyResult.snapshotJson,
+          reason: applyResult.summary,
+        });
+      } catch (error) {
+        console.warn("[ToolResultCard] Failed to resolve write_content from editor:", error);
+      }
+    }
     const operation = (applyResult.appliedOperation ??
       (getArg<WriteContentOperation>("operation", "insert_at_cursor") as WriteContentOperation));
     const result: WriteContentResult = {
@@ -423,6 +442,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
     getArg,
     isWriteContent,
     messageId,
+    resolveWriteContentFromEditor,
     tool.toolCallId,
     updateToolInvocation,
     streamToolResult,

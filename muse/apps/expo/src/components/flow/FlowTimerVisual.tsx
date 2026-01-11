@@ -1,16 +1,21 @@
 /**
- * FlowTimerVisual - Sophisticated tick-based timer visualization
+ * FlowTimerVisual - Vertical rail timer with auto-reveal
  *
  * Features:
- * - Vertical tick marks representing time
- * - Middle mouse wheel to adjust duration
- * - Click to toggle minimal mode (hides time, shows last 2-5-10 mins)
- * - Smooth scale + opacity transitions
- * - Subtle, deep aesthetic
+ * - Vertical tick rail (5-60 minutes)
+ * - Setup mode: full rail with drag/click to select duration
+ * - Running mode: hidden by default, auto-reveals at threshold
+ * - Long-press on 2/5/10 tick to set reveal threshold
+ * - Click to manually reveal when running
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Pressable, Platform } from 'react-native';
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -18,334 +23,658 @@ import Animated, {
   withSpring,
   interpolate,
   Extrapolation,
+  runOnJS,
+  FadeIn,
+  FadeOut,
+  SlideInLeft,
+  SlideOutLeft,
 } from 'react-native-reanimated';
+import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, radii } from '@/design-system';
 import {
   useFlowStore,
   useFlowTimer,
-  useFlowPreferences,
   formatFlowTime,
 } from '@mythos/state';
 
-interface FlowTimerVisualProps {
-  /** Orientation of the tick marks */
-  orientation?: 'horizontal' | 'vertical';
-  /** Total width/height of the visualization */
-  size?: number;
-}
-
-// Duration presets in minutes
-const DURATION_PRESETS = [5, 10, 15, 20, 25, 30, 45, 60];
+// Duration range
 const MIN_DURATION = 5;
 const MAX_DURATION = 60;
-const TICK_COUNT = 60; // One tick per minute
+const TICK_STEP = 5; // Major ticks every 5 minutes
 
-export function FlowTimerVisual({
-  orientation = 'horizontal',
-  size = 200,
-}: FlowTimerVisualProps) {
+// Threshold options
+const THRESHOLD_OPTIONS = [2, 5, 10];
+
+interface FlowTimerVisualProps {
+  /** Height of the timer rail */
+  height?: number;
+}
+
+export function FlowTimerVisual({ height = 280 }: FlowTimerVisualProps) {
   const { colors, isDark } = useTheme();
   const timer = useFlowTimer();
-  const preferences = useFlowPreferences();
   const startTimer = useFlowStore((s) => s.startTimer);
   const pauseTimer = useFlowStore((s) => s.pauseTimer);
   const resumeTimer = useFlowStore((s) => s.resumeTimer);
   const resetTimer = useFlowStore((s) => s.resetTimer);
-  const updatePreferences = useFlowStore((s) => s.updatePreferences);
+  const setSelectedDuration = useFlowStore((s) => s.setSelectedDuration);
+  const setRevealThreshold = useFlowStore((s) => s.setRevealThreshold);
+  const setTimerVisible = useFlowStore((s) => s.setTimerVisible);
+  const toggleTimerVisible = useFlowStore((s) => s.toggleTimerVisible);
 
-  const [minimalMode, setMinimalMode] = useState(false);
-  const [showLastMinutes, setShowLastMinutes] = useState(5); // 2, 5, or 10
-  const containerRef = useRef<View>(null);
+  const [showThresholdPicker, setShowThresholdPicker] = useState(false);
 
   // Animation values
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(1);
-  const timeOpacity = useSharedValue(1);
-  const progressPosition = useSharedValue(0);
+  const railOpacity = useSharedValue(1);
+  const indicatorY = useSharedValue(0);
 
-  // Calculate progress (0-1)
-  const totalSeconds = preferences.workDurationMin * 60;
+  // Calculate Y position from duration
+  const durationToY = useCallback(
+    (duration: number) => {
+      const ratio = (duration - MIN_DURATION) / (MAX_DURATION - MIN_DURATION);
+      return height - ratio * height;
+    },
+    [height]
+  );
+
+  // Calculate duration from Y position
+  const yToDuration = useCallback(
+    (y: number) => {
+      const ratio = 1 - y / height;
+      const duration = MIN_DURATION + ratio * (MAX_DURATION - MIN_DURATION);
+      return Math.round(Math.max(MIN_DURATION, Math.min(MAX_DURATION, duration)));
+    },
+    [height]
+  );
+
+  // Update indicator position when duration changes
+  useEffect(() => {
+    indicatorY.value = withSpring(durationToY(timer.selectedDurationMin), {
+      damping: 20,
+      stiffness: 200,
+    });
+  }, [timer.selectedDurationMin, durationToY, indicatorY]);
+
+  // Handle drag gesture for duration selection
+  const panGesture = Gesture.Pan()
+    .enabled(timer.state === 'idle')
+    .onUpdate((e) => {
+      const newY = Math.max(0, Math.min(height, e.y));
+      indicatorY.value = newY;
+    })
+    .onEnd((e) => {
+      const newY = Math.max(0, Math.min(height, e.y));
+      const newDuration = yToDuration(newY);
+      runOnJS(setSelectedDuration)(newDuration);
+    });
+
+  // Handle tap on rail to set duration
+  const tapGesture = Gesture.Tap()
+    .enabled(timer.state === 'idle')
+    .onEnd((e) => {
+      const newDuration = yToDuration(e.y);
+      runOnJS(setSelectedDuration)(newDuration);
+    });
+
+  // Handle long press to set threshold
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(500)
+    .onEnd(() => {
+      runOnJS(setShowThresholdPicker)(true);
+    });
+
+  const composedGesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
+
+  // Timer controls
+  const handleStart = useCallback(() => {
+    startTimer();
+  }, [startTimer]);
+
+  const handlePause = useCallback(() => {
+    pauseTimer();
+  }, [pauseTimer]);
+
+  const handleResume = useCallback(() => {
+    resumeTimer();
+  }, [resumeTimer]);
+
+  const handleReset = useCallback(() => {
+    resetTimer();
+  }, [resetTimer]);
+
+  const handleReveal = useCallback(() => {
+    toggleTimerVisible();
+  }, [toggleTimerVisible]);
+
+  const handleSetThreshold = useCallback(
+    (threshold: number) => {
+      setRevealThreshold(threshold);
+      setShowThresholdPicker(false);
+    },
+    [setRevealThreshold]
+  );
+
+  // Indicator animated style
+  const indicatorStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: indicatorY.value }],
+  }));
+
+  // Progress calculation for running state
+  const totalSeconds = timer.selectedDurationMin * 60;
   const elapsedSeconds = totalSeconds - timer.remainingSeconds;
   const progress = totalSeconds > 0 ? elapsedSeconds / totalSeconds : 0;
 
-  // Update progress animation
-  useEffect(() => {
-    progressPosition.value = withTiming(progress, { duration: 300 });
-  }, [progress, progressPosition]);
-
-  // Toggle minimal mode
-  const handlePress = useCallback(() => {
-    setMinimalMode((prev) => !prev);
-    timeOpacity.value = withTiming(minimalMode ? 1 : 0.3, { duration: 200 });
-    scale.value = withSpring(minimalMode ? 1 : 0.95, { damping: 15 });
-  }, [minimalMode, timeOpacity, scale]);
-
-  // Cycle through last minutes display (2 -> 5 -> 10 -> 2)
-  const handleDoubleTap = useCallback(() => {
-    setShowLastMinutes((prev) => {
-      if (prev === 2) return 5;
-      if (prev === 5) return 10;
-      return 2;
-    });
-  }, []);
-
-  // Handle wheel to adjust duration
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-
-    const handleWheel = (e: WheelEvent) => {
-      if (!e.shiftKey) return; // Only with shift key for precision
-      e.preventDefault();
-
-      const delta = e.deltaY > 0 ? -5 : 5; // 5 minute increments
-      const newDuration = Math.max(MIN_DURATION, Math.min(MAX_DURATION, preferences.workDurationMin + delta));
-
-      if (newDuration !== preferences.workDurationMin) {
-        updatePreferences({ workDurationMin: newDuration });
-        // Visual feedback
-        scale.value = withSpring(1.02, { damping: 20 });
-        setTimeout(() => {
-          scale.value = withSpring(1, { damping: 20 });
-        }, 100);
-      }
-    };
-
-    document.addEventListener('wheel', handleWheel, { passive: false });
-    return () => document.removeEventListener('wheel', handleWheel);
-  }, [preferences.workDurationMin, updatePreferences, scale]);
-
-  // Timer control on click
-  const handleTimerToggle = useCallback(() => {
-    if (timer.state === 'idle') {
-      startTimer();
-    } else if (timer.state === 'running') {
-      pauseTimer();
-    } else if (timer.state === 'paused') {
-      resumeTimer();
-    }
-  }, [timer.state, startTimer, pauseTimer, resumeTimer]);
-
-  // Container animated style
-  const containerStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-
-  // Time display animated style
-  const timeDisplayStyle = useAnimatedStyle(() => ({
-    opacity: timeOpacity.value,
-  }));
-
-  // Progress indicator position
-  const progressStyle = useAnimatedStyle(() => {
-    const position = interpolate(
-      progressPosition.value,
-      [0, 1],
-      [0, size - 4],
-      Extrapolation.CLAMP
-    );
-
-    return orientation === 'horizontal'
-      ? { left: position }
-      : { top: position };
-  });
-
   // Generate tick marks
   const ticks = [];
-  const tickSpacing = size / TICK_COUNT;
-
-  for (let i = 0; i <= TICK_COUNT; i++) {
-    const isMajor = i % 10 === 0;
-    const isMid = i % 5 === 0 && !isMajor;
-    const isActive = i <= progress * TICK_COUNT;
-
-    // In minimal mode, only show last N minutes of ticks
-    const minutesFromEnd = TICK_COUNT - i;
-    const showInMinimal = minutesFromEnd <= showLastMinutes;
-
-    const tickHeight = isMajor ? 16 : isMid ? 10 : 6;
-    const tickOpacity = minimalMode
-      ? (showInMinimal ? (isActive ? 1 : 0.4) : 0.1)
-      : (isActive ? 1 : 0.3);
+  for (let min = MIN_DURATION; min <= MAX_DURATION; min += TICK_STEP) {
+    const y = durationToY(min);
+    const isMajor = min % 10 === 0;
+    const isThreshold = THRESHOLD_OPTIONS.includes(min);
+    const isSelected = min === timer.selectedDurationMin;
 
     ticks.push(
       <View
-        key={i}
+        key={min}
         style={[
-          styles.tick,
-          orientation === 'horizontal'
-            ? {
-                left: i * tickSpacing,
-                height: tickHeight,
-                width: isMajor ? 2 : 1,
-              }
-            : {
-                top: i * tickSpacing,
-                width: tickHeight,
-                height: isMajor ? 2 : 1,
-              },
-          {
-            backgroundColor: isActive
-              ? (timer.isBreak ? '#22d3ee' : '#22c55e')
-              : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)'),
-            opacity: tickOpacity,
-          },
+          styles.tickRow,
+          { top: y - 8 },
         ]}
-      />
+      >
+        {/* Tick line */}
+        <View
+          style={[
+            styles.tick,
+            {
+              width: isMajor ? 16 : 10,
+              backgroundColor: isSelected
+                ? '#22c55e'
+                : isDark
+                  ? 'rgba(255,255,255,0.3)'
+                  : 'rgba(0,0,0,0.2)',
+            },
+          ]}
+        />
+        {/* Label */}
+        <Animated.Text
+          style={[
+            styles.tickLabel,
+            {
+              color: isSelected
+                ? '#22c55e'
+                : colors.textMuted,
+              fontWeight: isSelected ? '600' : '400',
+            },
+          ]}
+        >
+          {min}
+        </Animated.Text>
+        {/* Threshold indicator */}
+        {isThreshold && min === timer.revealThresholdMin && (
+          <View style={styles.thresholdDot} />
+        )}
+      </View>
     );
   }
 
-  // Remaining time in minutes
-  const remainingMinutes = Math.ceil(timer.remainingSeconds / 60);
+  // Running progress ticks
+  const progressTicks = [];
+  if (timer.state === 'running' || timer.state === 'paused') {
+    const remainingMin = Math.ceil(timer.remainingSeconds / 60);
+    const startY = durationToY(timer.selectedDurationMin);
+    const endY = durationToY(MIN_DURATION);
+    const progressY = startY + (endY - startY) * progress;
 
-  return (
-    <Pressable onPress={handleTimerToggle} onLongPress={handlePress}>
-      <Animated.View
-        ref={containerRef}
-        style={[
-          styles.container,
-          orientation === 'horizontal'
-            ? { width: size, height: 48 }
-            : { width: 48, height: size },
-          containerStyle,
-        ]}
-      >
-        {/* Time display */}
-        <Animated.View style={[styles.timeDisplay, timeDisplayStyle]}>
-          <Animated.Text
-            style={[
-              styles.timeText,
-              {
-                color: timer.isBreak
-                  ? '#22d3ee'
-                  : timer.state === 'running'
-                    ? '#22c55e'
-                    : colors.textMuted,
-              },
-            ]}
-          >
-            {minimalMode ? remainingMinutes : formatFlowTime(timer.remainingSeconds)}
-          </Animated.Text>
-        </Animated.View>
+    for (let min = MIN_DURATION; min <= timer.selectedDurationMin; min++) {
+      const y = durationToY(min);
+      const isPassed = y > progressY;
 
-        {/* Tick container */}
+      progressTicks.push(
+        <View
+          key={`progress-${min}`}
+          style={[
+            styles.progressTick,
+            {
+              top: y,
+              backgroundColor: isPassed
+                ? '#22c55e'
+                : isDark
+                  ? 'rgba(255,255,255,0.15)'
+                  : 'rgba(0,0,0,0.1)',
+            },
+          ]}
+        />
+      );
+    }
+  }
+
+  // If hidden during running, show minimal reveal button
+  if (!timer.isVisible && timer.state === 'running') {
+    return (
+      <Pressable onPress={handleReveal} style={styles.hiddenTrigger}>
         <View
           style={[
-            styles.tickContainer,
-            orientation === 'horizontal'
-              ? { width: size, height: 20 }
-              : { width: 20, height: size },
+            styles.hiddenIndicator,
+            { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' },
           ]}
         >
-          {ticks}
-
-          {/* Progress indicator (triangle) */}
-          <Animated.View
-            style={[
-              styles.progressIndicator,
-              orientation === 'horizontal'
-                ? styles.progressIndicatorHorizontal
-                : styles.progressIndicatorVertical,
-              progressStyle,
-              {
-                borderBottomColor: timer.isBreak ? '#22d3ee' : '#22c55e',
-              },
-            ]}
-          />
+          <View style={[styles.hiddenDot, { backgroundColor: '#22c55e' }]} />
         </View>
+      </Pressable>
+    );
+  }
 
-        {/* Duration labels */}
-        {!minimalMode && (
-          <View
-            style={[
-              styles.labelsContainer,
-              orientation === 'horizontal'
-                ? { width: size, flexDirection: 'row' }
-                : { height: size, flexDirection: 'column' },
-            ]}
-          >
-            <Animated.Text style={[styles.labelText, { color: colors.textMuted }]}>
-              0
-            </Animated.Text>
-            <Animated.Text style={[styles.labelText, { color: colors.textMuted }]}>
-              {Math.round(preferences.workDurationMin / 2)}
-            </Animated.Text>
-            <Animated.Text style={[styles.labelText, { color: colors.textMuted }]}>
-              {preferences.workDurationMin}
-            </Animated.Text>
-          </View>
-        )}
-
-        {/* Minimal mode hint */}
-        {minimalMode && (
-          <Animated.Text
-            style={[
-              styles.hintText,
-              { color: colors.textMuted },
-            ]}
-          >
-            {showLastMinutes}m
+  return (
+    <Animated.View
+      entering={SlideInLeft.duration(200)}
+      exiting={SlideOutLeft.duration(150)}
+      style={styles.container}
+    >
+      {/* Timer display */}
+      <View style={styles.timerDisplay}>
+        <Animated.Text
+          style={[
+            styles.timerValue,
+            {
+              color:
+                timer.state === 'running'
+                  ? '#22c55e'
+                  : timer.state === 'paused'
+                    ? '#f59e0b'
+                    : colors.text,
+            },
+          ]}
+        >
+          {timer.state === 'idle'
+            ? timer.selectedDurationMin
+            : formatFlowTime(timer.remainingSeconds)}
+        </Animated.Text>
+        {timer.state === 'idle' && (
+          <Animated.Text style={[styles.timerUnit, { color: colors.textMuted }]}>
+            min
           </Animated.Text>
         )}
-      </Animated.View>
-    </Pressable>
+      </View>
+
+      {/* Vertical rail */}
+      <GestureHandlerRootView style={{ height }}>
+        <GestureDetector gesture={composedGesture}>
+          <Animated.View style={[styles.rail, { height }]}>
+            {/* Rail track */}
+            <View
+              style={[
+                styles.railTrack,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(255,255,255,0.08)'
+                    : 'rgba(0,0,0,0.05)',
+                },
+              ]}
+            />
+
+            {/* Progress ticks (when running) */}
+            {progressTicks}
+
+            {/* Duration ticks */}
+            {ticks}
+
+            {/* Selection indicator */}
+            {timer.state === 'idle' && (
+              <Animated.View style={[styles.indicator, indicatorStyle]}>
+                <View style={styles.indicatorTriangle} />
+                <View
+                  style={[
+                    styles.indicatorLine,
+                    { backgroundColor: '#22c55e' },
+                  ]}
+                />
+              </Animated.View>
+            )}
+
+            {/* Progress indicator (when running) */}
+            {(timer.state === 'running' || timer.state === 'paused') && (
+              <Animated.View
+                style={[
+                  styles.progressIndicator,
+                  {
+                    top: durationToY(MIN_DURATION + (timer.selectedDurationMin - MIN_DURATION) * (1 - progress)),
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.progressTriangle,
+                    { borderBottomColor: timer.state === 'running' ? '#22c55e' : '#f59e0b' },
+                  ]}
+                />
+              </Animated.View>
+            )}
+          </Animated.View>
+        </GestureDetector>
+      </GestureHandlerRootView>
+
+      {/* Controls */}
+      <View style={styles.controls}>
+        {timer.state === 'idle' && (
+          <Pressable
+            onPress={handleStart}
+            style={({ pressed, hovered }) => [
+              styles.controlButton,
+              styles.startButton,
+              {
+                backgroundColor: pressed || hovered ? '#16a34a' : '#22c55e',
+              },
+            ]}
+          >
+            <Feather name="play" size={16} color="#fff" />
+          </Pressable>
+        )}
+
+        {timer.state === 'running' && (
+          <Pressable
+            onPress={handlePause}
+            style={({ pressed, hovered }) => [
+              styles.controlButton,
+              {
+                backgroundColor:
+                  pressed || hovered
+                    ? isDark
+                      ? 'rgba(255,255,255,0.15)'
+                      : 'rgba(0,0,0,0.1)'
+                    : isDark
+                      ? 'rgba(255,255,255,0.08)'
+                      : 'rgba(0,0,0,0.05)',
+              },
+            ]}
+          >
+            <Feather name="pause" size={16} color={colors.text} />
+          </Pressable>
+        )}
+
+        {timer.state === 'paused' && (
+          <View style={styles.pausedControls}>
+            <Pressable
+              onPress={handleResume}
+              style={({ pressed, hovered }) => [
+                styles.controlButton,
+                {
+                  backgroundColor: pressed || hovered ? '#16a34a' : '#22c55e',
+                },
+              ]}
+            >
+              <Feather name="play" size={14} color="#fff" />
+            </Pressable>
+            <Pressable
+              onPress={handleReset}
+              style={({ pressed, hovered }) => [
+                styles.controlButton,
+                {
+                  backgroundColor:
+                    pressed || hovered
+                      ? isDark
+                        ? 'rgba(255,255,255,0.15)'
+                        : 'rgba(0,0,0,0.1)'
+                      : isDark
+                        ? 'rgba(255,255,255,0.08)'
+                        : 'rgba(0,0,0,0.05)',
+                },
+              ]}
+            >
+              <Feather name="rotate-ccw" size={14} color={colors.text} />
+            </Pressable>
+          </View>
+        )}
+      </View>
+
+      {/* Threshold info */}
+      <Pressable onPress={() => setShowThresholdPicker(true)}>
+        <Animated.Text style={[styles.thresholdHint, { color: colors.textMuted }]}>
+          reveals at {timer.revealThresholdMin}m
+        </Animated.Text>
+      </Pressable>
+
+      {/* Threshold picker modal */}
+      {showThresholdPicker && (
+        <Animated.View
+          entering={FadeIn.duration(150)}
+          exiting={FadeOut.duration(100)}
+          style={[
+            styles.thresholdPicker,
+            {
+              backgroundColor: isDark ? colors.bgCard : '#fff',
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Animated.Text style={[styles.thresholdTitle, { color: colors.text }]}>
+            Auto-reveal at
+          </Animated.Text>
+          {THRESHOLD_OPTIONS.map((threshold) => (
+            <Pressable
+              key={threshold}
+              onPress={() => handleSetThreshold(threshold)}
+              style={({ pressed, hovered }) => [
+                styles.thresholdOption,
+                {
+                  backgroundColor:
+                    threshold === timer.revealThresholdMin
+                      ? isDark
+                        ? 'rgba(34,197,94,0.2)'
+                        : 'rgba(34,197,94,0.1)'
+                      : pressed || hovered
+                        ? isDark
+                          ? 'rgba(255,255,255,0.08)'
+                          : 'rgba(0,0,0,0.05)'
+                        : 'transparent',
+                },
+              ]}
+            >
+              <Animated.Text
+                style={[
+                  styles.thresholdOptionText,
+                  {
+                    color:
+                      threshold === timer.revealThresholdMin
+                        ? '#22c55e'
+                        : colors.text,
+                  },
+                ]}
+              >
+                {threshold} min
+              </Animated.Text>
+              {threshold === timer.revealThresholdMin && (
+                <Feather name="check" size={14} color="#22c55e" />
+              )}
+            </Pressable>
+          ))}
+          <Pressable
+            onPress={() => setShowThresholdPicker(false)}
+            style={styles.thresholdClose}
+          >
+            <Animated.Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              Close
+            </Animated.Text>
+          </Pressable>
+        </Animated.View>
+      )}
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing[1],
+    gap: spacing[3],
+    paddingVertical: spacing[2],
   },
-  timeDisplay: {
+  timerDisplay: {
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  timeText: {
+  timerValue: {
     fontFamily: 'SpaceMono',
-    fontSize: 24,
-    fontWeight: '600',
-    letterSpacing: -1,
+    fontSize: 32,
+    fontWeight: '700',
+    letterSpacing: -2,
   },
-  tickContainer: {
+  timerUnit: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: -4,
+  },
+  rail: {
+    width: 80,
     position: 'relative',
   },
-  tick: {
+  railTrack: {
     position: 'absolute',
+    left: 20,
+    top: 0,
+    bottom: 0,
+    width: 2,
     borderRadius: 1,
+  },
+  tickRow: {
+    position: 'absolute',
+    left: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 16,
+  },
+  tick: {
+    height: 2,
+    borderRadius: 1,
+  },
+  tickLabel: {
+    fontFamily: 'SpaceMono',
+    fontSize: 10,
+    marginLeft: spacing[1.5],
+  },
+  thresholdDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#22d3ee',
+    marginLeft: spacing[1],
+  },
+  progressTick: {
+    position: 'absolute',
+    left: 18,
+    width: 6,
+    height: 2,
+    borderRadius: 1,
+  },
+  indicator: {
+    position: 'absolute',
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  indicatorTriangle: {
+    width: 0,
+    height: 0,
+    borderTopWidth: 5,
+    borderBottomWidth: 5,
+    borderLeftWidth: 8,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: '#22c55e',
+  },
+  indicatorLine: {
+    width: 40,
+    height: 2,
+    marginLeft: 2,
   },
   progressIndicator: {
     position: 'absolute',
+    left: 14,
+  },
+  progressTriangle: {
     width: 0,
     height: 0,
-    borderLeftWidth: 4,
-    borderRightWidth: 4,
-    borderBottomWidth: 6,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderBottomWidth: 10,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
-  progressIndicatorHorizontal: {
-    top: -8,
-    marginLeft: -4,
+  controls: {
+    flexDirection: 'row',
+    gap: spacing[2],
   },
-  progressIndicatorVertical: {
-    left: -8,
-    marginTop: -4,
-    transform: [{ rotate: '-90deg' }],
+  controlButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  labelsContainer: {
+  startButton: {},
+  pausedControls: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  thresholdHint: {
+    fontFamily: 'SpaceMono',
+    fontSize: 9,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  thresholdPicker: {
+    position: 'absolute',
+    top: 60,
+    left: 0,
+    right: 0,
+    padding: spacing[3],
+    borderRadius: radii.md,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 100,
+  },
+  thresholdTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: spacing[2],
+  },
+  thresholdOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[1],
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[2],
+    borderRadius: radii.sm,
   },
-  labelText: {
+  thresholdOptionText: {
     fontFamily: 'SpaceMono',
-    fontSize: 9,
-    opacity: 0.6,
+    fontSize: 13,
   },
-  hintText: {
-    fontFamily: 'SpaceMono',
-    fontSize: 9,
-    opacity: 0.5,
+  thresholdClose: {
+    alignItems: 'center',
+    paddingTop: spacing[2],
+    marginTop: spacing[1],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.2)',
+  },
+  hiddenTrigger: {
+    width: 24,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  hiddenIndicator: {
+    width: 8,
+    height: 40,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hiddenDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
 });

@@ -16,7 +16,6 @@ import {
   CardDescription,
   CardContent,
   CardFooter,
-  cn,
 } from "@mythos/ui";
 
 export interface PinPolicyModalProps {
