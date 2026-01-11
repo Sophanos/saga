@@ -2,13 +2,10 @@
  * Tool Approval Configuration
  *
  * Centralized configuration for AI tool approval logic.
- * Determines which entity/relationship operations require user approval.
+ * Provides defaults for registry seeding and non-world-graph approvals.
  *
- * High-impact operations (characters, magic systems, family relationships)
- * require approval to prevent unintended story changes.
- *
- * Low-impact operations (items, locations, simple relationships) auto-execute
- * for faster workflow.
+ * World graph approvals are driven by registry riskLevel.
+ * These lists define the default registry seed values only.
  */
 
 // =============================================================================
@@ -31,8 +28,7 @@ export const ENTITY_TYPES = [
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
 /**
- * Entity types that require approval when created.
- * These are core world elements that significantly impact the story.
+ * Default entity types that should be marked high impact in the registry.
  */
 export const HIGH_IMPACT_ENTITY_TYPES: readonly EntityType[] = [
   "character",
@@ -41,8 +37,7 @@ export const HIGH_IMPACT_ENTITY_TYPES: readonly EntityType[] = [
 ] as const;
 
 /**
- * Entity types that require approval for any update.
- * Updates to these types can fundamentally change the story.
+ * Default entity types that should be marked as core in the registry.
  */
 export const SENSITIVE_ENTITY_TYPES: readonly EntityType[] = [
   "character",
@@ -92,8 +87,7 @@ export const RELATION_TYPES = [
 export type RelationType = (typeof RELATION_TYPES)[number];
 
 /**
- * Relationship types that require approval when created.
- * Includes familial, power dynamics, and story-critical relationships.
+ * Default relationship types that should be marked high impact in the registry.
  */
 export const HIGH_IMPACT_RELATIONSHIP_TYPES: readonly RelationType[] = [
   // Familial relationships
@@ -111,8 +105,7 @@ export const HIGH_IMPACT_RELATIONSHIP_TYPES: readonly RelationType[] = [
 ] as const;
 
 /**
- * Core relationship types that require approval for any update.
- * Subset of high-impact types - the most story-critical ones.
+ * Default relationship types that should be marked as core in the registry.
  */
 export const CORE_RELATIONSHIP_TYPES: readonly RelationType[] = [
   "parent_of",
@@ -194,7 +187,7 @@ export function isSignificantStrengthChange(
 
 /**
  * Determine if a tool call needs user approval based on tool name and arguments.
- * Used by agentRuntime to decide between auto-execute and approval flow.
+ * Used by agentRuntime only for non-world-graph tools.
  *
  * @example
  * needsToolApproval("create_entity", { type: "character" })     // true
@@ -207,33 +200,6 @@ export function needsToolApproval(
   args: Record<string, unknown>
 ): boolean {
   switch (toolName) {
-    case "create_entity":
-      return isHighImpactEntityType(args["type"] as string);
-
-    case "update_entity":
-      return (
-        isSensitiveEntityType(args["entityType"] as string | undefined) ||
-        hasIdentityChange(args["updates"] as Record<string, unknown>)
-      );
-
-    case "create_relationship":
-      return isHighImpactRelationshipType(args["type"] as string);
-
-    case "update_relationship":
-      if (isCoreRelationshipType(args["type"] as string)) return true;
-      if (
-        (args["updates"] as Record<string, unknown> | undefined)?.[
-          "bidirectional"
-        ] !== undefined
-      ) {
-        return true;
-      }
-      return isSignificantStrengthChange(
-        (args["updates"] as Record<string, unknown> | undefined)?.[
-          "strength"
-        ] as number | undefined
-      );
-
     // These always require approval (write operations)
     case "write_content":
     case "ask_question":

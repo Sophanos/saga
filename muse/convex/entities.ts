@@ -6,11 +6,18 @@
  */
 
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, type MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { verifyProjectAccess, verifyEntityAccess } from "./lib/auth";
 import { canonicalizeName } from "./lib/canonicalize";
+import {
+  getEntityTypeDef,
+  resolveRegistry,
+  validateEntityProperties,
+  type ProjectTypeRegistryResolved,
+  type ProjectTypeRegistryOverride,
+} from "./lib/typeRegistry";
 
 // ============================================================
 // Helpers
@@ -34,6 +41,18 @@ function normalizeAliases(aliases: string[]): string[] {
 
 function mergeAliases(existing: string[], incoming: string[], primary: string): string[] {
   return normalizeAliases([primary, ...existing, ...incoming]);
+}
+
+async function getResolvedRegistryForProject(
+  ctx: MutationCtx,
+  projectId: Id<"projects">
+): Promise<ProjectTypeRegistryResolved> {
+  const override = await ctx.db
+    .query("projectTypeRegistry")
+    .withIndex("by_project", (q) => q.eq("projectId", projectId))
+    .unique();
+
+  return resolveRegistry(override as ProjectTypeRegistryOverride | null);
 }
 
 // ============================================================
@@ -205,6 +224,17 @@ export const create = mutation({
     // Verify user has access to this project
     await verifyProjectAccess(ctx, args.projectId);
 
+    const registry = await getResolvedRegistryForProject(ctx, args.projectId);
+    const def = getEntityTypeDef(registry, args.type);
+    if (!def) {
+      throw new Error(`INVALID_TYPE: ${args.type}`);
+    }
+
+    const propertiesResult = validateEntityProperties(def, args.properties ?? {});
+    if (!propertiesResult.ok) {
+      throw new Error(`SCHEMA_VALIDATION_FAILED: ${propertiesResult.error.message}`);
+    }
+
     const now = Date.now();
     const canonicalName = canonicalizeName(args.name);
     const aliases = normalizeAliases(args.aliases ?? []);
@@ -215,7 +245,7 @@ export const create = mutation({
       name: args.name,
       canonicalName,
       aliases,
-      properties: args.properties ?? {},
+      properties: propertiesResult.value,
       notes: args.notes,
       portraitUrl: args.portraitUrl,
       icon: args.icon,
@@ -256,12 +286,31 @@ export const update = mutation({
     // Verify user has access via entity's project
     await verifyEntityAccess(ctx, id);
 
+    const entity = await ctx.db.get(id);
+    if (!entity) {
+      throw new Error("Entity not found");
+    }
+
+    const registry = await getResolvedRegistryForProject(ctx, entity.projectId);
+    const def = getEntityTypeDef(registry, entity.type);
+    if (!def) {
+      throw new Error(`INVALID_TYPE: ${entity.type}`);
+    }
+
     const normalizedUpdates: Record<string, unknown> = { ...updates };
     if (updates.aliases) {
       normalizedUpdates["aliases"] = normalizeAliases(updates.aliases);
     }
     if (updates.name) {
       normalizedUpdates["canonicalName"] = canonicalizeName(updates.name);
+    }
+    const nextProperties = updates.properties ?? entity.properties ?? {};
+    const propertiesResult = validateEntityProperties(def, nextProperties);
+    if (!propertiesResult.ok) {
+      throw new Error(`SCHEMA_VALIDATION_FAILED: ${propertiesResult.error.message}`);
+    }
+    if (updates.properties !== undefined) {
+      normalizedUpdates["properties"] = propertiesResult.value;
     }
 
     // Filter out undefined values
@@ -274,14 +323,11 @@ export const update = mutation({
       updatedAt: Date.now(),
     });
 
-    const entity = await ctx.db.get(id);
-    if (entity) {
-      await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
-        projectId: entity.projectId,
-        targetType: "entity",
-        targetId: entity._id,
-      });
-    }
+    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+      projectId: entity.projectId,
+      targetType: "entity",
+      targetId: entity._id,
+    });
 
     return id;
   },
@@ -305,6 +351,7 @@ export const upsertDetectedEntities = mutation({
   handler: async (ctx, args) => {
     await verifyProjectAccess(ctx, args.projectId);
 
+    const registry = await getResolvedRegistryForProject(ctx, args.projectId);
     const deduped = new Map<
       string,
       {
@@ -353,6 +400,10 @@ export const upsertDetectedEntities = mutation({
     >();
 
     for (const entity of deduped.values()) {
+      const def = getEntityTypeDef(registry, entity.type);
+      if (!def) {
+        throw new Error(`INVALID_TYPE: ${entity.type}`);
+      }
       const existing = await ctx.db
         .query("entities")
         .withIndex("by_project_type_canonical", (q) =>
@@ -373,11 +424,17 @@ export const upsertDetectedEntities = mutation({
           ...(existing.properties ?? {}),
           ...entity.properties,
         };
+        const propertiesResult = validateEntityProperties(def, properties);
+        if (!propertiesResult.ok) {
+          throw new Error(
+            `SCHEMA_VALIDATION_FAILED: ${propertiesResult.error.message}`
+          );
+        }
         const canonicalName = existing.canonicalName ?? canonicalizeName(existing.name);
 
         await ctx.db.patch(existing._id, {
           aliases,
-          properties,
+          properties: propertiesResult.value,
           canonicalName,
           updatedAt: now,
         });
@@ -419,6 +476,10 @@ export const upsertDetectedEntities = mutation({
       }
 
       for (const entity of pendingEntities) {
+        const def = getEntityTypeDef(registry, entity.type);
+        if (!def) {
+          throw new Error(`INVALID_TYPE: ${entity.type}`);
+        }
         const existing = aliasLookup.get(entity.canonicalName);
 
         if (existing) {
@@ -431,11 +492,17 @@ export const upsertDetectedEntities = mutation({
             ...(existing.properties ?? {}),
             ...entity.properties,
           };
+          const propertiesResult = validateEntityProperties(def, properties);
+          if (!propertiesResult.ok) {
+            throw new Error(
+              `SCHEMA_VALIDATION_FAILED: ${propertiesResult.error.message}`
+            );
+          }
           const canonicalName = existing.canonicalName ?? canonicalizeName(existing.name);
 
           await ctx.db.patch(existing._id, {
             aliases,
-            properties,
+            properties: propertiesResult.value,
             canonicalName,
             updatedAt: now,
           });
@@ -450,13 +517,18 @@ export const upsertDetectedEntities = mutation({
           continue;
         }
 
+        const propertiesResult = validateEntityProperties(def, entity.properties);
+        if (!propertiesResult.ok) {
+          throw new Error(`SCHEMA_VALIDATION_FAILED: ${propertiesResult.error.message}`);
+        }
+
         const id = await ctx.db.insert("entities", {
           projectId: args.projectId,
           type: entity.type,
           name: entity.name,
           canonicalName: entity.canonicalName,
           aliases: entity.aliases,
-          properties: entity.properties,
+          properties: propertiesResult.value,
           createdAt: now,
           updatedAt: now,
         });
@@ -541,10 +613,19 @@ export const bulkCreate = mutation({
     // Verify user has access to this project
     await verifyProjectAccess(ctx, args.projectId);
 
+    const registry = await getResolvedRegistryForProject(ctx, args.projectId);
     const now = Date.now();
     const ids: Id<"entities">[] = [];
 
     for (const entity of args.entities) {
+      const def = getEntityTypeDef(registry, entity.type);
+      if (!def) {
+        throw new Error(`INVALID_TYPE: ${entity.type}`);
+      }
+      const propertiesResult = validateEntityProperties(def, entity.properties ?? {});
+      if (!propertiesResult.ok) {
+        throw new Error(`SCHEMA_VALIDATION_FAILED: ${propertiesResult.error.message}`);
+      }
       const canonicalName = canonicalizeName(entity.name);
       const id = await ctx.db.insert("entities", {
         projectId: args.projectId,
@@ -552,7 +633,7 @@ export const bulkCreate = mutation({
         name: entity.name,
         canonicalName,
         aliases: normalizeAliases(entity.aliases ?? []),
-        properties: entity.properties ?? {},
+        properties: propertiesResult.value,
         notes: entity.notes,
         supabaseId: entity.supabaseId,
         createdAt: now,

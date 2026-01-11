@@ -352,7 +352,7 @@ async function needsWorldGraphToolApproval(
       if (!resolvedType) return true;
       const def = registry.entityTypes[resolvedType];
       if (!def) return true;
-      if (def.riskLevel === "core") return true;
+      if (isHighRiskLevel(def.riskLevel)) return true;
       return hasIdentityChange(updates);
     }
 
@@ -366,7 +366,7 @@ async function needsWorldGraphToolApproval(
       if (!resolvedType) return true;
       const def = registry.entityTypes[resolvedType];
       if (!def) return true;
-      if (def.riskLevel === "core") return true;
+      if (isHighRiskLevel(def.riskLevel)) return true;
       return hasIdentityChange(updates);
     }
 
@@ -385,7 +385,7 @@ async function needsWorldGraphToolApproval(
       if (!type) return true;
       const def = registry.relationshipTypes[type];
       if (!def) return true;
-      if (def.riskLevel === "core") return true;
+      if (isHighRiskLevel(def.riskLevel)) return true;
       const updates = args["updates"] as Record<string, unknown> | undefined;
       if (updates?.["bidirectional"] !== undefined) return true;
       return isSignificantStrengthChange(updates?.["strength"] as number | undefined);
@@ -414,6 +414,83 @@ function resolveApprovalDanger(toolName: string, args: Record<string, unknown>):
   }
   if (worldGraphTools.has(toolName)) return "destructive";
   return "safe";
+}
+
+async function resolveSuggestionRiskLevel(
+  ctx: ActionCtx,
+  projectId: Id<"projects">,
+  toolName: string,
+  args: Record<string, unknown>,
+  registry: ProjectTypeRegistryResolved | null
+): Promise<RiskLevel> {
+  if (toolName === "commit_decision") return "core";
+
+  if (toolName === "write_content") {
+    const danger = resolveApprovalDanger(toolName, args);
+    return danger === "safe" ? "low" : "high";
+  }
+
+  if (!registry) return "high";
+
+  switch (toolName) {
+    case "create_entity":
+    case "create_node": {
+      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      if (!type) return "high";
+      const def = registry.entityTypes[type];
+      return def?.riskLevel ?? "high";
+    }
+    case "update_entity":
+    case "update_node": {
+      const updates = (args["updates"] as Record<string, unknown> | undefined) ?? {};
+      const typeHint =
+        typeof args["entityType"] === "string"
+          ? (args["entityType"] as string)
+          : typeof args["nodeType"] === "string"
+            ? (args["nodeType"] as string)
+            : undefined;
+      const name =
+        typeof args["entityName"] === "string"
+          ? (args["entityName"] as string)
+          : typeof args["nodeName"] === "string"
+            ? (args["nodeName"] as string)
+            : undefined;
+      const resolvedType = typeHint
+        ? typeHint
+        : name
+          ? await resolveUniqueEntityTypeForUpdate(ctx, projectId, name, typeHint)
+          : null;
+      if (!resolvedType) return "high";
+      const def = registry.entityTypes[resolvedType];
+      if (!def) return "high";
+      if (def.riskLevel === "core") return "core";
+      if (hasIdentityChange(updates)) return "high";
+      return def.riskLevel;
+    }
+    case "create_relationship":
+    case "create_edge": {
+      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      if (!type) return "high";
+      const def = registry.relationshipTypes[type];
+      return def?.riskLevel ?? "high";
+    }
+    case "update_relationship":
+    case "update_edge": {
+      const type = typeof args["type"] === "string" ? (args["type"] as string) : undefined;
+      if (!type) return "high";
+      const def = registry.relationshipTypes[type];
+      if (!def) return "high";
+      if (def.riskLevel === "core") return "core";
+      const updates = args["updates"] as Record<string, unknown> | undefined;
+      if (updates?.["bidirectional"] !== undefined) return "high";
+      if (isSignificantStrengthChange(updates?.["strength"] as number | undefined)) {
+        return "high";
+      }
+      return def.riskLevel;
+    }
+    default:
+      return "low";
+  }
 }
 
 async function executeRagTool(
@@ -918,6 +995,13 @@ export const runSagaAgentChatToStream = internalAction({
           const suggestion = classifyKnowledgeSuggestion(call.toolName);
           if (suggestion && !isTemplateBuilder) {
             try {
+              const riskLevel = await resolveSuggestionRiskLevel(
+                ctx,
+                projectIdValue,
+                call.toolName,
+                approvalArgs,
+                registry
+              );
               suggestionId = (await ctx.runMutation(
                 (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
                 {
@@ -926,6 +1010,7 @@ export const runSagaAgentChatToStream = internalAction({
                   toolName: call.toolName,
                   approvalType: resolveApprovalType(call.toolName),
                   danger: resolveApprovalDanger(call.toolName, approvalArgs),
+                  riskLevel,
                   operation: suggestion.operation,
                   targetType: suggestion.targetType,
                   proposedPatch: call.input,
@@ -983,6 +1068,13 @@ export const runSagaAgentChatToStream = internalAction({
             const suggestion = classifyKnowledgeSuggestion(call.toolName);
             if (suggestion && !isTemplateBuilder) {
               try {
+                const riskLevel = await resolveSuggestionRiskLevel(
+                  ctx,
+                  projectIdValue,
+                  call.toolName,
+                  args,
+                  registry
+                );
                 suggestionId = (await ctx.runMutation(
                   (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
                   {
@@ -991,6 +1083,7 @@ export const runSagaAgentChatToStream = internalAction({
                     toolName: call.toolName,
                     approvalType: resolveApprovalType(call.toolName),
                     danger: resolveApprovalDanger(call.toolName, args),
+                    riskLevel,
                     operation: suggestion.operation,
                     targetType: suggestion.targetType,
                     proposedPatch: call.input,
@@ -1308,6 +1401,13 @@ export const applyToolResultAndResumeToStream = internalAction({
           const suggestion = classifyKnowledgeSuggestion(call.toolName);
           if (suggestion && !isTemplateBuilder) {
             try {
+              const riskLevel = await resolveSuggestionRiskLevel(
+                ctx,
+                projectIdValue,
+                call.toolName,
+                callArgs,
+                registry
+              );
               suggestionId = (await ctx.runMutation(
                 (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
                 {
@@ -1316,6 +1416,7 @@ export const applyToolResultAndResumeToStream = internalAction({
                   toolName: call.toolName,
                   approvalType: resolveApprovalType(call.toolName),
                   danger: resolveApprovalDanger(call.toolName, callArgs),
+                  riskLevel,
                   operation: suggestion.operation,
                   targetType: suggestion.targetType,
                   proposedPatch: call.input,

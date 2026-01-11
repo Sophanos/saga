@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-10 (Project Graph + Knowledge PRs; UI integration checklist; Writer tools: Focus Mode, Grammar/Style, Logic Validation) | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-11 (Registry enforcement + lock; approvals via riskLevel; graph API contract) | **Target:** Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
 > See also: [MLP2 Proactivity Engine](./MLP2_PROACTIVITY_ENGINE.md)
@@ -16,6 +16,13 @@ Mythos transforms from a writing tool into an **AI co-author** with:
 - Offline-first + real-time sync (Figma model)
 - **Focus Mode** — distraction-free writing, AI silent unless invoked
 - **Sortiermaschine** — auto-organize entities, relationships, world (World Graph)
+
+### Recent Updates (2026-01-11)
+
+- Project Graph enforcement: registry authoritative at mutation layer (schema validation + invalid type checks).
+- Registry lock/unlock added with readiness checks (`LOCK_FAILED_UNKNOWN_TYPES`); docs in `GRAPH_API_CONTRACT.md`.
+- World graph approvals now driven by registry riskLevel.
+- UI gaps: no UI yet for registry lock/unlock or schema-driven property forms in graph editors.
 
 ### Recent Updates (2026-01-10)
 

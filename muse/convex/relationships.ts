@@ -5,9 +5,28 @@
  */
 
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { verifyProjectAccess, verifyEntityAccess, verifyRelationshipAccess } from "./lib/auth";
+import {
+  getRelationshipTypeDef,
+  resolveRegistry,
+  validateRelationshipMetadata,
+  type ProjectTypeRegistryResolved,
+  type ProjectTypeRegistryOverride,
+} from "./lib/typeRegistry";
+
+async function getResolvedRegistryForProject(
+  ctx: MutationCtx,
+  projectId: Id<"projects">
+): Promise<ProjectTypeRegistryResolved> {
+  const override = await ctx.db
+    .query("projectTypeRegistry")
+    .withIndex("by_project", (q) => q.eq("projectId", projectId))
+    .unique();
+
+  return resolveRegistry(override as ProjectTypeRegistryOverride | null);
+}
 
 // ============================================================
 // QUERIES
@@ -151,6 +170,16 @@ export const create = mutation({
     // Verify user has access to this project
     await verifyProjectAccess(ctx, args.projectId);
 
+    const registry = await getResolvedRegistryForProject(ctx, args.projectId);
+    const def = getRelationshipTypeDef(registry, args.type);
+    if (!def) {
+      throw new Error(`INVALID_TYPE: ${args.type}`);
+    }
+    const metadataResult = validateRelationshipMetadata(def, args.metadata);
+    if (!metadataResult.ok) {
+      throw new Error(`SCHEMA_VALIDATION_FAILED: ${metadataResult.error.message}`);
+    }
+
     // Verify both entities exist and belong to the same project
     const source = await ctx.db.get(args.sourceId);
     const target = await ctx.db.get(args.targetId);
@@ -170,7 +199,7 @@ export const create = mutation({
       type: args.type,
       bidirectional: args.bidirectional ?? false,
       strength: args.strength,
-      metadata: args.metadata,
+      metadata: args.metadata === undefined ? undefined : metadataResult.value,
       notes: args.notes,
       createdAt: Date.now(),
     });
@@ -196,6 +225,27 @@ export const update = mutation({
 
     // Verify user has access via relationship's project
     await verifyRelationshipAccess(ctx, id);
+
+    const relationship = await ctx.db.get(id);
+    if (!relationship) {
+      throw new Error("Relationship not found");
+    }
+
+    const registry = await getResolvedRegistryForProject(ctx, relationship.projectId);
+    const nextType = updates.type ?? relationship.type;
+    const def = getRelationshipTypeDef(registry, nextType);
+    if (!def) {
+      throw new Error(`INVALID_TYPE: ${nextType}`);
+    }
+
+    const nextMetadata = updates.metadata ?? relationship.metadata ?? {};
+    const metadataResult = validateRelationshipMetadata(def, nextMetadata);
+    if (!metadataResult.ok) {
+      throw new Error(`SCHEMA_VALIDATION_FAILED: ${metadataResult.error.message}`);
+    }
+    if (updates.metadata !== undefined) {
+      updates.metadata = metadataResult.value as typeof updates.metadata;
+    }
 
     // Filter out undefined values
     const cleanUpdates = Object.fromEntries(
@@ -246,10 +296,19 @@ export const bulkCreate = mutation({
     // Verify user has access to this project
     await verifyProjectAccess(ctx, args.projectId);
 
+    const registry = await getResolvedRegistryForProject(ctx, args.projectId);
     const now = Date.now();
     const ids: Id<"relationships">[] = [];
 
     for (const rel of args.relationships) {
+      const def = getRelationshipTypeDef(registry, rel.type);
+      if (!def) {
+        throw new Error(`INVALID_TYPE: ${rel.type}`);
+      }
+      const metadataResult = validateRelationshipMetadata(def, rel.metadata);
+      if (!metadataResult.ok) {
+        throw new Error(`SCHEMA_VALIDATION_FAILED: ${metadataResult.error.message}`);
+      }
       const id = await ctx.db.insert("relationships", {
         projectId: args.projectId,
         sourceId: rel.sourceId,
@@ -257,7 +316,7 @@ export const bulkCreate = mutation({
         type: rel.type,
         bidirectional: rel.bidirectional ?? false,
         strength: rel.strength,
-        metadata: rel.metadata,
+        metadata: rel.metadata === undefined ? undefined : metadataResult.value,
         supabaseId: rel.supabaseId,
         createdAt: now,
       });

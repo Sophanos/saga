@@ -8,9 +8,11 @@ import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { canonicalizeName } from "../../lib/canonicalize";
 import {
-  requireEntityType,
-  requireRelationshipType,
+  getEntityTypeDef,
+  getRelationshipTypeDef,
   type ProjectTypeRegistryResolved,
+  validateEntityProperties,
+  validateRelationshipMetadata,
 } from "../../lib/typeRegistry";
 import type {
   CreateEntityArgs,
@@ -228,6 +230,28 @@ type ToolActorContext = {
   actorName?: string;
 };
 
+type ToolErrorCode =
+  | "ACCESS_DENIED"
+  | "INVALID_TYPE"
+  | "SCHEMA_VALIDATION_FAILED"
+  | "NOT_FOUND"
+  | "CONFLICT";
+
+type ToolFailure = {
+  success: false;
+  code: ToolErrorCode;
+  message: string;
+  details?: unknown;
+};
+
+function fail(
+  code: ToolErrorCode,
+  message: string,
+  details?: unknown
+): ToolFailure {
+  return { success: false, code, message, details };
+}
+
 function resolveActor(actor?: ToolActorContext) {
   return {
     actorType: actor?.actorType ?? "system",
@@ -257,9 +281,9 @@ async function getProjectAccessError(
   ctx: ActionCtx,
   projectId: Id<"projects">,
   actorUserId?: string
-): Promise<string | null> {
+): Promise<ToolFailure | null> {
   if (!actorUserId) {
-    return "Actor user id is required";
+    return fail("ACCESS_DENIED", "Actor user id is required");
   }
 
   const access = await ctx.runQuery(
@@ -269,15 +293,15 @@ async function getProjectAccessError(
   );
 
   if (!access?.projectExists) {
-    return "Project not found";
+    return fail("ACCESS_DENIED", "Project not found");
   }
 
   if (!access.role) {
-    return "Access denied";
+    return fail("ACCESS_DENIED", "Access denied");
   }
 
   if (access.role === "viewer") {
-    return "Edit access denied";
+    return fail("ACCESS_DENIED", "Edit access denied");
   }
 
   return null;
@@ -358,7 +382,10 @@ export const executeCreateEntity = internalAction({
       })
     ),
   },
-  handler: async (ctx, { projectId, toolArgs, actor, source: sourceContext }): Promise<{ success: boolean; entityId?: string; message: string }> => {
+  handler: async (
+    ctx,
+    { projectId, toolArgs, actor, source: sourceContext }
+  ): Promise<{ success: true; entityId: string; message: string } | ToolFailure> => {
     const args = toolArgs as CreateEntityArgs;
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
@@ -369,14 +396,13 @@ export const executeCreateEntity = internalAction({
       actorInfo.actorUserId
     );
     if (accessError) {
-      return { success: false, message: accessError };
+      return accessError;
     }
 
     const registry = await getResolvedRegistry(ctx, projectIdVal);
-    try {
-      requireEntityType(registry, args.type);
-    } catch (error) {
-      return { success: false, message: error instanceof Error ? error.message : "Invalid entity type" };
+    const def = getEntityTypeDef(registry, args.type);
+    if (!def) {
+      return fail("INVALID_TYPE", `Unknown entity type: ${args.type}`);
     }
 
     const resolved = await resolveEntityByName(
@@ -386,16 +412,24 @@ export const executeCreateEntity = internalAction({
       args.type
     );
     if (resolved.error) {
-      return { success: false, message: resolved.error };
+      return fail("CONFLICT", resolved.error);
     }
     if (resolved.entity) {
-      return {
-        success: false,
-        message: `Entity "${args.name}" already exists as ${resolved.entity.type}`,
-      };
+      return fail(
+        "CONFLICT",
+        `Entity "${args.name}" already exists as ${resolved.entity.type}`
+      );
     }
 
     const properties = buildEntityProperties(args);
+    const propertiesResult = validateEntityProperties(def, properties);
+    if (!propertiesResult.ok) {
+      return fail(
+        "SCHEMA_VALIDATION_FAILED",
+        propertiesResult.error.message,
+        propertiesResult.error.errors
+      );
+    }
 
     const entityId = await ctx.runMutation(
       // @ts-expect-error Deep types
@@ -405,7 +439,7 @@ export const executeCreateEntity = internalAction({
         type: args.type,
         name: args.name,
         aliases: args.aliases,
-        properties,
+        properties: propertiesResult.value,
         notes: args.notes,
       }
     );
@@ -458,7 +492,10 @@ export const executeUpdateEntity = internalAction({
       })
     ),
   },
-  handler: async (ctx, { projectId, toolArgs, actor, source: sourceContext }): Promise<{ success: boolean; entityId?: string; message: string }> => {
+  handler: async (
+    ctx,
+    { projectId, toolArgs, actor, source: sourceContext }
+  ): Promise<{ success: true; entityId: string; message: string } | ToolFailure> => {
     const args = toolArgs as UpdateEntityArgs;
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
@@ -469,7 +506,7 @@ export const executeUpdateEntity = internalAction({
       actorInfo.actorUserId
     );
     if (accessError) {
-      return { success: false, message: accessError };
+      return accessError;
     }
 
     const registry = await getResolvedRegistry(ctx, projectIdVal);
@@ -481,20 +518,16 @@ export const executeUpdateEntity = internalAction({
       args.entityType
     );
     if (resolved.error) {
-      return { success: false, message: resolved.error };
+      return fail("CONFLICT", resolved.error);
     }
     if (!resolved.entity) {
-      return {
-        success: false,
-        message: `Entity "${args.entityName}" not found`,
-      };
+      return fail("NOT_FOUND", `Entity "${args.entityName}" not found`);
     }
 
     const entity = resolved.entity;
-    try {
-      requireEntityType(registry, entity.type);
-    } catch (error) {
-      return { success: false, message: error instanceof Error ? error.message : "Invalid entity type" };
+    const def = getEntityTypeDef(registry, entity.type);
+    if (!def) {
+      return fail("INVALID_TYPE", `Unknown entity type: ${entity.type}`);
     }
     const { name, aliases, notes, ...propertyUpdates } = args.updates;
 
@@ -510,9 +543,20 @@ export const executeUpdateEntity = internalAction({
     const cleanPropUpdates = Object.fromEntries(
       Object.entries(propertyUpdates).filter(([_, v]) => v !== undefined)
     );
-
+    const nextProperties =
+      Object.keys(cleanPropUpdates).length > 0
+        ? { ...existingProps, ...cleanPropUpdates }
+        : existingProps;
+    const propertiesResult = validateEntityProperties(def, nextProperties);
+    if (!propertiesResult.ok) {
+      return fail(
+        "SCHEMA_VALIDATION_FAILED",
+        propertiesResult.error.message,
+        propertiesResult.error.errors
+      );
+    }
     if (Object.keys(cleanPropUpdates).length > 0) {
-      dbUpdates["properties"] = { ...existingProps, ...cleanPropUpdates };
+      dbUpdates["properties"] = propertiesResult.value;
     }
 
     await ctx.runMutation(
@@ -572,7 +616,10 @@ export const executeCreateRelationship = internalAction({
       })
     ),
   },
-  handler: async (ctx, { projectId, toolArgs, actor, source: sourceContext }): Promise<{ success: boolean; relationshipId?: string; message: string }> => {
+  handler: async (
+    ctx,
+    { projectId, toolArgs, actor, source: sourceContext }
+  ): Promise<{ success: true; relationshipId: string; message: string } | ToolFailure> => {
     const args = toolArgs as CreateRelationshipArgs;
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
@@ -583,30 +630,37 @@ export const executeCreateRelationship = internalAction({
       actorInfo.actorUserId
     );
     if (accessError) {
-      return { success: false, message: accessError };
+      return accessError;
     }
 
     const registry = await getResolvedRegistry(ctx, projectIdVal);
-    try {
-      requireRelationshipType(registry, args.type);
-    } catch (error) {
-      return { success: false, message: error instanceof Error ? error.message : "Invalid relationship type" };
+    const def = getRelationshipTypeDef(registry, args.type);
+    if (!def) {
+      return fail("INVALID_TYPE", `Unknown relationship type: ${args.type}`);
+    }
+    const metadataResult = validateRelationshipMetadata(def, undefined);
+    if (!metadataResult.ok) {
+      return fail(
+        "SCHEMA_VALIDATION_FAILED",
+        metadataResult.error.message,
+        metadataResult.error.errors
+      );
     }
 
     const sourceResult = await resolveEntityByName(ctx, projectIdVal, args.sourceName);
     if (sourceResult.error) {
-      return { success: false, message: sourceResult.error };
+      return fail("CONFLICT", sourceResult.error);
     }
     if (!sourceResult.entity) {
-      return { success: false, message: `Source entity "${args.sourceName}" not found` };
+      return fail("NOT_FOUND", `Source entity "${args.sourceName}" not found`);
     }
 
     const targetResult = await resolveEntityByName(ctx, projectIdVal, args.targetName);
     if (targetResult.error) {
-      return { success: false, message: targetResult.error };
+      return fail("CONFLICT", targetResult.error);
     }
     if (!targetResult.entity) {
-      return { success: false, message: `Target entity "${args.targetName}" not found` };
+      return fail("NOT_FOUND", `Target entity "${args.targetName}" not found`);
     }
 
     const source = sourceResult.entity;
@@ -624,10 +678,10 @@ export const executeCreateRelationship = internalAction({
     );
 
     if (existing) {
-      return {
-        success: false,
-        message: `Relationship ${args.sourceName} → ${args.type} → ${args.targetName} already exists`,
-      };
+      return fail(
+        "CONFLICT",
+        `Relationship ${args.sourceName} → ${args.type} → ${args.targetName} already exists`
+      );
     }
 
     const relId = await ctx.runMutation(
@@ -688,7 +742,10 @@ export const executeUpdateRelationship = internalAction({
       })
     ),
   },
-  handler: async (ctx, { projectId, toolArgs, actor, source: sourceContext }): Promise<{ success: boolean; relationshipId?: string; message: string }> => {
+  handler: async (
+    ctx,
+    { projectId, toolArgs, actor, source: sourceContext }
+  ): Promise<{ success: true; relationshipId: string; message: string } | ToolFailure> => {
     const args = toolArgs as UpdateRelationshipArgs;
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
@@ -699,30 +756,29 @@ export const executeUpdateRelationship = internalAction({
       actorInfo.actorUserId
     );
     if (accessError) {
-      return { success: false, message: accessError };
+      return accessError;
     }
 
     const registry = await getResolvedRegistry(ctx, projectIdVal);
-    try {
-      requireRelationshipType(registry, args.type);
-    } catch (error) {
-      return { success: false, message: error instanceof Error ? error.message : "Invalid relationship type" };
+    const def = getRelationshipTypeDef(registry, args.type);
+    if (!def) {
+      return fail("INVALID_TYPE", `Unknown relationship type: ${args.type}`);
     }
 
     const sourceResult = await resolveEntityByName(ctx, projectIdVal, args.sourceName);
     if (sourceResult.error) {
-      return { success: false, message: sourceResult.error };
+      return fail("CONFLICT", sourceResult.error);
     }
     if (!sourceResult.entity) {
-      return { success: false, message: `Source entity "${args.sourceName}" not found` };
+      return fail("NOT_FOUND", `Source entity "${args.sourceName}" not found`);
     }
 
     const targetResult = await resolveEntityByName(ctx, projectIdVal, args.targetName);
     if (targetResult.error) {
-      return { success: false, message: targetResult.error };
+      return fail("CONFLICT", targetResult.error);
     }
     if (!targetResult.entity) {
-      return { success: false, message: `Target entity "${args.targetName}" not found` };
+      return fail("NOT_FOUND", `Target entity "${args.targetName}" not found`);
     }
 
     const source = sourceResult.entity;
@@ -740,10 +796,19 @@ export const executeUpdateRelationship = internalAction({
     );
 
     if (!rel) {
-      return {
-        success: false,
-        message: `Relationship ${args.sourceName} → ${args.type} → ${args.targetName} not found`,
-      };
+      return fail(
+        "NOT_FOUND",
+        `Relationship ${args.sourceName} → ${args.type} → ${args.targetName} not found`
+      );
+    }
+
+    const metadataResult = validateRelationshipMetadata(def, rel.metadata);
+    if (!metadataResult.ok) {
+      return fail(
+        "SCHEMA_VALIDATION_FAILED",
+        metadataResult.error.message,
+        metadataResult.error.errors
+      );
     }
 
     await ctx.runMutation(
@@ -800,32 +865,40 @@ export const executeCreateNode = internalAction({
   handler: async (
     ctx,
     { projectId, toolArgs, actor, source: sourceContext }
-  ): Promise<{ success: boolean; entityId?: string; message: string }> => {
+  ): Promise<{ success: true; entityId: string; message: string } | ToolFailure> => {
     const args = toolArgs as CreateNodeArgs;
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
     const accessError = await getProjectAccessError(ctx, projectIdVal, actorInfo.actorUserId);
     if (accessError) {
-      return { success: false, message: accessError };
+      return accessError;
     }
 
     const registry = await getResolvedRegistry(ctx, projectIdVal);
-    try {
-      requireEntityType(registry, args.type);
-    } catch (error) {
-      return { success: false, message: error instanceof Error ? error.message : "Invalid node type" };
+    const def = getEntityTypeDef(registry, args.type);
+    if (!def) {
+      return fail("INVALID_TYPE", `Unknown node type: ${args.type}`);
     }
 
     const resolved = await resolveEntityByName(ctx, projectIdVal, args.name, args.type);
     if (resolved.error) {
-      return { success: false, message: resolved.error };
+      return fail("CONFLICT", resolved.error);
     }
     if (resolved.entity) {
-      return {
-        success: false,
-        message: `Node "${args.name}" already exists as ${resolved.entity.type}`,
-      };
+      return fail(
+        "CONFLICT",
+        `Node "${args.name}" already exists as ${resolved.entity.type}`
+      );
+    }
+
+    const propertiesResult = validateEntityProperties(def, args.properties ?? {});
+    if (!propertiesResult.ok) {
+      return fail(
+        "SCHEMA_VALIDATION_FAILED",
+        propertiesResult.error.message,
+        propertiesResult.error.errors
+      );
     }
 
     const entityId = await ctx.runMutation(
@@ -836,7 +909,7 @@ export const executeCreateNode = internalAction({
         type: args.type,
         name: args.name,
         aliases: args.aliases,
-        properties: args.properties ?? {},
+        properties: propertiesResult.value,
         notes: args.notes,
       }
     );
@@ -892,31 +965,30 @@ export const executeUpdateNode = internalAction({
   handler: async (
     ctx,
     { projectId, toolArgs, actor, source: sourceContext }
-  ): Promise<{ success: boolean; entityId?: string; message: string }> => {
+  ): Promise<{ success: true; entityId: string; message: string } | ToolFailure> => {
     const args = toolArgs as UpdateNodeArgs;
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
     const accessError = await getProjectAccessError(ctx, projectIdVal, actorInfo.actorUserId);
     if (accessError) {
-      return { success: false, message: accessError };
+      return accessError;
     }
 
     const registry = await getResolvedRegistry(ctx, projectIdVal);
 
     const resolved = await resolveEntityByName(ctx, projectIdVal, args.nodeName, args.nodeType);
     if (resolved.error) {
-      return { success: false, message: resolved.error };
+      return fail("CONFLICT", resolved.error);
     }
     if (!resolved.entity) {
-      return { success: false, message: `Node "${args.nodeName}" not found` };
+      return fail("NOT_FOUND", `Node "${args.nodeName}" not found`);
     }
 
     const entity = resolved.entity;
-    try {
-      requireEntityType(registry, entity.type);
-    } catch (error) {
-      return { success: false, message: error instanceof Error ? error.message : "Invalid node type" };
+    const def = getEntityTypeDef(registry, entity.type);
+    if (!def) {
+      return fail("INVALID_TYPE", `Unknown node type: ${entity.type}`);
     }
 
     const { name, aliases, notes, properties } = args.updates;
@@ -929,9 +1001,24 @@ export const executeUpdateNode = internalAction({
     if (aliases !== undefined) dbUpdates["aliases"] = normalizeAliases(aliases);
     if (notes !== undefined) dbUpdates["notes"] = notes;
 
-    if (properties !== undefined && typeof properties === "object" && properties !== null) {
-      const existingProps = (entity.properties ?? {}) as Record<string, unknown>;
-      dbUpdates["properties"] = { ...existingProps, ...(properties as Record<string, unknown>) };
+    const existingProps = (entity.properties ?? {}) as Record<string, unknown>;
+    const nextProperties =
+      properties !== undefined
+        ? {
+            ...existingProps,
+            ...(properties as Record<string, unknown>),
+          }
+        : existingProps;
+    const propertiesResult = validateEntityProperties(def, nextProperties);
+    if (!propertiesResult.ok) {
+      return fail(
+        "SCHEMA_VALIDATION_FAILED",
+        propertiesResult.error.message,
+        propertiesResult.error.errors
+      );
+    }
+    if (properties !== undefined) {
+      dbUpdates["properties"] = propertiesResult.value;
     }
 
     await ctx.runMutation(
@@ -994,30 +1081,37 @@ export const executeCreateEdge = internalAction({
   handler: async (
     ctx,
     { projectId, toolArgs, actor, source: sourceContext }
-  ): Promise<{ success: boolean; relationshipId?: string; message: string }> => {
+  ): Promise<{ success: true; relationshipId: string; message: string } | ToolFailure> => {
     const args = toolArgs as CreateEdgeArgs;
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
     const accessError = await getProjectAccessError(ctx, projectIdVal, actorInfo.actorUserId);
     if (accessError) {
-      return { success: false, message: accessError };
+      return accessError;
     }
 
     const registry = await getResolvedRegistry(ctx, projectIdVal);
-    try {
-      requireRelationshipType(registry, args.type);
-    } catch (error) {
-      return { success: false, message: error instanceof Error ? error.message : "Invalid edge type" };
+    const def = getRelationshipTypeDef(registry, args.type);
+    if (!def) {
+      return fail("INVALID_TYPE", `Unknown edge type: ${args.type}`);
+    }
+    const metadataResult = validateRelationshipMetadata(def, args.metadata);
+    if (!metadataResult.ok) {
+      return fail(
+        "SCHEMA_VALIDATION_FAILED",
+        metadataResult.error.message,
+        metadataResult.error.errors
+      );
     }
 
     const sourceResult = await resolveEntityByName(ctx, projectIdVal, args.sourceName);
-    if (sourceResult.error) return { success: false, message: sourceResult.error };
-    if (!sourceResult.entity) return { success: false, message: `Source node "${args.sourceName}" not found` };
+    if (sourceResult.error) return fail("CONFLICT", sourceResult.error);
+    if (!sourceResult.entity) return fail("NOT_FOUND", `Source node "${args.sourceName}" not found`);
 
     const targetResult = await resolveEntityByName(ctx, projectIdVal, args.targetName);
-    if (targetResult.error) return { success: false, message: targetResult.error };
-    if (!targetResult.entity) return { success: false, message: `Target node "${args.targetName}" not found` };
+    if (targetResult.error) return fail("CONFLICT", targetResult.error);
+    if (!targetResult.entity) return fail("NOT_FOUND", `Target node "${args.targetName}" not found`);
 
     const source = sourceResult.entity;
     const target = targetResult.entity;
@@ -1034,10 +1128,10 @@ export const executeCreateEdge = internalAction({
     );
 
     if (existing) {
-      return {
-        success: false,
-        message: `Edge ${args.sourceName} → ${args.type} → ${args.targetName} already exists`,
-      };
+      return fail(
+        "CONFLICT",
+        `Edge ${args.sourceName} → ${args.type} → ${args.targetName} already exists`
+      );
     }
 
     const relId = await ctx.runMutation(
@@ -1051,7 +1145,7 @@ export const executeCreateEdge = internalAction({
         bidirectional: args.bidirectional,
         strength: args.strength,
         notes: args.notes,
-        metadata: args.metadata,
+        metadata: args.metadata === undefined ? undefined : metadataResult.value,
       }
     );
 
@@ -1102,30 +1196,29 @@ export const executeUpdateEdge = internalAction({
   handler: async (
     ctx,
     { projectId, toolArgs, actor, source: sourceContext }
-  ): Promise<{ success: boolean; relationshipId?: string; message: string }> => {
+  ): Promise<{ success: true; relationshipId: string; message: string } | ToolFailure> => {
     const args = toolArgs as UpdateEdgeArgs;
     const projectIdVal = projectId as Id<"projects">;
     const actorInfo = resolveActor(actor as ToolActorContext | undefined);
 
     const accessError = await getProjectAccessError(ctx, projectIdVal, actorInfo.actorUserId);
     if (accessError) {
-      return { success: false, message: accessError };
+      return accessError;
     }
 
     const registry = await getResolvedRegistry(ctx, projectIdVal);
-    try {
-      requireRelationshipType(registry, args.type);
-    } catch (error) {
-      return { success: false, message: error instanceof Error ? error.message : "Invalid edge type" };
+    const def = getRelationshipTypeDef(registry, args.type);
+    if (!def) {
+      return fail("INVALID_TYPE", `Unknown edge type: ${args.type}`);
     }
 
     const sourceResult = await resolveEntityByName(ctx, projectIdVal, args.sourceName);
-    if (sourceResult.error) return { success: false, message: sourceResult.error };
-    if (!sourceResult.entity) return { success: false, message: `Source node "${args.sourceName}" not found` };
+    if (sourceResult.error) return fail("CONFLICT", sourceResult.error);
+    if (!sourceResult.entity) return fail("NOT_FOUND", `Source node "${args.sourceName}" not found`);
 
     const targetResult = await resolveEntityByName(ctx, projectIdVal, args.targetName);
-    if (targetResult.error) return { success: false, message: targetResult.error };
-    if (!targetResult.entity) return { success: false, message: `Target node "${args.targetName}" not found` };
+    if (targetResult.error) return fail("CONFLICT", targetResult.error);
+    if (!targetResult.entity) return fail("NOT_FOUND", `Target node "${args.targetName}" not found`);
 
     const source = sourceResult.entity;
     const target = targetResult.entity;
@@ -1142,10 +1235,23 @@ export const executeUpdateEdge = internalAction({
     );
 
     if (!rel) {
-      return {
-        success: false,
-        message: `Edge ${args.sourceName} → ${args.type} → ${args.targetName} not found`,
-      };
+      return fail(
+        "NOT_FOUND",
+        `Edge ${args.sourceName} → ${args.type} → ${args.targetName} not found`
+      );
+    }
+
+    const nextMetadata = args.updates.metadata ?? rel.metadata;
+    const metadataResult = validateRelationshipMetadata(def, nextMetadata);
+    if (!metadataResult.ok) {
+      return fail(
+        "SCHEMA_VALIDATION_FAILED",
+        metadataResult.error.message,
+        metadataResult.error.errors
+      );
+    }
+    if (args.updates.metadata !== undefined) {
+      args.updates.metadata = metadataResult.value as typeof args.updates.metadata;
     }
 
     await ctx.runMutation(

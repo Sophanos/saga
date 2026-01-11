@@ -40,6 +40,8 @@ export default defineSchema({
     supabaseId: v.optional(v.string()), // Legacy migration field (deprecated)
     name: v.string(),
     description: v.optional(v.string()),
+    templateId: v.optional(v.string()),
+    templateOverrides: v.optional(v.any()),
     genre: v.optional(v.string()),
     styleConfig: v.optional(v.any()), // Writing style preferences
     linterConfig: v.optional(v.any()), // Consistency linter rules
@@ -78,6 +80,10 @@ export default defineSchema({
         schema: v.optional(v.any()),
       })
     ),
+    locked: v.optional(v.boolean()),
+    lockedAt: v.optional(v.number()),
+    lockedByUserId: v.optional(v.string()),
+    revision: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
@@ -168,6 +174,7 @@ export default defineSchema({
     targetId: v.optional(v.string()),
     operation: v.string(),
     proposedPatch: v.any(),
+    normalizedPatch: v.optional(v.any()),
     status: v.union(
       v.literal("proposed"),
       v.literal("accepted"),
@@ -183,6 +190,7 @@ export default defineSchema({
     toolCallId: v.string(),
     approvalType: v.string(),
     danger: v.optional(v.string()),
+    riskLevel: v.optional(v.union(v.literal("low"), v.literal("high"), v.literal("core"))),
     streamId: v.optional(v.string()),
     threadId: v.optional(v.string()),
     promptMessageId: v.optional(v.string()),
@@ -198,6 +206,37 @@ export default defineSchema({
     .index("by_project_createdAt", ["projectId", "createdAt"])
     .index("by_project_status_createdAt", ["projectId", "status", "createdAt"])
     .index("by_tool_call_id", ["toolCallId"]),
+
+  // ============================================================
+  // KNOWLEDGE CITATIONS (Canon references for review)
+  // ============================================================
+  knowledgeCitations: defineTable({
+    projectId: v.id("projects"),
+    targetKind: v.union(
+      v.literal("knowledgeSuggestion"),
+      v.literal("documentSuggestion"),
+      v.literal("linterIssue"),
+      v.literal("coachIssue")
+    ),
+    targetId: v.string(),
+    phase: v.union(v.literal("proposal"), v.literal("review"), v.literal("result")),
+    memoryId: v.string(),
+    memoryCategory: v.optional(v.union(v.literal("decision"), v.literal("policy"))),
+    excerpt: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    confidence: v.optional(v.number()),
+    actorType: v.string(),
+    actorUserId: v.optional(v.string()),
+    actorAgentId: v.optional(v.string()),
+    actorName: v.optional(v.string()),
+    visibility: v.union(v.literal("project"), v.literal("private"), v.literal("redacted")),
+    redactionReason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project_target", ["projectId", "targetKind", "targetId"])
+    .index("by_project_memory", ["projectId", "memoryId"])
+    .index("by_project_createdAt", ["projectId", "createdAt"]),
 
   // ============================================================
   // DOCUMENT REVISIONS (version history)
@@ -371,6 +410,58 @@ export default defineSchema({
     .index("by_actor", ["projectId", "actorType", "createdAt"]),
 
   // ============================================================
+  // ANALYSIS RECORDS (writing analysis history)
+  // ============================================================
+  analysisRecords: defineTable({
+    projectId: v.id("projects"),
+    documentId: v.optional(v.id("documents")),
+    sceneId: v.string(),
+    metrics: v.any(),
+    wordCount: v.optional(v.number()),
+    analyzedAt: v.number(),
+  })
+    .index("by_project_analyzedAt", ["projectId", "analyzedAt"])
+    .index("by_document_analyzedAt", ["documentId", "analyzedAt"])
+    .index("by_scene_analyzedAt", ["sceneId", "analyzedAt"]),
+
+  // ============================================================
+  // CHAT SESSIONS (assistant chat history)
+  // ============================================================
+  chatSessions: defineTable({
+    projectId: v.id("projects"),
+    userId: v.string(),
+    threadId: v.string(),
+    name: v.optional(v.string()),
+    messageCount: v.number(),
+    lastMessageAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_user", ["projectId", "userId"])
+    .index("by_user", ["userId"])
+    .index("by_thread", ["threadId"]),
+
+  // ============================================================
+  // CHAT MESSAGES
+  // ============================================================
+  chatMessages: defineTable({
+    projectId: v.id("projects"),
+    sessionId: v.id("chatSessions"),
+    threadId: v.string(),
+    userId: v.string(),
+    messageId: v.optional(v.string()),
+    role: v.string(),
+    content: v.string(),
+    mentions: v.optional(v.any()),
+    tool: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_session_createdAt", ["sessionId", "createdAt"])
+    .index("by_thread_createdAt", ["threadId", "createdAt"])
+    .index("by_project", ["projectId"]),
+
+  // ============================================================
   // AI THREAD MAPPINGS
   // ============================================================
   sagaThreads: defineTable({
@@ -481,6 +572,13 @@ export default defineSchema({
     entityIds: v.optional(v.array(v.string())),
     documentId: v.optional(v.id("documents")),
     pinned: v.boolean(),
+    scope: v.optional(v.union(v.literal("project"), v.literal("private"))),
+    sourceSuggestionId: v.optional(v.id("knowledgeSuggestions")),
+    sourceToolCallId: v.optional(v.string()),
+    sourceStreamId: v.optional(v.string()),
+    sourceThreadId: v.optional(v.string()),
+    promptMessageId: v.optional(v.string()),
+    model: v.optional(v.string()),
     expiresAt: v.optional(v.number()), // null = never (pro), 90 days (free)
     vectorId: v.optional(v.string()),
     vectorSyncedAt: v.optional(v.number()),
