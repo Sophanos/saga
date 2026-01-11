@@ -14,6 +14,17 @@ import { searchPoints, isQdrantConfigured, upsertPoints, type QdrantFilter } fro
 import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
 import { CLARITY_CHECK_SYSTEM } from "./prompts/clarity";
 import { POLICY_CHECK_SYSTEM } from "./prompts/policy";
+import type {
+  GenerateTemplateArgs,
+  GenerateTemplateResult,
+  GenesisEntity,
+  TemplateDraft,
+  TemplateDocumentKind,
+  TemplateEntityKind,
+  TemplateLinterRule,
+  TemplateRelationshipKind,
+  TemplateUIModule,
+} from "../../packages/agent-protocol/src/tools";
 
 // ============================================================
 // Constants
@@ -217,45 +228,857 @@ Respond with JSON containing an "issues" array.`;
   return { issues, stats: { total: issues.length, bySeverity } };
 }
 
-async function executeGenerateTemplate(input: {
-  storyDescription: string;
+type NormalizedGenerateTemplateArgs = {
+  prompt: string;
+  baseTemplateId?: string;
+  complexity: "simple" | "standard" | "complex";
   genreHints?: string[];
-  complexity?: "simple" | "standard" | "complex";
-}): Promise<{
-  template: {
-    genre: string;
-    themes: string[];
-    structure: string;
+};
+
+type DomainKey = "story" | "product" | "engineering" | "design" | "comms" | "cinema";
+
+type DomainBlueprint = {
+  label: string;
+  summary: string;
+  tags: string[];
+  entityKindSeeds: Array<{ kind: string; label: string; category: TemplateEntityKind["category"] }>;
+  relationshipKindSeeds: Array<{ kind: string; label: string; category: TemplateRelationshipKind["category"] }>;
+  documentKindSeeds: TemplateDocumentKind[];
+  uiModuleSeeds: TemplateUIModule[];
+  linterRuleSeeds: TemplateLinterRule[];
+};
+
+const ENTITY_CATEGORY_VALUES: TemplateEntityKind["category"][] = [
+  "agent",
+  "place",
+  "object",
+  "system",
+  "organization",
+  "temporal",
+  "abstract",
+];
+
+const RELATIONSHIP_CATEGORY_VALUES: TemplateRelationshipKind["category"][] = [
+  "interpersonal",
+  "familial",
+  "power",
+  "ability",
+  "custom",
+];
+
+const FIELD_KIND_VALUES: TemplateEntityKind["fields"][number]["kind"][] = [
+  "string",
+  "text",
+  "number",
+  "boolean",
+  "enum",
+  "tags",
+  "entity_ref",
+];
+
+const LINTER_SEVERITY_VALUES: TemplateLinterRule["defaultSeverity"][] = [
+  "error",
+  "warning",
+  "info",
+];
+
+const LINTER_CATEGORY_VALUES: TemplateLinterRule["category"][] = [
+  "character",
+  "world",
+  "plot",
+  "timeline",
+  "style",
+];
+
+const UI_MODULE_ALLOWLIST = new Set<string>([
+  "manifest",
+  "console",
+  "hud",
+  "chat",
+  "linter",
+  "dynamics",
+  "coach",
+  "history",
+  "editor",
+  "project_graph",
+  "map",
+  "timeline",
+  "codex",
+  "storyboard",
+  "outline",
+  "character_arcs",
+  "scene_beats",
+]);
+
+const ENTITY_CATEGORY_COLORS: Record<TemplateEntityKind["category"], string> = {
+  agent: "#f97316",
+  place: "#06b6d4",
+  object: "#f59e0b",
+  system: "#8b5cf6",
+  organization: "#10b981",
+  temporal: "#6366f1",
+  abstract: "#64748b",
+};
+
+const DOMAIN_BLUEPRINTS: Record<DomainKey, DomainBlueprint> = {
+  story: {
+    label: "Story / World",
+    summary: "Fictional worlds with characters, locations, and narrative arcs.",
+    tags: ["story", "world", "character", "arc", "lore"],
+    entityKindSeeds: [
+      { kind: "character", label: "Character", category: "agent" },
+      { kind: "location", label: "Location", category: "place" },
+      { kind: "faction", label: "Faction", category: "organization" },
+      { kind: "magic_system", label: "Magic System", category: "system" },
+      { kind: "artifact", label: "Artifact", category: "object" },
+      { kind: "event", label: "Event", category: "temporal" },
+    ],
+    relationshipKindSeeds: [
+      { kind: "allied_with", label: "Allied With", category: "interpersonal" },
+      { kind: "enemy_of", label: "Enemy Of", category: "power" },
+      { kind: "mentors", label: "Mentors", category: "familial" },
+      { kind: "located_in", label: "Located In", category: "custom" },
+    ],
+    documentKindSeeds: [
+      { kind: "chapter", label: "Chapter", allowChildren: true },
+      { kind: "scene", label: "Scene", allowChildren: false },
+      { kind: "worldbuilding", label: "World Note", allowChildren: false },
+      { kind: "timeline", label: "Timeline", allowChildren: false },
+    ],
+    uiModuleSeeds: [
+      { module: "editor", enabled: true, order: 1 },
+      { module: "manifest", enabled: true, order: 2 },
+      { module: "project_graph", enabled: true, order: 3 },
+      { module: "timeline", enabled: true, order: 4 },
+      { module: "codex", enabled: true, order: 5 },
+    ],
+    linterRuleSeeds: [
+      {
+        id: "character_consistency",
+        label: "Character Consistency",
+        description: "Keep character motivations and traits consistent across scenes.",
+        defaultSeverity: "warning",
+        category: "character",
+      },
+      {
+        id: "world_rules",
+        label: "World Rules",
+        description: "Ensure magic or tech rules remain consistent.",
+        defaultSeverity: "warning",
+        category: "world",
+      },
+      {
+        id: "plot_continuity",
+        label: "Plot Continuity",
+        description: "Avoid timeline contradictions and plot holes.",
+        defaultSeverity: "warning",
+        category: "plot",
+      },
+    ],
+  },
+  product: {
+    label: "Product",
+    summary: "Product strategy, features, and releases.",
+    tags: ["product", "roadmap", "feature", "persona"],
+    entityKindSeeds: [
+      { kind: "persona", label: "Persona", category: "agent" },
+      { kind: "feature", label: "Feature", category: "object" },
+      { kind: "epic", label: "Epic", category: "temporal" },
+      { kind: "metric", label: "Metric", category: "abstract" },
+      { kind: "release", label: "Release", category: "temporal" },
+      { kind: "market", label: "Market", category: "organization" },
+    ],
+    relationshipKindSeeds: [
+      { kind: "depends_on", label: "Depends On", category: "custom" },
+      { kind: "owned_by", label: "Owned By", category: "power" },
+      { kind: "ships_in", label: "Ships In", category: "custom" },
+      { kind: "measured_by", label: "Measured By", category: "custom" },
+    ],
+    documentKindSeeds: [
+      { kind: "prd", label: "PRD", allowChildren: false },
+      { kind: "spec", label: "Spec", allowChildren: false },
+      { kind: "roadmap", label: "Roadmap", allowChildren: false },
+      { kind: "release_notes", label: "Release Notes", allowChildren: false },
+    ],
+    uiModuleSeeds: [
+      { module: "editor", enabled: true, order: 1 },
+      { module: "manifest", enabled: true, order: 2 },
+      { module: "project_graph", enabled: true, order: 3 },
+      { module: "timeline", enabled: true, order: 4 },
+      { module: "console", enabled: true, order: 5 },
+    ],
+    linterRuleSeeds: [
+      {
+        id: "user_focus",
+        label: "User Focus",
+        description: "Ensure each feature references a primary user or persona.",
+        defaultSeverity: "warning",
+        category: "character",
+      },
+      {
+        id: "metric_alignment",
+        label: "Metric Alignment",
+        description: "Tie initiatives to measurable outcomes.",
+        defaultSeverity: "info",
+        category: "plot",
+      },
+    ],
+  },
+  engineering: {
+    label: "Engineering",
+    summary: "Systems, services, and operational plans.",
+    tags: ["service", "architecture", "runbook", "reliability"],
+    entityKindSeeds: [
+      { kind: "service", label: "Service", category: "system" },
+      { kind: "api", label: "API Endpoint", category: "object" },
+      { kind: "database", label: "Database", category: "place" },
+      { kind: "incident", label: "Incident", category: "temporal" },
+      { kind: "runbook", label: "Runbook", category: "system" },
+      { kind: "environment", label: "Environment", category: "system" },
+    ],
+    relationshipKindSeeds: [
+      { kind: "calls", label: "Calls", category: "custom" },
+      { kind: "depends_on", label: "Depends On", category: "power" },
+      { kind: "impacts", label: "Impacts", category: "custom" },
+      { kind: "owned_by", label: "Owned By", category: "power" },
+    ],
+    documentKindSeeds: [
+      { kind: "architecture", label: "Architecture", allowChildren: false },
+      { kind: "runbook", label: "Runbook", allowChildren: false },
+      { kind: "postmortem", label: "Postmortem", allowChildren: false },
+      { kind: "spec", label: "Spec", allowChildren: false },
+    ],
+    uiModuleSeeds: [
+      { module: "editor", enabled: true, order: 1 },
+      { module: "manifest", enabled: true, order: 2 },
+      { module: "project_graph", enabled: true, order: 3 },
+      { module: "timeline", enabled: true, order: 4 },
+      { module: "console", enabled: true, order: 5 },
+    ],
+    linterRuleSeeds: [
+      {
+        id: "reliability_targets",
+        label: "Reliability Targets",
+        description: "Document SLAs and error budgets for critical services.",
+        defaultSeverity: "warning",
+        category: "timeline",
+      },
+      {
+        id: "ownership_clarity",
+        label: "Ownership Clarity",
+        description: "Every service should have a clear owner or team.",
+        defaultSeverity: "info",
+        category: "style",
+      },
+    ],
+  },
+  design: {
+    label: "Design",
+    summary: "Design systems, screens, and visual language.",
+    tags: ["design", "system", "component", "visual"],
+    entityKindSeeds: [
+      { kind: "component", label: "Component", category: "object" },
+      { kind: "screen", label: "Screen", category: "place" },
+      { kind: "token", label: "Token", category: "system" },
+      { kind: "pattern", label: "Pattern", category: "abstract" },
+      { kind: "guideline", label: "Guideline", category: "system" },
+    ],
+    relationshipKindSeeds: [
+      { kind: "uses", label: "Uses", category: "custom" },
+      { kind: "variant_of", label: "Variant Of", category: "custom" },
+      { kind: "composed_of", label: "Composed Of", category: "custom" },
+    ],
+    documentKindSeeds: [
+      { kind: "design_brief", label: "Design Brief", allowChildren: false },
+      { kind: "spec", label: "Spec", allowChildren: false },
+      { kind: "guidelines", label: "Guidelines", allowChildren: false },
+    ],
+    uiModuleSeeds: [
+      { module: "editor", enabled: true, order: 1 },
+      { module: "manifest", enabled: true, order: 2 },
+      { module: "project_graph", enabled: true, order: 3 },
+      { module: "console", enabled: true, order: 4 },
+    ],
+    linterRuleSeeds: [
+      {
+        id: "consistency_tokens",
+        label: "Token Consistency",
+        description: "Ensure design tokens are referenced consistently.",
+        defaultSeverity: "warning",
+        category: "style",
+      },
+    ],
+  },
+  comms: {
+    label: "Communications",
+    summary: "Messaging, campaigns, and channel strategy.",
+    tags: ["comms", "campaign", "message", "audience"],
+    entityKindSeeds: [
+      { kind: "campaign", label: "Campaign", category: "system" },
+      { kind: "message", label: "Message", category: "abstract" },
+      { kind: "audience", label: "Audience", category: "organization" },
+      { kind: "channel", label: "Channel", category: "system" },
+      { kind: "asset", label: "Asset", category: "object" },
+    ],
+    relationshipKindSeeds: [
+      { kind: "targets", label: "Targets", category: "custom" },
+      { kind: "published_on", label: "Published On", category: "custom" },
+      { kind: "measured_by", label: "Measured By", category: "custom" },
+    ],
+    documentKindSeeds: [
+      { kind: "campaign_brief", label: "Campaign Brief", allowChildren: false },
+      { kind: "content_calendar", label: "Content Calendar", allowChildren: false },
+      { kind: "press_release", label: "Press Release", allowChildren: false },
+    ],
+    uiModuleSeeds: [
+      { module: "editor", enabled: true, order: 1 },
+      { module: "manifest", enabled: true, order: 2 },
+      { module: "project_graph", enabled: true, order: 3 },
+      { module: "timeline", enabled: true, order: 4 },
+    ],
+    linterRuleSeeds: [
+      {
+        id: "message_clarity",
+        label: "Message Clarity",
+        description: "Ensure key messages stay concise and consistent.",
+        defaultSeverity: "warning",
+        category: "style",
+      },
+    ],
+  },
+  cinema: {
+    label: "Cinema / Film",
+    summary: "Screen stories, scenes, and production planning.",
+    tags: ["cinema", "screenplay", "scene", "shot"],
+    entityKindSeeds: [
+      { kind: "character", label: "Character", category: "agent" },
+      { kind: "location", label: "Location", category: "place" },
+      { kind: "scene", label: "Scene", category: "temporal" },
+      { kind: "shot", label: "Shot", category: "temporal" },
+      { kind: "prop", label: "Prop", category: "object" },
+      { kind: "crew_role", label: "Crew Role", category: "organization" },
+    ],
+    relationshipKindSeeds: [
+      { kind: "appears_in", label: "Appears In", category: "custom" },
+      { kind: "transitions_to", label: "Transitions To", category: "custom" },
+      { kind: "motivates", label: "Motivates", category: "interpersonal" },
+    ],
+    documentKindSeeds: [
+      { kind: "screenplay", label: "Screenplay", allowChildren: false },
+      { kind: "scene_breakdown", label: "Scene Breakdown", allowChildren: false },
+      { kind: "shot_list", label: "Shot List", allowChildren: false },
+      { kind: "production_notes", label: "Production Notes", allowChildren: false },
+    ],
+    uiModuleSeeds: [
+      { module: "editor", enabled: true, order: 1 },
+      { module: "manifest", enabled: true, order: 2 },
+      { module: "storyboard", enabled: true, order: 3 },
+      { module: "timeline", enabled: true, order: 4 },
+    ],
+    linterRuleSeeds: [
+      {
+        id: "scene_coverage",
+        label: "Scene Coverage",
+        description: "Scenes should list required locations and props.",
+        defaultSeverity: "info",
+        category: "timeline",
+      },
+    ],
+  },
+};
+
+const GENERATE_TEMPLATE_RESULT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["template"],
+  properties: {
+    template: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "name",
+        "description",
+        "category",
+        "tags",
+        "entityKinds",
+        "relationshipKinds",
+        "documentKinds",
+        "uiModules",
+        "linterRules",
+      ],
+      properties: {
+        name: { type: "string" },
+        description: { type: "string" },
+        category: { type: "string" },
+        tags: { type: "array", items: { type: "string" } },
+        baseTemplateId: { type: "string" },
+        entityKinds: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "label", "labelPlural", "category", "color", "icon", "fields"],
+            properties: {
+              kind: { type: "string" },
+              label: { type: "string" },
+              labelPlural: { type: "string" },
+              category: { type: "string", enum: ENTITY_CATEGORY_VALUES },
+              color: { type: "string" },
+              icon: { type: "string" },
+              fields: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["id", "label", "kind"],
+                  properties: {
+                    id: { type: "string" },
+                    label: { type: "string" },
+                    kind: { type: "string", enum: FIELD_KIND_VALUES },
+                    description: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        relationshipKinds: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "label", "category"],
+            properties: {
+              kind: { type: "string" },
+              label: { type: "string" },
+              category: { type: "string", enum: RELATIONSHIP_CATEGORY_VALUES },
+            },
+          },
+        },
+        documentKinds: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "label"],
+            properties: {
+              kind: { type: "string" },
+              label: { type: "string" },
+              allowChildren: { type: "boolean" },
+            },
+          },
+        },
+        uiModules: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["module", "enabled"],
+            properties: {
+              module: { type: "string", enum: Array.from(UI_MODULE_ALLOWLIST) },
+              enabled: { type: "boolean" },
+              order: { type: "number" },
+            },
+          },
+        },
+        linterRules: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "label", "description", "defaultSeverity", "category"],
+            properties: {
+              id: { type: "string" },
+              label: { type: "string" },
+              description: { type: "string" },
+              defaultSeverity: { type: "string", enum: LINTER_SEVERITY_VALUES },
+              category: { type: "string", enum: LINTER_CATEGORY_VALUES },
+            },
+          },
+        },
+      },
+    },
+    suggestedStarterEntities: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["tempId", "name", "type"],
+        properties: {
+          tempId: { type: "string" },
+          name: { type: "string" },
+          type: { type: "string" },
+          description: { type: "string" },
+          properties: { type: "object", additionalProperties: true },
+        },
+      },
+    },
+  },
+} as const;
+
+function normalizeGenerateTemplateArgs(input: unknown): NormalizedGenerateTemplateArgs {
+  if (!input || typeof input !== "object") {
+    throw new Error("generate_template input is required");
+  }
+  const record = input as Record<string, unknown>;
+  const prompt =
+    (typeof record["prompt"] === "string" && (record["prompt"] as string).trim()) ||
+    (typeof record["storyDescription"] === "string" && (record["storyDescription"] as string).trim()) ||
+    (typeof record["description"] === "string" && (record["description"] as string).trim());
+
+  if (!prompt) {
+    throw new Error("generate_template requires a prompt");
+  }
+
+  const complexityRaw = typeof record["complexity"] === "string" ? record["complexity"] : "standard";
+  const complexity =
+    complexityRaw === "simple" || complexityRaw === "complex" ? complexityRaw : "standard";
+  const baseTemplateId = typeof record["baseTemplateId"] === "string" ? record["baseTemplateId"] : undefined;
+  const genreHints = Array.isArray(record["genreHints"])
+    ? (record["genreHints"] as unknown[]).filter((hint) => typeof hint === "string")
+    : undefined;
+
+  return {
+    prompt,
+    baseTemplateId,
+    complexity,
+    genreHints,
   };
-  entityTypes: Array<{
-    type: string;
-    count: number;
-    examples: string[];
-  }>;
-  plotPoints: Array<{
-    name: string;
-    description: string;
-    order: number;
-  }>;
-}> {
-  const apiKey = process.env["OPENROUTER_API_KEY"];
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+}
 
-  const complexity = input.complexity || "standard";
-  const genres = input.genreHints?.join(", ") || "any genre";
+function resolveDomainKey(baseTemplateId?: string): DomainKey {
+  if (!baseTemplateId) return "story";
+  const normalized = baseTemplateId.trim().toLowerCase();
+  if (normalized === "writer" || normalized === "story" || normalized === "world") return "story";
+  if (normalized === "product") return "product";
+  if (normalized === "engineering") return "engineering";
+  if (normalized === "design") return "design";
+  if (normalized === "comms" || normalized === "communications") return "comms";
+  if (normalized === "cinema" || normalized === "film") return "cinema";
+  return "story";
+}
 
-  const systemPrompt = `You are a story template generator. Create a story structure template based on the description.
+function buildGenerateTemplatePrompts(params: {
+  args: NormalizedGenerateTemplateArgs;
+  domain: DomainBlueprint;
+  resolvedBaseTemplateId: string | undefined;
+}): { systemPrompt: string; userPrompt: string } {
+  const { args, domain, resolvedBaseTemplateId } = params;
+  const genreHints = args.genreHints?.length ? args.genreHints.join(", ") : "";
 
-Complexity: ${complexity}
-Genre hints: ${genres}
+  const systemPrompt = [
+    "You are a Mythos template architect.",
+    "Your task is to generate a TemplateDraft that defines entity kinds, relationships, document kinds, UI modules, and linter rules.",
+    "Return JSON only. Do not include commentary or markdown.",
+    "Stay within 6-12 entity kinds, 4-10 relationship kinds, and 3-8 document kinds.",
+    "Keep labels short, concrete, and readable.",
+  ].join("\n");
 
-Generate:
-1. Template overview (genre, themes, narrative structure)
-2. Recommended entity types with counts
-3. Key plot points in order
+  const userPrompt = [
+    `Domain: ${domain.label}`,
+    `Summary: ${domain.summary}`,
+    resolvedBaseTemplateId ? `Base template id: ${resolvedBaseTemplateId}` : "",
+    args.complexity ? `Complexity: ${args.complexity}` : "",
+    genreHints ? `Genre hints: ${genreHints}` : "",
+    "",
+    "Use these blueprint seeds as a starting point:",
+    JSON.stringify(
+      {
+        entityKindSeeds: domain.entityKindSeeds,
+        relationshipKindSeeds: domain.relationshipKindSeeds,
+        documentKindSeeds: domain.documentKindSeeds,
+        uiModuleSeeds: domain.uiModuleSeeds,
+        linterRuleSeeds: domain.linterRuleSeeds,
+      },
+      null,
+      2
+    ),
+    "",
+    `User idea: ${args.prompt}`,
+  ]
+    .filter((line) => line.length > 0)
+    .join("\n");
 
-Respond with JSON containing: template, entityTypes, plotPoints.`;
+  return { systemPrompt, userPrompt };
+}
 
+function normalizeKind(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function sanitizeStringArray(values: unknown, fallback: string[] = []): string[] {
+  if (!Array.isArray(values)) return fallback;
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function ensureHexColor(value: string | undefined, category: TemplateEntityKind["category"]): string {
+  if (value && /^#[0-9a-fA-F]{6}$/.test(value)) return value;
+  return ENTITY_CATEGORY_COLORS[category] ?? "#8b5cf6";
+}
+
+function sanitizeEntityKinds(
+  values: unknown,
+  fallback: DomainBlueprint
+): TemplateEntityKind[] {
+  const seeds = fallback.entityKindSeeds;
+  const list = Array.isArray(values) ? (values as TemplateEntityKind[]) : [];
+  const seen = new Set<string>();
+  const result: TemplateEntityKind[] = [];
+
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const rawKind = typeof item.kind === "string" ? item.kind : "";
+    const kind = normalizeKind(rawKind);
+    if (!kind || seen.has(kind)) continue;
+    const category = ENTITY_CATEGORY_VALUES.includes(item.category)
+      ? item.category
+      : "abstract";
+    const label = typeof item.label === "string" && item.label.trim()
+      ? item.label.trim()
+      : kind.replace(/_/g, " ");
+    const labelPlural = typeof item.labelPlural === "string" && item.labelPlural.trim()
+      ? item.labelPlural.trim()
+      : `${label}s`;
+    const fields = Array.isArray(item.fields) ? item.fields : [];
+    const normalizedFields = fields
+      .map((field: unknown) => {
+        if (!field || typeof field !== "object") return null;
+        const f = field as Record<string, unknown>;
+        const fieldId = typeof f["id"] === "string" ? normalizeKind(f["id"]) : "";
+        const fieldLabel = typeof f["label"] === "string" ? (f["label"] as string).trim() : "";
+        const fieldKind = (FIELD_KIND_VALUES as readonly string[]).includes(f["kind"] as string)
+          ? (f["kind"] as TemplateEntityKind["fields"][number]["kind"])
+          : "text";
+        if (!fieldId || !fieldLabel) return null;
+        return {
+          id: fieldId,
+          label: fieldLabel,
+          kind: fieldKind,
+          description: typeof f["description"] === "string" ? f["description"] : undefined,
+        };
+      })
+      .filter(Boolean) as TemplateEntityKind["fields"];
+
+    const fieldsWithDefault = normalizedFields.length
+      ? normalizedFields
+      : [
+          { id: "summary", label: "Summary", kind: "text" as const },
+          { id: "tags", label: "Tags", kind: "tags" as const },
+        ];
+
+    result.push({
+      kind,
+      label,
+      labelPlural,
+      category,
+      color: ensureHexColor(item.color, category),
+      icon: typeof item.icon === "string" && item.icon.trim() ? item.icon.trim() : "sparkles",
+      fields: fieldsWithDefault,
+    });
+    seen.add(kind);
+    if (result.length >= 18) break;
+  }
+
+  if (result.length > 0) return result;
+
+  return seeds.map((seed) => {
+    const labelPlural = `${seed.label}s`;
+    return {
+      kind: seed.kind,
+      label: seed.label,
+      labelPlural,
+      category: seed.category,
+      color: ensureHexColor(undefined, seed.category),
+      icon: "sparkles",
+      fields: [
+        { id: "summary", label: "Summary", kind: "text" },
+        { id: "tags", label: "Tags", kind: "tags" },
+      ],
+    };
+  });
+}
+
+function sanitizeRelationshipKinds(
+  values: unknown,
+  fallback: DomainBlueprint
+): TemplateRelationshipKind[] {
+  const seeds = fallback.relationshipKindSeeds;
+  const list = Array.isArray(values) ? (values as TemplateRelationshipKind[]) : [];
+  const seen = new Set<string>();
+  const result: TemplateRelationshipKind[] = [];
+
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const rawKind = typeof item.kind === "string" ? item.kind : "";
+    const kind = normalizeKind(rawKind);
+    if (!kind || seen.has(kind)) continue;
+    const label = typeof item.label === "string" && item.label.trim()
+      ? item.label.trim()
+      : kind.replace(/_/g, " ");
+    const category = RELATIONSHIP_CATEGORY_VALUES.includes(item.category)
+      ? item.category
+      : "custom";
+    result.push({ kind, label, category });
+    seen.add(kind);
+    if (result.length >= 16) break;
+  }
+
+  if (result.length > 0) return result;
+
+  return seeds.map((seed) => ({
+    kind: seed.kind,
+    label: seed.label,
+    category: seed.category,
+  }));
+}
+
+function sanitizeDocumentKinds(
+  values: unknown,
+  fallback: DomainBlueprint
+): TemplateDocumentKind[] {
+  const seeds = fallback.documentKindSeeds;
+  const list = Array.isArray(values) ? (values as TemplateDocumentKind[]) : [];
+  const seen = new Set<string>();
+  const result: TemplateDocumentKind[] = [];
+
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const rawKind = typeof item.kind === "string" ? item.kind : "";
+    const kind = normalizeKind(rawKind);
+    if (!kind || seen.has(kind)) continue;
+    const label = typeof item.label === "string" && item.label.trim()
+      ? item.label.trim()
+      : kind.replace(/_/g, " ");
+    result.push({
+      kind,
+      label,
+      allowChildren: typeof item.allowChildren === "boolean" ? item.allowChildren : false,
+    });
+    seen.add(kind);
+    if (result.length >= 10) break;
+  }
+
+  if (result.length > 0) return result;
+
+  return seeds.map((seed) => ({
+    kind: seed.kind,
+    label: seed.label,
+    allowChildren: seed.allowChildren ?? false,
+  }));
+}
+
+function sanitizeUIModules(values: unknown, fallback: DomainBlueprint): TemplateUIModule[] {
+  const seeds = fallback.uiModuleSeeds;
+  const list = Array.isArray(values) ? (values as TemplateUIModule[]) : [];
+  const result: TemplateUIModule[] = [];
+  const seen = new Set<string>();
+
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const moduleName = typeof item.module === "string" ? item.module : "";
+    if (!moduleName || !UI_MODULE_ALLOWLIST.has(moduleName) || seen.has(moduleName)) continue;
+    result.push({
+      module: moduleName,
+      enabled: typeof item.enabled === "boolean" ? item.enabled : true,
+      order: typeof item.order === "number" ? item.order : undefined,
+    });
+    seen.add(moduleName);
+  }
+
+  if (result.length > 0) return result;
+
+  return seeds.filter((seed) => UI_MODULE_ALLOWLIST.has(seed.module as string));
+}
+
+function sanitizeLinterRules(values: unknown, fallback: DomainBlueprint): TemplateLinterRule[] {
+  const seeds = fallback.linterRuleSeeds;
+  const list = Array.isArray(values) ? (values as TemplateLinterRule[]) : [];
+  const seen = new Set<string>();
+  const result: TemplateLinterRule[] = [];
+
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const rawId = typeof item.id === "string" ? item.id : "";
+    const id = normalizeKind(rawId);
+    if (!id || seen.has(id)) continue;
+    const label = typeof item.label === "string" && item.label.trim()
+      ? item.label.trim()
+      : id.replace(/_/g, " ");
+    const description = typeof item.description === "string" && item.description.trim()
+      ? item.description.trim()
+      : label;
+    const defaultSeverity = LINTER_SEVERITY_VALUES.includes(item.defaultSeverity)
+      ? item.defaultSeverity
+      : "info";
+    const category = LINTER_CATEGORY_VALUES.includes(item.category)
+      ? item.category
+      : "style";
+    result.push({ id, label, description, defaultSeverity, category });
+    seen.add(id);
+    if (result.length >= 12) break;
+  }
+
+  if (result.length > 0) return result;
+
+  return seeds.map((seed) => ({
+    id: seed.id,
+    label: seed.label,
+    description: seed.description,
+    defaultSeverity: seed.defaultSeverity,
+    category: seed.category,
+  }));
+}
+
+function sanitizeTemplateDraft(
+  draft: TemplateDraft,
+  domain: DomainBlueprint,
+  baseTemplateId?: string
+): TemplateDraft {
+  const name = typeof draft.name === "string" && draft.name.trim()
+    ? draft.name.trim()
+    : `${domain.label} Template`;
+  const description = typeof draft.description === "string" && draft.description.trim()
+    ? draft.description.trim()
+    : domain.summary;
+  const category = typeof draft.category === "string" && draft.category.trim()
+    ? draft.category.trim()
+    : domain.tags[0] ?? "custom";
+  const tags = sanitizeStringArray(draft.tags, domain.tags);
+
+  return {
+    name,
+    description,
+    category,
+    tags,
+    baseTemplateId: baseTemplateId ?? draft.baseTemplateId,
+    entityKinds: sanitizeEntityKinds(draft.entityKinds, domain),
+    relationshipKinds: sanitizeRelationshipKinds(draft.relationshipKinds, domain),
+    documentKinds: sanitizeDocumentKinds(draft.documentKinds, domain),
+    uiModules: sanitizeUIModules(draft.uiModules, domain),
+    linterRules: sanitizeLinterRules(draft.linterRules, domain),
+  };
+}
+
+async function requestGenerateTemplateResult(params: {
+  apiKey: string;
+  systemPrompt: string;
+  userPrompt: string;
+  responseFormat: Record<string, unknown>;
+}): Promise<GenerateTemplateResult> {
+  const { apiKey, systemPrompt, userPrompt, responseFormat } = params;
   const response = await fetch(OPENROUTER_API_URL, {
     method: "POST",
     headers: {
@@ -268,9 +1091,9 @@ Respond with JSON containing: template, entityTypes, plotPoints.`;
       model: DEFAULT_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: input.storyDescription },
+        { role: "user", content: userPrompt },
       ],
-      response_format: { type: "json_object" },
+      response_format: responseFormat,
       max_tokens: 4096,
     }),
   });
@@ -281,7 +1104,81 @@ Respond with JSON containing: template, entityTypes, plotPoints.`;
   }
 
   const data = await response.json();
-  return JSON.parse(data.choices?.[0]?.message?.content || "{}");
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("OpenRouter returned empty content");
+  }
+
+  return JSON.parse(content) as GenerateTemplateResult;
+}
+
+async function executeGenerateTemplate(input: GenerateTemplateArgs): Promise<GenerateTemplateResult> {
+  const apiKey = process.env["OPENROUTER_API_KEY"];
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+
+  const normalized = normalizeGenerateTemplateArgs(input);
+  const domainKey = resolveDomainKey(normalized.baseTemplateId);
+  const domain = DOMAIN_BLUEPRINTS[domainKey];
+  const fallbackBaseTemplateId: Record<DomainKey, string> = {
+    story: "writer",
+    product: "product",
+    engineering: "engineering",
+    design: "design",
+    comms: "comms",
+    cinema: "cinema",
+  };
+  const resolvedBaseTemplateId = normalized.baseTemplateId ?? fallbackBaseTemplateId[domainKey];
+  const { systemPrompt, userPrompt } = buildGenerateTemplatePrompts({
+    args: normalized,
+    domain,
+    resolvedBaseTemplateId,
+  });
+
+  let rawResult: GenerateTemplateResult;
+  try {
+    rawResult = await requestGenerateTemplateResult({
+      apiKey,
+      systemPrompt,
+      userPrompt,
+      responseFormat: {
+        type: "json_schema",
+        json_schema: {
+          name: "generate_template_result",
+          schema: GENERATE_TEMPLATE_RESULT_SCHEMA,
+        },
+      },
+    });
+  } catch (error) {
+    rawResult = await requestGenerateTemplateResult({
+      apiKey,
+      systemPrompt,
+      userPrompt,
+      responseFormat: { type: "json_object" },
+    });
+  }
+
+  const template = rawResult?.template ?? {
+    name: "",
+    description: "",
+    category: "custom",
+    tags: [],
+    baseTemplateId: resolvedBaseTemplateId,
+    entityKinds: [],
+    relationshipKinds: [],
+    documentKinds: [],
+    uiModules: [],
+    linterRules: [],
+  };
+
+  const sanitizedTemplate = sanitizeTemplateDraft(template, domain, resolvedBaseTemplateId);
+  const suggestedStarterEntities = Array.isArray(rawResult?.suggestedStarterEntities)
+    ? (rawResult.suggestedStarterEntities as GenesisEntity[])
+    : undefined;
+
+  return {
+    template: sanitizedTemplate,
+    suggestedStarterEntities,
+  };
 }
 
 interface ClarityCheckResult {
@@ -368,11 +1265,11 @@ async function executeClarityCheck(
   // Add IDs to issues for UI tracking
   const issues = (parsed.issues || []).map((issue: Record<string, unknown>, idx: number) => ({
     id: `clarity-${Date.now()}-${idx}`,
-    type: issue.type as string,
-    text: issue.text as string,
-    line: issue.line as number | undefined,
-    suggestion: issue.suggestion as string,
-    fix: issue.fix as { oldText: string; newText: string } | undefined,
+    type: issue["type"] as string,
+    text: issue["text"] as string,
+    line: issue["line"] as number | undefined,
+    suggestion: issue["suggestion"] as string,
+    fix: issue["fix"] as { oldText: string; newText: string } | undefined,
   }));
 
   return {
@@ -547,11 +1444,11 @@ async function executePolicyCheck(
   // Add IDs to issues for UI tracking
   const issues = (parsed.issues || []).map((issue: Record<string, unknown>, idx: number) => ({
     id: `policy-${Date.now()}-${idx}`,
-    type: issue.type as PolicyCheckResult["issues"][0]["type"],
-    text: issue.text as string,
-    line: issue.line as number | undefined,
-    suggestion: issue.suggestion as string,
-    canonCitations: issue.canonCitations as PolicyCheckResult["issues"][0]["canonCitations"],
+    type: issue["type"] as PolicyCheckResult["issues"][0]["type"],
+    text: issue["text"] as string,
+    line: issue["line"] as number | undefined,
+    suggestion: issue["suggestion"] as string,
+    canonCitations: issue["canonCitations"] as PolicyCheckResult["issues"][0]["canonCitations"],
   }));
 
   return {
@@ -979,7 +1876,7 @@ Respond with JSON containing an "issues" array and optional "summary".`;
 
 async function executeCheckLogic(
   input: CheckLogicInput,
-  projectId: string
+  _projectId: string
 ): Promise<CheckLogicResult> {
   const apiKey = process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
@@ -1053,12 +1950,12 @@ async function executeCheckLogic(
   const parsed = JSON.parse(content);
   const issues = (parsed.issues || []).map((issue: Record<string, unknown>, idx: number) => ({
     id: `logic-${Date.now()}-${idx}`,
-    type: issue.type as LogicIssue["type"],
-    severity: issue.severity as LogicIssue["severity"],
-    message: issue.message as string,
-    violatedRule: issue.violatedRule as LogicIssue["violatedRule"],
-    suggestion: issue.suggestion as string | undefined,
-    locations: issue.locations as LogicIssue["locations"],
+    type: issue["type"] as LogicIssue["type"],
+    severity: issue["severity"] as LogicIssue["severity"],
+    message: issue["message"] as string,
+    violatedRule: issue["violatedRule"] as LogicIssue["violatedRule"],
+    suggestion: issue["suggestion"] as string | undefined,
+    locations: issue["locations"] as LogicIssue["locations"],
   }));
 
   return {
@@ -1102,7 +1999,7 @@ Respond with JSON containing:
 
 async function executeGenerateContent(
   input: GenerateContentInput,
-  projectId: string
+  _projectId: string
 ): Promise<GenerateContentResult> {
   const apiKey = process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
@@ -1196,7 +2093,7 @@ Be specific and thorough. Focus on details that would be useful for worldbuildin
 
 async function executeAnalyzeImage(
   input: AnalyzeImageInput,
-  projectId: string
+  _projectId: string
 ): Promise<AnalyzeImageResult> {
   const apiKey = process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");

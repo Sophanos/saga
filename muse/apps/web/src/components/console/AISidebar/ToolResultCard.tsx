@@ -18,7 +18,7 @@ import {
   ImageIcon,
   ExternalLink,
 } from "lucide-react";
-import { Button, TextArea, cn } from "@mythos/ui";
+import { Button, cn } from "@mythos/ui";
 import {
   useMythosStore,
   type ChatMessage,
@@ -43,6 +43,7 @@ import type {
 } from "@mythos/agent-protocol";
 import type { SagaSessionWriter } from "../../../hooks/useSessionHistory";
 import { api } from "../../../../../../convex/_generated/api";
+import { AskQuestion } from "./ask-question";
 
 interface ToolResultCardProps {
   messageId: string;
@@ -152,7 +153,6 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
   const updateToolInvocation = useMythosStore((s) => s.updateToolInvocation);
   const applyWriteContentSuggestion = useMythosStore((s) => s.applyWriteContentSuggestion);
 
-  const [answer, setAnswer] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const args = (tool.args ?? {}) as Record<string, unknown>;
@@ -383,30 +383,26 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
     ]
   );
 
-  const handleSendAnswer = useCallback(async () => {
-    if (!isAskQuestion) return;
-    const questionArgs = tool.args as AskQuestionArgs;
-    const responseType =
-      questionArgs.responseType ?? (questionArgs.choices?.length ? "choice" : "text");
-    const trimmed = answer.trim();
-    if (!trimmed) {
-      updateToolInvocation(messageId, { error: "Answer is required" });
-      return;
-    }
-    const result: AskQuestionResult = {
-      answer: trimmed,
-      choice: responseType === "choice" ? trimmed : undefined,
-    };
-    await streamToolResult(result, "executed");
-  }, [answer, isAskQuestion, messageId, tool.args, streamToolResult, updateToolInvocation]);
+  const handleSubmitAskQuestion = useCallback(
+    async (result: AskQuestionResult) => {
+      if (!isAskQuestion) return;
+      await streamToolResult(result, "executed");
+    },
+    [isAskQuestion, streamToolResult]
+  );
 
   const handleSkipQuestion = useCallback(async () => {
     if (!isAskQuestion) return;
+    const questionArgs = tool.args as AskQuestionArgs;
+    // Build a skipped result for all questions
     const result: AskQuestionResult = {
-      answer: "User declined to answer.",
+      answers: Object.fromEntries(
+        questionArgs.questions.map((q) => [q.id, { answer: "", skipped: true }])
+      ),
+      complete: false,
     };
     await streamToolResult(result, "rejected");
-  }, [isAskQuestion, streamToolResult]);
+  }, [isAskQuestion, streamToolResult, tool.args]);
 
   const handleApplyWriteContent = useCallback(async () => {
     if (!isWriteContent) return;
@@ -589,17 +585,12 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
         </div>
       </div>
 
-      {/* Details preview */}
-      {isAskQuestion && (
+      {/* Ask question preview (when not proposed) */}
+      {isAskQuestion && !isProposed && (
         <div className="mb-2 space-y-1">
           <p className="text-xs text-mythos-text-primary">
-            {getArg<string>("question")}
+            {(tool.args as AskQuestionArgs).questions?.[0]?.question ?? ""}
           </p>
-          {getArg<string>("detail") && (
-            <p className="text-xs text-mythos-text-muted">
-              {getArg<string>("detail")}
-            </p>
-          )}
         </div>
       )}
 
@@ -675,57 +666,15 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
         </div>
       )}
 
-      {/* Actions for proposed state */}
+      {/* Ask Question UI */}
       {isProposed && isAskQuestion && (
-        <div className="mt-2 space-y-2" data-testid="tool-approval-request">
-          {getArg<string[]>("choices")?.length ? (
-            <div className="flex flex-wrap gap-2">
-              {getArg<string[]>("choices")?.map((choice) => (
-                <Button
-                  key={choice}
-                  size="sm"
-                  variant={answer === choice ? "default" : "outline"}
-                  onClick={() => setAnswer(choice)}
-                  disabled={isSubmitting}
-                  className="h-7 text-xs"
-                >
-                  {choice}
-                </Button>
-              ))}
-            </div>
-          ) : (
-            <TextArea
-              value={answer}
-              onChange={setAnswer}
-              placeholder="Type your answer..."
-              className="min-h-[72px] text-xs"
-              disabled={isSubmitting}
-              data-testid="tool-approval-input"
-            />
-          )}
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={handleSendAnswer}
-              disabled={isSubmitting || !answer.trim()}
-              className="flex-1 h-7 text-xs gap-1"
-              data-testid="tool-approval-accept"
-            >
-              <Check className="w-3 h-3" />
-              Send Answer
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSkipQuestion}
-              disabled={isSubmitting}
-              className="flex-1 h-7 text-xs gap-1"
-              data-testid="tool-approval-reject"
-            >
-              <X className="w-3 h-3" />
-              Skip
-            </Button>
-          </div>
+        <div className="mt-2" data-testid="tool-approval-request">
+          <AskQuestion
+            args={tool.args as AskQuestionArgs}
+            onSubmit={handleSubmitAskQuestion}
+            onSkip={handleSkipQuestion}
+            isSubmitting={isSubmitting}
+          />
         </div>
       )}
 
