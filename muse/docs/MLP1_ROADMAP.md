@@ -30,44 +30,37 @@ All Supabase → Convex migration work is complete.
 Reference: `../DB_MIGRATION_REPORT.md`.
 
 
-### Recent Updates (2026-01-11)
+### Recent Updates
 
-- AI-generated Project Graph templates (no standard template list); registry resolution keyed by `project.templateId`.
-- Projects/documents now support `templateId`, `metadata`, and `settings` (template IDs reference AI-generated templates); org/team schema scaffolding added for enterprise access control.
-- Project Graph approvals now driven by registry `riskLevel` + per-type identity fields (legacy writer fields still optional).
-- AI task routing expanded with `review`/`generation` plus product/engineering/design/comms task slugs; `coach`/`creative` aliased.
-- UI updates: registry lock/unlock controls added in settings; entity create/edit now supports schema-driven properties.
-- UI gaps: no AI template generation flow yet, no org/team management UI, no registry editor UI; Project Graph filters are registry-driven but template icon/color coverage is incomplete for non-writer templates; schema-driven property/relationship metadata editors are still missing; universal entity profile page (overview/graph/mentions/documents/history) not yet implemented.
-- Phase 3 MCP Citations Integration: citations schema added to mutating tools; memories/citations resources discoverable via `saga://projects/{id}/memories` and `saga://projects/{id}/citations`; proposal-first routing for governed tool calls (`muse/packages/mcp-server/src/tools.ts`, `muse/packages/mcp-server/src/resources.ts`, `muse/packages/mcp-server/src/index.ts`).
-- Phase 4 Clarity/Policy Coach fully implemented (see 2026-01-10 notes for details).
+**2026-01-11**
+- Project Graph templates: registry resolution keyed by `project.templateId`; projects/documents support `templateId`, `metadata`, and `settings`; org/team schema scaffolding added for enterprise access control.
+- Approvals + routing: approvals driven by registry `riskLevel` + per-type identity fields; AI task routing expanded with `review`/`generation` plus product/engineering/design/comms slugs; `coach`/`creative` aliased.
+- UI updates: registry lock/unlock in settings; entity create/edit supports schema-driven properties.
+- UI gaps: no AI template generation flow, no org/team management UI, no registry editor UI; Project Graph filters registry-driven but icon/color coverage incomplete for non-writer templates; schema-driven property/relationship metadata editors missing; universal entity profile page not yet implemented.
+- MCP citations integration: citations schema added to mutating tools; memories/citations resources via `saga://projects/{id}/memories` and `saga://projects/{id}/citations`; proposal-first routing for governed tool calls.
+- Knowledge PRs production hardening: `rerunPreflight`, `getRollbackImpact`, `cascadeRelationships`, editor resolve path for write_content, conflict recheck UI, `PendingWriteContent` state + EditorShell props, typecheck fixes.
+- Clarity/Policy Coach fully implemented (see 2026-01-10 for feature list).
 
-### Recent Updates (2026-01-10)
+**2026-01-10**
+- Phase 1: Project Graph (`projectTypeRegistry` + `create_node`/`update_node`/`create_edge`/`update_edge` + registry-aware approvals).
+- Phase 2: Knowledge PRs (`knowledgeSuggestions` + `suggestionId` in streams + tool-result resolution); Expo Web “Changes to review” panel.
+- MCP integrations: expanded tool surface + `SAGA_PROJECT_ID`; added `commit_decision` + image tooling (`search_images`, `find_similar_images`, `analyze_image`, `create_entity_from_image`, `illustrate_scene`).
+- Canon promotion + citations: contradiction resolution promotes user choices into pinned canon (`commit_decision`); linter emits `canonCitations` for jump-to-canon UX.
+- Clarity/Policy Coach: mode selector; clarity/policy prompts; canon-aware analysis; pin modal; analysis store extensions; Expo quick actions; UI polish (mode-aware `useContentAnalysis`, `executePolicyCheck`, agent-protocol types, policy issue types, mode-specific issue filtering, canon jump-to).
 
-- Phase 1: Project Graph (`projectTypeRegistry` + `create_node`/`update_node`/`create_edge`/`update_edge` + registry-aware approvals) (`muse/convex/projectTypeRegistry.ts`, `muse/convex/lib/typeRegistry.ts`, `muse/convex/ai/tools/projectGraphTools.ts`, `muse/convex/ai/tools/projectGraphHandlers.ts`, `muse/convex/ai/agentRuntime.ts`)
-- Phase 2: Knowledge PRs (`knowledgeSuggestions` + `suggestionId` in streams + tool-result resolution) (`muse/convex/knowledgeSuggestions.ts`, `muse/convex/schema.ts`, `muse/convex/ai/agentRuntime.ts`)
-  - Expo Web UI: “Changes to review” panel (open via editor More menu → “Version history” and Cmd+K) (`muse/apps/expo/src/components/knowledge/*`, `muse/packages/editor-webview/src/components/EditorShell.tsx`, `muse/packages/commands/src/definitions/navigation.ts`)
-- Phase 3: Integrations (MCP)
-  - Expanded MCP tool surface + project defaults (`SAGA_PROJECT_ID`) for external clients (`muse/packages/mcp-server/src/index.ts`, `muse/packages/mcp-server/src/tools.ts`)
-  - Added `commit_decision` + image tooling to MCP (`search_images`, `find_similar_images`, `analyze_image`, `create_entity_from_image`, `illustrate_scene`) (`muse/packages/mcp-server/src/tools.ts`)
-- Phase 3: Canon Promotion + Citations
-  - Contradiction resolution now promotes user choices into pinned canon memories (`commit_decision`) (`muse/convex/ai/tools.ts`, `muse/convex/ai/canon.ts`)
-  - Linter consumes pinned canon decisions and emits `canonCitations` for jump-to-canon UX (`muse/convex/ai/lint.ts`, `muse/convex/ai/prompts/linter.ts`, `muse/apps/web/src/components/modals/ConsistencyChoiceModal.tsx`)
-- Phase 4: Clarity/Policy Coach ✅
-  - Coach mode selector (Writing / Clarity / Policy) with mode-aware UI rendering (`muse/apps/web/src/components/console/CoachView.tsx`)
-  - Clarity check prompt with readability metrics + issue taxonomy (`muse/convex/ai/prompts/clarity.ts`, `muse/convex/ai/tools.ts`)
-  - Policy check prompt with conflict/unverifiable/not-testable/gap taxonomy (`muse/convex/ai/prompts/policy.ts`, `muse/convex/ai/tools.ts`)
-  - Writing coach now fetches pinned canon (decisions + policies) for canon-aware analysis (`muse/convex/ai/coach.ts`, `muse/convex/ai/prompts/coach.ts`)
-  - Two-step approval modal for pinning policies (`muse/apps/web/src/components/modals/PinPolicyModal.tsx`)
-  - Analysis store extended with coachMode, policyIssues, policyCompliance, policySummary state (`muse/apps/web/src/stores/analysis.ts`)
-  - Expo Quick Actions: added `clarity_check` and `policy_check` actions (`muse/packages/state/src/ai.ts`, `muse/apps/expo/src/components/ai/QuickActions.tsx`, `muse/apps/expo/src/components/ai/AIPanel.tsx`)
-  - **UI Polish (2026-01-11):**
-    - Mode-aware analysis hook: `useContentAnalysis` accepts `mode` param, runs correct backend tool per mode (`muse/apps/web/src/hooks/useContentAnalysis.ts`)
-    - `executePolicyCheck` added to agent runtime client (`muse/apps/web/src/services/ai/agentRuntimeClient.ts`)
-    - `PolicyCheckArgs`/`PolicyCheckResult` types added to agent-protocol (`muse/packages/agent-protocol/src/tools.ts`)
-    - Policy issue types added to `StyleIssueType` + `canonCitations` to `StyleIssue` (`muse/packages/core/src/analysis/types.ts`)
-    - Mode-specific issue filtering in `StyleIssuesList` with mode-appropriate empty states
-    - Canon citation navigation (jump-to-canon) for policy issues with `onJumpToCanon` callback
-    - E2E test IDs per contract: `coach-issue-*`, `clarity-issue-*`, `policy-issue-*`, `coach-apply-fix-*`, `coach-pin-policy-*`, `coach-jump-canon-*`
+**2026-01-09**
+- Performance stabilization: cursor presence throttling + focus gating, AI presence keepalive during long streaming, embedding job deduplication.
+- E2E coverage (04-08): deterministic Convex harness (fixtures + saga scripts + embeddings) and Playwright specs for Project Graph, AI streaming, RAG, collaboration, and billing.
+- Writer tools (from feedback): Focus Mode, Grammar/Style via DeepL + LLM fallback, name generator, logic validation, Exa web search.
+
+### Phase Checklists
+
+| Phase | Goal | Status | Link |
+|------|------|--------|------|
+| 1 | Project Graph UX (Expo Web + Tauri v2) | In progress | [Phase 1](#phase-1-project-graph-ux-expo-web--tauri-v2-implementation-plan) |
+| 2 | Knowledge PRs review surface + hardening | In progress | [Phase 2](#phase-2-knowledge-prs) |
+| 3 | Integrations + Citations (MCP) | Planned | [Phase 3](#phase-3-integrations--citations-mcp) |
+| 4 | Clarity/Policy Coach | Complete | [Phase 4](#phase-4-claritypolicy-coach) |
 
 ### UI Integration (Design Checklist)
 
@@ -77,15 +70,43 @@ Reference: `../DB_MIGRATION_REPORT.md`.
 - Approvals UX: surface risk level + approval requirement at the point of change.
 - Universal entity profile page: overview + graph + mentions + documents + history (spec in `docs/UNIVERSAL_ENTITY_PROFILE.md`).
 
-### Phase 1: Project Graph UX (Expo Web + Tauri v2) — Implementation Plan
+### UI Integration Analysis (MLP1 Phase 1)
+
+Overall Completion: ~65% - Core features done, advanced features pending.
+
+**Done (11 items)**
+- EntityFormModal, RelationshipFormModal, JsonSchemaObjectEditor
+- Project Graph CRUD: create/edit entity, create/edit relationship
+- "Open Project Graph" in editor + command palette
+- Registry-driven type selector
+- Client-side Convex error parser
+- Registry lock/unlock in settings
+- Expo Web Project Graph components
+- Knowledge PRs inbox (Web + Expo)
+- Coach mode selector + PolicyCompliancePanel
+
+**Missing (4 items)**
+- Registry editor UI - No UI to edit types/schemas
+- Graph delete with confirmation - Optional but recommended
+- Universal entity profile page - Spec exists, no implementation
+- Rollback confirmation modal - Explicitly noted as not implemented
+
+**Partial (5 items)**
+- Relationship filters on graph (only entity type filters exist)
+- Focus mode / depth-based neighborhood
+- Icon/color defaults for non-writer templates
+- Approvals UI diffs + risk rationale
+- Cursor-based pagination (still using limit=200)
+
+### Phase 1: Project Graph UX (Expo Web + Tauri v2) Implementation Plan
 
 **Goal:** Editable Project Graph with registry-enforced validation and risk-aware approvals, running in Expo Web and shipped via Tauri v2.
 
 #### Graph UX (CRUD)
-- [ ] Add “Open Project Graph” secondary UI path in editor (`data-testid="editor-open-project-graph"`)
-- [ ] Graph: create entity (button/FAB → EntityFormModal)
-- [ ] Graph: create relationship (connect nodes → RelationshipFormModal)
-- [ ] Graph: edit relationship (edge click → RelationshipFormModal)
+- [ ] Add "Open Project Graph" secondary UI path in editor (`data-testid="editor-open-project-graph"`)
+- [ ] Graph: create entity (button/FAB -> EntityFormModal)
+- [ ] Graph: create relationship (connect nodes -> RelationshipFormModal)
+- [ ] Graph: edit relationship (edge click -> RelationshipFormModal)
 - [ ] (Optional but recommended) Graph: delete entity/relationship with confirmation
 
 #### Schema-driven editors
@@ -95,7 +116,7 @@ Reference: `../DB_MIGRATION_REPORT.md`.
 #### Registry-driven UI (template-safe)
 - [ ] EntityFormModal type selector driven by resolved registry (not WRITER_ENTITY_TYPES)
 - [ ] Fill icon/color defaults for non-writer templates (product/engineering/design/comms)
-- [ ] Add relationship filters and “focus mode” (depth-based neighborhood)
+- [ ] Add relationship filters and "focus mode" (depth-based neighborhood)
 
 #### Validation + error contract
 - [ ] Ensure entity/relationship mutations validate type + schema (AJV reject-only) and return Graph API error codes
@@ -114,105 +135,117 @@ Reference: `../DB_MIGRATION_REPORT.md`.
 #### E2E testability
 - [ ] Add missing `data-testid` coverage for: entity modal, relationship modal, registry editor, approvals panel, create/delete actions
 
-**Phase 2: Knowledge PRs**
-- Knowledge PRs inbox: unified review queue across `document`/`entity`/`relationship`/`memory` with filters + batch actions (label: “Changes to review”; opened from editor “Version history” menu item).
+### Phase 2: Knowledge PRs
+
+- Knowledge PRs inbox: unified review queue across `document`/`entity`/`relationship`/`memory` with filters + batch actions (label: "Changes to review"; opened from editor "Version history" menu item).
 - Diff/preview: document diff + property/edge diff + JSON Patch view for opaque operations.
 - History/rollback: revision timeline for accepted suggestions across graph + memory, with provenance links.
 
-**Phase 3: Integrations + Citations (MCP)**
+### Phase 2: Knowledge PRs - Remaining Tasks (Production Hardening)
+
+These are the Knowledge PRs Production Hardening gaps from the roadmap. Here's the complete picture:
+
+#### P0 Blockers (ship before beta)
+
+| # | Item | Status | Action Needed |
+|---|------|--------|--------------|
+| 1 | Rollback Confirmation Modal | Backend ready | Need modal UI in both Web + Expo that calls `getRollbackImpact`, shows cascade warnings, then calls `rollbackSuggestion` |
+| 2 | Server-side Pagination | Backend ready | Replace `limit: 200` with infinite scroll/load-more using cursor from `listByProject` |
+
+#### P1 Important (post-beta)
+
+| # | Item | Status | Action Needed |
+|---|------|--------|--------------|
+| 3 | Web Entity/Relationship Diffs | Expo done | Port DiffList from Expo's `KnowledgeSuggestionDetails.tsx` to Web's `KnowledgePRsView.tsx` |
+| 4 | JSON Patch Viewer | Not started | Create `JsonPatchView` component for `normalizedPatch` display |
+| 5 | Provenance Deep-links | Partial | Add "Open memory" navigation in Expo, add provenance section in Web |
+| 6 | Activity Query in Web | Missing | Port `activity.listBySuggestion` integration from Expo to Web |
+
+#### P2 Nice-to-have
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 7 | Unified Suggestions | Not started | Requires migration or unified query across `documentSuggestions` + `knowledgeSuggestions` |
+| 8 | Late-apply Anchoring | Basic | `selectionText` stored but fuzzy re-anchoring not implemented |
+
+### Phase 3: Integrations + Citations (MCP)
+
 - Integrations settings: connect/disconnect, scopes, status, and audit for external sources.
 - Evidence viewer: show source documents/excerpts and canon citation metadata; deep-link from lint/coach issues.
 - Promote-to-model: promote evidence into the Living Model by creating a Knowledge PR with attached citations.
 
-**Phase 4: Clarity/Policy Coach**
+### Phase 4: Clarity/Policy Coach
+
 - Coach mode selector (Writing / Clarity / Policy) with taxonomy-aware labels.
-- Issue UI: ambiguity/unverifiable/not-testable/policy-conflict categories while preserving the same “issue + suggested fix” structure.
+- Issue UI: ambiguity/unverifiable/not-testable/policy-conflict categories while preserving the same "issue + suggested fix" structure.
 
-### Phase 2: Knowledge PRs - Remaining Tasks (Production Hardening)
+## Implementation Index (Selected Paths)
 
-Goal: make Knowledge PRs a production-grade review surface: every PR is actionable, diffs are readable, approvals are safe, rollbacks are reliable, and provenance is navigable.
+### Project Graph + Templates
 
-#### P0 - Production blockers (ship before beta)
+- `muse/convex/projectTypeRegistry.ts`
+- `muse/convex/lib/typeRegistry.ts`
+- `muse/convex/ai/tools/projectGraphTools.ts`
+- `muse/convex/ai/tools/projectGraphHandlers.ts`
+- `muse/convex/ai/agentRuntime.ts`
 
-1) ✅ Document PRs must be actionable (fix write_content approval UX)
-   - ✅ Expo: "Open in editor" button replaces disabled Approve; navigates with `pendingWriteContent` state
-   - ✅ Web: "Open in editor" button in KnowledgePRsView (was already present)
-   - ✅ Backend: `resolveWriteContentFromEditor` action marks suggestion resolved + creates revision
-   - ✅ EditorShell: `pendingWriteContent` prop applies content + calls `onWriteContentApplied`
-   - ✅ Layout store: `PendingWriteContent` type + `setPendingWriteContent`/`clearPendingWriteContent`
+### Knowledge PRs
 
-2) ✅ Server-side preflight validation + conflict detection (block unsafe approvals)
-   - ✅ `preflightSuggestion` validates tool args, registry constraints, target resolution
-   - ✅ Preflight persisted on suggestion; UI blocks Approve when status is `invalid`/`conflict`
-   - ✅ Fingerprint-based conflict detection for entity/relationship updates
-   - ✅ `rerunPreflight` mutation for manual recheck without applying
-   - ✅ "Rebase required" callout + "Recheck" button in both Expo + Web UIs
+- `muse/convex/knowledgeSuggestions.ts`
+- `muse/convex/schema.ts`
+- `muse/convex/ai/agentRuntime.ts`
+- `muse/apps/expo/src/components/knowledge/*`
+- `muse/packages/editor-webview/src/components/EditorShell.tsx`
+- `muse/packages/commands/src/definitions/navigation.ts`
 
-3) ✅ Rollback hardening + explicit rolled-back state + audit events
-   - ✅ Idempotency guard (returns `alreadyRolledBack: true` on duplicate calls)
-   - ✅ Explicit `rolledBackAt`, `rolledBackByUserId`, `resolution="rolled_back"` fields
-   - ✅ Activity events emitted on rollback success/failure
-   - ✅ After snapshots stored at apply-time for updates
-   - ✅ `getRollbackImpact` query shows cascade warnings (relationships affected)
-   - ✅ `cascadeRelationships` param required for entity.create rollback with relationships
-   - ❌ UI confirmation modal not yet implemented
+### MCP Integrations + Citations
 
-4) ⏳ Inbox scalability: server-side filters + pagination
-   - ✅ Backend `listByProject` supports cursor, status, targetType, riskLevel, toolName filters
-   - ✅ Indexes added for efficient filtering
-   - ❌ UIs still use `limit=200`; need cursor-based paging implementation
+- `muse/packages/mcp-server/src/index.ts`
+- `muse/packages/mcp-server/src/tools.ts`
+- `muse/packages/mcp-server/src/resources.ts`
 
-#### P1 - Important (post-beta)
+### Canon Promotion + Citations
 
-5) Web parity for graph diffs (entity + relationship + metadata)
-   - Expo has field-by-field diffs; port to KnowledgePRsView.tsx
+- `muse/convex/ai/tools.ts`
+- `muse/convex/ai/canon.ts`
+- `muse/convex/ai/lint.ts`
+- `muse/convex/ai/prompts/linter.ts`
+- `muse/apps/web/src/components/modals/ConsistencyChoiceModal.tsx`
 
-6) JSON Patch visualization for normalizedPatch
-   - Add `JsonPatchView` component for opaque operations
+### Coach (Writing / Clarity / Policy)
 
-7) Provenance + citations deep-links
-   - Add "Copy provenance" on Web; "Open memory" navigation in Expo
-   - Expo already shows provenance IDs; need actionable links
+- `muse/apps/web/src/components/console/CoachView.tsx`
+- `muse/convex/ai/prompts/clarity.ts`
+- `muse/convex/ai/tools.ts`
+- `muse/convex/ai/prompts/policy.ts`
+- `muse/convex/ai/coach.ts`
+- `muse/convex/ai/prompts/coach.ts`
+- `muse/apps/web/src/components/modals/PinPolicyModal.tsx`
+- `muse/apps/web/src/stores/analysis.ts`
+- `muse/packages/state/src/ai.ts`
+- `muse/apps/expo/src/components/ai/QuickActions.tsx`
+- `muse/apps/expo/src/components/ai/AIPanel.tsx`
 
-8) Inbox UX upgrades (filters, shortcuts, batch actions)
-   - Add target-type filter chips to UI
-   - Keyboard shortcuts for approve/reject
-   - Web batch selection (Expo already supports)
+### Coach UI Polish (2026-01-11)
 
-#### P2 - Nice-to-have / strategic cleanup
+- `muse/apps/web/src/hooks/useContentAnalysis.ts`
+- `muse/apps/web/src/services/ai/agentRuntimeClient.ts`
+- `muse/packages/agent-protocol/src/tools.ts`
+- `muse/packages/core/src/analysis/types.ts`
 
-9) Unify documentSuggestions vs knowledgeSuggestions
-   - Either migrate or build unified query/feed
+### Focus Mode (Flow)
 
-10) Late-apply anchoring for write_content
-   - Richer selection anchors or fuzzy matching for deferred apply
+- `muse/packages/state/src/flow.ts`
+- `muse/apps/expo/src/components/flow/*`
+- `muse/apps/web/src/components/flow/*`
+- `muse/packages/ui/src/styles/globals.css`
+- `muse/apps/web/src/hooks/useGlobalShortcuts.ts`
+- `muse/apps/expo/src/hooks/useKeyboardShortcuts.ts`
 
-### Recent Updates (2026-01-11)
+### Onboarding Flow (Spec Draft)
 
-**Knowledge PRs Production Hardening:**
-- Backend: `rerunPreflight` mutation, `getRollbackImpact` query, `cascadeRelationships` rollback param
-- Expo: "Open in editor" for write_content, "Rebase required" + "Recheck" button, editor resolve path
-- Web: "Rebase required" + "Recheck" button for preflight conflicts
-- Packages: `PendingWriteContent` state in @mythos/state, `pendingWriteContent` props in EditorShell
-- Typecheck fixes: style-decoration.ts, knowledgeSuggestions.ts, auth.ts
-
-### Recent Updates (2026-01-09)
-
-**P1 Performance Stabilization:**
-- Cursor presence throttling + focus gating to reduce write amplification
-- AI presence keepalive during long-running streaming responses
-- Embedding job deduplication to prevent redundant queue churn
-
-**E2E Coverage (04–08):**
-- Deterministic Convex E2E harness (fixtures + saga scripts + embeddings)
-- Playwright specs for Project Graph, AI streaming, RAG, collaboration, and billing
-
-**Writer Tools (from user feedback):**
-- Focus Mode with Zen UI, timers, word goals, brainstorm prompts
-- Grammar/Style via DeepL API (German) + LLM fallback
-- Name generator with culture/style matching
-- Logic validation (optional, background, configurable)
-- Exa web search for research/fact-checking
+- `muse/packages/state/src/onboarding.ts` (planned)
+- `muse/apps/web/src/components/onboarding/`
 
 ---
 
@@ -377,32 +410,22 @@ export async function downloadBlob(blob: Blob, fileName: string) {
 
 ## Progress Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ PHASE                              STATUS           PROGRESS        │
-├─────────────────────────────────────────────────────────────────────┤
-│ 1. Editor WebView Bundle           Complete         [██████████] ✅ │
-│ 2. Convex Agent Integration        Complete         [██████████] ✅ │
-│ 3. Platform Integration            In Progress      [████████░░] 80%│
-│    └─ Shared Packages              Complete         [██████████] ✅ │
-│    └─ Web                          Complete         [██████████] ✅ │
-│    └─ macOS (Tauri)                Scaffold Done    [████████░░] ✅ │
-│    └─ Expo (iOS/iPad)              Partial          [██████░░░░]    │
-│ 4. RAG Pipeline                    Complete         [██████████] ✅ │
-│ 5. Skills + Writer Tools           Planned          [██░░░░░░░░] 20%│
-├─────────────────────────────────────────────────────────────────────┤
-│ 6. Auth (Better Auth)              Complete         [██████████] ✅ │
-│ 7. Billing (RevenueCat)            Complete         [██████████] ✅ │
-│ 8. Observability (PostHog+Clarity) Complete         [██████████] ✅ │
-│ 9. Rate Limiting                   Complete         [██████████] ✅ │
-│10. Tier Config Migration           Complete         [██████████] ✅ │
-│11. Supabase → Convex Migration     In Progress      [█████████░] 90%│
-│12. CI/CD (GitHub Actions)          Complete         [██████████] ✅ │
-│13. Real-Time Collaboration         Track A Done     [████████░░] 80%│
-├─────────────────────────────────────────────────────────────────────┤
-│ OVERALL MLP 1                                       [█████████░] 95%│
-└─────────────────────────────────────────────────────────────────────┘
-```
+| Area | Status | % |
+|------|--------|---|
+| Editor WebView Bundle | Complete | 100 |
+| Convex Agent Integration | Complete | 100 |
+| Platform Integration | In progress (Shared packages + Web complete; Tauri scaffold; Expo partial) | 80 |
+| RAG Pipeline | Complete | 100 |
+| Skills + Writer Tools | Planned | 20 |
+| Auth (Better Auth) | Complete | 100 |
+| Billing (RevenueCat) | Complete | 100 |
+| Observability (PostHog + Clarity) | Complete | 100 |
+| Rate Limiting | Complete | 100 |
+| Tier Config Migration | Complete | 100 |
+| Supabase → Convex Migration | In progress | 90 |
+| CI/CD (GitHub Actions) | Complete | 100 |
+| Real-Time Collaboration | Track A done | 80 |
+| **Overall MLP 1** | **In progress** | **95** |
 
 ### Critical Path
 
@@ -683,12 +706,7 @@ convex/ai/tools/
 - `⌘⇧Enter` — Toggle Flow Mode
 - `Escape` — Exit Flow Mode (shows summary)
 
-**Implementation (2026-01-11):**
-- Store: `@mythos/state/flow.ts` — Flow store with timer, session, preferences
-- Expo: `apps/expo/src/components/flow/` — FlowOverlay, FlowHeader, FlowToggleButton, FlowSummaryModal
-- Tauri: `apps/web/src/components/flow/` — Same components adapted for web
-- CSS: `packages/ui/src/styles/globals.css` — Flow animations and styling
-- Shortcuts: Added to `useGlobalShortcuts.ts` (web) and `useKeyboardShortcuts.ts` (expo)
+**Implementation (2026-01-11):** Implemented in `muse/packages/state/*`, `muse/apps/expo/src/components/flow/*`, `muse/apps/web/src/components/flow/*` (details in [Implementation Index](#implementation-index-selected-paths)).
 
 **Key principle:** AI stays completely silent unless explicitly invoked. No suggestions, no analysis, no interruptions.
 
