@@ -22,6 +22,7 @@ import { askQuestionTool, writeContentTool } from "./tools/editorTools";
 import { commitDecisionTool } from "./tools/memoryTools";
 import { searchContextTool, readDocumentTool, getEntityTool } from "./tools/ragTools";
 import { graphMutationTool } from "./tools/projectGraphTools";
+import { analyzeContentTool } from "./tools/analysisTools";
 import { generateTemplateTool } from "./tools/templateTools";
 import { projectManageTool } from "./tools/projectManageTools";
 import { webSearchTool, webExtractTool } from "./tools/webSearchTools";
@@ -239,6 +240,7 @@ function createSagaAgent() {
       project_manage: projectManageTool,
       generate_template: generateTemplateTool,
       graph_mutation: graphMutationTool,
+      analyze_content: analyzeContentTool,
       web_search: webSearchTool,
       web_extract: webExtractTool,
     },

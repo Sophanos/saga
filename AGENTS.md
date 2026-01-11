@@ -42,6 +42,13 @@
 - E2E testability contract: `muse/docs/E2E_TESTABILITY_CONTRACT.md`
 - E2E review prompts: `muse/docs/MLP1_E2E_CONTEXT_BUILDER_PROMPTS.md`
 
+## AI Tools
+- Tool definitions: `muse/convex/ai/tools/*.ts`
+- Consolidated graph tool: `graph_mutation`
+- Consolidated analysis tool: `analyze_content`
+- Approval gating: `muse/convex/lib/approvalConfig.ts`
+- Agent execution loop: `muse/convex/ai/agentRuntime.ts`
+
 ## Roadmap Focus (MLP1)
 - Platform priority: Expo Web → macOS (Tauri) → iOS/iPad (Expo).
 - Focus Mode + writer tools are P1/P2; AI stays silent unless invoked.

@@ -236,7 +236,7 @@ export const execute = internalAction({
         return ctx.runAction((internal as any)["ai/image"].analyzeImageAction, {
           projectId,
           userId,
-          imageUrl: input.imageUrl,
+          imageUrl: input.imageUrl ?? input.imageSource,
           analysisPrompt: input.analysisPrompt,
         });
 
@@ -2450,4 +2450,3 @@ Generate ${input.contentType} content now.`;
     wordCount: parsed.wordCount || parsed.content?.split(/\s+/).length || 0,
   };
 }
-

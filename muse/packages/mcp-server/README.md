@@ -14,18 +14,15 @@ The server exposes the following worldbuilding tools:
 
 | Tool | Description |
 |------|-------------|
-| `create_entity` | Create characters, locations, items, factions, magic systems, events, or concepts |
-| `update_entity` | Update existing entity properties |
-| `create_relationship` | Create relationships between entities (knows, loves, parent_of, etc.) |
+| `graph_mutation` | Create/update/delete entities/nodes and relationships/edges |
 | `search_entities` | Semantic search for entities in your project |
 | `generate_content` | Generate descriptions, backstories, dialogue, or scenes |
 | `genesis_world` | Generate a complete world scaffold from a concept |
 | `generate_template` | Create an AI-generated project template for your genre |
-| `detect_entities` | Extract entities from narrative text |
-| `check_consistency` | Find contradictions, plot holes, and timeline errors |
-| `clarity_check` | Analyze prose for readability and clarity issues |
-| `check_logic` | Validate magic rules, causality, and power scaling |
+| `analyze_content` | Unified analysis (entities, consistency, logic, clarity, policy) |
 | `name_generator` | Generate culturally-appropriate names |
+
+Legacy aliases still available during migration: `create_entity`, `update_entity`, `create_relationship`, `detect_entities`, `check_consistency`, `clarity_check`, `check_logic`.
 
 ### Resources
 
@@ -172,7 +169,7 @@ Or if running from source:
 ### Creating a Character
 
 ```
-Use the create_entity tool to create a new character named "Elena Blackwood"
+Use the graph_mutation tool (action: "create", target: "entity") to create a new character named "Elena Blackwood"
 who is a mysterious scholar with a hidden past. She should have the archetype
 of a mentor figure, with goals to uncover ancient secrets and fears of
 repeating past mistakes.
@@ -190,7 +187,7 @@ remaining memories of the world before The Forgetting."
 ### Checking Consistency
 
 ```
-Use check_consistency to review my latest chapter for any contradictions
+Use analyze_content with mode "consistency" to review my latest chapter for any contradictions
 or plot holes, focusing on character behavior and timeline.
 ```
 

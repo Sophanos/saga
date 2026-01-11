@@ -209,7 +209,7 @@ Core deliverables:
 
 ## AI Tools Overview
 
-### Active Tools (18 registered in agentRuntime.ts)
+### Active Tools (12 registered in agentRuntime.ts)
 
 | Category | Tool | Purpose | Approval |
 |----------|------|---------|----------|
@@ -221,14 +221,8 @@ Core deliverables:
 | | `get_entity` | Get entity details + relationships | Auto |
 | **Web Research** | `web_search` | Search the internet (Parallel Web) | Auto |
 | | `web_extract` | Extract full page content from URL | Auto |
-| **Entity Management** | `create_entity` | Create typed entity | Risk-based |
-| | `update_entity` | Update entity properties | Risk-based |
-| | `create_relationship` | Connect entities | Risk-based |
-| | `update_relationship` | Modify relationship | Risk-based |
-| | `create_node` | Create graph node | Risk-based |
-| | `update_node` | Update graph node | Risk-based |
-| | `create_edge` | Create graph edge | Risk-based |
-| | `update_edge` | Update graph edge | Risk-based |
+| **Entity Management** | `graph_mutation` | Create/update/delete entities + relationships | Risk-based |
+| **Analysis** | `analyze_content` | Unified analysis (entities/consistency/logic/clarity/policy) | Auto |
 | **Project Setup** | `project_manage` | Bootstrap project (template + seed flag) | User approval |
 | | `generate_template` | Create template draft (used internally) | User approval |
 
@@ -238,7 +232,7 @@ Core deliverables:
 |------|----------|--------|
 | `generateImageTool` | projectGraphTools.ts | Handler exists, not wired to agent |
 | `illustrateSceneTool` | projectGraphTools.ts | Handler exists, not wired to agent |
-| `analyzeImageTool` | projectGraphTools.ts | Handler exists, not wired to agent |
+| `analyzeImageTool` | projectGraphTools.ts | Handler exists; tool not registered in agent |
 | `search_images` | tools.ts handler | Ready to wire |
 | `find_similar_images` | tools.ts handler | Ready to wire |
 
@@ -254,19 +248,14 @@ Core deliverables:
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| `check_consistency` | Find contradictions | Handler in tools.ts |
-| `detect_entities` | Extract entities from text | Handler in tools.ts |
-| `check_logic` | Validate against rules | Handler in tools.ts |
-| `clarity_check` | Content quality analysis | Handler in tools.ts |
-| `delete_entity` / `delete_relationship` | Delete operations | Need handlers |
+| `graph_mutation` delete | Delete entities/relationships | Needs cascade policy + cleanup |
 
-### Consolidation Opportunities (Future)
+### Consolidation (Delivered)
 
-| Current (18 tools) | Proposed (~10 tools) | Benefit |
-|--------------------|----------------------|---------|
-| 8 entity/graph tools | `graph_mutate({ action, target })` | Single tool with action: create/update/delete, target: entity/relationship/node/edge |
-| 4 analysis handlers | `analyze_content({ tasks: [] })` | Single tool, tasks: ["consistency", "entities", "quality", "rules"] |
-| `generate_template` | Fold into `project_manage` | Already internal; could be action: "generate_template" |
+| Legacy set | Replacement | Notes |
+|------------|-------------|-------|
+| 8 entity/graph tools | `graph_mutation` | Single tool with action + target |
+| 4 analysis tools | `analyze_content` | Mode-based analysis tool |
 
 ### Tool Implementation Paths
 

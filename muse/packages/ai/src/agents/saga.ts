@@ -292,7 +292,9 @@ export type SagaCallOptions = z.infer<typeof SagaCallOptionsSchema>;
 
 const SAGA_BASE_SYSTEM = `You are Saga, the AI assistant for Mythos IDE - a creative writing tool that treats "story as code."
 
-You help fiction writers build worlds, track entities, and maintain story consistency.
+You help writers and teams build worlds, track entities, and maintain narrative or domain consistency.
+
+Primary audiences include fiction writers, game designers, tabletop GMs, educators, researchers, and product teams building structured knowledge.
 
 ## Your Capabilities
 
@@ -302,7 +304,7 @@ You have access to powerful tools organized into two categories:
 These propose complex operations that require user confirmation:
 
 1. **project_manage** - Bootstrap or migrate a project
-   - Use when: Author is starting a new project and wants structure (with or without starter content)
+   - Use when: The author or team is starting a new project and wants structure (with or without starter content)
    - Bootstrap always generates template structure
    - Ask first (plain question or ask_question tool if available):
      - "Create structure + starter content (recommended)" → seed: true
@@ -310,67 +312,52 @@ These propose complex operations that require user confirmation:
    - Then call: { action: "bootstrap", description, seed } (+ optional genre/entityCount/detailLevel/includeOutline)
 
 2. **genesis_world** - Generate a complete world from a story description
-   - Use when: Author wants a world scaffold preview (no project changes)
+   - Use when: The author or team wants a world scaffold preview (no project changes)
    - Creates: Characters, locations, items, factions, relationships, optional outline
 
-3. **detect_entities** - Extract entities from narrative text
-   - Use when: Author wants to find characters/locations in existing text
-   - Creates: List of detected entities with positions and confidence
+3. **analyze_content** - Unified analysis for entities, consistency, logic, clarity, or policy
+   - Use when: The author or team wants diagnostics on a passage or selection
+   - Modes: entities | consistency | logic | clarity | policy
+   - Creates: Structured issues or detected entities
 
-4. **check_consistency** - Find contradictions and plot holes
-   - Use when: Author asks about inconsistencies or wants a story audit
-   - Creates: List of issues with locations and suggestions
-
-5. **generate_template** - Create a custom project template
-   - Use when: Author describes their story type and wants custom entity types
+4. **generate_template** - Create a custom project template
+   - Use when: The author or team describes their story type and wants custom entity types
    - Creates: Template with entity kinds, relationships, linter rules
 
-6. **clarity_check** - Check prose for word/phrase-level clarity issues
-   - Use when: Author wants to improve readability
-   - Creates: List of clarity issues with suggestions
-
-7. **check_logic** - Validate story logic against explicit rules
-   - Use when: Author wants to verify magic system rules, causality, etc.
-   - Creates: List of logic violations with rule references
-
-8. **name_generator** - Generate culturally-aware names
-   - Use when: Author needs character or place names
+5. **name_generator** - Generate culturally-aware names
+   - Use when: The author or team needs character or place names
    - Creates: List of names with meanings and pronunciation
 
 ### Entity Management Tools (Core Tools)
-These modify the author's world directly:
+These modify the project's knowledge graph directly:
 
-- **create_entity** - Add a character, location, item, faction, magic system, event, or concept
-- **update_entity** - Modify an existing entity's properties
-- **delete_entity** - Remove an entity
-- **create_relationship** - Connect two entities (knows, loves, hates, allied_with, etc.)
-- **update_relationship** / **delete_relationship** - Modify or remove connections
+- **graph_mutation** - Create/update/delete entities/nodes and relationships/edges
 - **generate_content** - Create backstories, descriptions, dialogue, scenes
 
 ## Intent Detection & Tool Selection
 
-Based on the author's message, determine the right approach:
+Based on the user's message, determine the right approach:
 
 | If the author says... | Use this tool |
 |-----------------------|---------------|
 | "I'm starting a new project about..." | project_manage |
 | "Build me a world about..." | genesis_world |
 | "Create a template for my story about..." | generate_template |
-| "Find/detect/extract entities in..." | detect_entities |
-| "Check for inconsistencies/contradictions" | check_consistency |
-| "Check the clarity/readability of..." | clarity_check |
-| "Check the logic/rules of..." | check_logic |
+| "Find/detect/extract entities in..." | analyze_content (mode: "entities") |
+| "Check for inconsistencies/contradictions" | analyze_content (mode: "consistency") |
+| "Check the clarity/readability of..." | analyze_content (mode: "clarity") |
+| "Check the logic/rules of..." | analyze_content (mode: "logic") |
 | "Generate names for..." | name_generator |
-| "Create a character named..." | create_entity |
+| "Create a character named..." | graph_mutation (action: "create", target: "entity") |
 | "What are Marcus's relationships?" | Answer from context (no tool) |
-| "Add a rivalry between X and Y" | create_relationship |
+| "Add a rivalry between X and Y" | graph_mutation (action: "create", target: "relationship") |
 
 ## Copilot Mode Rules (High Priority)
 
 - When context is empty and the author is starting a new project, ask seed vs no-seed, then propose project_manage.
 - When context is empty and the author asks for world structure, setting, or premise (without implying persistence), propose genesis_world.
-- When the author provides text (selection, excerpt, or pasted) and asks to extract structure, propose detect_entities.
-- When they ask for consistency or logic without text, ask for a passage and offer check_consistency or check_logic.
+- When the author or team provides text (selection, excerpt, or pasted) and asks to extract structure, propose analyze_content with mode "entities".
+- When they ask for consistency or logic without text, ask for a passage and offer analyze_content with mode "consistency" or "logic".
 - When visuals are requested and image tools are available, prefer existing image search before generating new art.
 
 ## Response Guidelines
@@ -383,28 +370,28 @@ Based on the author's message, determine the right approach:
 
 ## Tool Proposal Format
 
-When using a Saga tool (project_manage, genesis_world, detect_entities, check_consistency, generate_template, clarity_check, check_logic, name_generator):
+When using a Saga tool (project_manage, genesis_world, analyze_content, generate_template, name_generator):
 - Briefly explain what you're about to do
 - Make the tool call with appropriate parameters
 - The author will see the proposal and can accept, modify, or reject it
 
-When using Core tools (create_entity, create_relationship, etc.):
+When using Core tools (graph_mutation, generate_content):
 - Summarize what you're creating
 - Make the tool call
 - The author can accept or reject each proposal
 
 ## Important Notes
 
-- All tools create "proposals" - nothing is written to the database until the author accepts
+- All tools create "proposals" - nothing is written to the database until the user accepts
 - Use entity names (not IDs) when referencing existing entities
-- Be creative but consistent with established world rules
-- If no context is retrieved, you may still answer general writing questions`;
+- Be creative but consistent with established world rules or domain constraints
+- If no context is retrieved, you may still answer general writing or planning questions`;
 
 const SAGA_MODE_ADDENDUMS: Record<SagaMode, string> = {
   onboarding: `
 ## Onboarding Context
 
-The author is just starting. Focus on:
+The author or team is just starting. Focus on:
 - Understanding their story vision
 - Using project_manage (bootstrap) for structure + optional starter content (seed: true/false)
 - Or generate_template if they describe a specific genre/structure
@@ -414,7 +401,7 @@ Be welcoming and encouraging. This might be their first creative writing tool.`,
   creation: `
 ## Project Creation Context
 
-The author is setting up a new project. Focus on:
+The author or team is setting up a new project. Focus on:
 - project_manage (bootstrap) for structure + optional starter content (seed: true/false)
 - generate_template for custom structure
 - Help them choose between builtin templates or custom generation`,
@@ -422,19 +409,19 @@ The author is setting up a new project. Focus on:
   editing: `
 ## Editing Context
 
-The author is actively writing. Focus on:
+The author or team is actively creating. Focus on:
 - Quick entity creation for new characters/places mentioned
 - Relationship tracking as the story develops
-- detect_entities if they paste external content
-- check_consistency if they ask about plot holes`,
+- analyze_content (mode: "entities") if they paste external content
+- analyze_content (mode: "consistency") if they ask about plot holes`,
 
   analysis: `
 ## Analysis Context
 
-The author wants feedback. Focus on:
-- check_consistency for contradictions and plot holes
-- clarity_check for readability improvements
-- check_logic for rule validation
+The author or team wants feedback. Focus on:
+- analyze_content (mode: "consistency") for contradictions and plot holes
+- analyze_content (mode: "clarity") for readability improvements
+- analyze_content (mode: "logic") for rule validation
 - Be thorough but constructive
 - Prioritize actionable suggestions`,
 };
@@ -489,8 +476,8 @@ const SAGA_NO_CONTEXT = `No specific context was retrieved for this query.
 Default behaviors when context is empty:
 - For starting a new project, ask seed vs no-seed, then propose project_manage.
 - For world structure, setting, or premise requests (without implying persistence), propose genesis_world.
-- For extracting structure from provided text, propose detect_entities.
-- For consistency or logic checks without text, ask for a passage and offer check_consistency or check_logic.
+- For extracting structure from provided text, propose analyze_content with mode "entities".
+- For consistency or logic checks without text, ask for a passage and offer analyze_content with mode "consistency" or "logic".
 - For visual requests, prefer existing image search before generating new art.`;
 
 /**
@@ -667,6 +654,81 @@ export interface ToolProposal<T = unknown> {
   proposal: T;
   message: string;
 }
+
+const graphMutationParameters = z.union([
+  z.object({
+    action: z.literal("create"),
+    target: z.enum(["entity", "node"]),
+    type: EntityTypeSchema.describe("Entity/node type"),
+    name: z.string().describe("Entity/node name"),
+    aliases: z.array(z.string()).optional().describe("Alternative names or nicknames"),
+    notes: z.string().optional().describe("General notes about the entity/node"),
+    properties: z.record(z.any()).optional().describe("Template-specific properties"),
+    archetype: z.string().optional().describe("Character archetype"),
+    backstory: z.string().optional().describe("Character backstory"),
+    goals: z.array(z.string()).optional().describe("Character goals"),
+    fears: z.array(z.string()).optional().describe("Character fears"),
+  }),
+  z.object({
+    action: z.literal("update"),
+    target: z.enum(["entity", "node"]),
+    entityName: z.string().describe("Existing entity/node name"),
+    entityType: EntityTypeSchema.optional().describe("Entity/node type (for disambiguation)"),
+    updates: z.record(z.any()).describe("Fields to update"),
+  }),
+  z.object({
+    action: z.literal("delete"),
+    target: z.enum(["entity", "node"]),
+    entityName: z.string().describe("Entity/node name to delete"),
+    entityType: EntityTypeSchema.optional().describe("Entity/node type (for disambiguation)"),
+    reason: z.string().optional().describe("Reason for deletion"),
+  }),
+  z.object({
+    action: z.literal("create"),
+    target: z.enum(["relationship", "edge"]),
+    type: RelationTypeSchema.describe("Relationship/edge type"),
+    sourceName: z.string().describe("Source entity/node name"),
+    targetName: z.string().describe("Target entity/node name"),
+    bidirectional: z.boolean().optional().describe("Whether the relationship is bidirectional"),
+    strength: z.number().min(0).max(1).optional().describe("Relationship strength (0-1)"),
+    notes: z.string().optional().describe("Notes about the relationship"),
+    metadata: z.record(z.any()).optional().describe("Relationship metadata"),
+  }),
+  z.object({
+    action: z.literal("update"),
+    target: z.enum(["relationship", "edge"]),
+    type: RelationTypeSchema.describe("Relationship/edge type"),
+    sourceName: z.string().describe("Source entity/node name"),
+    targetName: z.string().describe("Target entity/node name"),
+    updates: z.record(z.any()).describe("Fields to update"),
+  }),
+  z.object({
+    action: z.literal("delete"),
+    target: z.enum(["relationship", "edge"]),
+    type: RelationTypeSchema.describe("Relationship/edge type"),
+    sourceName: z.string().describe("Source entity/node name"),
+    targetName: z.string().describe("Target entity/node name"),
+    reason: z.string().optional().describe("Reason for deletion"),
+  }),
+]);
+
+export type GraphMutationArgs = z.infer<typeof graphMutationParameters>;
+
+const analyzeContentParameters = z.object({
+  mode: z.enum(["consistency", "entities", "logic", "clarity", "policy"]),
+  text: z.string().describe("Text to analyze"),
+  options: z
+    .object({
+      focus: z.array(z.string()).optional().describe("Focus labels for the analysis"),
+      strictness: LogicStrictnessSchema.optional().describe("Strictness level for logic checks"),
+      maxIssues: z.number().min(1).max(200).optional().describe("Maximum issues to return"),
+      entityTypes: z.array(EntityTypeSchema).optional().describe("Entity type filters for detection"),
+      minConfidence: z.number().min(0).max(1).optional().describe("Minimum confidence for detection"),
+    })
+    .optional(),
+});
+
+export type AnalyzeContentArgs = z.infer<typeof analyzeContentParameters>;
 
 /**
  * Create entity tool parameter schema.
@@ -894,69 +956,46 @@ const nameGeneratorParameters = z.object({
 
 export type NameGeneratorArgs = z.infer<typeof nameGeneratorParameters>;
 
+function describeGraphMutation(args: GraphMutationArgs): string {
+  const targetLabel = args.target === "edge" ? "relationship" : args.target;
+
+  if (args.target === "relationship" || args.target === "edge") {
+    const relation = `${args.sourceName} ${args.type} ${args.targetName}`;
+    if (args.action === "create") {
+      return `Proposed creating ${targetLabel}: ${relation}`;
+    }
+    if (args.action === "update") {
+      return `Proposed updating ${targetLabel}: ${relation}`;
+    }
+    return `Proposed deleting ${targetLabel}: ${relation}`;
+  }
+
+  const name = args.action === "create" ? args.name : args.entityName;
+  if (args.action === "create") {
+    return `Proposed creating ${targetLabel}: "${name}"`;
+  }
+  if (args.action === "update") {
+    return `Proposed updating ${targetLabel}: "${name}"`;
+  }
+  return `Proposed deleting ${targetLabel}: "${name}"`;
+}
+
+function describeAnalyzeContent(args: AnalyzeContentArgs): string {
+  return `Proposed ${args.mode} analysis`;
+}
+
 /**
  * Core entity/relationship tools.
  * These create proposals for user confirmation.
  */
 export const coreTools = {
-  create_entity: tool({
-    description:
-      "Propose creating a new entity (character, location, item, faction, magic system, event, or concept) in the author's world",
-    inputSchema: createEntityParameters,
-    execute: async (args): Promise<ToolProposal<CreateEntityArgs>> => ({
-      toolName: "create_entity",
+  graph_mutation: tool({
+    description: "Propose graph mutations for entities/nodes and relationships/edges",
+    inputSchema: graphMutationParameters,
+    execute: async (args): Promise<ToolProposal<GraphMutationArgs>> => ({
+      toolName: "graph_mutation",
       proposal: args,
-      message: `Proposed creating ${args.type}: "${args.name}"`,
-    }),
-  }),
-
-  update_entity: tool({
-    description: "Propose updating an existing entity's properties",
-    inputSchema: updateEntityParameters,
-    execute: async (args): Promise<ToolProposal<UpdateEntityArgs>> => ({
-      toolName: "update_entity",
-      proposal: args,
-      message: `Proposed updating ${args.entityType || "entity"}: "${args.entityName}"`,
-    }),
-  }),
-
-  delete_entity: tool({
-    description: "Propose deleting an entity from the author's world",
-    inputSchema: deleteEntityParameters,
-    execute: async (args): Promise<ToolProposal<DeleteEntityArgs>> => ({
-      toolName: "delete_entity",
-      proposal: args,
-      message: `Proposed deleting ${args.entityType || "entity"}: "${args.entityName}"`,
-    }),
-  }),
-
-  create_relationship: tool({
-    description: "Propose creating a relationship between two entities",
-    inputSchema: createRelationshipParameters,
-    execute: async (args): Promise<ToolProposal<CreateRelationshipArgs>> => ({
-      toolName: "create_relationship",
-      proposal: args,
-      message: `Proposed relationship: ${args.sourceName} ${args.type} ${args.targetName}`,
-    }),
-  }),
-
-  update_relationship: tool({
-    description: "Propose updating an existing relationship",
-    inputSchema: updateRelationshipParameters,
-    execute: async (args): Promise<ToolProposal<UpdateRelationshipArgs>> => ({
-      toolName: "update_relationship",
-      proposal: args,
-      message: `Proposed updating relationship: ${args.sourceName} ${args.type} ${args.targetName}`,
-    }),
-  }),
-
-  delete_relationship: tool({
-    description: "Propose deleting a relationship between entities",
-    inputSchema: deleteRelationshipParameters,
-    execute: async (args): Promise<ToolProposal<DeleteRelationshipArgs>> => ({
-      toolName: "delete_relationship",
-      proposal: args,
-      message: `Proposed deleting relationship: ${args.sourceName} ${args.type} ${args.targetName}`,
+      message: describeGraphMutation(args),
     }),
   }),
 
@@ -1008,23 +1047,13 @@ export const sagaTools = {
     }),
   }),
 
-  detect_entities: tool({
-    description: "Extract entities (characters, locations, items, etc.) from narrative text",
-    inputSchema: detectEntitiesParameters,
-    execute: async (args): Promise<ToolProposal<DetectEntitiesArgs>> => ({
-      toolName: "detect_entities",
+  analyze_content: tool({
+    description: "Analyze content for entities, consistency, logic, clarity, or policy issues",
+    inputSchema: analyzeContentParameters,
+    execute: async (args): Promise<ToolProposal<AnalyzeContentArgs>> => ({
+      toolName: "analyze_content",
       proposal: args,
-      message: `Proposed entity detection with scope: ${args.scope || "document"}`,
-    }),
-  }),
-
-  check_consistency: tool({
-    description: "Check narrative text for contradictions, timeline errors, and plot holes",
-    inputSchema: checkConsistencyParameters,
-    execute: async (args): Promise<ToolProposal<CheckConsistencyArgs>> => ({
-      toolName: "check_consistency",
-      proposal: args,
-      message: `Proposed consistency check with scope: ${args.scope || "document"}`,
+      message: describeAnalyzeContent(args),
     }),
   }),
 
@@ -1035,27 +1064,6 @@ export const sagaTools = {
       toolName: "generate_template",
       proposal: args,
       message: `Proposed template generation for: "${args.storyDescription.slice(0, 50)}..."`,
-    }),
-  }),
-
-  clarity_check: tool({
-    description: "Check prose for word/phrase-level clarity issues (ambiguous pronouns, cliches, etc.)",
-    inputSchema: clarityCheckParameters,
-    execute: async (args): Promise<ToolProposal<ClarityCheckArgs>> => ({
-      toolName: "clarity_check",
-      proposal: args,
-      message: `Proposed clarity check with scope: ${args.scope || "document"}`,
-    }),
-  }),
-
-  check_logic: tool({
-    description:
-      "Validate story logic against explicit rules (magic systems, causality, knowledge state, power scaling)",
-    inputSchema: checkLogicParameters,
-    execute: async (args): Promise<ToolProposal<CheckLogicArgs>> => ({
-      toolName: "check_logic",
-      proposal: args,
-      message: `Proposed logic check with strictness: ${args.strictness || "balanced"}`,
     }),
   }),
 
@@ -1260,6 +1268,8 @@ export const sagaAgent = new SagaAgent();
  * Union type of all possible tool arguments.
  */
 export type SagaToolArgs =
+  | GraphMutationArgs
+  | AnalyzeContentArgs
   | CreateEntityArgs
   | UpdateEntityArgs
   | DeleteEntityArgs

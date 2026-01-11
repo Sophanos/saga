@@ -28,6 +28,8 @@ import { nameGeneratorExecutor } from "./executors/nameGenerator";
 import { commitDecisionExecutor } from "./executors/commitDecision";
 import { askQuestionExecutor } from "./executors/askQuestion";
 import { writeContentExecutor } from "./executors/writeContent";
+import { graphMutationExecutor } from "./executors/graphMutation";
+import { analyzeContentExecutor } from "./executors/analyzeContent";
 // Web research tools
 import { webSearchExecutor } from "./executors/webSearch";
 import { webExtractExecutor } from "./executors/webExtract";
@@ -59,8 +61,10 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   // Saga unified agent tools
   project_manage: projectManageExecutor as ToolDefinition<unknown, unknown>,
   genesis_world: genesisWorldExecutor as ToolDefinition<unknown, unknown>,
+  graph_mutation: graphMutationExecutor as ToolDefinition<unknown, unknown>,
   detect_entities: detectEntitiesExecutor as ToolDefinition<unknown, unknown>,
   check_consistency: checkConsistencyExecutor as ToolDefinition<unknown, unknown>,
+  analyze_content: analyzeContentExecutor as ToolDefinition<unknown, unknown>,
   generate_template: generateTemplateExecutor as ToolDefinition<unknown, unknown>,
   clarity_check: clarityCheckExecutor as ToolDefinition<unknown, unknown>,
   check_logic: checkLogicExecutor as ToolDefinition<unknown, unknown>,

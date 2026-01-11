@@ -291,6 +291,92 @@ function getSuggestionSubtitle(suggestion: KnowledgeSuggestion): string {
   return `${titleCase(suggestion.toolName)}${target}`;
 }
 
+type NormalizedGraphMutation = {
+  toolName:
+    | 'create_entity'
+    | 'update_entity'
+    | 'create_relationship'
+    | 'update_relationship'
+    | 'create_node'
+    | 'update_node'
+    | 'create_edge'
+    | 'update_edge';
+  args: Record<string, unknown>;
+};
+
+function normalizeGraphMutationArgs(toolArgs: Record<string, unknown>): NormalizedGraphMutation | null {
+  const action = typeof toolArgs.action === 'string' ? (toolArgs.action as string) : undefined;
+  const target = typeof toolArgs.target === 'string' ? (toolArgs.target as string) : undefined;
+  if (!action || !target || action === 'delete') return null;
+
+  if (target === 'entity' || target === 'node') {
+    const baseArgs: Record<string, unknown> = {
+      type: toolArgs.type,
+      name: toolArgs.name,
+      aliases: toolArgs.aliases,
+      notes: toolArgs.notes,
+      properties: toolArgs.properties,
+      archetype: toolArgs.archetype,
+      backstory: toolArgs.backstory,
+      goals: toolArgs.goals,
+      fears: toolArgs.fears,
+      citations: toolArgs.citations,
+    };
+
+    if (action === 'create') {
+      return {
+        toolName: target === 'node' ? 'create_node' : 'create_entity',
+        args: baseArgs,
+      };
+    }
+
+    return {
+      toolName: target === 'node' ? 'update_node' : 'update_entity',
+      args:
+        target === 'node'
+          ? {
+              nodeName: toolArgs.entityName,
+              nodeType: toolArgs.entityType,
+              updates: toolArgs.updates,
+              citations: toolArgs.citations,
+            }
+          : {
+              entityName: toolArgs.entityName,
+              entityType: toolArgs.entityType,
+              updates: toolArgs.updates,
+              citations: toolArgs.citations,
+            },
+    };
+  }
+
+  if (action === 'create') {
+    return {
+      toolName: target === 'edge' ? 'create_edge' : 'create_relationship',
+      args: {
+        type: toolArgs.type,
+        sourceName: toolArgs.sourceName,
+        targetName: toolArgs.targetName,
+        bidirectional: toolArgs.bidirectional,
+        strength: toolArgs.strength,
+        notes: toolArgs.notes,
+        metadata: toolArgs.metadata,
+        citations: toolArgs.citations,
+      },
+    };
+  }
+
+  return {
+    toolName: target === 'edge' ? 'update_edge' : 'update_relationship',
+    args: {
+      type: toolArgs.type,
+      sourceName: toolArgs.sourceName,
+      targetName: toolArgs.targetName,
+      updates: toolArgs.updates,
+      citations: toolArgs.citations,
+    },
+  };
+}
+
 export function KnowledgeSuggestionDetails({
   projectId,
   suggestion,
@@ -312,6 +398,14 @@ export function KnowledgeSuggestionDetails({
     if (!suggestion || !suggestion.proposedPatch || typeof suggestion.proposedPatch !== 'object') return null;
     return suggestion.proposedPatch as Record<string, unknown>;
   }, [suggestion]);
+
+  const normalizedGraphMutation = useMemo((): NormalizedGraphMutation | null => {
+    if (!suggestion || suggestion.toolName !== 'graph_mutation' || !toolArgs) return null;
+    return normalizeGraphMutationArgs(toolArgs);
+  }, [suggestion, toolArgs]);
+
+  const effectiveToolName = normalizedGraphMutation?.toolName ?? suggestion?.toolName ?? null;
+  const effectiveToolArgs = normalizedGraphMutation?.args ?? toolArgs;
 
   const preview = useMemo((): KnowledgeSuggestionPreview | null => {
     if (!suggestion || !isGraphPreview(suggestion.preview)) return null;
@@ -342,18 +436,18 @@ export function KnowledgeSuggestionDetails({
   ) as KnowledgeCitation[] | undefined;
 
   const entitySearchName = useMemo((): string | null => {
-    if (!suggestion || !toolArgs) return null;
-    if (suggestion.toolName === 'update_entity') return typeof toolArgs.entityName === 'string' ? (toolArgs.entityName as string) : null;
-    if (suggestion.toolName === 'update_node') return typeof toolArgs.nodeName === 'string' ? (toolArgs.nodeName as string) : null;
+    if (!suggestion || !effectiveToolArgs) return null;
+    if (effectiveToolName === 'update_entity') return typeof effectiveToolArgs.entityName === 'string' ? (effectiveToolArgs.entityName as string) : null;
+    if (effectiveToolName === 'update_node') return typeof effectiveToolArgs.nodeName === 'string' ? (effectiveToolArgs.nodeName as string) : null;
     return null;
-  }, [suggestion, toolArgs]);
+  }, [effectiveToolArgs, effectiveToolName, suggestion]);
 
   const entitySearchType = useMemo((): string | undefined => {
-    if (!suggestion || !toolArgs) return undefined;
-    if (suggestion.toolName === 'update_entity') return typeof toolArgs.entityType === 'string' ? (toolArgs.entityType as string) : undefined;
-    if (suggestion.toolName === 'update_node') return typeof toolArgs.nodeType === 'string' ? (toolArgs.nodeType as string) : undefined;
+    if (!suggestion || !effectiveToolArgs) return undefined;
+    if (effectiveToolName === 'update_entity') return typeof effectiveToolArgs.entityType === 'string' ? (effectiveToolArgs.entityType as string) : undefined;
+    if (effectiveToolName === 'update_node') return typeof effectiveToolArgs.nodeType === 'string' ? (effectiveToolArgs.nodeType as string) : undefined;
     return undefined;
-  }, [suggestion, toolArgs]);
+  }, [effectiveToolArgs, effectiveToolName, suggestion]);
 
   const entityByCanonical = useQuery(
     apiAny.entities.getByCanonical as any,
@@ -377,32 +471,32 @@ export function KnowledgeSuggestionDetails({
   }, [entityByCanonical, entitySearchName, entitySearchResults]);
 
   const relationshipSourceName = useMemo((): string | null => {
-    if (!suggestion || !toolArgs) return null;
-    if (suggestion.toolName === 'update_relationship' || suggestion.toolName === 'create_relationship') {
-      return typeof toolArgs.sourceName === 'string' ? (toolArgs.sourceName as string) : null;
+    if (!suggestion || !effectiveToolArgs) return null;
+    if (effectiveToolName === 'update_relationship' || effectiveToolName === 'create_relationship') {
+      return typeof effectiveToolArgs.sourceName === 'string' ? (effectiveToolArgs.sourceName as string) : null;
     }
-    if (suggestion.toolName === 'update_edge' || suggestion.toolName === 'create_edge') {
-      return typeof toolArgs.sourceName === 'string' ? (toolArgs.sourceName as string) : null;
+    if (effectiveToolName === 'update_edge' || effectiveToolName === 'create_edge') {
+      return typeof effectiveToolArgs.sourceName === 'string' ? (effectiveToolArgs.sourceName as string) : null;
     }
     return null;
-  }, [suggestion, toolArgs]);
+  }, [effectiveToolArgs, effectiveToolName, suggestion]);
 
   const relationshipTargetName = useMemo((): string | null => {
-    if (!suggestion || !toolArgs) return null;
-    if (suggestion.toolName === 'update_relationship' || suggestion.toolName === 'create_relationship') {
-      return typeof toolArgs.targetName === 'string' ? (toolArgs.targetName as string) : null;
+    if (!suggestion || !effectiveToolArgs) return null;
+    if (effectiveToolName === 'update_relationship' || effectiveToolName === 'create_relationship') {
+      return typeof effectiveToolArgs.targetName === 'string' ? (effectiveToolArgs.targetName as string) : null;
     }
-    if (suggestion.toolName === 'update_edge' || suggestion.toolName === 'create_edge') {
-      return typeof toolArgs.targetName === 'string' ? (toolArgs.targetName as string) : null;
+    if (effectiveToolName === 'update_edge' || effectiveToolName === 'create_edge') {
+      return typeof effectiveToolArgs.targetName === 'string' ? (effectiveToolArgs.targetName as string) : null;
     }
     return null;
-  }, [suggestion, toolArgs]);
+  }, [effectiveToolArgs, effectiveToolName, suggestion]);
 
   const relationshipType = useMemo((): string | null => {
-    if (!suggestion || !toolArgs) return null;
-    if (typeof toolArgs.type === 'string') return toolArgs.type as string;
+    if (!suggestion || !effectiveToolArgs) return null;
+    if (typeof effectiveToolArgs.type === 'string') return effectiveToolArgs.type as string;
     return null;
-  }, [suggestion, toolArgs]);
+  }, [effectiveToolArgs, suggestion]);
 
   const sourceEntityMatches = useQuery(
     apiAny.entities.searchByName as any,
@@ -445,10 +539,12 @@ export function KnowledgeSuggestionDetails({
   }, [activity]);
 
   const diffRows = useMemo((): DiffRow[] => {
-    if (!suggestion || !toolArgs) return [];
+    if (!suggestion || !effectiveToolArgs) return [];
 
-    if (suggestion.toolName === 'update_entity' || suggestion.toolName === 'update_node') {
-      const updates = toolArgs.updates && typeof toolArgs.updates === 'object' ? (toolArgs.updates as Record<string, unknown>) : {};
+    if (effectiveToolName === 'update_entity' || effectiveToolName === 'update_node') {
+      const updates = effectiveToolArgs.updates && typeof effectiveToolArgs.updates === 'object'
+        ? (effectiveToolArgs.updates as Record<string, unknown>)
+        : {};
       if (!resolvedEntity) return [];
 
       const rows: DiffRow[] = [];
@@ -462,8 +558,10 @@ export function KnowledgeSuggestionDetails({
       return rows;
     }
 
-    if (suggestion.toolName === 'update_relationship' || suggestion.toolName === 'update_edge') {
-      const updates = toolArgs.updates && typeof toolArgs.updates === 'object' ? (toolArgs.updates as Record<string, unknown>) : {};
+    if (effectiveToolName === 'update_relationship' || effectiveToolName === 'update_edge') {
+      const updates = effectiveToolArgs.updates && typeof effectiveToolArgs.updates === 'object'
+        ? (effectiveToolArgs.updates as Record<string, unknown>)
+        : {};
       if (!relationshipByTypeBetween) return [];
 
       const rows: DiffRow[] = [];
@@ -479,17 +577,17 @@ export function KnowledgeSuggestionDetails({
     }
 
     return [];
-  }, [relationshipByTypeBetween, resolvedEntity, suggestion, toolArgs]);
+  }, [effectiveToolArgs, effectiveToolName, relationshipByTypeBetween, resolvedEntity, suggestion]);
 
   const writeContentDiff = useMemo((): WriteContentDiff | null => {
-    if (!suggestion || suggestion.toolName !== 'write_content' || !toolArgs) return null;
-    return buildWriteContentDiff(toolArgs, suggestion.editorContext, documentText, documentRecord?.title);
-  }, [documentRecord?.title, documentText, suggestion, toolArgs]);
+    if (!suggestion || effectiveToolName !== 'write_content' || !effectiveToolArgs) return null;
+    return buildWriteContentDiff(effectiveToolArgs, suggestion.editorContext, documentText, documentRecord?.title);
+  }, [documentRecord?.title, documentText, effectiveToolArgs, effectiveToolName, suggestion]);
 
   const renderEntityUpdatePreview = (): JSX.Element | null => {
     if (!suggestion) return null;
     if (hasGraphPreview) return null;
-    if (suggestion.toolName !== 'update_entity' && suggestion.toolName !== 'update_node') return null;
+    if (effectiveToolName !== 'update_entity' && effectiveToolName !== 'update_node') return null;
     if (diffRows.length > 0) {
       return <DiffList rows={diffRows} colors={colors} />;
     }
@@ -503,7 +601,7 @@ export function KnowledgeSuggestionDetails({
   const renderRelationshipUpdatePreview = (): JSX.Element | null => {
     if (!suggestion) return null;
     if (hasGraphPreview) return null;
-    if (suggestion.toolName !== 'update_relationship' && suggestion.toolName !== 'update_edge') return null;
+    if (effectiveToolName !== 'update_relationship' && effectiveToolName !== 'update_edge') return null;
     if (diffRows.length > 0) {
       return <DiffList rows={diffRows} colors={colors} />;
     }
@@ -516,7 +614,7 @@ export function KnowledgeSuggestionDetails({
 
   const renderWriteContentPreview = (): JSX.Element | null => {
     if (!suggestion) return null;
-    if (suggestion.toolName !== 'write_content') return null;
+    if (effectiveToolName !== 'write_content') return null;
 
     if (!writeContentDiff) {
       return (
@@ -524,7 +622,7 @@ export function KnowledgeSuggestionDetails({
           <Text style={[styles.helperText, { color: colors.textMuted }]}>
             Apply or reject this suggestion from the editor UI.
           </Text>
-          <Text style={[styles.code, { color: colors.text }]}>{formatValue(toolArgs)}</Text>
+          <Text style={[styles.code, { color: colors.text }]}>{formatValue(effectiveToolArgs)}</Text>
         </View>
       );
     }
@@ -613,7 +711,7 @@ export function KnowledgeSuggestionDetails({
   };
 
   const preflight = suggestion?.preflight;
-  const isWriteContent = suggestion?.toolName === 'write_content';
+  const isWriteContent = effectiveToolName === 'write_content';
   const hasBlockingPreflight = preflight?.status === 'invalid' || preflight?.status === 'conflict';
   const canApprove = Boolean(suggestion?.status === 'proposed' && !isWriteContent && !hasBlockingPreflight);
   const rollbackInfo = suggestion ? getRollbackInfo(suggestion) : null;
@@ -870,7 +968,16 @@ export function KnowledgeSuggestionDetails({
           />
         ) : null}
         {suggestion.actorName ? <MetaRow label="Actor" value={suggestion.actorName} colors={colors} /> : null}
-        <MetaRow label="Tool" value={suggestion.toolName} colors={colors} mono />
+        <MetaRow
+          label="Tool"
+          value={
+            normalizedGraphMutation && effectiveToolName
+              ? `${suggestion.toolName} → ${effectiveToolName}`
+              : suggestion.toolName
+          }
+          colors={colors}
+          mono
+        />
         {suggestion.model ? <MetaRow label="Model" value={suggestion.model} colors={colors} mono /> : null}
         {suggestion.threadId ? <MetaRow label="Thread" value={suggestion.threadId} colors={colors} mono /> : null}
       </View>
@@ -881,22 +988,22 @@ export function KnowledgeSuggestionDetails({
         {renderApprovalReasons()}
         {renderGraphPreview()}
 
-        {!hasGraphPreview && (suggestion.toolName === 'create_entity' || suggestion.toolName === 'create_node') ? (
-          <KeyValues title="New entity" values={toolArgs ?? {}} colors={colors} />
+        {!hasGraphPreview && (effectiveToolName === 'create_entity' || effectiveToolName === 'create_node') ? (
+          <KeyValues title="New entity" values={effectiveToolArgs ?? {}} colors={colors} />
         ) : null}
 
         {renderEntityUpdatePreview()}
 
-        {!hasGraphPreview && (suggestion.toolName === 'create_relationship' || suggestion.toolName === 'create_edge') ? (
-          <KeyValues title="New relationship" values={toolArgs ?? {}} colors={colors} />
+        {!hasGraphPreview && (effectiveToolName === 'create_relationship' || effectiveToolName === 'create_edge') ? (
+          <KeyValues title="New relationship" values={effectiveToolArgs ?? {}} colors={colors} />
         ) : null}
 
         {renderRelationshipUpdatePreview()}
 
         {renderWriteContentPreview()}
 
-        {suggestion.toolName === 'commit_decision' ? (
-          <KeyValues title="New memory" values={toolArgs ?? {}} colors={colors} />
+        {effectiveToolName === 'commit_decision' ? (
+          <KeyValues title="New memory" values={effectiveToolArgs ?? {}} colors={colors} />
         ) : null}
 
         {suggestion.normalizedPatch ? (

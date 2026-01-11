@@ -578,6 +578,103 @@ export const updateEdgeTool: Tool = {
 };
 
 /**
+ * Graph Mutation Tool
+ * Unified create/update/delete operations for entities and relationships.
+ */
+export const graphMutationTool: Tool = {
+  name: "graph_mutation",
+  description:
+    "Create, update, or delete entities/nodes and relationships/edges in the project graph using a single tool.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID",
+      },
+      action: {
+        type: "string",
+        enum: ["create", "update", "delete"],
+        description: "Mutation action",
+      },
+      target: {
+        type: "string",
+        enum: ["entity", "node", "relationship", "edge"],
+        description: "Target type for the mutation",
+      },
+      type: {
+        type: "string",
+        description: "Entity/relationship type (for create/update)",
+      },
+      name: {
+        type: "string",
+        description: "Entity/node name (for create)",
+      },
+      aliases: {
+        type: "array",
+        items: { type: "string" },
+        description: "Alternative names or nicknames",
+      },
+      notes: {
+        type: "string",
+        description: "Notes about the entity or relationship",
+      },
+      properties: {
+        type: "object",
+        description: "Entity properties (JSON object)",
+        additionalProperties: true,
+      },
+      archetype: { type: "string", description: "Character archetype" },
+      backstory: { type: "string", description: "Character backstory" },
+      goals: { type: "array", items: { type: "string" }, description: "Character goals" },
+      fears: { type: "array", items: { type: "string" }, description: "Character fears" },
+      entityName: {
+        type: "string",
+        description: "Existing entity/node name (for update/delete)",
+      },
+      entityType: {
+        type: "string",
+        description: "Entity/node type hint (for update/delete)",
+      },
+      updates: {
+        type: "object",
+        description: "Fields to update (entity or relationship)",
+        additionalProperties: true,
+      },
+      sourceName: {
+        type: "string",
+        description: "Source entity/node name (relationships)",
+      },
+      targetName: {
+        type: "string",
+        description: "Target entity/node name (relationships)",
+      },
+      bidirectional: {
+        type: "boolean",
+        description: "Whether the relationship is bidirectional",
+      },
+      strength: {
+        type: "number",
+        description: "Relationship strength (0-1)",
+        minimum: 0,
+        maximum: 1,
+      },
+      metadata: {
+        type: "object",
+        description: "Relationship metadata (JSON object)",
+        additionalProperties: true,
+      },
+      reason: {
+        type: "string",
+        description: "Reason for deletion",
+      },
+      citations: CITATIONS_ARRAY_SCHEMA,
+    },
+    required: ["projectId", "action", "target"],
+  },
+};
+
+/**
  * Genesis World Tool
  * Generates a complete world scaffold from a description.
  */
@@ -741,6 +838,69 @@ export const detectEntitiesTool: Tool = {
       },
     },
     required: ["text"],
+  },
+};
+
+/**
+ * Analyze Content Tool
+ * Unified analysis tool for entities, consistency, logic, clarity, and policy.
+ */
+export const analyzeContentTool: Tool = {
+  name: "analyze_content",
+  description:
+    "Analyze content for entities, consistency, logic, clarity, or policy issues in one tool.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The project ID",
+      },
+      mode: {
+        type: "string",
+        enum: ["entities", "consistency", "logic", "clarity", "policy"],
+        description: "Which analysis mode to run",
+      },
+      text: {
+        type: "string",
+        description: "The text to analyze",
+      },
+      options: {
+        type: "object",
+        description: "Optional analysis options",
+        properties: {
+          focus: {
+            type: "array",
+            items: { type: "string" },
+            description: "Focus labels for consistency/logic checks",
+          },
+          strictness: {
+            type: "string",
+            enum: ["strict", "balanced", "lenient"],
+            description: "Strictness for logic checks",
+          },
+          maxIssues: {
+            type: "number",
+            minimum: 1,
+            maximum: 200,
+            description: "Maximum issues to return",
+          },
+          entityTypes: {
+            type: "array",
+            items: { type: "string", enum: ENTITY_TYPES },
+            description: "Entity types to detect",
+          },
+          minConfidence: {
+            type: "number",
+            minimum: 0,
+            maximum: 1,
+            description: "Minimum confidence for detection",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    required: ["projectId", "mode", "text"],
   },
 };
 
@@ -1319,6 +1479,7 @@ export const SAGA_TOOLS: Tool[] = [
   createEntityTool,
   updateEntityTool,
   createRelationshipTool,
+  graphMutationTool,
   // Project Graph (generic)
   createNodeTool,
   updateNodeTool,
@@ -1333,6 +1494,7 @@ export const SAGA_TOOLS: Tool[] = [
   // Canon / policy decisions
   commitDecisionTool,
   // Analysis
+  analyzeContentTool,
   detectEntitiesTool,
   checkConsistencyTool,
   clarityCheckTool,
@@ -1358,6 +1520,7 @@ export const TOOL_MAP = new Map<string, Tool>(
  * Tool names that require a projectId.
  */
 export const PROJECT_REQUIRED_TOOLS = new Set([
+  "graph_mutation",
   "create_entity",
   "update_entity",
   "create_relationship",
@@ -1369,6 +1532,7 @@ export const PROJECT_REQUIRED_TOOLS = new Set([
   "generate_content",
   "project_manage",
   "commit_decision",
+  "analyze_content",
   "search_images",
   "find_similar_images",
   "analyze_image",
@@ -1396,6 +1560,7 @@ export const STANDALONE_TOOLS = new Set([
  */
 export const PROPOSAL_FIRST_TOOLS = new Set([
   // Entity/Node mutations
+  "graph_mutation",
   "create_entity",
   "update_entity",
   "create_node",
@@ -1419,6 +1584,7 @@ export const PROPOSAL_FIRST_TOOLS = new Set([
  */
 export const IMMEDIATE_EXECUTION_TOOLS = new Set([
   // Analysis tools
+  "analyze_content",
   "detect_entities",
   "check_consistency",
   "clarity_check",

@@ -1,7 +1,7 @@
 /**
  * Saga MCP Prompts
  *
- * Pre-built workflow prompts for common worldbuilding tasks.
+ * Pre-built workflow prompts for common project tasks.
  * These guide AI clients through structured interactions.
  */
 
@@ -402,7 +402,7 @@ Please:
 3. Ask me probing questions to develop this character further
 4. Suggest ways to deepen their characterization
 
-Use update_entity to save any developments we agree on.`,
+Use graph_mutation with { action: "update", target: "entity" } to save any developments we agree on.`,
       },
     },
   ];
@@ -427,7 +427,7 @@ Focus areas: ${focus}
 
 Steps:
 1. Use search_entities to get the world state
-2. Use check_consistency on the relevant text
+2. Use analyze_content with mode "consistency" on the relevant text
 3. For each issue found, explain it clearly and suggest fixes
 4. Prioritize issues by severity (errors > warnings > info)
 
@@ -490,7 +490,7 @@ Please:
 2. Define clear rules (what can and cannot be done)
 3. Establish limitations and costs (to maintain tension)
 4. Consider how this magic affects society and conflict
-5. Create it as a magic_system entity with create_entity
+5. Create it as a magic_system entity with graph_mutation (action: "create", target: "entity")
 
 The system should be internally consistent and serve the story's needs.`,
       },
@@ -513,7 +513,7 @@ function generateWritingCoachMessages(
 Focus: ${focus}
 
 Steps:
-1. Use clarity_check to analyze the prose
+1. Use analyze_content with mode "clarity" to analyze the prose
 2. Review the readability metrics
 3. For each issue, provide:
    - The problematic text
@@ -583,7 +583,7 @@ Please:
    - Missing relationships that could add depth
 4. Suggest new relationships that would enrich the story
 
-Use create_relationship to establish any relationships I approve.`,
+Use graph_mutation with { action: "create", target: "relationship" } to establish any relationships I approve.`,
       },
     },
   ];
@@ -640,7 +640,7 @@ ${args.text}
 
 Entity types to detect: ${types}
 
-Please use detect_entities with:
+Please use analyze_content with mode "entities" and:
 - text: the text above
 - minConfidence: 0.7
 ${args.entityTypes ? `- entityTypes: [${args.entityTypes.split(",").map((t) => `"${t.trim()}"`).join(", ")}]` : ""}

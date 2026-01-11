@@ -188,6 +188,101 @@ function addPatchOperationsFromRecord(
   }
 }
 
+type NormalizedGraphToolCall = {
+  toolName:
+    | "create_entity"
+    | "update_entity"
+    | "create_relationship"
+    | "update_relationship"
+    | "create_node"
+    | "update_node"
+    | "create_edge"
+    | "update_edge";
+  args: Record<string, unknown>;
+  kind: "entity" | "relationship";
+};
+
+function normalizeGraphToolCall(
+  toolName: string,
+  args: Record<string, unknown>
+): NormalizedGraphToolCall | null {
+  if (toolName !== "graph_mutation") return null;
+  const action = typeof args["action"] === "string" ? (args["action"] as string) : undefined;
+  const target = typeof args["target"] === "string" ? (args["target"] as string) : undefined;
+  if (!action || !target || action === "delete") return null;
+
+  if (target === "entity" || target === "node") {
+    const baseArgs: Record<string, unknown> = {
+      type: args["type"],
+      name: args["name"],
+      aliases: args["aliases"],
+      notes: args["notes"],
+      properties: args["properties"],
+      archetype: args["archetype"],
+      backstory: args["backstory"],
+      goals: args["goals"],
+      fears: args["fears"],
+      citations: args["citations"],
+    };
+
+    if (action === "create") {
+      return {
+        toolName: target === "node" ? "create_node" : "create_entity",
+        args: baseArgs,
+        kind: "entity",
+      };
+    }
+
+    return {
+      toolName: target === "node" ? "update_node" : "update_entity",
+      args:
+        target === "node"
+          ? {
+              nodeName: args["entityName"],
+              nodeType: args["entityType"],
+              updates: args["updates"],
+              citations: args["citations"],
+            }
+          : {
+              entityName: args["entityName"],
+              entityType: args["entityType"],
+              updates: args["updates"],
+              citations: args["citations"],
+            },
+      kind: "entity",
+    };
+  }
+
+  if (action === "create") {
+    return {
+      toolName: target === "edge" ? "create_edge" : "create_relationship",
+      args: {
+        type: args["type"],
+        sourceName: args["sourceName"],
+        targetName: args["targetName"],
+        bidirectional: args["bidirectional"],
+        strength: args["strength"],
+        notes: args["notes"],
+        metadata: args["metadata"],
+        citations: args["citations"],
+      },
+      kind: "relationship",
+    };
+  }
+
+  return {
+    toolName: target === "edge" ? "update_edge" : "update_relationship",
+    args: {
+      type: args["type"],
+      sourceName: args["sourceName"],
+      targetName: args["targetName"],
+      updates: args["updates"],
+      citations: args["citations"],
+    },
+    kind: "relationship",
+  };
+}
+
 function buildNormalizedPatch(
   toolName: string,
   toolArgs: unknown
@@ -198,6 +293,11 @@ function buildNormalizedPatch(
   const ops: JsonPatchOperation[] = [];
 
   switch (toolName) {
+    case "graph_mutation": {
+      const normalized = normalizeGraphToolCall(toolName, record);
+      if (!normalized) return undefined;
+      return buildNormalizedPatch(normalized.toolName, normalized.args);
+    }
     case "create_entity": {
       addPatchOperation(ops, "/type", record["type"]);
       addPatchOperation(ops, "/name", record["name"]);
@@ -449,9 +549,22 @@ async function preflightSuggestion(
   let resolvedTargetId: string | undefined;
   let baseFingerprint: string | undefined;
 
-  const toolName = input.toolName;
-  const toolArgs = input.toolArgs;
+  let toolName = input.toolName;
+  let toolArgs = input.toolArgs;
   const registry = input.registry;
+
+  if (toolName === "graph_mutation") {
+    const normalized = normalizeGraphToolCall(toolName, toolArgs);
+    if (!normalized) {
+      return {
+        status: "invalid",
+        errors: ["Graph mutation is missing required fields or delete is not supported yet."],
+        computedAt: Date.now(),
+      };
+    }
+    toolName = normalized.toolName;
+    toolArgs = normalized.args;
+  }
 
   const requiresRegistry =
     toolName === "create_entity" ||
@@ -1238,8 +1351,17 @@ async function applySuggestionApprove(
     promptMessageId: suggestion.promptMessageId,
   };
 
-  const toolName = suggestion.toolName as string;
-  const toolArgs = suggestion.proposedPatch as Record<string, unknown>;
+  let toolName = suggestion.toolName as string;
+  let toolArgs = suggestion.proposedPatch as Record<string, unknown>;
+
+  if (toolName === "graph_mutation") {
+    const normalized = normalizeGraphToolCall(toolName, toolArgs);
+    if (!normalized) {
+      return buildErrorEnvelope("Graph mutation is missing required fields or delete is not supported yet.");
+    }
+    toolName = normalized.toolName;
+    toolArgs = normalized.args;
+  }
 
   switch (toolName) {
     case "create_entity": {

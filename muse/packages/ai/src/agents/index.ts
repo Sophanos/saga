@@ -70,6 +70,8 @@ export {
   type InferAgentUIMessage,
   type ToolProposal,
   // Tool argument types
+  type GraphMutationArgs,
+  type AnalyzeContentArgs,
   type CreateEntityArgs,
   type UpdateEntityArgs,
   type DeleteEntityArgs,

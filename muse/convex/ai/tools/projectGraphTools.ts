@@ -26,7 +26,7 @@ const itemCategorySchema = z.enum([
 // Graph Mutation Tool
 // =============================================================================
 
-export const graphMutationParameters = z.discriminatedUnion("action", [
+export const graphMutationParameters = z.union([
   z.object({
     action: z.literal("create"),
     target: z.enum(["entity", "node"]),
