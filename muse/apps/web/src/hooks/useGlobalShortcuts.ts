@@ -4,6 +4,7 @@ import { useMythosStore } from "../stores";
 import { commandRegistry, getUnlockHint, type CommandContext } from "../commands";
 import { useGetEditorSelection } from "./useEditorSelection";
 import { useIsCommandLocked } from "./useIsCommandLocked";
+import { useFlowStore } from "@mythos/state";
 import type { Editor } from "@mythos/editor";
 
 interface UseGlobalShortcutsOptions {
@@ -22,8 +23,8 @@ interface UseGlobalShortcutsOptions {
  * - Cmd/Ctrl+Shift+O: Create location
  * - Cmd/Ctrl+Shift+I: Create item
  * - Cmd/Ctrl+Shift+L: Run linter
- * - Cmd/Ctrl+Shift+F: Search everything
  * - Cmd/Ctrl+Shift+E: Export
+ * - Cmd/Ctrl+Shift+Enter: Toggle Flow Mode
  * - Cmd/Ctrl+G: Open project graph
  * - Cmd/Ctrl+/: Ask AI (focus chat)
  * - Cmd/Ctrl+M: Toggle mode
@@ -33,17 +34,22 @@ interface UseGlobalShortcutsOptions {
  */
 export function useGlobalShortcuts(options?: UseGlobalShortcutsOptions): void {
   const { enabled = true } = options ?? {};
-  
+
   const toggle = useCommandPaletteStore((s) => s.toggle);
   const isOpen = useCommandPaletteStore((s) => s.isOpen);
   const close = useCommandPaletteStore((s) => s.close);
-  
+
   const store = useMythosStore;
   const openModal = useMythosStore((s) => s.openModal);
   const closeModal = useMythosStore((s) => s.closeModal);
   const setActiveTab = useMythosStore((s) => s.setActiveTab);
   const setCanvasView = useMythosStore((s) => s.setCanvasView);
   const editorInstance = useMythosStore((s) => s.editor.editorInstance) as Editor | null;
+  const wordCount = useMythosStore((s) => s.editor.wordCount);
+
+  // Flow mode
+  const toggleFlowMode = useFlowStore((s) => s.toggleFlowMode);
+  const flowEnabled = useFlowStore((s) => s.enabled);
 
   // Get selection imperatively (for command execution)
   const getSelectedText = useGetEditorSelection(editorInstance);
@@ -119,6 +125,14 @@ export function useGlobalShortcuts(options?: UseGlobalShortcutsOptions): void {
       // Cmd/Ctrl+Shift shortcuts
       if (modKey && shiftKey) {
         const key = e.key.toLowerCase();
+
+        // Flow mode toggle: Cmd+Shift+Enter
+        if (e.key === "Enter") {
+          e.preventDefault();
+          toggleFlowMode(wordCount);
+          return;
+        }
+
         let commandId: string | null = null;
 
         switch (key) {
@@ -216,5 +230,5 @@ export function useGlobalShortcuts(options?: UseGlobalShortcutsOptions): void {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [enabled, toggle, isOpen, close, buildContext, isCommandLocked]);
+  }, [enabled, toggle, isOpen, close, buildContext, isCommandLocked, toggleFlowMode, wordCount]);
 }

@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> **Last Updated:** 2026-01-11 (Registry enforcement + lock; approvals via riskLevel; graph API contract) | **Target:** Web + macOS first, then iOS/iPad
+> **Last Updated:** 2026-01-11 (Onboarding flow spec; Landing page → Expo web migration plan; Expo web <> Tauri v2 strategy) | **Target:** Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
 > See also: [MLP2 Proactivity Engine](./MLP2_PROACTIVITY_ENGINE.md)
@@ -241,22 +241,41 @@ Goal: make Knowledge PRs a production-grade review surface: every PR is actionab
 | Changing meaning of text | DeepL preserves intent; approval required |
 | Constant interruptions | Proactive features are opt-in, background |
 
-### Onboarding Questions to Add
+### Onboarding Flow (First-Run)
 
-1. **AI involvement level:**
-   - "Help me actively" (suggestions on)
-   - "Only when I ask" (manual trigger)
-   - "Stay quiet" (Focus Mode default)
+> **Implementation order:** Flow Mode (Zustand) → review → integrate into Onboarding
+> **Full spec:** `~/.claude/plans/serene-doodling-dolphin.md` (Phase 0)
 
-2. **Logic checking:**
-   - "Check in background" (subtle highlights)
-   - "Only when I ask"
-   - "Skip logic checking"
+**Trigger:** First app use
 
-3. **Grammar/spelling:**
-   - "Check as I write" (DeepL/LLM)
-   - "Only on demand"
-   - "I use other tools"
+**Steps:**
+1. **Welcome** - "Let's set up your writing environment"
+2. **Flow Mode** - "Focus Mode" (distraction-free) vs "Full View" (all panels)
+3. **Focus Level** (if Flow Mode) - Sentence / Paragraph / No dimming
+4. **Typewriter Scrolling** - Keep cursor centered on/off
+5. **AI & Notifications** - Quiet / Gentle Nudges / Always Available
+6. **Confirmation** - Summary + "Change anytime in Settings"
+
+**State (Zustand):**
+```typescript
+// packages/state/src/onboarding.ts
+interface OnboardingState {
+  completed: boolean;
+  currentStep: number;
+  selections: {
+    flowModeDefault: boolean;
+    focusLevel: "none" | "sentence" | "paragraph";
+    typewriterScrolling: boolean;
+    notificationMode: "quiet" | "gentle" | "always";
+  };
+  completeOnboarding: () => void;
+  skipOnboarding: () => void;
+}
+```
+
+**Components:** `apps/web/src/components/onboarding/` (OnboardingModal, step components, preview)
+
+**Persistence:** localStorage for `completed`, preferences written to `flow` store
 
 ### Export/Import System (Centralize to `@mythos/io`)
 
@@ -449,19 +468,88 @@ Workspace Store (Zustand) ──▶ UI updates
 ├────────────────────────────────────────────────────────────────────┤
 │                       PLATFORM SHELLS                               │
 ├──────────────────┬──────────────────┬──────────────────────────────┤
-│      Web         │     macOS        │     iOS / iPad               │
-│   (Vite React)   │    (Tauri)       │    (Expo RN)                 │
+│   Expo Web       │     macOS        │     iOS / iPad               │
+│  (Metro bundler) │  (Tauri v2)      │    (Expo RN)                 │
 │                  │                  │                              │
-│   TipTap direct  │   Tauri WebView  │   react-native-webview       │
+│  Landing + App   │   Expo Web host  │   react-native-webview       │
 │   PRIMARY ✅     │   PRIORITY 2     │   PRIORITY 3                 │
 └──────────────────┴──────────────────┴──────────────────────────────┘
 ```
 
 | Platform | Status | Bundle Size | Notes |
 |----------|--------|-------------|-------|
-| **Web** | ✅ Ready | N/A | Primary development target |
-| **macOS** | 🔲 Next | ~5MB | Tauri = native feel, AppKit menus |
+| **Expo Web** | ✅ Primary | N/A | Landing + App unified |
+| **macOS** | 🔲 Next | ~5MB | Tauri v2 hosts Expo Web |
 | **iOS/iPad** | 🔲 Later | ~10MB | Expo + WebView |
+
+---
+
+### Landing Page Migration (Vite → Expo Web)
+
+> **Goal:** Unify landing page + auth into Expo web for Tauri v2 embedding
+
+**Current State:**
+```
+apps/website/         # Vite landing (port 3001) → DELETE after migration
+  src/pages/LandingPage.tsx
+
+apps/web/             # Vite main app (port 3005) → imports from @mythos/website
+  src/App.tsx         # Routes to LandingPage for unauthenticated users
+
+apps/expo/            # Expo universal app (port 19006)
+  app/(auth)/         # sign-in.tsx, sign-up.tsx
+```
+
+**Target State:**
+```
+apps/expo/            # Single web entry point (port 19006)
+  app/
+    (marketing)/      # Public routes (no auth required)
+      _layout.tsx     # Marketing layout (no app chrome)
+      index.tsx       # Landing page (ported from @mythos/website)
+      pricing.tsx     # Pricing page
+      docs.tsx        # Docs placeholder
+    (auth)/           # Auth screens (existing)
+      sign-in.tsx
+      sign-up.tsx
+    (app)/            # Authenticated app routes (existing)
+      ...
+
+apps/tauri/           # Tauri v2 shell
+  src-tauri/
+    tauri.conf.json   # devUrl → expo web :19006, frontendDist → expo export
+```
+
+**Migration Steps:**
+
+| Step | Task | Priority |
+|------|------|----------|
+| 1 | Create `(marketing)/_layout.tsx` with minimal chrome | P1 |
+| 2 | Port `LandingPage.tsx` to `(marketing)/index.tsx` | P1 |
+| 3 | Port pricing/docs routes | P1 |
+| 4 | Update Tauri devUrl to `:19006` (Expo web) | P1 |
+| 5 | Update Tauri frontendDist to Expo export output | P1 |
+| 6 | Delete `apps/website/` after verification | P2 |
+| 7 | Update `apps/web/` to redirect to Expo web or deprecate | P2 |
+
+**Expo Web + Tauri v2 Integration:**
+```typescript
+// apps/tauri/src-tauri/tauri.conf.json
+{
+  "build": {
+    "devUrl": "http://localhost:19006",
+    "frontendDist": "../expo-export/dist"
+  },
+  "app": {
+    "withGlobalTauri": true
+  }
+}
+```
+
+**Auth Flow (Expo Web in Tauri):**
+- Expo web uses `crossDomainClient` (same as current)
+- Tauri deep links for OAuth callbacks: `mythos://auth/callback`
+- Session persisted via `tauri-plugin-store`
 
 ---
 
@@ -573,20 +661,43 @@ convex/ai/tools/
 └── researchTools.ts                 # 🔲 Exa web search integration
 ```
 
-#### Focus Mode (Distraction-Free Writing) 🔲 P1
+#### Focus Mode (Distraction-Free Writing) ✅ P1
 
 > *"Ideen sammeln ohne das ein Computer diese bewertet"* — Writer feedback
 
-| Component | Description | Platform |
-|-----------|-------------|----------|
-| **Zen UI** | Hide sidebar, AI panel, just editor + word count | Expo web → Tauri |
-| **Timer modes** | Pomodoro (25/5), Sprint (15min), Custom goals | Expo web → Tauri |
-| **Word goals** | "Write 500 words" with progress bar, streak tracking | Expo web → Tauri |
-| **"What If" cards** | Random prompts: "What if the villain is right?", "What if they fail?" | Expo web → Tauri |
-| **Technique prompts** | "Describe using only sounds", "Write the opposite emotion" | Expo web → Tauri |
-| **Session stats** | Words written, time focused, streak, export to PostHog | Expo web → Tauri |
+| Component | Description | Platform | Status |
+|-----------|-------------|----------|--------|
+| **Zen UI** | Full-screen overlay, vignette effect, minimal header | Expo web + Tauri | ✅ Done |
+| **Timer modes** | Pomodoro (25/5), Sprint (15min), Custom with work/break phases | Expo web + Tauri | ✅ Done |
+| **Word goals** | Session word count with goal progress bar | Expo web + Tauri | ✅ Done |
+| **Focus levels** | Sentence/paragraph/none toggle (UI ready, editor extension pending) | Expo web + Tauri | 🔲 Phase 2 |
+| **Typewriter scrolling** | Keep cursor vertically centered | Expo web + Tauri | 🔲 Phase 2 |
+| **Session stats** | Words written, time focused, WPM, pomodoros completed | Expo web + Tauri | ✅ Done |
+| **Summary modal** | Stats + encouragement on exit | Expo web + Tauri | ✅ Done |
+| **"What If" cards** | Random prompts: "What if the villain is right?", "What if they fail?" | Expo web → Tauri | 🔲 Phase 2 |
+| **Technique prompts** | "Describe using only sounds", "Write the opposite emotion" | Expo web → Tauri | 🔲 Phase 2 |
+| **Notification queue** | AI insights queued during flow, shown on exit | Expo web + Tauri | 🔲 Phase 2 |
+| **Breakthrough alerts** | Subtle corner pulse for critical notifications | Expo web + Tauri | 🔲 Phase 2 |
+
+**Keyboard shortcuts:**
+- `⌘⇧Enter` — Toggle Flow Mode
+- `Escape` — Exit Flow Mode (shows summary)
+
+**Implementation (2026-01-11):**
+- Store: `@mythos/state/flow.ts` — Flow store with timer, session, preferences
+- Expo: `apps/expo/src/components/flow/` — FlowOverlay, FlowHeader, FlowToggleButton, FlowSummaryModal
+- Tauri: `apps/web/src/components/flow/` — Same components adapted for web
+- CSS: `packages/ui/src/styles/globals.css` — Flow animations and styling
+- Shortcuts: Added to `useGlobalShortcuts.ts` (web) and `useKeyboardShortcuts.ts` (expo)
 
 **Key principle:** AI stays completely silent unless explicitly invoked. No suggestions, no analysis, no interruptions.
+
+**Phase 2 enhancements (to make it better than Notion's focus mode):**
+- Editor integration: ProseMirror plugin for real sentence/paragraph dimming
+- Typewriter scroll extension for cursor centering
+- "What If" and technique prompt cards for brainstorming
+- Notification queue with breakthrough alerts for time-sensitive items
+- Daily/weekly streak tracking with PostHog integration
 
 #### Grammar & Style Polish 🔲 P2
 
@@ -642,11 +753,7 @@ Uses project's existing entities + world style for consistency.
   - "Only check when I ask" (manual trigger)
   - "Never check logic" (full creative freedom)
 
-**Onboarding question:**
-> "Some writers want logic checking (timeline, physics, world rules). Others prefer full creative freedom. What works for you?"
-> - [ ] Check in background (subtle highlights)
-> - [ ] Only when I ask
-> - [ ] Skip logic checking
+**Configured via onboarding** (see Onboarding Flow section)
 
 #### Exa Web Search 🔲 P2
 
@@ -1118,8 +1225,8 @@ embeddingJobs: defineTable({
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Focus Mode MVP (AI silent unless invoked) | 🔲 | Zen UI, no proactive interruptions, manual invoke only |
-| Focus sessions (timer + word goals) | 🔲 | Pomodoro/sprint/custom, session stats |
+| Focus Mode MVP (AI silent unless invoked) | ✅ | Zen UI, timer, word goals, session stats (2026-01-11) |
+| Focus sessions (timer + word goals) | ✅ | Pomodoro/sprint/custom, session stats, summary modal (2026-01-11) |
 | Living Model UI entry points | ✅ | Cmd+K “Changes to review” + editor More menu (“Version history”) opens review panel; home entry point TBD |
 | Knowledge PRs review UX (polish) | ✅ (MVP, not production-ready) | Approve/reject + batch actions + provenance + undo (graph/memory); document apply remains editor UI |
 | Project Graph editor UX | 🔲 | Create/edit nodes/edges; registry-aware type picker + properties editor |
@@ -1370,13 +1477,24 @@ After Expo-web is finalized, migrate remaining `apps/web/` code to shared packag
 
 ### Phase 5: Skills + Polish
 
-| Skill | Purpose | Effort |
-|-------|---------|--------|
-| `plan_story` | Plot arcs, beat sheets | 4h |
-| `build_world` | Factions, magic, geography | 4h |
-| `develop_character` | Arc, motivation, backstory | 3h |
-| `research_facts` | RAG + Exa web search | 3h |
-| `analyze_writing` | SDT, pacing, tension | 2h |
+**Skills approach (generalizable, writer-first):**
+- Skills are reusable task presets built on shared primitives (RAG, lint, coach, summary).
+- Start with writer workflows, but keep taxonomy extensible to product/engineering/design/comms.
+- Each skill should define: goal, inputs, guardrails, tool chain, expected output schema, and UI surface.
+- Prefer new skills only when existing lint/coach/summary tasks cannot express the intent.
+
+| Skill | Focus | Purpose | Effort |
+|-------|-------|---------|--------|
+| `plan_story` | Writer | Plot arcs, beat sheets | 4h |
+| `build_world` | Writer | Factions, magic, geography | 4h |
+| `develop_character` | Writer | Arc, motivation, backstory | 3h |
+| `research_facts` | Writer | RAG + web search synthesis | 3h |
+| `analyze_writing` | Writer | SDT, pacing, tension | 2h |
+| `summarize_brief` | General | Short brief for any project | 2h |
+| `review_requirements` | Product | PRD clarity + gaps review | 3h |
+| `draft_tech_spec` | Engineering | Spec outline + risks | 3h |
+| `audit_design_system` | Design | Token/UX consistency checks | 3h |
+| `check_brand_voice` | Comms | Tone consistency + edits | 2h |
 
 ---
 

@@ -18,6 +18,7 @@ import { useLayoutStore, useProjectStore } from '@mythos/state';
 import { Sidebar } from './Sidebar';
 import { AIPanel, AIFloatingButton } from '@/components/ai';
 import { KnowledgePRsPanel } from '@/components/knowledge/KnowledgePRsPanel';
+import { FlowOverlay } from '@/components/flow';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -253,6 +254,9 @@ export function AppShell({ children }: AppShellProps) {
 
       {showFloating && <AIPanel mode="floating" />}
       {showFAB && <AIFloatingButton />}
+
+      {/* Flow Mode Overlay */}
+      <FlowOverlay />
     </View>
   );
 }

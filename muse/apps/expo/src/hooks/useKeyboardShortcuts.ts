@@ -4,11 +4,14 @@
 
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-import { useCommandPaletteStore, useLayoutStore } from '@mythos/state';
+import { useRouter } from 'expo-router';
+import { useCommandPaletteStore, useLayoutStore, useFlowStore } from '@mythos/state';
 
 export function useKeyboardShortcuts() {
+  const router = useRouter();
   const { toggle: toggleCommandPalette } = useCommandPaletteStore();
   const { toggleSidebar, toggleAIPanel } = useLayoutStore();
+  const { toggleFlowMode, enabled: flowEnabled } = useFlowStore();
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -36,9 +39,23 @@ export function useKeyboardShortcuts() {
         toggleAIPanel();
         return;
       }
+
+      // ⌘G - Project graph
+      if (isMeta && e.key === 'g') {
+        e.preventDefault();
+        router.push('/project-graph');
+        return;
+      }
+
+      // ⌘⇧Enter - Toggle Flow Mode
+      if (isMeta && e.shiftKey && e.key === 'Enter') {
+        e.preventDefault();
+        toggleFlowMode();
+        return;
+      }
     };
 
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [toggleCommandPalette, toggleSidebar, toggleAIPanel]);
+  }, [router, toggleCommandPalette, toggleSidebar, toggleAIPanel, toggleFlowMode]);
 }

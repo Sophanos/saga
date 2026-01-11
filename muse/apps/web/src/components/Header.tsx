@@ -1,8 +1,9 @@
-import { BookOpen, Sparkles, Play, FileDown, FileUp, Clock } from "lucide-react";
+import { BookOpen, Sparkles, Play, FileDown, FileUp, Clock, Network } from "lucide-react";
 import { Button } from "@mythos/ui";
 import { ModeToggle } from "./ModeToggle";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { CollaboratorsBar } from "./collaboration/CollaboratorsBar";
+import { FlowToggleButton } from "./flow";
 import { useMythosStore } from "../stores";
 import { useActiveTotalWritingTime, useIsGardenerMode } from "@mythos/state";
 
@@ -24,6 +25,7 @@ function formatWritingTime(seconds: number): string {
 
 export function Header() {
   const openModal = useMythosStore((s) => s.openModal);
+  const setCanvasView = useMythosStore((s) => s.setCanvasView);
 
   // Progressive writing time (gardener mode only)
   const writingTimeSec = useActiveTotalWritingTime();
@@ -63,6 +65,17 @@ export function Header() {
         <div className="w-px h-6 bg-mythos-border-default mx-1" />
         
         {/* Tools */}
+        <FlowToggleButton />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-2"
+          onClick={() => setCanvasView("projectGraph")}
+          data-testid="editor-open-project-graph"
+        >
+          <Network className="w-4 h-4" />
+          <span className="hidden sm:inline">Project Graph</span>
+        </Button>
         <Button variant="ghost" size="sm" className="gap-2">
           <Sparkles className="w-4 h-4" />
           <span className="hidden sm:inline">Genesis</span>

@@ -16,11 +16,12 @@ import { SaveWorkPrompt } from "./auth/SaveWorkPrompt";
 import { ProgressiveNudge, ProgressiveStructureController } from "./progressive";
 import { TryBootstrapController } from "./try/TryBootstrapController";
 import { TryPersonalizationModal } from "./try/TryPersonalizationModal";
+import { FlowOverlay } from "./flow";
 import { useMythosStore, useCurrentProject, useChatMode } from "../stores";
 import { useGlobalShortcuts, useProgressiveLinter } from "../hooks";
 import { useCollaboration } from "../hooks/useCollaboration";
 import { useAuthStore } from "../stores/auth";
-import { useProgressivePanelVisibility } from "@mythos/state";
+import { useProgressivePanelVisibility, useFlowEnabled } from "@mythos/state";
 
 interface LayoutProps {
   /** Anonymous trial mode - shows trial variant of FloatingChat */
@@ -56,6 +57,10 @@ export function Layout({
 
   // Chat mode (floating vs docked)
   const chatMode = useChatMode();
+
+  // Flow mode (distraction-free writing)
+  const flowEnabled = useFlowEnabled();
+  const wordCount = useMythosStore((s) => s.editor.wordCount);
 
   // Progressive panel visibility (gardener mode hides panels until unlocked)
   const { showManifest, showConsole } = useProgressivePanelVisibility();
@@ -167,6 +172,9 @@ export function Layout({
 
       {/* Save work prompt (anonymous mode only) */}
       {isAnonymous && onSignUp && <SaveWorkPrompt onSignUp={onSignUp} />}
+
+      {/* Flow Mode Overlay */}
+      <FlowOverlay wordCount={wordCount} />
     </div>
   );
 }

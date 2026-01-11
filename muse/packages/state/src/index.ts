@@ -287,6 +287,36 @@ export type {
 } from "./progressive";
 
 // ============================================================
+// FLOW MODE STORE
+// ============================================================
+export {
+  useFlowStore,
+  useFlowEnabled,
+  useFlowPreferences,
+  useFlowSession,
+  useFlowTimer,
+  useFocusLevel,
+  useDimOpacity,
+  useTypewriterScrolling,
+  useRecentFlowSessions,
+  useSessionWordsWritten,
+  useSessionDuration,
+  useIsTimerActive,
+  useIsBreak,
+  formatFlowTime,
+  formatFlowDuration,
+} from "./flow";
+export type {
+  FocusLevel,
+  TimerMode,
+  TimerState,
+  FlowPreferences,
+  FlowSession,
+  FlowTimerData,
+  SessionStats,
+} from "./flow";
+
+// ============================================================
 // RESET UTILITIES
 // ============================================================
 export {
