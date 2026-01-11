@@ -624,7 +624,7 @@ export const genesisWorldTool: Tool = {
 export const projectManageTool: Tool = {
   name: "project_manage",
   description:
-    "Bootstrap or migrate a project. Use action=bootstrap to generate a world scaffold; set seed=true to persist entities/relationships to the project.",
+    "Bootstrap or migrate a project. For action=bootstrap: set includeTemplate=true to generate a template draft (structure), and seed=true to persist starter entities/relationships to the project.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -639,6 +639,10 @@ export const projectManageTool: Tool = {
         type: "string",
         description: "High-level story or world description",
         minLength: 10,
+      },
+      includeTemplate: {
+        type: "boolean",
+        description: "Whether to generate a template draft (structure) for the project (default true)",
       },
       seed: {
         type: "boolean",

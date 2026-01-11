@@ -11,6 +11,10 @@ import type { ToolDefinition, ToolExecutionResult } from "../types";
 export interface ProjectManageExecutionResult {
   action: ProjectManageArgs["action"];
   persisted?: boolean;
+  templateName?: string;
+  templateEntityKindCount?: number;
+  templateRelationshipKindCount?: number;
+  hasSuggestedStarterEntities?: boolean;
   worldSummary?: string;
   entityCount?: number;
   relationshipCount?: number;
@@ -28,7 +32,11 @@ export const projectManageExecutor: ToolDefinition<ProjectManageArgs, ProjectMan
     if (args.action === "bootstrap") {
       const preview =
         args.description.length > 50 ? args.description.slice(0, 50) + "..." : args.description;
-      return `Bootstrap: "${preview}"${args.seed ? " (persist)" : " (preview)"}`;
+      const includeTemplate = args.includeTemplate ?? true;
+      if (includeTemplate && args.seed) return `Bootstrap: "${preview}" (structure + seed)`;
+      if (includeTemplate && !args.seed) return `Bootstrap: "${preview}" (structure only)`;
+      if (!includeTemplate && args.seed) return `Bootstrap: "${preview}" (seed)`;
+      return `Bootstrap: "${preview}" (preview)`;
     }
     if (args.action === "restructure") {
       return `Restructure (${args.changes.length} changes)`;
@@ -54,6 +62,13 @@ export const projectManageExecutor: ToolDefinition<ProjectManageArgs, ProjectMan
         return { success: false, error: result.message };
       }
 
+      if (result.template) {
+        ctx.setTemplateDraft?.({
+          template: result.template,
+          suggestedStarterEntities: result.suggestedStarterEntities,
+        });
+      }
+
       ctx.onProgress?.({ stage: "Complete!", pct: 100 });
 
       return {
@@ -61,6 +76,10 @@ export const projectManageExecutor: ToolDefinition<ProjectManageArgs, ProjectMan
         result: {
           action: result.action,
           persisted: result.persisted,
+          templateName: result.template?.name,
+          templateEntityKindCount: result.template?.entityKinds.length,
+          templateRelationshipKindCount: result.template?.relationshipKinds.length,
+          hasSuggestedStarterEntities: (result.suggestedStarterEntities?.length ?? 0) > 0,
           worldSummary: result.worldSummary,
           entityCount: result.entities.length,
           relationshipCount: result.relationships.length,
@@ -76,4 +95,3 @@ export const projectManageExecutor: ToolDefinition<ProjectManageArgs, ProjectMan
     }
   },
 };
-

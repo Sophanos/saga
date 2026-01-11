@@ -304,9 +304,9 @@ These propose complex operations that require user confirmation:
 1. **project_manage** - Bootstrap or migrate a project
    - Use when: Author is starting a new project and wants structure (with or without starter content)
    - Always ask first (plain question or ask_question tool if available):
-     - "Create structure + starter content (recommended)" → seed: true
-     - "Just the structure - I'll add my own content" → seed: false
-   - Then call: { action: "bootstrap", description, seed } (+ optional genre/entityCount/detailLevel/includeOutline)
+     - "Create structure + starter content (recommended)" → includeTemplate: true, seed: true
+     - "Just the structure - I'll add my own content" → includeTemplate: true, seed: false
+   - Then call: { action: "bootstrap", description, includeTemplate: true, seed } (+ optional genre/entityCount/detailLevel/includeOutline)
 
 2. **genesis_world** - Generate a complete world from a story description
    - Use when: Author wants a world scaffold preview (no project changes)
@@ -405,7 +405,7 @@ const SAGA_MODE_ADDENDUMS: Record<SagaMode, string> = {
 
 The author is just starting. Focus on:
 - Understanding their story vision
-- Using project_manage (bootstrap) to scaffold their world (ask seed vs no-seed)
+- Using project_manage (bootstrap) for structure (includeTemplate) + optional starter content (seed)
 - Or generate_template if they describe a specific genre/structure
 
 Be welcoming and encouraging. This might be their first creative writing tool.`,
@@ -414,7 +414,7 @@ Be welcoming and encouraging. This might be their first creative writing tool.`,
 ## Project Creation Context
 
 The author is setting up a new project. Focus on:
-- project_manage (bootstrap) for story concept -> scaffold (seed optional)
+- project_manage (bootstrap) for structure (includeTemplate) + optional starter content (seed)
 - generate_template for custom structure
 - Help them choose between builtin templates or custom generation`,
 
@@ -779,6 +779,10 @@ export type GenerateContentArgs = z.infer<typeof generateContentParameters>;
 const projectManageBootstrapParameters = z.object({
   action: z.literal("bootstrap"),
   description: z.string().describe("High-level story or world description"),
+  includeTemplate: z
+    .boolean()
+    .optional()
+    .describe("Whether to generate a template draft (structure) for the project (default true)"),
   seed: z.boolean().describe("Whether to persist generated entities/relationships into the project"),
   genre: z.string().optional().describe("Optional genre hint"),
   entityCount: z.number().min(3).max(50).optional().describe("Target number of entities (3-50)"),
@@ -976,12 +980,21 @@ export const coreTools = {
  */
 export const sagaTools = {
   project_manage: tool({
-    description: "Bootstrap or migrate a project (ask first whether to seed starter content)",
+    description: "Bootstrap or migrate a project (ask first: structure-only vs structure+starter content)",
     inputSchema: projectManageParameters,
     execute: async (args): Promise<ToolProposal<ProjectManageArgs>> => {
       let message = "Proposed project operation";
       if (args.action === "bootstrap") {
-        message = `Proposed project bootstrap (${args.seed ? "persist" : "preview"}): "${args.description.slice(0, 50)}..."`;
+        const includeTemplate = args.includeTemplate ?? true;
+        let mode = "preview";
+        if (includeTemplate && args.seed) {
+          mode = "structure + seed";
+        } else if (includeTemplate && !args.seed) {
+          mode = "structure only";
+        } else if (!includeTemplate && args.seed) {
+          mode = "seed";
+        }
+        message = `Proposed project bootstrap (${mode}): "${args.description.slice(0, 50)}..."`;
       } else if (args.action === "restructure") {
         message = `Proposed project restructure (${args.changes.length} changes)`;
       } else {

@@ -401,6 +401,8 @@ export interface ProjectManageBootstrapArgs {
   action: "bootstrap";
   /** High-level story or world description */
   description: string;
+  /** Whether to generate a template draft (structure) */
+  includeTemplate?: boolean;
   /** Whether to persist generated entities/relationships into the project */
   seed: boolean;
   /** Optional genre hint */
@@ -1165,6 +1167,10 @@ export interface ProjectManageBootstrapResult {
   action: "bootstrap";
   status: "ok";
   persisted: boolean;
+  /** Optional template draft generated for the project structure */
+  template?: TemplateDraft;
+  /** Optional starter entities suggested by the template generator */
+  suggestedStarterEntities?: GenesisEntity[];
   worldSummary: string;
   suggestedTitle?: string;
   outline?: Array<{ title: string; summary: string }>;

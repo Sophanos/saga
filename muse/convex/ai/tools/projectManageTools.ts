@@ -12,6 +12,10 @@ const detailLevelSchema = z.enum(["minimal", "standard", "detailed"]);
 const bootstrapSchema = z.object({
   action: z.literal("bootstrap"),
   description: z.string().min(10).describe("High-level story or world description"),
+  includeTemplate: z
+    .boolean()
+    .optional()
+    .describe("Whether to generate a template draft (structure) for the project (default true)"),
   seed: z.boolean().describe("Whether to persist generated entities/relationships into the project"),
   genre: z.string().optional().describe("Optional genre hint (e.g., fantasy, sci-fi)"),
   entityCount: z.number().min(3).max(50).optional().describe("Target number of entities to generate (3-50)"),
@@ -49,7 +53,6 @@ const pivotSchema = z.object({
 
 export const projectManageTool = tool({
   description:
-    "Unified project setup tool. Always ask the user (ask_question) whether they want structure-only or structure+starter content before calling. Note: restructure/pivot actions may return not_implemented.",
+    "Unified project setup tool. Always ask the user (ask_question) whether they want structure-only (includeTemplate:true, seed:false) or structure+starter content (includeTemplate:true, seed:true) before calling. Note: restructure/pivot actions may return not_implemented.",
   inputSchema: z.discriminatedUnion("action", [bootstrapSchema, restructureSchema, pivotSchema]),
 });
-

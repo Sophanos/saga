@@ -170,6 +170,9 @@ async function executeProjectManage(
       throw new Error("project_manage.bootstrap requires seed: boolean");
     }
 
+    const includeTemplateRaw = record["includeTemplate"];
+    const includeTemplate =
+      typeof includeTemplateRaw === "boolean" ? (includeTemplateRaw as boolean) : true;
     const genre = typeof record["genre"] === "string" ? (record["genre"] as string) : undefined;
     const entityCount =
       typeof record["entityCount"] === "number" ? (record["entityCount"] as number) : undefined;
@@ -183,6 +186,33 @@ async function executeProjectManage(
     const skipEntityTypes = Array.isArray(record["skipEntityTypes"])
       ? (record["skipEntityTypes"] as unknown[]).filter((t) => typeof t === "string")
       : undefined;
+
+    let templateComplexity: "simple" | "standard" | "complex" = "standard";
+    if (detailLevel === "minimal") {
+      templateComplexity = "simple";
+    } else if (detailLevel === "detailed") {
+      templateComplexity = "complex";
+    }
+    const templateResult = includeTemplate
+      ? await executeGenerateTemplate({
+          storyDescription: description,
+          genreHints: genre ? [genre] : undefined,
+          complexity: detailLevel ? templateComplexity : undefined,
+        })
+      : undefined;
+
+    if (!seed && includeTemplate) {
+      return {
+        action: "bootstrap",
+        status: "ok",
+        persisted: false,
+        template: templateResult?.template,
+        suggestedStarterEntities: templateResult?.suggestedStarterEntities,
+        worldSummary: "",
+        entities: [],
+        relationships: [],
+      };
+    }
 
     const genesisResult = await ctx.runAction((internal as any)["ai/genesis"].runGenesis, {
       prompt: description,
@@ -222,6 +252,8 @@ async function executeProjectManage(
       action: "bootstrap",
       status: "ok",
       persisted: seed,
+      template: templateResult?.template,
+      suggestedStarterEntities: templateResult?.suggestedStarterEntities,
       worldSummary: typeof genesisResult?.worldSummary === "string" ? genesisResult.worldSummary : "",
       suggestedTitle:
         typeof genesisResult?.suggestedTitle === "string" ? genesisResult.suggestedTitle : undefined,
