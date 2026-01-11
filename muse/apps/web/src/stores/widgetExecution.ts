@@ -27,12 +27,20 @@ interface WidgetExecutionState {
   abortController: AbortController | null;
 }
 
+interface InlineApplyResult {
+  applied: boolean;
+  error?: string;
+  executionId?: string;
+  originalText?: string;
+  appliedText?: string;
+}
+
 interface WidgetExecutionActions {
   start: (params: WidgetInvokeRequest & { widgetType: WidgetType; widgetLabel: string }) => void;
   setTitle: (title: string) => void;
   reset: () => void;
   cancel: () => void;
-  confirmInlineApply: (editor: Editor | null) => { applied: boolean; error?: string };
+  confirmInlineApply: (editor: Editor | null) => InlineApplyResult;
 }
 
 const initialState: WidgetExecutionState = {
@@ -183,7 +191,7 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
         to: editor.state.selection.to,
       };
 
-      applyInlineWidget({
+      const result = applyInlineWidget({
         editor,
         executionId,
         widgetId: currentWidgetId,
@@ -192,7 +200,12 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
         content: previewContent,
       });
 
-      return { applied: true };
+      return {
+        applied: true,
+        executionId,
+        originalText: result.originalText,
+        appliedText: result.appliedText,
+      };
     },
   }))
 );

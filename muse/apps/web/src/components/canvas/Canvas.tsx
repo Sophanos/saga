@@ -58,6 +58,7 @@ import { SceneListBlock } from "../editor/SceneListBlock";
 import { ProjectGraphView } from "../project-graph";
 import { ProjectStartCanvas } from "../projects";
 import { ArtifactsView } from "../artifacts/ArtifactsView";
+import { ExecutionMarkerOverlay } from "../widgets/ExecutionMarkerOverlay";
 
 /**
  * Placeholder content shown when no document is selected
@@ -895,6 +896,11 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
           </div>
         </div>
       </ScrollArea>
+
+      <ExecutionMarkerOverlay
+        editor={editor}
+        projectId={currentProject?.id ?? null}
+      />
 
       {/* Entity Suggestion Modal */}
       <EntitySuggestionModal

@@ -13,6 +13,7 @@ interface ApplyInlineWidgetResult {
   from: number;
   to: number;
   originalText: string;
+  appliedText: string;
 }
 
 export function applyInlineWidget(
@@ -47,9 +48,12 @@ export function applyInlineWidget(
     editor.commands.setTextSelection(endPos);
   }
 
+  const appliedText = editor.state.doc.textBetween(safeFrom, endPos, "\n");
+
   return {
     from: safeFrom,
     to: endPos,
     originalText,
+    appliedText,
   };
 }

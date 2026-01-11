@@ -46,7 +46,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 
 **2026-01-11 (night)**
 - Widgets MVP1: widget capability kind + shared contract, Convex schema + `/ai/widgets` stream, web wedge (Cmd+K filter, slash menu, progress/preview, receipts).
-- Widgets MVP1: inline apply markers + highlight, receipts source picker, artifacts list/detail with staleness badges.
+- Widgets MVP1: inline apply markers + highlight + revert overlay, receipts source picker, artifacts list/detail with staleness badges.
 - Flow Mode: FlowFocus extension (iA Writer dimming), TypewriterScroll, FlowTimerPanel with break reminders.
 - Template Builder: project type selection, PhaseIndicator, ProgressiveTemplatePreview, domain-specific questions.
 - Project setup: unified `project_manage` tool; bootstrap generates template; `seed` flag controls starter content.

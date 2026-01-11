@@ -102,6 +102,19 @@
   background-color: rgba(56, 189, 248, 0.18);
 }
 
+/* Widget execution markers */
+.execution-marker {
+  @apply relative cursor-pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: rgba(148, 163, 184, 0.45);
+  text-underline-offset: 2px;
+}
+
+.execution-marker:hover {
+  background-color: rgba(148, 163, 184, 0.12);
+}
+
 /* Resize handle styling */
 [data-panel-group-direction="horizontal"] > [data-panel-resize-handle-id] {
   @apply w-1 bg-mythos-bg-tertiary transition-colors;

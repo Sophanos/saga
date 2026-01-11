@@ -38,6 +38,7 @@ export function WidgetPreviewModal() {
   const editorInstance = useMythosStore((s) => s.editor.editorInstance) as Editor | null;
   const projectId = useMythosStore((s) => s.project.currentProject?.id);
   const createArtifact = useMutation(api.artifacts.createFromExecution);
+  const recordInlineApply = useMutation((api as any).widgetExecutions.recordInlineApply);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -59,6 +60,19 @@ export function WidgetPreviewModal() {
         setLocalError(result.error ?? "Failed to apply widget");
         return;
       }
+
+      if (result.executionId && result.originalText !== undefined && result.appliedText !== undefined) {
+        try {
+          await recordInlineApply({
+            executionId: result.executionId,
+            originalText: result.originalText,
+            appliedText: result.appliedText,
+          });
+        } catch (error) {
+          console.warn("Failed to record inline apply", error);
+        }
+      }
+
       reset();
       return;
     }

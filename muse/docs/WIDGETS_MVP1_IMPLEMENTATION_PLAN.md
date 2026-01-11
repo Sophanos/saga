@@ -43,11 +43,11 @@ Implemented now (scaffold + working wedge):
   - Progress tile + preview modal + receipts block (`muse/apps/web/src/components/widgets/*`).
   - Slash menu wiring for widgets + Ask AI fallback (`muse/apps/web/src/components/canvas/Canvas.tsx` + `muse/packages/editor/src/extensions/slash-command.ts`).
   - Inline apply markers + applied highlight + apply helper (`muse/packages/editor/src/extensions/execution-marker.ts`, `muse/packages/editor/src/extensions/applied-highlight.ts`, `muse/apps/web/src/lib/widgets/applyInlineWidget.ts`).
+  - Inline revert UI (execution marker hover + revert action stored on `widgetExecutions`).
   - Receipts source picker + manual add/remove wiring (`muse/apps/web/src/components/widgets/SourcePickerModal.tsx`, `muse/apps/web/src/components/widgets/ReceiptsBlock.tsx`).
   - Artifacts list/detail view (web) with staleness badges (`muse/apps/web/src/components/artifacts/ArtifactsView.tsx`, `muse/apps/web/src/components/canvas/Canvas.tsx`, `muse/apps/web/src/commands/navigation-commands.ts`).
 
 Still pending (planned):
-- Inline revert UI (markers exist; add hover + revert action).
 - Regenerate same inputs + diff preview (Convex + UI).
 - Staleness badges on list rows + regenerate flow UI.
 - Expo artifact widget flow (view/list/receipts).
