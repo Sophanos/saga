@@ -6,6 +6,14 @@ MLP2 adds **proactivity without interruptions**: Muse runs background analysis a
 
 ---
 
+## Sequencing note (planning)
+
+- MLP1 is validated on Expo web only (no Tauri).
+- MLP2 is deferred until after MLP1 and is planned before any Tauri development begins.
+- A refactor pass (web architecture consolidation) is scheduled between MLP1 and MLP2; Tauri development follows after MLP2.
+
+---
+
 ## Product promise (keep it honest)
 
 - **Flow Mode stays distraction-free.** Muse can be proactive in the background, but it must not interrupt the writer.
