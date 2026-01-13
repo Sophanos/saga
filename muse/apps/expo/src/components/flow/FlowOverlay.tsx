@@ -8,9 +8,15 @@
  */
 
 import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
-import { View, StyleSheet, Platform, Pressable } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { useTheme, spacing, useCurrentProjectId } from '@/design-system';
+import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated';
+import { useTheme, spacing, typography, useCurrentProjectId } from '@/design-system';
 import {
   useFlowStore,
   useFlowEnabled,
@@ -19,6 +25,8 @@ import {
   useFlowSession,
   useShouldAutoReveal,
   useEditorWordCount,
+  useSessionWordsWritten,
+  useDimOpacity,
   type SessionStats,
 } from '@mythos/state';
 import { useMutation } from 'convex/react';
@@ -44,6 +52,8 @@ export function FlowOverlay({ children, wordCount: propWordCount = 0, documentId
   const timer = useFlowTimer();
   const session = useFlowSession();
   const shouldAutoReveal = useShouldAutoReveal();
+  const wordsWritten = useSessionWordsWritten();
+  const dimOpacity = useDimOpacity();
   const projectId = useCurrentProjectId();
   const exitFlowMode = useFlowStore((s) => s.exitFlowMode);
   const updateWordCount = useFlowStore((s) => s.updateWordCount);
@@ -60,6 +70,18 @@ export function FlowOverlay({ children, wordCount: propWordCount = 0, documentId
   const [showSummary, setShowSummary] = useState(false);
   const [showTimerPanel, setShowTimerPanel] = useState(false);
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
+
+  // Auto-hide header state
+  const [headerVisible, setHeaderVisible] = useState(false);
+  const headerOpacity = useSharedValue(0);
+  const headerTranslateY = useSharedValue(-8);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Animated style for header
+  const headerAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: headerOpacity.value,
+    transform: [{ translateY: headerTranslateY.value }],
+  }));
 
   // Track if we've already notified about auto-reveal (to avoid repeated opens)
   const hasNotifiedAutoReveal = useRef(false);
@@ -159,6 +181,55 @@ export function FlowOverlay({ children, wordCount: propWordCount = 0, documentId
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [enabled, handleExit, showTimerPanel]);
 
+  // Auto-hide header - show on mouse proximity to top edge (web only)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !enabled) return;
+
+    const TRIGGER_ZONE = 60; // px from top to trigger header
+    const HIDE_DELAY = 400; // ms delay before hiding
+
+    const showHeader = () => {
+      setHeaderVisible(true);
+      headerOpacity.value = withTiming(1, { duration: 150 });
+      headerTranslateY.value = withTiming(0, { duration: 150 });
+    };
+
+    const hideHeader = () => {
+      setHeaderVisible(false);
+      headerOpacity.value = withTiming(0, { duration: 150 });
+      headerTranslateY.value = withTiming(-8, { duration: 150 });
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const isNearTop = e.clientY < TRIGGER_ZONE;
+
+      if (isNearTop) {
+        // Clear any pending hide timeout
+        if (hideTimeoutRef.current) {
+          clearTimeout(hideTimeoutRef.current);
+          hideTimeoutRef.current = null;
+        }
+        showHeader();
+      } else {
+        // Delay hiding to prevent flickering
+        if (!hideTimeoutRef.current) {
+          hideTimeoutRef.current = setTimeout(() => {
+            hideHeader();
+            hideTimeoutRef.current = null;
+          }, HIDE_DELAY);
+        }
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, [enabled, headerOpacity, headerTranslateY]);
+
   // Close summary modal
   const handleCloseSummary = useCallback(() => {
     setShowSummary(false);
@@ -169,9 +240,12 @@ export function FlowOverlay({ children, wordCount: propWordCount = 0, documentId
   // Use visibility/opacity instead of conditional rendering for the overlay elements.
   return (
     <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
-      {/* Flow header - only visible when enabled */}
+      {/* Flow header - auto-hides, appears on mouse proximity to top (web) */}
       {enabled && (
-        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
+        <Animated.View
+          style={headerAnimatedStyle}
+          pointerEvents={headerVisible ? 'auto' : 'none'}
+        >
           <FlowHeader onExit={handleExit} onTimerPress={handleTimerPress} />
         </Animated.View>
       )}
@@ -200,6 +274,20 @@ export function FlowOverlay({ children, wordCount: propWordCount = 0, documentId
         <View style={styles.content}>
           {children}
         </View>
+
+        {/* Bottom-left word counter - subtle, dimmed */}
+        {enabled && (
+          <View style={styles.wordCounter}>
+            <Text style={[styles.wordCountText, { color: colors.text, opacity: dimOpacity }]}>
+              {wordsWritten.toLocaleString()} words
+              {preferences.sessionWordGoal && (
+                <Text style={{ color: colors.textMuted }}>
+                  {' '}/ {preferences.sessionWordGoal.toLocaleString()}
+                </Text>
+              )}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Summary modal (shown after exit) */}
@@ -228,5 +316,15 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  wordCounter: {
+    position: 'absolute',
+    bottom: spacing[4],
+    left: spacing[4],
+    zIndex: 20,
+  },
+  wordCountText: {
+    fontFamily: 'SpaceMono',
+    fontSize: typography.sm,
   },
 });

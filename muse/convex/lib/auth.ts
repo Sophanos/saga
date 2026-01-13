@@ -2,24 +2,42 @@
  * Authentication helpers for Convex functions
  *
  * Provides utilities for validating user identity and project access.
- * Uses Better Auth JWT tokens passed through Convex auth.
+ * Uses Convex Auth JWT tokens passed through Convex auth.
  */
 
+import {
+  getAuthUserId as convexGetAuthUserId,
+} from "@convex-dev/auth/server";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 
 type AuthContext = QueryCtx | MutationCtx;
 
 /**
- * Get the authenticated user's ID from Better Auth JWT
+ * Get the authenticated user's ID from Convex Auth JWT
  * @throws Error if not authenticated
+ * @returns User ID as string (for backward compatibility with ownerId fields)
  */
 export async function getAuthUserId(ctx: AuthContext): Promise<string> {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
+  const userId = await convexGetAuthUserId(ctx);
+  if (!userId) {
     throw new Error("Unauthenticated");
   }
-  return identity.subject;
+  // Convert Id<"users"> to string for compatibility with existing ownerId fields
+  return userId as string;
+}
+
+/**
+ * Get the authenticated user's document ID
+ * @throws Error if not authenticated
+ * @returns User document ID
+ */
+export async function getAuthUserDocId(ctx: AuthContext): Promise<Id<"users">> {
+  const userId = await convexGetAuthUserId(ctx);
+  if (!userId) {
+    throw new Error("Unauthenticated");
+  }
+  return userId;
 }
 
 /**
@@ -27,8 +45,26 @@ export async function getAuthUserId(ctx: AuthContext): Promise<string> {
  * Use this for optional auth scenarios
  */
 export async function getOptionalAuthUserId(ctx: AuthContext): Promise<string | null> {
-  const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? null;
+  const userId = await convexGetAuthUserId(ctx);
+  return userId ? (userId as string) : null;
+}
+
+/**
+ * Get user by ID from the users table
+ * @returns User document or null if not found
+ */
+export async function getUserById(ctx: AuthContext, userId: string): Promise<{
+  _id: Id<"users">;
+  name?: string;
+  email?: string;
+  image?: string;
+} | null> {
+  try {
+    const user = await ctx.db.get(userId as Id<"users">);
+    return user;
+  } catch {
+    return null;
+  }
 }
 
 /**

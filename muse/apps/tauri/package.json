@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@convex-dev/better-auth": "^0.10.9",
+    "@convex-dev/auth": "^0.0.90",
     "@mythos/auth": "workspace:*",
     "@mythos/consent": "workspace:*",
     "@mythos/core": "workspace:*",
@@ -28,7 +28,6 @@
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-deep-link": "^2.0.0",
     "@tauri-apps/plugin-shell": "^2.0.0",
-    "better-auth": "1.4.9",
     "convex": "^1.31.2",
     "lucide-react": "^0.454.0",
     "posthog-js": "^1.316.0",

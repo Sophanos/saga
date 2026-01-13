@@ -15,15 +15,12 @@ import {
   AlignLeft,
   Minus,
   Coffee,
-  Target,
 } from "lucide-react";
 import { Button } from "@mythos/ui";
 import {
   useFlowStore,
   useFlowTimer,
-  useFlowPreferences,
   useFocusLevel,
-  useSessionWordsWritten,
   formatFlowTime,
   type FocusLevel,
 } from "@mythos/state";
@@ -34,9 +31,7 @@ interface FlowHeaderProps {
 
 export function FlowHeader({ onExit }: FlowHeaderProps) {
   const timer = useFlowTimer();
-  const preferences = useFlowPreferences();
   const focusLevel = useFocusLevel();
-  const wordsWritten = useSessionWordsWritten();
 
   const startTimer = useFlowStore((s) => s.startTimer);
   const pauseTimer = useFlowStore((s) => s.pauseTimer);
@@ -104,118 +99,73 @@ export function FlowHeader({ onExit }: FlowHeaderProps) {
   // Focus level icon
   const FocusIcon = focusLevel === "sentence" ? Type : focusLevel === "paragraph" ? AlignLeft : Minus;
 
-  // Word goal progress
-  const goalProgress = preferences.sessionWordGoal
-    ? Math.min(100, (wordsWritten / preferences.sessionWordGoal) * 100)
-    : null;
-
   return (
     <header
-      className="flow-header relative z-20 flex items-center justify-between px-6 py-3"
+      className="flow-header relative z-20 flex items-center justify-between px-4 py-2"
       data-testid="flow-header"
     >
-      {/* Left: Timer */}
-      <div className="flex items-center gap-3">
-        {/* Timer display */}
-        <div
+      {/* Left: Timer - minimal display with hover controls */}
+      <div className="group flex items-center gap-2">
+        {/* Timer display - clean, no box */}
+        <button
+          onClick={handleTimerToggle}
           className={`
-            flex items-center gap-2 px-3 py-1.5 rounded-lg
-            bg-mythos-bg-secondary/50 backdrop-blur-sm
-            border border-mythos-border-subtle
+            flex items-center gap-1.5 text-mythos-text-muted hover:text-mythos-text-secondary
+            transition-colors cursor-pointer
             ${timer.state === "running" ? "flow-timer-running" : ""}
             ${timer.isBreak ? "flow-timer-break" : ""}
           `}
+          data-testid="flow-timer-toggle"
         >
           {timer.isBreak ? (
-            <Coffee className="w-4 h-4 text-mythos-accent-cyan" />
+            <Coffee className="w-3.5 h-3.5 text-mythos-accent-cyan" />
+          ) : timer.state === "running" ? (
+            <Pause className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
           ) : (
-            <Target className="w-4 h-4 text-mythos-text-muted" />
+            <Play className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
           )}
-          <span className={`flow-stat text-base font-medium ${getTimerColor()}`}>
+          <span className={`flow-stat text-sm ${getTimerColor()}`}>
             {formatFlowTime(timer.remainingSeconds)}
           </span>
-        </div>
+        </button>
 
-        {/* Timer controls */}
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-mythos-text-secondary hover:text-mythos-text-primary"
-            onClick={handleTimerToggle}
-            data-testid="flow-timer-toggle"
-          >
-            {timer.state === "running" || timer.state === "break" ? (
-              <Pause className="w-4 h-4" />
-            ) : (
-              <Play className="w-4 h-4" />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-mythos-text-secondary hover:text-mythos-text-primary"
-            onClick={resetTimer}
-            data-testid="flow-timer-reset"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Center: Word count & goal */}
-      <div className="flex flex-col items-center gap-1">
-        <div className="flex items-center gap-3">
-          <span className="flow-stat text-mythos-text-secondary">
-            <span className="text-mythos-text-primary font-semibold">
-              {wordsWritten.toLocaleString()}
-            </span>
-            {" words"}
-          </span>
-          {preferences.sessionWordGoal && (
-            <span className="text-mythos-text-muted text-xs">
-              / {preferences.sessionWordGoal.toLocaleString()} goal
-            </span>
-          )}
-        </div>
-        {goalProgress !== null && (
-          <div className="flow-goal-bar w-32">
-            <div
-              className="flow-goal-progress"
-              style={{ width: `${goalProgress}%` }}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Right: Focus controls & exit */}
-      <div className="flex items-center gap-3">
-        {/* Focus level toggle */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-2 text-mythos-text-secondary hover:text-mythos-text-primary"
-          onClick={cycleFocusLevel}
-          data-testid="flow-focus-toggle"
-        >
-          <FocusIcon className="w-4 h-4" />
-          <span className="text-xs capitalize hidden sm:inline">
-            {focusLevel === "none" ? "No focus" : `${focusLevel} focus`}
-          </span>
-        </Button>
-
-        {/* Divider */}
-        <div className="w-px h-6 bg-mythos-border-subtle" />
-
-        {/* Exit button */}
+        {/* Reset - only visible on hover */}
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-mythos-text-secondary hover:text-mythos-text-primary hover:bg-mythos-bg-hover"
+          className="h-6 w-6 text-mythos-text-muted hover:text-mythos-text-secondary opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={resetTimer}
+          data-testid="flow-timer-reset"
+        >
+          <RotateCcw className="w-3 h-3" />
+        </Button>
+      </div>
+
+      {/* Right: Focus controls & exit - minimal */}
+      <div className="flex items-center gap-2">
+        {/* Focus level toggle - subtle */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-mythos-text-muted hover:text-mythos-text-secondary"
+          onClick={cycleFocusLevel}
+          data-testid="flow-focus-toggle"
+        >
+          <FocusIcon className="w-3.5 h-3.5" />
+          <span className="text-xs capitalize">
+            {focusLevel === "none" ? "Off" : focusLevel === "sentence" ? "Sentence" : "Paragraph"}
+          </span>
+        </Button>
+
+        {/* Exit button - subtle */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-mythos-text-muted hover:text-mythos-text-secondary"
           onClick={onExit}
           data-testid="flow-exit-button"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </Button>
       </div>
     </header>

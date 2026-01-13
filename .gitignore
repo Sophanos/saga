@@ -46,3 +46,10 @@ yarn-error.log*
 
 # Claude Code
 .claude
+
+# Temp files and debug scripts
+.tmp/
+scripts/
+
+# Icon
+rhei.Icon

@@ -51,7 +51,7 @@ export interface BuilderToolInvocation {
 
 export interface UseTemplateBuilderAgentOptions {
   projectType: ProjectType;
-  /** Base URL for the API (e.g., 'https://cascada.vision') */
+  /** Base URL for the API (e.g., 'https://rhei.team') */
   baseUrl: string;
   /** Optional API key for BYOK mode */
   apiKey?: string;

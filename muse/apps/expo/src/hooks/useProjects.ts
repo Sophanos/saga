@@ -5,10 +5,9 @@
  */
 
 import { useMemo } from 'react';
-import { useQuery } from 'convex/react';
+import { useQuery, useConvexAuth } from 'convex/react';
 import { api } from '../../../../convex/_generated/api';
 import type { Id } from '../../../../convex/_generated/dataModel';
-import { useSession } from '@/lib/auth';
 
 export interface Project {
   id: Id<'projects'>;
@@ -27,9 +26,8 @@ export interface UseProjectsResult {
 }
 
 export function useProjects(): UseProjectsResult {
-  const { data: session, isPending } = useSession();
-  const isAuthenticated = !isPending && !!session?.user;
-  const projectsQuery = useQuery(api.projects.list, isAuthenticated ? {} : 'skip');
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  const projectsQuery = useQuery(api.projects.list, !isLoading && isAuthenticated ? {} : 'skip');
 
   const projects = useMemo(() => {
     if (!projectsQuery) return [];
@@ -49,7 +47,7 @@ export function useProjects(): UseProjectsResult {
 
   return {
     projects,
-    isLoading: isPending || (isAuthenticated && projectsQuery === undefined),
+    isLoading: isLoading || (isAuthenticated && projectsQuery === undefined),
     error: null, // Convex throws on error, doesn't return it
   };
 }

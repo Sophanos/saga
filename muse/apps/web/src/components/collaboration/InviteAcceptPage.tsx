@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Button, Card, CardContent } from "@mythos/ui";
 import { useAuthStore } from "../../stores/auth";
-import { signOut } from "../../lib/auth";
+import { useSignOut } from "../../lib/auth";
 import { AuthScreen } from "../auth";
 import { LAST_PROJECT_KEY, PENDING_INVITE_TOKEN_KEY } from "../../constants/storageKeys";
 
@@ -37,7 +37,8 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isLoading = useAuthStore((state) => state.isLoading);
   const user = useAuthStore((state) => state.user);
-  const authStoreSignOut = useAuthStore((state) => state.signOut);
+  const resetAuthStore = useAuthStore((state) => state.reset);
+  const signOut = useSignOut();
 
   // Convex queries and mutations
   const invitation = useQuery(api.collaboration.getInvitationByToken, { token });
@@ -150,11 +151,11 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
     } catch (err) {
       console.warn("[Auth] Failed to sign out:", err);
     }
-    authStoreSignOut();
+    resetAuthStore();
     // Clear the stored token so they can use a fresh link
     sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
     window.location.assign(window.location.pathname);
-  }, [authStoreSignOut]);
+  }, [signOut, resetAuthStore]);
 
   const handleReturnHome = useCallback(() => {
     sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);

@@ -5,33 +5,12 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { X, User, Mail, Camera, Check, AlertCircle, Loader2, LogOut, Sparkles } from "lucide-react";
+import { useMutation } from "convex/react";
 import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, FormField, Select, type SelectOption } from "@mythos/ui";
+import { api } from "../../../../../convex/_generated/api";
 import { useAuthStore } from "../../stores/auth";
-import { signOut as authSignOut, authClient } from "../../lib/auth";
+import { useSignOut } from "../../lib/auth";
 import type { NameCulture, NameStyle, LogicStrictness } from "@mythos/agent-protocol";
-
-// Wrapper for sign out
-async function signOut() {
-  try {
-    await authSignOut();
-    return { error: null };
-  } catch (err) {
-    return { error: err instanceof Error ? err : new Error("Failed to sign out") };
-  }
-}
-
-// Wrapper for profile update via Better Auth
-async function updateProfile(_userId: string, data: { name?: string; avatar_url?: string; preferences?: unknown }) {
-  try {
-    await authClient.updateUser({
-      name: data.name,
-      image: data.avatar_url,
-    });
-    return { error: null };
-  } catch (err) {
-    return { error: err instanceof Error ? err : new Error("Failed to update profile") };
-  }
-}
 
 // Genre options
 const GENRE_OPTIONS: SelectOption[] = [
@@ -84,6 +63,8 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
   // Auth state
   const user = useAuthStore((state) => state.user);
   const updateUserProfile = useAuthStore((state) => state.updateUserProfile);
+  const signOut = useSignOut();
+  const updateProfileMutation = useMutation(api.users.updateProfile);
 
   // Form state
   const [name, setName] = useState(user?.name || "");
@@ -142,50 +123,44 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
       },
     };
 
+    const trimmedName = name.trim() || undefined;
+    const trimmedAvatar = avatarUrl.trim() || undefined;
+
     try {
       // Optimistically update the local store
       updateUserProfile({
-        name: name.trim() || undefined,
-        avatarUrl: avatarUrl.trim() || undefined,
+        name: trimmedName,
+        avatarUrl: trimmedAvatar,
         preferences: nextPreferences,
       });
 
-      // Save to database
-      const { error: updateError } = await updateProfile(user.id, {
-        name: name.trim() || undefined,
-        avatar_url: avatarUrl.trim() || undefined,
-        preferences: nextPreferences,
+      // Persist name/image to Convex
+      await updateProfileMutation({
+        name: trimmedName,
+        image: trimmedAvatar,
       });
 
-      if (updateError) {
-        setError(updateError.message);
-        // Revert optimistic update
-        updateUserProfile({
-          name: user.name,
-          avatarUrl: user.avatarUrl,
-          preferences: user.preferences,
-        });
-      } else {
-        setSuccessMessage("Profile updated successfully");
-        setTimeout(() => setSuccessMessage(null), 3000);
-      }
+      setSuccessMessage("Profile updated successfully");
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update profile");
+      // Revert optimistic update
+      updateUserProfile({
+        name: user.name,
+        avatarUrl: user.avatarUrl,
+        preferences: user.preferences,
+      });
     } finally {
       setIsSaving(false);
     }
-  }, [user, name, avatarUrl, preferredGenre, namingCulture, namingStyle, logicStrictness, updateUserProfile]);
+  }, [user, name, avatarUrl, preferredGenre, namingCulture, namingStyle, logicStrictness, updateUserProfile, updateProfileMutation]);
 
   const handleSignOut = useCallback(async () => {
     setIsSigningOut(true);
     setError(null);
 
     try {
-      const { error: signOutError } = await signOut();
-      if (signOutError) {
-        setError(signOutError.message);
-        return;
-      }
+      await signOut();
       // If successful, the auth sync hook will handle the state update
       window.location.assign("/");
     } catch (err) {
@@ -193,7 +168,7 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
     } finally {
       setIsSigningOut(false);
     }
-  }, []);
+  }, [signOut]);
 
   const handleClose = useCallback(() => {
     // Reset form to original values

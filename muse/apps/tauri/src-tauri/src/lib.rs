@@ -5,7 +5,7 @@
 //! - Deep link handling for OAuth
 //! - In-App Purchases (Mac App Store)
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 /// Receives messages from the editor WebView and emits to React frontend
@@ -22,15 +22,19 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             // Register deep link scheme for OAuth callbacks
+            // Note: This only works in bundled builds, not dev mode
             #[cfg(desktop)]
             {
                 let handle = app.handle().clone();
-                app.deep_link().register("mythos").map_err(|e| {
-                    eprintln!("Failed to register deep link: {}", e);
-                    e
-                })?;
 
-                // Listen for deep link events
+                // Deep link registration fails in dev mode (not bundled)
+                // This is expected - OAuth callbacks won't work in dev
+                match app.deep_link().register("mythos") {
+                    Ok(_) => println!("[deep-link] Registered mythos:// scheme"),
+                    Err(e) => eprintln!("[deep-link] Failed to register (expected in dev): {}", e),
+                }
+
+                // Listen for deep link events (still set up handler for when it works)
                 app.deep_link().on_open_url(move |event| {
                     let urls = event.urls();
                     for url in urls {

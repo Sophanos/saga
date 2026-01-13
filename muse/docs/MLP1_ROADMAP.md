@@ -1,10 +1,13 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-11 (AI centralization: @mythos/ai/client + hooks; platform adapter pattern)
+> Last Updated: 2026-01-12 (Coherence spec added)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
 > See also: [MLP2 Proactivity Engine](./MLP2_PROACTIVITY_ENGINE.md)
+> See also: [Coherence Spec](./COHERENCE_SPEC.md) (persona-aware consistency)
+> See also: [Rhei GPT Context](./GPT_RHEI_CONTEXT.md) (messaging + prompts)
+> See also: [Landing Page Spec](./LANDING_PAGE_SPEC.md) (design + animations)
 
 ## Purpose
 
@@ -376,6 +379,23 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 - Universal entity profile page not implemented.
 - Template icon/color defaults incomplete for non-writer templates.
 - Web entity/relationship diffs missing (Expo has them).
+
+## MLP1 → MLP2 Bridge (Recommended Path)
+
+Finish MLP1, then bridge to MLP2 Proactivity via Coherence:
+
+| Step | Deliverable | Spec |
+|------|-------------|------|
+| 1 | Widgets MVP1 pipeline + approvals + receipts | [WIDGETS.md](./WIDGETS.md) |
+| 2 | Universal Entity Profile page | [Planned] |
+| 3 | Phase 1.5 async jobs/notifications (workpool + inbox) | [Phase 1.5](#phase-15-async--notifications) |
+| 4 | Pulse + Coherence checks (MLP2 entry) | [COHERENCE_SPEC.md](./COHERENCE_SPEC.md), [MLP2](./MLP2_PROACTIVITY_ENGINE.md) |
+
+**Coherence phases (writer-first):**
+1. Project profiles + session vectors (Flow Mode speed layer)
+2. Individual profile pipeline (voice centroid + overuse)
+3. UX: underlines + status bar + Pulse panel
+4. Expand to other personas (Researcher → Product → Engineer → Marketing/Comms)
 
 ## Schema Sync Issues
 

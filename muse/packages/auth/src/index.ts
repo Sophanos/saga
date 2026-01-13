@@ -6,7 +6,7 @@
  * - Tauri (macOS/Windows)
  * - Web
  *
- * Uses Better Auth with Convex backend.
+ * Uses Convex Auth with Convex backend.
  */
 
 export * from "./types";

@@ -31,7 +31,9 @@ export const runWidgetToStream = internalAction({
     const now = Date.now();
 
     const document = args.documentId
-      ? await ctx.db.get(args.documentId as Id<"documents">)
+      ? await ctx.runQuery((internal as any)["ai/tools/ragHandlers"].getDocumentById, {
+          documentId: args.documentId as Id<"documents">,
+        })
       : null;
 
     if (document && document.projectId !== args.projectId) {
@@ -57,7 +59,7 @@ export const runWidgetToStream = internalAction({
         ]
       : [];
 
-    const executionId = await ctx.db.insert("widgetExecutions", {
+    const executionId = await ctx.runMutation((internal as any).widgetExecutions.createInternal, {
       projectId: args.projectId,
       userId: args.userId,
       widgetId: widget.id,
@@ -84,7 +86,10 @@ export const runWidgetToStream = internalAction({
 
     const apiKey = process.env["OPENROUTER_API_KEY"];
     if (!apiKey) {
-      await ctx.db.patch(executionId, { status: "error", error: "OPENROUTER_API_KEY not configured" });
+      await ctx.runMutation((internal as any).widgetExecutions.patchInternal, {
+        executionId,
+        patch: { status: "error", error: "OPENROUTER_API_KEY not configured" },
+      });
       await failStream(ctx, args.streamId, "OPENROUTER_API_KEY not configured");
       return;
     }
@@ -144,10 +149,13 @@ export const runWidgetToStream = internalAction({
         content,
       });
 
-      await ctx.db.patch(executionId, {
-        status: "preview",
-        output: content,
-        completedAt: Date.now(),
+      await ctx.runMutation((internal as any).widgetExecutions.patchInternal, {
+        executionId,
+        patch: {
+          status: "preview",
+          output: content,
+          completedAt: Date.now(),
+        },
       });
 
       const titleSuggestion = buildTitleSuggestion(widget, document?.title ?? null);
@@ -194,7 +202,10 @@ export const runWidgetToStream = internalAction({
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Widget generation failed";
-      await ctx.db.patch(executionId, { status: "error", error: message });
+      await ctx.runMutation((internal as any).widgetExecutions.patchInternal, {
+        executionId,
+        patch: { status: "error", error: message },
+      });
       await failStream(ctx, args.streamId, message);
     }
   },

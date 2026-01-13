@@ -1,38 +1,77 @@
 /**
  * AuthCallback Component
- * Handles OAuth callback from Better Auth
+ * Handles OAuth and magic link callbacks from Convex Auth
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { useConvexAuth } from "convex/react";
 
 interface AuthCallbackProps {
   onComplete?: () => void;
 }
 
-export function AuthCallback({ onComplete }: AuthCallbackProps) {
-  const [error] = useState<string | null>(null);
+export function AuthCallback({ onComplete }: AuthCallbackProps): JSX.Element {
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  const [timedOut, setTimedOut] = useState(false);
+
+  const callbackParams = useMemo(() => {
+    if (typeof window === "undefined") {
+      return { code: null, state: null, error: null, errorDescription: null };
+    }
+    const params = new URLSearchParams(window.location.search);
+    return {
+      code: params.get("code"),
+      state: params.get("state"),
+      error: params.get("error"),
+      errorDescription: params.get("error_description"),
+    };
+  }, []);
+
+  const hasCallbackParams = Boolean(
+    callbackParams.code || callbackParams.state || callbackParams.error
+  );
+  const isCallbackPath =
+    typeof window !== "undefined" && window.location.pathname === "/auth/callback";
+  const hasCallbackFlow = hasCallbackParams || isCallbackPath;
 
   useEffect(() => {
-    // Better Auth handles the OAuth callback automatically via crossDomainClient
-    // Just wait a moment for the session to be established, then redirect
-    const timer = setTimeout(() => {
+    if (isAuthenticated) {
       if (onComplete) {
         onComplete();
-      } else {
+      } else if (typeof window !== "undefined") {
         window.location.href = "/";
       }
-    }, 1000);
+    }
+  }, [isAuthenticated, onComplete]);
 
-    return () => clearTimeout(timer);
-  }, [onComplete]);
+  useEffect(() => {
+    if (isAuthenticated || isLoading) {
+      return;
+    }
 
-  if (error) {
+    if (!hasCallbackFlow && typeof window !== "undefined") {
+      window.location.href = "/login";
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setTimedOut(true);
+    }, 15000);
+
+    return () => window.clearTimeout(timer);
+  }, [hasCallbackFlow, isAuthenticated, isLoading]);
+
+  if (callbackParams.error || timedOut) {
+    const message =
+      callbackParams.errorDescription ||
+      callbackParams.error ||
+      "We could not complete your sign-in. Please try again.";
     return (
       <div className="min-h-screen bg-mythos-bg-primary flex items-center justify-center">
         <div className="text-center">
           <div className="text-mythos-accent-red mb-4">Authentication failed</div>
-          <p className="text-mythos-text-muted text-sm mb-4">{error}</p>
+          <p className="text-mythos-text-muted text-sm mb-4">{message}</p>
           <button
             onClick={() => window.location.href = "/login"}
             className="px-4 py-2 bg-mythos-bg-secondary border border-mythos-border-default rounded text-sm"

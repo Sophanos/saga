@@ -9,7 +9,6 @@ import { LandingPage } from "./pages";
 import { useProjects } from "./hooks/useProjects";
 import { useProjectLoader } from "./hooks/useProjectLoader";
 import { useAnonymousProjectLoader } from "./hooks/useAnonymousProjectLoader";
-import { authClient } from "./lib/auth";
 import { useAuthStore } from "./stores/auth";
 import { useNavigationStore } from "./stores/navigation";
 import { useMythosStore } from "./stores";
@@ -264,18 +263,14 @@ function AuthenticatedApp() {
 }
 
 function App() {
-  // Auth state from store
   const isLoading = useAuthStore((state) => state.isLoading);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const setAuthenticatedUser = useAuthStore((state) => state.setAuthenticatedUser);
-  const setLoading = useAuthStore((state) => state.setLoading);
-  const signOut = useAuthStore((state) => state.signOut);
 
   // State for showing auth screen vs landing page
   // Initialize based on URL path to support direct navigation
   const [showAuth, setShowAuth] = useState(() => {
     const path = window.location.pathname;
-    return path === "/login" || path === "/signup";
+    return path === "/login" || path === "/signup" || path === "/sign-in" || path === "/sign-up";
   });
 
   // Check for /try route (anonymous trial)
@@ -293,33 +288,15 @@ function App() {
   const inviteToken = inviteTokenFromPath ?? pendingInviteToken;
   const isInviteRoute = Boolean(inviteToken);
 
-  // Sync Better Auth session with Zustand store
-  const { data: session, isPending: sessionLoading } = authClient.useSession();
-
-  useEffect(() => {
-    setLoading(sessionLoading);
-    if (sessionLoading) return;
-
-    if (session?.user) {
-      setAuthenticatedUser({
-        id: session.user.id,
-        email: session.user.email,
-        name: session.user.name ?? undefined,
-        avatarUrl: session.user.image ?? undefined,
-      });
-    } else {
-      signOut();
-    }
-  }, [session, sessionLoading, setAuthenticatedUser, setLoading, signOut]);
+  // Handle OAuth callback FIRST - before loading check
+  // The callback page handles its own loading state
+  if (isAuthCallback) {
+    return <AuthCallback onComplete={() => window.location.href = "/"} />;
+  }
 
   // Show loading state while checking auth
   if (isLoading) {
     return <LoadingScreen />;
-  }
-
-  // Handle OAuth callback
-  if (isAuthCallback) {
-    return <AuthCallback onComplete={() => window.location.href = "/"} />;
   }
 
   // Handle invitation acceptance route
@@ -353,7 +330,7 @@ function App() {
       <div onClick={(e) => {
         const target = e.target as HTMLElement;
         const link = target.closest('a');
-        if (link && (link.href.includes('/login') || link.href.includes('/signup'))) {
+        if (link && (link.href.includes('/login') || link.href.includes('/signup') || link.href.includes('/sign-in') || link.href.includes('/sign-up'))) {
           e.preventDefault();
           setShowAuth(true);
         }

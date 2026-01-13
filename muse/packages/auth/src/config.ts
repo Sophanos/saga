@@ -3,7 +3,7 @@
  */
 
 export interface AuthConfig {
-  /** Convex site URL for Better Auth */
+  /** Convex Auth issuer origin for sign-in/callbacks */
   convexSiteUrl: string;
   /** Convex API URL */
   convexUrl: string;
@@ -17,23 +17,51 @@ export interface AuthConfig {
 
 /**
  * Default configuration (override per-platform)
- * Note: BetterAuth runs on Convex HTTP Actions (port 3221), served via cascada.vision
- *       Convex API (sync, deploy) runs on convex.cascada.vision (port 3220)
+ * Note: Convex Auth runs on Convex HTTP Actions, typically served via convex.rhei.team
  */
 export const defaultConfig: AuthConfig = {
-  convexSiteUrl: "https://cascada.vision",
-  convexUrl: "https://convex.cascada.vision",
+  convexSiteUrl: "https://convex.rhei.team",
+  convexUrl: "https://convex.rhei.team",
   scheme: "mythos",
   environment: "production",
 };
 
 let _config: AuthConfig = defaultConfig;
 
+function assertValidUrl(value: string, label: string): void {
+  try {
+    new URL(value);
+  } catch {
+    throw new Error(`[auth/config] ${label} is not a valid URL: ${value}`);
+  }
+}
+
+/**
+ * Validate auth configuration
+ */
+export function validateAuthConfig(config: AuthConfig): void {
+  if (!config.convexSiteUrl) {
+    throw new Error("[auth/config] convexSiteUrl is required");
+  }
+
+  if (!config.convexUrl) {
+    throw new Error("[auth/config] convexUrl is required");
+  }
+
+  if (!config.scheme) {
+    throw new Error("[auth/config] scheme is required");
+  }
+
+  assertValidUrl(config.convexSiteUrl, "convexSiteUrl");
+  assertValidUrl(config.convexUrl, "convexUrl");
+}
+
 /**
  * Initialize auth configuration
  */
 export function initAuthConfig(config: Partial<AuthConfig>): AuthConfig {
   _config = { ...defaultConfig, ...config };
+  validateAuthConfig(_config);
   return _config;
 }
 

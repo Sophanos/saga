@@ -4,10 +4,10 @@
  * React hooks for authentication and subscription state.
  */
 
-import { useEffect, useCallback } from "react";
+import { useEffect } from "react";
 import { useAuthStore, useSubscriptionStore } from "../store";
 import { getPlatform, isNativePlatform } from "../config";
-import type { Session, Subscription, User } from "../types";
+import type { Subscription, User } from "../types";
 
 /**
  * Hook: Get current user
@@ -92,46 +92,8 @@ export function useAuth() {
 }
 
 /**
- * Hook: Initialize auth sync
- * Call this at app root to sync Better Auth session with store
- */
-export function useAuthSync(authClient: any): { sync: () => Promise<void> } {
-  const setUser = useAuthStore((s) => s.setUser);
-  const setSession = useAuthStore((s) => s.setSession);
-  const setLoading = useAuthStore((s) => s.setLoading);
-  const setError = useAuthStore((s) => s.setError);
-
-  const { data, isPending, error, refetch } = authClient.useSession();
-
-  useEffect(() => {
-    setLoading(isPending);
-  }, [isPending, setLoading]);
-
-  useEffect(() => {
-    if (isPending) return;
-
-    if (error) {
-      setError(error.message ?? "Auth sync failed");
-      setUser(null);
-      setSession(null);
-      return;
-    }
-
-    setError(null);
-    setUser((data?.user as User | null) ?? null);
-    setSession((data?.session as Session | null) ?? null);
-  }, [data, error, isPending, setError, setSession, setUser]);
-
-  const sync = useCallback(async () => {
-    await refetch();
-  }, [refetch]);
-
-  return { sync };
-}
-
-/**
  * Hook: Initialize RevenueCat sync
- * Call this at app root to sync RevenueCat with Better Auth user
+ * Call this at app root to sync RevenueCat with the auth user
  */
 export function useRevenueCatSync() {
   const userId = useAuthStore((s) => s.user?.id);

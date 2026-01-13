@@ -20,10 +20,12 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useConvexAuth, useQuery } from 'convex/react';
+import { api } from '../../../../../convex/_generated/api';
 import { useTheme, spacing, typography, radii, shadows } from '@/design-system';
 import { useProjectStore } from '@mythos/state';
 import { createProjectFromBootstrap } from '@mythos/core';
-import { useSession, signOut } from '@/lib/auth';
+import { useSignOut } from '@/lib/auth';
 import { useProjects, type Project } from '@/hooks';
 
 interface ProjectPickerDropdownProps {
@@ -46,7 +48,9 @@ export function ProjectPickerDropdown({
 }: ProjectPickerDropdownProps) {
   const { colors } = useTheme();
   const router = useRouter();
-  const { data: session } = useSession();
+  const { isAuthenticated } = useConvexAuth();
+  const currentUser = useQuery(api.users.getCurrentUser, isAuthenticated ? {} : "skip");
+  const signOut = useSignOut();
   const { projects, isLoading } = useProjects();
   const currentProject = useProjectStore((s) => s.project);
   const setProject = useProjectStore((s) => s.setProject);
@@ -89,7 +93,7 @@ export function ProjectPickerDropdown({
 
   if (!visible) return null;
 
-  const userEmail = session?.user?.email || 'User';
+  const userEmail = currentUser?.email || 'User';
   const memberCount = 1; // TODO: Get actual member count
 
   return (

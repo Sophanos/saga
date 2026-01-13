@@ -20,33 +20,10 @@ import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useMythosStore } from "../../stores";
 import { useAuthStore } from "../../stores/auth";
-import { signOut as authSignOut, authClient } from "../../lib/auth";
+import { useSignOut } from "../../lib/auth";
 import { useApiKey } from "../../hooks/useApiKey";
 import { formatGraphErrorMessage } from "../../utils";
 import type { NameCulture, NameStyle, LogicStrictness, SmartModeLevel, SmartModeConfig } from "@mythos/agent-protocol";
-
-// Wrapper for sign out
-async function signOut() {
-  try {
-    await authSignOut();
-    return { error: null };
-  } catch (err) {
-    return { error: err instanceof Error ? err : new Error("Failed to sign out") };
-  }
-}
-
-// Wrapper for profile update via Better Auth
-async function updateProfile(_userId: string, data: { name?: string; avatar_url?: string; preferences?: unknown }) {
-  try {
-    await authClient.updateUser({
-      name: data.name,
-      image: data.avatar_url,
-    });
-    return { error: null };
-  } catch (err) {
-    return { error: err instanceof Error ? err : new Error("Failed to update profile") };
-  }
-}
 
 type SettingsSection = "profile" | "personalization" | "api" | "project";
 
@@ -112,6 +89,8 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
   const updateUserProfile = useAuthStore((state) => state.updateUserProfile);
   const { key, saveKey, clearKey, hasKey } = useApiKey();
   const project = useMythosStore((state) => state.project.currentProject);
+  const signOut = useSignOut();
+  const updateProfileMutation = useMutation(api.users.updateProfile);
 
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
 
@@ -228,33 +207,33 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     setSuccessMessage(null);
 
     const nextPreferences = buildNextPreferences();
+    const trimmedName = name.trim() || undefined;
+    const trimmedAvatar = avatarUrl.trim() || undefined;
 
     try {
+      // Optimistic update to store
       updateUserProfile({
-        name: name.trim() || undefined,
-        avatarUrl: avatarUrl.trim() || undefined,
+        name: trimmedName,
+        avatarUrl: trimmedAvatar,
         preferences: nextPreferences,
       });
 
-      const { error: updateError } = await updateProfile(user.id, {
-        name: name.trim() || undefined,
-        avatar_url: avatarUrl.trim() || undefined,
-        preferences: nextPreferences,
+      // Persist name/image to Convex
+      await updateProfileMutation({
+        name: trimmedName,
+        image: trimmedAvatar,
       });
 
-      if (updateError) {
-        setError(updateError.message);
-        updateUserProfile({
-          name: user.name,
-          avatarUrl: user.avatarUrl,
-          preferences: user.preferences,
-        });
-      } else {
-        setSuccessMessage("Profile updated successfully");
-        setTimeout(() => setSuccessMessage(null), 3000);
-      }
+      setSuccessMessage("Profile updated successfully");
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update profile");
+      // Revert optimistic update
+      updateUserProfile({
+        name: user.name,
+        avatarUrl: user.avatarUrl,
+        preferences: user.preferences,
+      });
     } finally {
       setIsSaving(false);
     }
@@ -264,6 +243,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     avatarUrl,
     buildNextPreferences,
     updateUserProfile,
+    updateProfileMutation,
   ]);
 
   const handleSavePreferences = useCallback(async () => {
@@ -275,22 +255,16 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     const nextPreferences = buildNextPreferences();
 
     try {
+      // Preferences are stored in zustand store (local)
+      // TODO: Add backend persistence for preferences if needed
       updateUserProfile({
         preferences: nextPreferences,
       });
-
-      const { error: updateError } = await updateProfile(user.id, {
-        preferences: nextPreferences,
-      });
-
-      if (updateError) {
-        setError(updateError.message);
-        updateUserProfile({
-          preferences: user.preferences,
-        });
-      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update profile");
+      setError(err instanceof Error ? err.message : "Failed to update preferences");
+      updateUserProfile({
+        preferences: user.preferences,
+      });
     } finally {
       setIsAutoSaving(false);
     }
@@ -336,18 +310,14 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     setIsSigningOut(true);
     setError(null);
     try {
-      const { error: signOutError } = await signOut();
-      if (signOutError) {
-        setError(signOutError.message);
-        return;
-      }
+      await signOut();
       window.location.assign("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to sign out");
     } finally {
       setIsSigningOut(false);
     }
-  }, []);
+  }, [signOut]);
 
   const handleSaveApiKey = useCallback(() => {
     if (apiKeyInput.trim()) {

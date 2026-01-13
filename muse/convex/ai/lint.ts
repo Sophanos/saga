@@ -5,6 +5,8 @@
  * Migrated from Supabase Edge Function.
  */
 
+"use node";
+
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -14,6 +16,16 @@ import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
 import { getModelForTaskSync, checkTaskAccess, type TierId } from "../lib/providers";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const DEFAULT_ANALYZE_TEXT_MAX_CHARS = 20000;
+const ANALYZE_TEXT_MAX_CHARS = resolveAnalyzeTextMaxChars();
+
+function resolveAnalyzeTextMaxChars(): number {
+  const raw = process.env["ANALYZE_TEXT_MAX_CHARS"];
+  if (!raw) return DEFAULT_ANALYZE_TEXT_MAX_CHARS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_ANALYZE_TEXT_MAX_CHARS;
+  return Math.floor(parsed);
+}
 
 interface ConsistencyIssue {
   type: "character" | "world" | "plot" | "timeline";
@@ -51,24 +63,37 @@ interface OpenRouterResponse {
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars);
+}
+
+function safeJsonStringify(value: unknown, maxChars: number): string {
+  const json = JSON.stringify(value, null, 2) ?? "";
+  if (json.length <= maxChars) return json;
+  return `${json.slice(0, maxChars)}\n...`;
+}
+
 function buildAnalysisPrompt(
   documentContent: string,
   entities?: unknown[],
   relationships?: unknown[],
   canonDecisions?: string
 ): string {
-  let prompt = `## Document Content:\n${documentContent}`;
+  const trimmedContent = truncateText(documentContent, ANALYZE_TEXT_MAX_CHARS);
+  let prompt = `## Document Content:\n${trimmedContent}`;
 
   if (canonDecisions) {
-    prompt += `\n\n## Canon Decisions (cite [M:...] tags when flagging contradictions):\n${canonDecisions}`;
+    const trimmedCanon = truncateText(canonDecisions, ANALYZE_TEXT_MAX_CHARS);
+    prompt += `\n\n## Canon Decisions (cite [M:...] tags when flagging contradictions):\n${trimmedCanon}`;
   }
 
   if (entities && entities.length > 0) {
-    prompt += `\n\n## Known Entities:\n${JSON.stringify(entities, null, 2)}`;
+    prompt += `\n\n## Known Entities:\n${safeJsonStringify(entities, ANALYZE_TEXT_MAX_CHARS)}`;
   }
 
   if (relationships && relationships.length > 0) {
-    prompt += `\n\n## Relationships:\n${JSON.stringify(relationships, null, 2)}`;
+    prompt += `\n\n## Relationships:\n${safeJsonStringify(relationships, ANALYZE_TEXT_MAX_CHARS)}`;
   }
 
   return prompt;

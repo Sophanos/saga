@@ -16,8 +16,8 @@ import {
   upsertPoints,
 } from "../lib/qdrant";
 
-const DEFAULT_BATCH_SIZE = 10;
-const MAX_EMBED_BATCH = 16;
+const DEFAULT_BATCH_SIZE = 5;
+const MAX_EMBED_BATCH = 8;
 const MAX_CHUNK_CHARS = 1200;
 const EMBEDDING_QUEUE_DEBOUNCE_MS = 15000;
 const EMBEDDING_JOB_LEASE_MS = 5 * 60 * 1000;

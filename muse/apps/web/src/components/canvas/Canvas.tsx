@@ -36,7 +36,7 @@ import { useDynamicsExtraction } from "../../hooks/useDynamicsExtraction";
 import { useAutoSave } from "../../hooks/useAutoSave";
 import { useAutoApplyEntityMarks } from "../../hooks/useEntityMarks";
 import { useMythosStore, useEntities, useCanvasView, useCurrentProject } from "../../stores";
-import { useCommandPaletteStore } from "../../stores/commandPalette";
+import { useCommandPaletteStore, useRecentCommandIds } from "../../stores/commandPalette";
 import { useWidgetExecutionStore } from "../../stores/widgetExecution";
 import {
   useMood,
@@ -298,9 +298,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     };
   }, []);
 
-  const recentCommandIds = useCommandPaletteStore((state) =>
-    state.getRecentCommandIds(currentProject?.id)
-  );
+  const recentCommandIds = useRecentCommandIds(currentProject?.id);
 
   const slashItems = useMemo<SlashCommandItem[]>(() => {
     const widgetItems: SlashCommandItem[] = getCapabilitiesForSurface("slash_menu")

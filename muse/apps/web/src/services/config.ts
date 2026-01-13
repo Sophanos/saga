@@ -97,8 +97,8 @@ export type RetryConfigKey = keyof typeof RETRY_CONFIG;
 export const USE_CONVEX_AI = import.meta.env['VITE_USE_CONVEX_AI'] !== 'false';
 
 /** Convex deployment URL for HTTP Actions */
-export const CONVEX_URL = import.meta.env['VITE_CONVEX_URL'] || 'https://convex.cascada.vision';
-export const CONVEX_SITE_URL = import.meta.env['VITE_CONVEX_SITE_URL'] || 'https://cascada.vision';
+export const CONVEX_URL = import.meta.env['VITE_CONVEX_URL'] || 'https://convex.rhei.team';
+export const CONVEX_SITE_URL = import.meta.env['VITE_CONVEX_SITE_URL'] || 'https://rhei.team';
 
 /** Legacy Supabase URL for Edge Functions (deprecated). */
 export const SUPABASE_URL = import.meta.env['VITE_SUPABASE_URL'] || '';

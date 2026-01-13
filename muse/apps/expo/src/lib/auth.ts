@@ -1,62 +1,67 @@
 /**
  * Expo Auth Configuration
  *
- * Initializes Better Auth and RevenueCat for Expo.
+ * Initializes Convex Auth and RevenueCat for Expo.
  */
 
-import { createAuthClient } from "better-auth/react";
-import { convexClient, crossDomainClient } from "@convex-dev/better-auth/client/plugins";
-import { expoClient } from "@better-auth/expo/client";
-import Constants from "expo-constants";
-import * as SecureStore from "expo-secure-store";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { Platform } from "react-native";
+import * as Linking from "expo-linking";
+import Constants from "expo-constants";
 import { initAuthConfig, setPlatform } from "@mythos/auth";
 import { initRevenueCat as initRC } from "@mythos/auth/revenuecat";
 
 // Set platform for auth package using expo-constants (web-safe)
-const expoOS = Constants.platform?.ios ? "ios"
-  : Constants.platform?.android ? "android"
-  : typeof window !== "undefined" && typeof document !== "undefined" ? "web"
-  : "web";
-setPlatform(expoOS as "ios" | "android" | "web");
+function getExpoPlatform(): "ios" | "android" | "web" {
+  if (Constants.platform?.ios) {
+    return "ios";
+  }
+  if (Constants.platform?.android) {
+    return "android";
+  }
+  return "web";
+}
+
+setPlatform(getExpoPlatform());
 
 // Environment variables
-// BetterAuth runs on Convex HTTP Actions (port 3221), served via cascada.vision
-const CONVEX_SITE_URL = process.env.EXPO_PUBLIC_CONVEX_SITE_URL || "https://cascada.vision";
-const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://convex.cascada.vision";
+// Auth domain should match CONVEX_SITE_URL (Option A: single domain for sign-in/callbacks)
+const CONVEX_SITE_URL = process.env.EXPO_PUBLIC_CONVEX_SITE_URL || "https://rhei.team";
+const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://convex.rhei.team";
 const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
 
 // Get app scheme from Expo config
 const schemeValue = Constants.expoConfig?.scheme;
 const scheme = Array.isArray(schemeValue) ? schemeValue[0] : schemeValue ?? "mythos";
 
-/**
- * Better Auth client for Expo
- * - Web: Uses crossDomainClient (localStorage + Better-Auth-Cookie header)
- * - Native: Uses expoClient (SecureStore)
- */
-const isWeb = Platform.OS === "web";
+function getAuthRedirectTo(): string | undefined {
+  if (Platform.OS === "web") {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    return `${window.location.origin}/callback`;
+  }
+  return Linking.createURL("/callback", { scheme });
+}
 
-export const authClient = createAuthClient({
-  baseURL: CONVEX_SITE_URL,
-  plugins: isWeb
-    ? [
-        // Web: crossDomainClient handles cross-origin auth via localStorage
-        crossDomainClient({
-          storagePrefix: "better-auth",
-        }),
-        convexClient(),
-      ]
-    : [
-        // Native: expoClient uses SecureStore
-        expoClient({
-          scheme,
-          storagePrefix: scheme,
-          storage: SecureStore,
-        }),
-        convexClient(),
-      ],
-});
+async function openAuthRedirect(result: { redirect?: URL }): Promise<void> {
+  if (Platform.OS === "web") {
+    return;
+  }
+  if (result.redirect) {
+    await Linking.openURL(result.redirect.toString());
+  }
+}
+
+async function signInWithOAuthProvider(
+  signIn: (provider: string, params?: Record<string, string>) => Promise<{ redirect?: URL }>,
+  provider: string
+): Promise<void> {
+  const redirectTo = getAuthRedirectTo();
+  const params = redirectTo ? { redirectTo } : undefined;
+  const result = await signIn(provider, params);
+  await openAuthRedirect(result);
+}
 
 /**
  * Initialize auth configuration
@@ -89,73 +94,60 @@ export async function initRevenueCat() {
 }
 
 /**
- * Sign in with email
+ * Hook to get auth actions
  */
-export async function signInWithEmail(email: string, password: string) {
-  // Pass callbackURL to prevent crossDomain redirect to site root
-  const result = await authClient.signIn.email({
-    email,
-    password,
-    callbackURL: typeof window !== 'undefined' ? window.location.origin : undefined,
-  });
-  
-  // Debug: Check if cookie was stored
-  if (typeof window !== 'undefined' && window.localStorage) {
-    console.log('[auth] localStorage after sign-in:', {
-      'better-auth_cookie': localStorage.getItem('better-auth_cookie'),
-    });
-  }
-  
-  return result;
+export { useAuthActions };
+
+/**
+ * Sign in with magic link (email)
+ */
+export function useSignInWithEmail() {
+  const { signIn } = useAuthActions();
+  return async (email: string) => {
+    const formData = new FormData();
+    formData.append("email", email);
+    const redirectTo = getAuthRedirectTo();
+    if (redirectTo) {
+      formData.append("redirectTo", redirectTo);
+    }
+    return signIn("resend", formData);
+  };
 }
 
 /**
- * Sign up with email
+ * Sign in with GitHub
  */
-export async function signUpWithEmail(email: string, password: string, name?: string) {
-  // Pass callbackURL to prevent crossDomain redirect to site root
-  return authClient.signUp.email({
-    email,
-    password,
-    name: name || "",
-    callbackURL: typeof window !== 'undefined' ? window.location.origin : undefined,
-  });
+export function useSignInWithGitHub() {
+  const { signIn } = useAuthActions();
+  return () => signInWithOAuthProvider(signIn, "github");
 }
 
 /**
  * Sign in with Apple
  */
-export async function signInWithApple() {
-  return authClient.signIn.social({
-    provider: "apple",
-    callbackURL: `${scheme}://auth/callback`,
-  });
+export function useSignInWithApple() {
+  const { signIn } = useAuthActions();
+  return () => signInWithOAuthProvider(signIn, "apple");
 }
 
 /**
  * Sign in with Google
  */
-export async function signInWithGoogle() {
-  return authClient.signIn.social({
-    provider: "google",
-    callbackURL: `${scheme}://auth/callback`,
-  });
+export function useSignInWithGoogle() {
+  const { signIn } = useAuthActions();
+  return () => signInWithOAuthProvider(signIn, "google");
 }
 
 /**
- * Sign out
+ * Sign out hook
  */
-export async function signOut() {
-  const { logoutRevenueCat } = await import("@mythos/auth/revenuecat");
-  await logoutRevenueCat();
-  return authClient.signOut();
-}
-
-/**
- * Get current session
- */
-export function useSession() {
-  return authClient.useSession();
+export function useSignOut() {
+  const { signOut } = useAuthActions();
+  return async () => {
+    const { logoutRevenueCat } = await import("@mythos/auth/revenuecat");
+    await logoutRevenueCat();
+    return signOut();
+  };
 }
 
 // Re-export hooks from @mythos/auth

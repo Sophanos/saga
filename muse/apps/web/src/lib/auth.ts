@@ -1,11 +1,10 @@
 /**
  * Web Auth Configuration
  *
- * Initializes Better Auth for web platform.
+ * Initializes Convex Auth for web platform.
  */
 
-import { createAuthClient } from "better-auth/react";
-import { convexClient, crossDomainClient } from "@convex-dev/better-auth/client/plugins";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { initAuthConfig, setPlatform } from "@mythos/auth";
 import { invalidateTokenCache } from "./tokenCache";
 
@@ -13,22 +12,16 @@ import { invalidateTokenCache } from "./tokenCache";
 setPlatform("web");
 
 // Environment variables
-const CONVEX_SITE_URL = import.meta.env["VITE_CONVEX_SITE_URL"] || "https://cascada.vision";
-const CONVEX_URL = import.meta.env["VITE_CONVEX_URL"] || "https://convex.cascada.vision";
+// Auth domain should match CONVEX_SITE_URL (Option A: single domain for sign-in/callbacks)
+const CONVEX_SITE_URL = import.meta.env["VITE_CONVEX_SITE_URL"] || "https://rhei.team";
+const CONVEX_URL = import.meta.env["VITE_CONVEX_URL"] || "https://convex.rhei.team";
 
-/**
- * Better Auth client for Web
- * Uses crossDomainClient (localStorage + Better-Auth-Cookie header)
- */
-export const authClient = createAuthClient({
-  baseURL: CONVEX_SITE_URL,
-  plugins: [
-    crossDomainClient({
-      storagePrefix: "better-auth",
-    }),
-    convexClient(),
-  ],
-});
+function getAuthRedirectTo(): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+  return `${window.location.origin}/callback`;
+}
 
 /**
  * Initialize auth configuration
@@ -43,61 +36,77 @@ export function initAuth() {
 }
 
 /**
- * Sign in with email
+ * Hook to get auth actions
  */
-export async function signInWithEmail(email: string, password: string) {
-  return authClient.signIn.email({
-    email,
-    password,
-    callbackURL: window.location.origin,
-  });
+export { useAuthActions };
+
+/**
+ * Sign in with magic link (email)
+ */
+export function useSignInWithEmail() {
+  const { signIn } = useAuthActions();
+  return async (email: string) => {
+    const formData = new FormData();
+    formData.append("email", email);
+    const redirectTo = getAuthRedirectTo();
+    if (redirectTo) {
+      formData.append("redirectTo", redirectTo);
+    }
+    return signIn("resend", formData);
+  };
 }
 
 /**
- * Sign up with email
+ * Sign in with GitHub
  */
-export async function signUpWithEmail(email: string, password: string, name?: string) {
-  return authClient.signUp.email({
-    email,
-    password,
-    name: name || "",
-    callbackURL: window.location.origin,
-  });
+export function useSignInWithGitHub() {
+  const { signIn } = useAuthActions();
+  return () => {
+    const redirectTo = getAuthRedirectTo();
+    if (redirectTo) {
+      return signIn("github", { redirectTo });
+    }
+    return signIn("github");
+  };
 }
 
 /**
  * Sign in with Apple
  */
-export async function signInWithApple() {
-  return authClient.signIn.social({
-    provider: "apple",
-    callbackURL: `${window.location.origin}/auth/callback`,
-  });
+export function useSignInWithApple() {
+  const { signIn } = useAuthActions();
+  return () => {
+    const redirectTo = getAuthRedirectTo();
+    if (redirectTo) {
+      return signIn("apple", { redirectTo });
+    }
+    return signIn("apple");
+  };
 }
 
 /**
  * Sign in with Google
  */
-export async function signInWithGoogle() {
-  return authClient.signIn.social({
-    provider: "google",
-    callbackURL: `${window.location.origin}/auth/callback`,
-  });
+export function useSignInWithGoogle() {
+  const { signIn } = useAuthActions();
+  return () => {
+    const redirectTo = getAuthRedirectTo();
+    if (redirectTo) {
+      return signIn("google", { redirectTo });
+    }
+    return signIn("google");
+  };
 }
 
 /**
- * Sign out
+ * Sign out hook
  */
-export async function signOut() {
-  invalidateTokenCache();
-  return authClient.signOut();
-}
-
-/**
- * Get current session
- */
-export function useSession() {
-  return authClient.useSession();
+export function useSignOut() {
+  const { signOut } = useAuthActions();
+  return async () => {
+    invalidateTokenCache();
+    return signOut();
+  };
 }
 
 // Re-export hooks from @mythos/auth

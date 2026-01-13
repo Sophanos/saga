@@ -1,13 +1,7 @@
 /**
  * Web Auth Store
- * Instance of the auth store configured for web platform
+ * Re-exported from the canonical @mythos/auth store.
  */
 
-import { createAuthStore, type AuthState } from "@mythos/state";
-import { webStorage } from "@mythos/storage";
-
-// Create the auth store with web storage adapter
-export const useAuthStore = createAuthStore(webStorage);
-
-// Re-export types for convenience
-export type { AuthState };
+export { useAuthStore } from "@mythos/auth";
+export type { AuthState } from "@mythos/auth";

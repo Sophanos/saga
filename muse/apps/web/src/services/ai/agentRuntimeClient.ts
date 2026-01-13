@@ -66,7 +66,7 @@ export interface SagaChatPayload {
 }
 
 // Platform config
-const CONVEX_SITE_URL = import.meta.env['VITE_CONVEX_SITE_URL'] || 'https://cascada.vision';
+const CONVEX_SITE_URL = import.meta.env['VITE_CONVEX_SITE_URL'] || 'https://rhei.team';
 
 async function resolveAuthHeader(authToken?: string): Promise<string | null> {
   if (authToken) {

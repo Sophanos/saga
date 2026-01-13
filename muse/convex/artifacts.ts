@@ -15,7 +15,7 @@ export const createFromExecution = mutation({
   },
   handler: async (ctx, args) => {
     const { projectId, executionId, title, type } = args;
-    const { userId } = await verifyProjectEditor(ctx, projectId);
+    const userId = await verifyProjectEditor(ctx, projectId);
 
     const execution = await ctx.db.get(executionId);
     if (!execution || execution.projectId !== projectId) {
@@ -109,6 +109,7 @@ export const updateSources = mutation({
         }
 
         const resolved = await resolveSource(ctx, artifact.projectId, item.type, item.id);
+        if (!resolved) continue;
         sources.push({
           type: resolved.type,
           id: resolved.id,
@@ -165,7 +166,7 @@ export const list = query({
   args: {
     projectId: v.id("projects"),
     type: v.optional(v.string()),
-    status: v.optional(v.string()),
+    status: v.optional(v.union(v.literal("draft"), v.literal("manually_modified"))),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {

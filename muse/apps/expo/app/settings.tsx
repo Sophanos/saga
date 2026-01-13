@@ -6,11 +6,12 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Switch, Alert, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMutation, useAction } from 'convex/react';
+import { useMutation, useAction, useConvexAuth } from 'convex/react';
+import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { useTheme, spacing, typography, radii } from '@/design-system';
 import { useLayoutStore } from '@mythos/state';
-import { useSession, signOut } from '@/lib/auth';
+import { useSignOut } from '@/lib/auth';
 
 function blurActiveElement(): void {
   if (Platform.OS !== 'web' || typeof document === 'undefined') {
@@ -28,7 +29,9 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { sidebarCollapsed, toggleSidebar } = useLayoutStore();
-  const { data: session } = useSession();
+  const { isAuthenticated } = useConvexAuth();
+  const currentUser = useQuery(api.users.getCurrentUser, isAuthenticated ? {} : "skip");
+  const signOut = useSignOut();
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [deletionPreview, setDeletionPreview] = useState<{
@@ -104,12 +107,12 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>ACCOUNT</Text>
 
-          {session?.user ? (
+          {currentUser ? (
             <>
               <View style={[styles.row, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
                 <Text style={[styles.rowLabel, { color: colors.text }]}>Email</Text>
                 <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
-                  {session.user.email}
+                  {currentUser.email ?? ""}
                 </Text>
               </View>
 

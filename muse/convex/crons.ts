@@ -106,7 +106,7 @@ crons.weekly(
 crons.interval(
   "process-vector-delete-jobs",
   { minutes: 1 },
-  internal.maintenance.processVectorDeleteJobs
+  internal.maintenanceNode.processVectorDeleteJobs
 );
 
 crons.interval(

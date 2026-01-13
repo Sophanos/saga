@@ -1,137 +1,73 @@
 /**
  * Tauri Auth Client
  *
- * Better Auth client configured for Tauri (desktop).
- * Uses crossDomainClient for webview auth.
+ * Convex Auth configured for Tauri (desktop).
+ * Handles OAuth via system browser with deep link callbacks.
  */
 
-import { createAuthClient } from "better-auth/react";
-import { convexClient, crossDomainClient } from "@convex-dev/better-auth/client/plugins";
-import { getAuthConfig } from "../config";
+// Re-export Convex Auth hooks
+export { useAuthActions, useAuthToken } from "@convex-dev/auth/react";
+export { useConvexAuth, Authenticated, Unauthenticated, AuthLoading } from "convex/react";
+
+export type AuthProvider = "github" | "google" | "apple" | "resend";
 
 /**
- * Create Tauri auth client
+ * Sign in with OAuth provider in Tauri
+ * Opens system browser for OAuth, handles callback via deep link
  */
-export function createTauriAuthClient() {
-  const config = getAuthConfig();
+export async function signInWithOAuth(
+  signIn: (provider: string) => Promise<{ redirect?: URL }>,
+  provider: AuthProvider
+): Promise<void> {
+  const result = await signIn(provider);
 
-  return createAuthClient({
-    baseURL: config.convexSiteUrl,
-    plugins: [
-      convexClient(),
-      crossDomainClient(),
-    ],
-  });
-}
-
-/**
- * Singleton Tauri auth client
- */
-let _tauriAuthClient: ReturnType<typeof createTauriAuthClient> | null = null;
-
-export function getTauriAuthClient() {
-  if (!_tauriAuthClient) {
-    _tauriAuthClient = createTauriAuthClient();
-  }
-  return _tauriAuthClient;
-}
-
-/**
- * Sign in with email/password (Tauri)
- */
-export function signInWithEmail(email: string, password: string) {
-  const client = getTauriAuthClient();
-  return client.signIn.email({ email, password });
-}
-
-/**
- * Sign up with email/password (Tauri)
- */
-export function signUpWithEmail(
-  email: string,
-  password: string,
-  name?: string
-) {
-  const client = getTauriAuthClient();
-  return client.signUp.email({ email, password, name: name || "" });
-}
-
-/**
- * Sign in with social provider (Tauri)
- * Opens system browser for OAuth flow
- */
-export async function signInWithSocial(provider: "apple" | "google") {
-  const client = getTauriAuthClient();
-  const config = getAuthConfig();
-
-  // For Tauri, we use the system browser and handle callback via deep link
-  const result = await client.signIn.social({
-    provider,
-    callbackURL: `${config.scheme}://auth/callback`,
-  });
-
-  // Open the authorization URL in system browser
-  if (result.data?.url) {
+  // If there's a redirect URL, open it in the system browser
+  if (result?.redirect) {
     const { open } = await import("@tauri-apps/plugin-shell");
-    await open(result.data.url);
+    await open(result.redirect.toString());
   }
-
-  return result;
 }
 
 /**
- * Sign out (Tauri)
+ * Sign in with magic link in Tauri
  */
-export function signOut() {
-  const client = getTauriAuthClient();
-  return client.signOut();
-}
-
-/**
- * Get current session (Tauri)
- */
-export function getSession() {
-  const client = getTauriAuthClient();
-  return client.getSession();
+export async function signInWithMagicLink(
+  signIn: (provider: string, data: FormData) => Promise<void>,
+  email: string
+): Promise<void> {
+  const formData = new FormData();
+  formData.append("email", email);
+  await signIn("resend", formData);
 }
 
 /**
  * Handle deep link callback from OAuth
+ * Call this when receiving a deep link URL
  */
-export async function handleAuthCallback(url: string): Promise<boolean> {
+export function isAuthCallback(url: string): boolean {
   try {
     const urlObj = new URL(url);
-
-    // Check if this is an auth callback
-    if (urlObj.pathname === "/auth/callback") {
-      // The Better Auth client handles the callback automatically
-      // Just trigger a session refresh
-      const client = getTauriAuthClient();
-      await client.getSession();
-      return true;
-    }
-
-    return false;
+    return urlObj.pathname.includes("/auth/callback") || urlObj.pathname.includes("/api/auth");
   } catch {
     return false;
   }
 }
 
 /**
- * Setup deep link listener for Tauri
+ * Setup deep link listener for Tauri OAuth callbacks
+ * Returns cleanup function
  */
 export async function setupDeepLinkListener(
-  onAuthComplete?: () => void
-) {
+  onAuthCallback?: (url: string) => void
+): Promise<() => void> {
   try {
     const { listen } = await import("@tauri-apps/api/event");
 
-    const unlisten = await listen<string>("deep-link://new-url", async (event) => {
-      const url = event.payload as string;
-      const handled = await handleAuthCallback(url);
+    const unlisten = await listen<string>("deep-link://new-url", (event) => {
+      const url = event.payload;
 
-      if (handled && onAuthComplete) {
-        onAuthComplete();
+      if (isAuthCallback(url) && onAuthCallback) {
+        onAuthCallback(url);
       }
     });
 
@@ -140,4 +76,22 @@ export async function setupDeepLinkListener(
     console.error("[tauri/auth] Failed to setup deep link listener:", error);
     return () => {};
   }
+}
+
+/**
+ * Create localStorage adapter for Tauri
+ * Tauri webview has localStorage, but this provides a consistent interface
+ */
+export function createTauriStorage() {
+  return {
+    getItem: (key: string) => Promise.resolve(localStorage.getItem(key)),
+    setItem: (key: string, value: string) => {
+      localStorage.setItem(key, value);
+      return Promise.resolve();
+    },
+    removeItem: (key: string) => {
+      localStorage.removeItem(key);
+      return Promise.resolve();
+    },
+  };
 }

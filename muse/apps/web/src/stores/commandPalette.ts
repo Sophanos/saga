@@ -159,6 +159,9 @@ export const useCommandPaletteStore = create<CommandPaletteStore>()(
   )
 );
 
+// Stable empty array to avoid infinite re-renders
+const EMPTY_ARRAY: string[] = [];
+
 // Selectors
 export const useCommandPaletteOpen = () =>
   useCommandPaletteStore((s) => s.isOpen);
@@ -173,6 +176,7 @@ export const useCommandPaletteExpanded = () =>
   useCommandPaletteStore((s) => s.expanded);
 
 export const useRecentCommandIds = (projectId?: string | null) =>
-  useCommandPaletteStore((s) =>
-    s.getRecentCommandIds(projectId ?? "global")
-  );
+  useCommandPaletteStore((s) => {
+    const key = projectId || "global";
+    return s.recentByProjectId[key] ?? s.legacyRecentCommandIds ?? EMPTY_ARRAY;
+  });

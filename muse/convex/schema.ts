@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 
 /**
  * Subscription status values
@@ -38,10 +39,13 @@ const artifactSourceSchema = v.object({
  * Saga Convex Schema
  *
  * Convex is the single source of truth for all application data.
- * User identity is provided by Better Auth (ctx.auth.getUserIdentity().subject).
+ * User identity is provided by Convex Auth (getAuthUserId(ctx)).
  * Vector data is stored in Qdrant with eventual consistency via outbox patterns.
  */
 export default defineSchema({
+  // Convex Auth tables (users, authSessions, authAccounts, etc.)
+  ...authTables,
+
   // ============================================================
   // PROJECTS
   // ============================================================

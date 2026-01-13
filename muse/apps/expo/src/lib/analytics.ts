@@ -19,7 +19,7 @@ let initialized = false;
 // Configuration
 const POSTHOG_CONFIG = {
   apiKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
-  host: process.env.EXPO_PUBLIC_POSTHOG_HOST || 'https://posthog.cascada.vision',
+  host: process.env.EXPO_PUBLIC_POSTHOG_HOST || 'https://posthog.rhei.team',
 };
 
 /**

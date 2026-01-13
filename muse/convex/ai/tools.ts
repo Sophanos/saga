@@ -5,6 +5,8 @@
  * Tools can create/update entities, check consistency, generate content, etc.
  */
 
+"use node";
+
 import { v } from "convex/values";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -39,6 +41,23 @@ const MAX_DECISION_LENGTH = 10000;
 const MAX_DECISION_EMBEDDING_CHARS = 8000;
 const SAGA_VECTORS_COLLECTION = "saga_vectors";
 const SAGA_IMAGES_COLLECTION = "saga_images";
+const DEFAULT_ANALYZE_TEXT_MAX_CHARS = 20000;
+const ANALYZE_TEXT_MAX_CHARS = resolveAnalyzeTextMaxChars();
+
+function resolveAnalyzeTextMaxChars(): number {
+  const raw = process.env["ANALYZE_TEXT_MAX_CHARS"];
+  if (!raw) return DEFAULT_ANALYZE_TEXT_MAX_CHARS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_ANALYZE_TEXT_MAX_CHARS;
+  return Math.floor(parsed);
+}
+
+function truncateAnalyzeText(text: string): { text: string; truncated: boolean } {
+  if (text.length <= ANALYZE_TEXT_MAX_CHARS) {
+    return { text, truncated: false };
+  }
+  return { text: text.slice(0, ANALYZE_TEXT_MAX_CHARS), truncated: true };
+}
 
 type OpenRouterJsonRequest = {
   model: string;
@@ -509,10 +528,21 @@ async function executeAnalyzeContent(
   projectId: string,
   userId: string
 ): Promise<AnalyzeContentResult> {
+  const truncatedInput = truncateAnalyzeText(input.text);
+  if (truncatedInput.truncated) {
+    console.warn("[tools.analyze_content] Truncated analysis input", {
+      originalLength: input.text.length,
+      truncatedLength: truncatedInput.text.length,
+      mode: input.mode,
+      projectId,
+    });
+  }
+  const text = truncatedInput.text;
+
   switch (input.mode) {
     case "entities": {
       const result = await ctx.runAction((internal as any)["ai/detect"].detectEntities, {
-        text: input.text,
+        text,
         projectId,
         userId,
         entityTypes: input.options?.entityTypes,
@@ -532,7 +562,7 @@ async function executeAnalyzeContent(
     }
     case "consistency": {
       const result = await executeCheckConsistency({
-        text: input.text,
+        text,
         focus: input.options?.focus,
       });
       const issues = result.issues ?? [];
@@ -555,7 +585,7 @@ async function executeAnalyzeContent(
     case "logic": {
       const result = await executeCheckLogic(
         {
-          text: input.text,
+          text,
           focus: input.options?.focus as CheckLogicInput["focus"],
           strictness: input.options?.strictness as CheckLogicInput["strictness"],
         },
@@ -580,7 +610,7 @@ async function executeAnalyzeContent(
     }
     case "clarity": {
       const result = await executeClarityCheck(
-        { text: input.text, maxIssues: input.options?.maxIssues },
+        { text, maxIssues: input.options?.maxIssues },
         projectId
       );
       const issues = result.issues ?? [];
@@ -601,7 +631,7 @@ async function executeAnalyzeContent(
     }
     case "policy": {
       const result = await executePolicyCheck(
-        { text: input.text, maxIssues: input.options?.maxIssues },
+        { text, maxIssues: input.options?.maxIssues },
         projectId
       );
       const issues = result.issues ?? [];

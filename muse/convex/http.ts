@@ -2,7 +2,7 @@
  * Convex HTTP Router
  *
  * Exposes HTTP endpoints for AI streaming and webhooks.
- * Endpoints are accessible at https://convex.cascada.vision/*
+ * Endpoints are accessible at https://convex.rhei.team/*
  *
  * Routes:
  * - POST /ai/saga - Main Saga agent (SSE streaming)
@@ -32,7 +32,7 @@ import {
   type SSEStreamController,
 } from "./lib/streaming";
 import { validateAuth, type AuthResult } from "./lib/httpAuth";
-import { authComponent, createAuth } from "./betterAuth";
+import { auth } from "./auth";
 import { retrieveRAGContext } from "./ai/rag";
 import { generateEmbeddings, isDeepInfraConfigured } from "./lib/embeddings";
 import { canonicalizeName } from "./lib/canonicalize";
@@ -47,6 +47,97 @@ import {
 import { verifyRevenueCatWebhook } from "./lib/webhookSecurity";
 
 const http = httpRouter();
+
+const MAX_BASE64_IMAGE_CHARS = 5_000_000;
+const MAX_EDITOR_CONTEXT_CHARS = 8_000;
+const MAX_CONTEXT_HINTS_CHARS = 8_000;
+const MAX_SELECTION_TEXT_CHARS = 8_000;
+const LARGE_REQUEST_BYTES = 200_000;
+const LARGE_TEXT_CHARS = 20_000;
+
+function clampString(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return value.slice(0, maxChars);
+}
+
+function sanitizeContextRecord(
+  record: Record<string, unknown> | undefined,
+  maxChars: number
+): Record<string, unknown> | undefined {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return undefined;
+
+  let next: Record<string, unknown> | null = null;
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value !== "string") continue;
+    if (value.length <= maxChars) continue;
+    if (!next) {
+      next = { ...record };
+    }
+    next[key] = clampString(value, maxChars);
+  }
+
+  return next ?? record;
+}
+
+function resolveLastUserMessage(
+  messages?: Array<{ role: string; content: string }>
+): string | undefined {
+  if (!messages) return undefined;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role === "user" && typeof message.content === "string") {
+      return message.content;
+    }
+  }
+  return undefined;
+}
+
+function logLargeRequest(request: Request, label: string): void {
+  const contentLengthHeader = request.headers.get("content-length");
+  if (!contentLengthHeader) return;
+  const contentLength = Number(contentLengthHeader);
+  if (!Number.isFinite(contentLength) || contentLength < LARGE_REQUEST_BYTES) return;
+  let path = request.url;
+  try {
+    path = new URL(request.url).pathname;
+  } catch {
+    // Ignore URL parsing errors.
+  }
+  console.warn("[http] large request", {
+    label,
+    path,
+    method: request.method,
+    contentLength,
+  });
+}
+
+function logLargeText(label: string, size: number, extra?: Record<string, unknown>): void {
+  if (size < LARGE_TEXT_CHARS) return;
+  console.warn("[http] large text", {
+    label,
+    size,
+    ...extra,
+  });
+}
+
+function logRequestStart(request: Request, label: string): void {
+  let path = request.url;
+  try {
+    path = new URL(request.url).pathname;
+  } catch {
+    // Ignore URL parsing errors.
+  }
+  const contentLengthHeader = request.headers.get("content-length");
+  const contentLength = contentLengthHeader ? Number(contentLengthHeader) : undefined;
+  console.warn("[http] request", {
+    label,
+    path,
+    method: request.method,
+    origin: request.headers.get("Origin"),
+    contentLength: Number.isFinite(contentLength) ? contentLength : undefined,
+    userAgent: request.headers.get("user-agent"),
+  });
+}
 
 // ============================================================
 // CORS Preflight Handler
@@ -191,7 +282,8 @@ http.route({
 http.route({
   path: "/health",
   method: "GET",
-  handler: httpAction(async () => {
+  handler: httpAction(async (_ctx, request) => {
+    logRequestStart(request, "/health");
     return new Response(JSON.stringify({ status: "ok", timestamp: Date.now() }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -200,26 +292,11 @@ http.route({
 });
 
 // ============================================================
-// Better Auth Routes
+// Convex Auth Routes
 // ============================================================
 
-// Register all Better Auth HTTP routes
-authComponent.registerRoutes(http, createAuth, {
-  cors: {
-    allowedOrigins: [
-      "https://cascada.vision",
-      "https://convex.cascada.vision",
-      "mythos://",
-      "tauri://localhost",
-      "http://localhost:3000",
-      "http://localhost:1420",
-      "http://localhost:8081",
-      "http://localhost:8082",
-      "http://localhost:8083",
-      "http://localhost:19006",
-    ],
-  },
-});
+// Register all Convex Auth HTTP routes (OAuth callbacks, JWKS, etc.)
+auth.addHttpRoutes(http);
 
 // ============================================================
 // RevenueCat Webhook
@@ -229,6 +306,7 @@ http.route({
   path: "/webhooks/revenuecat",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    logRequestStart(request, "/webhooks/revenuecat");
     try {
       // Verify webhook authenticity
       const authHeader = request.headers.get("Authorization");
@@ -307,6 +385,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/saga");
+    logLargeRequest(request, "/ai/saga");
 
     // Validate auth
     const auth = await validateAuth(ctx, request);
@@ -394,6 +474,10 @@ http.route({
           result: unknown;
           editorContext?: Record<string, unknown>;
         };
+        const sanitizedEditorContext = sanitizeContextRecord(
+          resultEditorContext,
+          MAX_EDITOR_CONTEXT_CHARS
+        );
         return handleToolResult(ctx, {
           projectId,
           threadId,
@@ -401,7 +485,7 @@ http.route({
           toolCallId,
           toolName,
           result,
-          editorContext: resultEditorContext,
+          editorContext: sanitizedEditorContext,
           auth,
           origin,
         });
@@ -418,11 +502,10 @@ http.route({
       }
 
       // Default: Chat with SSE streaming
-      const resolvedPrompt =
-        typeof prompt === "string"
-          ? prompt
-          : [...(messages ?? [])].reverse().find((m) => m.role === "user")?.content;
-
+      const resolvedPrompt = typeof prompt === "string" ? prompt : resolveLastUserMessage(messages);
+      if (resolvedPrompt) {
+        logLargeText("/ai/saga", resolvedPrompt.length, { source: "prompt" });
+      }
       if (!resolvedPrompt) {
         return new Response(JSON.stringify({ error: "prompt is required for chat" }), {
           status: 400,
@@ -430,14 +513,17 @@ http.route({
         });
       }
 
+      const sanitizedEditorContext = sanitizeContextRecord(editorContext, MAX_EDITOR_CONTEXT_CHARS);
+      const sanitizedContextHints = sanitizeContextRecord(contextHints, MAX_CONTEXT_HINTS_CHARS);
+
       return handleSagaChat(ctx, {
         projectId,
         prompt: resolvedPrompt,
         threadId,
         mentions,
         mode,
-        editorContext,
-        contextHints,
+        editorContext: sanitizedEditorContext,
+        contextHints: sanitizedContextHints,
         auth,
         origin,
       });
@@ -463,6 +549,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/chat");
+    logLargeRequest(request, "/ai/chat");
 
     const auth = await validateAuth(ctx, request);
     if (!auth.isValid) {
@@ -500,7 +588,10 @@ http.route({
         userId: auth.userId,
       });
 
-      const prompt = [...(messages ?? [])].reverse().find((m) => m.role === "user")?.content;
+      const prompt = resolveLastUserMessage(messages);
+      if (prompt) {
+        logLargeText("/ai/chat", prompt.length, { source: "prompt" });
+      }
       if (!prompt) {
         return new Response(JSON.stringify({ error: "messages with a user prompt are required" }), {
           status: 400,
@@ -551,6 +642,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/widgets");
+    logLargeRequest(request, "/ai/widgets");
 
     const auth = await validateAuth(ctx, request);
     if (!auth.isValid) {
@@ -590,11 +683,16 @@ http.route({
         userId: auth.userId,
       });
 
+      const sanitizedSelectionText =
+        typeof selectionText === "string"
+          ? clampString(selectionText, MAX_SELECTION_TEXT_CHARS)
+          : selectionText;
+
       return handleWidgetRun(ctx, {
         projectId,
         widgetId,
         documentId,
-        selectionText,
+        selectionText: sanitizedSelectionText,
         selectionRange,
         parameters,
         auth,
@@ -622,6 +720,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/detect");
+    logLargeRequest(request, "/ai/detect");
 
     const auth = await validateAuth(ctx, request);
     if (!auth.isValid) {
@@ -652,6 +752,10 @@ http.route({
           contextLength?: number;
         };
       };
+
+      if (typeof text === "string") {
+        logLargeText("/ai/detect", text.length, { source: "text" });
+      }
 
       if (!text || !projectId) {
         return new Response(JSON.stringify({ error: "text and projectId are required" }), {
@@ -773,6 +877,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/lint");
+    logLargeRequest(request, "/ai/lint");
 
     const auth = await validateAuth(ctx, request);
     if (!auth.isValid) {
@@ -790,6 +896,10 @@ http.route({
         documentContent?: string;
         rules?: string[];
       };
+
+      if (typeof documentContent === "string") {
+        logLargeText("/ai/lint", documentContent.length, { documentId });
+      }
 
       if (!projectId || !documentId || !documentContent) {
         return new Response(JSON.stringify({ error: "projectId, documentId, and documentContent are required" }), {
@@ -843,6 +953,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/dynamics");
+    logLargeRequest(request, "/ai/dynamics");
 
     const auth = await validateAuth(ctx, request);
     if (!auth.isValid) {
@@ -861,6 +973,10 @@ http.route({
         documentId?: string;
         knownEntities?: Array<{ id: string; name: string; type: string }>;
       };
+
+      if (typeof content === "string") {
+        logLargeText("/ai/dynamics", content.length, { documentId });
+      }
 
       if (!projectId || !content) {
         return new Response(JSON.stringify({ error: "projectId and content are required" }), {
@@ -916,6 +1032,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/genesis");
+    logLargeRequest(request, "/ai/genesis");
 
     const auth = await validateAuth(ctx, request);
     if (!auth.isValid) {
@@ -936,6 +1054,10 @@ http.route({
           detailLevel?: "minimal" | "standard" | "detailed";
         };
       };
+
+      if (typeof prompt === "string") {
+        logLargeText("/ai/genesis", prompt.length, { source: "prompt" });
+      }
 
       if (!prompt) {
         return new Response(JSON.stringify({ error: "prompt is required" }), {
@@ -985,6 +1107,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/image");
+    logLargeRequest(request, "/ai/image");
 
     const auth = await validateAuth(ctx, request);
     if (!auth.isValid) {
@@ -1161,6 +1285,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/image-analyze");
+    logLargeRequest(request, "/ai/image-analyze");
 
     const auth = await validateAuth(ctx, request);
     if (!auth.isValid) {
@@ -1260,6 +1386,12 @@ http.route({
       );
     } catch (error) {
       console.error("[http/ai/image-analyze] Error:", error);
+      if (error instanceof Error && error.message === "Image payload too large") {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 413,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        });
+      }
       return new Response(
         JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
         {
@@ -1280,6 +1412,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/search");
+    logLargeRequest(request, "/ai/search");
 
     const auth = await validateAuth(ctx, request);
     if (!auth.isValid) {
@@ -1397,6 +1531,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (_ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/ai/embed");
+    logLargeRequest(request, "/ai/embed");
 
     const auth = await validateAuth(_ctx, request);
     if (!auth.isValid) {
@@ -1558,6 +1694,8 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin");
+    logRequestStart(request, "/billing-subscription");
+    logLargeRequest(request, "/billing-subscription");
     const auth = await validateAuth(ctx, request);
 
     if (!auth.isValid || !auth.userId) {
@@ -1711,6 +1849,9 @@ async function resolveImageSource(
 
   const mimeType = match[1] ?? "image/png";
   const base64Data = match[2] ?? "";
+  if (base64Data.length > MAX_BASE64_IMAGE_CHARS) {
+    throw new Error("Image payload too large");
+  }
   const buffer = Buffer.from(base64Data, "base64");
   const blob = new Blob([buffer], { type: mimeType });
 

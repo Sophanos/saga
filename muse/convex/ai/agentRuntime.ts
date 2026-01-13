@@ -4,6 +4,8 @@
  * Bridges the Convex Agent component with the Saga SSE stream model.
  */
 
+"use node";
+
 import { v } from "convex/values";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal, components } from "../_generated/api";
@@ -39,6 +41,10 @@ const AI_PRESENCE_ROOM_PREFIXES = {
   project: "project",
   document: "document",
 };
+
+// Pre-extract function references to avoid deep type instantiation
+// @ts-expect-error - internal type is too deeply nested, causes TS2589
+const internalAny: Record<string, Record<string, unknown>> = internal;
 
 function resolveEditorDocumentId(editorContext: unknown): string | undefined {
   if (!editorContext || typeof editorContext !== "object") return undefined;
@@ -90,10 +96,12 @@ async function setAiPresence(
     `${AI_PRESENCE_ROOM_PREFIXES.document}:${documentId}`,
     `${AI_PRESENCE_ROOM_PREFIXES.project}:${projectId}`,
   ];
+  const runMutation = ctx.runMutation as (mutation: unknown, args: Record<string, unknown>) => Promise<unknown>;
+  const setAiPresenceMutation = internalAny["presence"]["setAiPresence"];
 
   await Promise.all(
     roomIds.map((roomId) =>
-      ctx.runMutation((internal as any)["presence"].setAiPresence, {
+      runMutation(setAiPresenceMutation, {
         roomId,
         documentId,
         isTyping,
@@ -149,7 +157,6 @@ export interface SagaTestStreamStep {
 }
 
 let sagaTestScript: SagaTestStreamStep[] = [];
-let _agent: Agent | null = null;
 
 function normalizeTestChunks(chunks: SagaTestStreamChunk[]): SagaTestStreamChunk[] {
   const normalized = [...chunks];
@@ -248,16 +255,8 @@ function createSagaAgent() {
   });
 }
 
-function getSagaAgent(): Agent {
-  if (!_agent) {
-    _agent = createSagaAgent();
-  }
-  return _agent;
-}
-
 export function setSagaTestScript(steps: SagaTestStreamStep[]) {
   sagaTestScript = [...steps];
-  _agent = null;
 }
 
 type ToolCategory = "rag" | "graph" | "web" | "hitl" | "analysis" | "project";
@@ -584,9 +583,9 @@ async function resolveEntityForPreview(
   name: string,
   type?: string
 ): Promise<{ entity: Doc<"entities"> | null; error?: string }> {
-  const matches = (await ctx.runQuery(
-    // @ts-expect-error Deep types
-    internal["ai/tools/projectGraphHandlers"].findEntityByCanonical,
+  const runQuery = ctx.runQuery as (query: unknown, args: unknown) => Promise<unknown>;
+  const matches = (await runQuery(
+    internalAny["ai/tools/projectGraphHandlers"]["findEntityByCanonical"],
     { projectId, name, type }
   )) as Doc<"entities">[] | null;
 
@@ -880,10 +879,10 @@ async function buildProjectGraphApprovalPreview(
     }
 
     let relationship: Doc<"relationships"> | null = null;
+    const runQuery = ctx.runQuery as (query: unknown, args: unknown) => Promise<unknown>;
     if (sourceEntity && targetEntity && type !== "unknown") {
-      relationship = (await ctx.runQuery(
-        // @ts-expect-error Deep types
-        internal["ai/tools/projectGraphHandlers"].findRelationship,
+      relationship = (await runQuery(
+        internalAny["ai/tools/projectGraphHandlers"]["findRelationship"],
         { projectId, sourceId: sourceEntity._id, targetId: targetEntity._id, type }
       )) as Doc<"relationships"> | null;
       if (!relationship && !note) {
@@ -916,9 +915,9 @@ async function resolveUniqueEntityTypeForUpdate(
   name: string,
   typeHint?: string
 ): Promise<string | null> {
-  const matches = (await ctx.runQuery(
-    // @ts-expect-error Deep types
-    internal["ai/tools/projectGraphHandlers"].findEntityByCanonical,
+  const runQuery = ctx.runQuery as (query: unknown, args: unknown) => Promise<unknown>;
+  const matches = (await runQuery(
+    internalAny["ai/tools/projectGraphHandlers"]["findEntityByCanonical"],
     { projectId, name, type: typeHint }
   )) as Array<{ type: string }> | null;
 
@@ -1266,7 +1265,7 @@ export const runSagaAgentChatToStream = internalAction({
         setSagaTestScript(script.steps as SagaTestStreamStep[]);
       }
 
-      const sagaAgent = getSagaAgent();
+      const sagaAgent = createSagaAgent();
       const templateHints = resolveTemplateBuilderHints(contextHints);
       let threadId = args.threadId;
       const editorDocumentId = resolveEditorDocumentId(editorContext);
@@ -1878,7 +1877,7 @@ export const applyToolResultAndResumeToStream = internalAction({
         setSagaTestScript(script.steps as SagaTestStreamStep[]);
       }
 
-      const sagaAgent = getSagaAgent();
+      const sagaAgent = createSagaAgent();
       if (isTemplateBuilder) {
         await ctx.runQuery((internal as any).templateBuilderSessions.assertThreadOwner, {
           threadId,

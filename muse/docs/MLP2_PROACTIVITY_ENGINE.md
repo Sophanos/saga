@@ -1,6 +1,6 @@
 # MLP2: Proactivity Engine (Silent by Default)
 
-Reference: [muse/docs/MLP1_ROADMAP.md](./MLP1_ROADMAP.md) · [muse/docs/MLP1_LIVING_MEMORY_OS.md](./MLP1_LIVING_MEMORY_OS.md)
+Reference: [MLP1 Roadmap](./MLP1_ROADMAP.md) · [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md) · [Coherence Spec](./COHERENCE_SPEC.md)
 
 MLP2 adds **proactivity without interruptions**: Muse runs background analysis as you write or ingest large corpora, then surfaces results as a **Pulse** (read-only signals) and **Knowledge PR drafts** (reviewable changes). No silent high-impact edits.
 
@@ -239,12 +239,59 @@ Implementation direction (MLP2):
 
 ## Quick wins (MLP2, low risk)
 
-These upgrades increase “proactive feel” without breaking Flow Mode or requiring deep connectors:
+These upgrades increase "proactive feel" without breaking Flow Mode or requiring deep connectors:
 
 - **Pulse counter + inbox**: one quiet indicator + a single review surface (no popups).
 - **Idle-on-save jobs**: schedule proactivity runs after saves (2–5s debounce), using `ctx.scheduler.runAfter` + a cron backstop (`muse/convex/crons.ts`).
 - **Big paste ingestion pipeline**: show progress stages; output signals + PR drafts only.
 - **Ingest inbox bridge**: reuse `captures` (`muse/convex/schema.ts`) as a staging area for external deltas (manual, MCP, or webhook-fed).
+
+---
+
+## Coherence System (Pulse foundation)
+
+The **Coherence System** ([COHERENCE_SPEC.md](./COHERENCE_SPEC.md)) provides persona-aware consistency checks that feed into Pulse signals.
+
+### Entry path (from MLP1)
+
+| Step | Deliverable | Notes |
+|------|-------------|-------|
+| 1 | Widgets MVP1 | [WIDGETS.md](./WIDGETS.md) — pipeline + receipts |
+| 2 | Phase 1.5 async jobs | Workpool + notifications inbox |
+| 3 | Session vectors + Flow Mode checks | <50ms entity/voice/overuse checks |
+| 4 | Pulse panel + underlines | Silent signals, expand on exit |
+
+### Coherence check types (writer-first)
+
+| Check | Signal | When |
+|-------|--------|------|
+| Entity consistency | "Marcus has blue eyes, not brown" | Dialogue/entity mention |
+| Voice drift | "15% deviation from character voice" | Per paragraph |
+| Overuse | "'however' × 4 in 2 paragraphs" | On pause (~2s) |
+| Timeline violation | "Character died in Ch 3 but speaks in Ch 5" | Entity timeline cross-ref |
+
+### Pulse integration
+
+Coherence signals flow into Pulse as read-only items:
+
+```
+Pulse inbox
+├── Coherence signals (entity/voice/overuse/timeline)
+├── Knowledge PR drafts (from proactivity jobs)
+├── Spec drift signals (MLP2+)
+└── External change signals (MCP/connectors)
+```
+
+### Persona expansion (post-writer)
+
+| Phase | Personas | Key Checks |
+|-------|----------|------------|
+| **2** | Researcher, Creative | Citation accuracy, evidence strength, visual-text |
+| **3** | Product, Engineer | Requirement conflicts, API schema drift, ADR links |
+| **4** | Marketing, Comms | Claim validation, audience rules, Hub alignment |
+| **5** | Support, Sales | KB accuracy, version checks, known issues |
+
+See [COHERENCE_SPEC.md](./COHERENCE_SPEC.md) for full facet schemas and check definitions.
 
 ---
 

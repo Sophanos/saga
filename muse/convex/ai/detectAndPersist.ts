@@ -41,7 +41,7 @@ export const detectAndPersistEntitiesPublic = action({
       throw new Error("Authentication required");
     }
 
-    // @ts-expect-error Deep type instantiation
+    // @ts-ignore Deep type instantiation
     await ctx.runQuery(api.projects.get, { id: args.projectId });
 
     const detection = await ctx.runAction(internal.ai.detect.detectEntities, {
@@ -74,22 +74,29 @@ export const detectAndPersistEntitiesPublic = action({
 
     const { created, updated } = await ctx.runMutation(api.entities.upsertDetectedEntities, {
       projectId: args.projectId,
-      detected: detection.entities.map((entity) => ({
-        name: entity.name,
-        type: entity.type,
-        aliases: entity.aliases ?? [],
-        properties: entity.properties ?? {},
-      })),
+      detected: detection.entities.map(
+        (entity: {
+          name: string;
+          type: string;
+          aliases?: string[];
+          properties?: Record<string, unknown>;
+        }) => ({
+          name: entity.name,
+          type: entity.type,
+          aliases: entity.aliases ?? [],
+          properties: entity.properties ?? {},
+        })
+      ),
     });
 
     const persisted: PersistedEntity[] = [
-      ...created.map((entity) => ({
+      ...created.map((entity: { id: string; name: string; type: string }) => ({
         id: entity.id,
         name: entity.name,
         type: entity.type,
         created: true,
       })),
-      ...updated.map((entity) => ({
+      ...updated.map((entity: { id: string; name: string; type: string }) => ({
         id: entity.id,
         name: entity.name,
         type: entity.type,

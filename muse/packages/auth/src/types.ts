@@ -2,11 +2,15 @@
  * Authentication Types
  */
 
+import type { ProfilePreferences } from "@mythos/agent-protocol";
+
 export interface User {
   id: string;
   email: string;
   name?: string;
   image?: string;
+  avatarUrl?: string;
+  preferences?: ProfilePreferences;
   emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;

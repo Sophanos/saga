@@ -1,10 +1,10 @@
 /**
  * Sign In Screen
  *
- * Email/password and social sign in.
+ * Magic link and social sign in using Convex Auth.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   View,
   Text,
@@ -14,39 +14,34 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from "react-native";
-import { useRouter, Link } from "expo-router";
+import { Link } from "expo-router";
 import { useTheme } from "@/design-system";
 import { spacing, radii, typography } from "@/design-system/tokens";
 import {
-  signInWithEmail,
-  signInWithApple,
-  signInWithGoogle,
-  useSession,
+  useSignInWithEmail,
+  useSignInWithApple,
+  useSignInWithGoogle,
+  useSignInWithGitHub,
 } from "@/lib/auth";
 
+type ScreenMode = "default" | "email-sent";
+
 export default function SignInScreen() {
-  const router = useRouter();
   const { colors, isDark } = useTheme();
-  const { data: session } = useSession();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [signInSuccess, setSignInSuccess] = useState(false);
+  const [mode, setMode] = useState<ScreenMode>("default");
 
-  // Navigate when session is established after successful sign-in
-  // This prevents race condition where navigation happens before session state updates
-  useEffect(() => {
-    if (signInSuccess && session?.user) {
-      router.replace("/");
-    }
-  }, [signInSuccess, session, router]);
+  const signInWithEmail = useSignInWithEmail();
+  const signInWithApple = useSignInWithApple();
+  const signInWithGoogle = useSignInWithGoogle();
+  const signInWithGitHub = useSignInWithGitHub();
 
   const handleEmailSignIn = async () => {
-    if (!email || !password) {
-      setError("Please enter email and password");
+    if (!email) {
+      setError("Please enter your email");
       return;
     }
 
@@ -54,17 +49,11 @@ export default function SignInScreen() {
     setError(null);
 
     try {
-      const result = await signInWithEmail(email, password);
-      if (result.error) {
-        setError(result.error.message ?? "Sign in failed");
-        setIsLoading(false);
-      } else {
-        // Mark sign-in as successful - navigation will happen in useEffect
-        // when session state is properly updated
-        setSignInSuccess(true);
-      }
+      await signInWithEmail(email);
+      setMode("email-sent");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
+      setError(err instanceof Error ? err.message : "Failed to send sign-in link");
+    } finally {
       setIsLoading(false);
     }
   };
@@ -75,7 +64,6 @@ export default function SignInScreen() {
 
     try {
       await signInWithApple();
-      // OAuth will redirect back via deep link
     } catch (err) {
       setError(err instanceof Error ? err.message : "Apple sign in failed");
       setIsLoading(false);
@@ -88,14 +76,52 @@ export default function SignInScreen() {
 
     try {
       await signInWithGoogle();
-      // OAuth will redirect back via deep link
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign in failed");
       setIsLoading(false);
     }
   };
 
+  const handleGitHubSignIn = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      await signInWithGitHub();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "GitHub sign in failed");
+      setIsLoading(false);
+    }
+  };
+
   const styles = createStyles(colors, isDark);
+
+  if (mode === "email-sent") {
+    return (
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Check Your Email</Text>
+          <Text style={styles.subtitle}>
+            We sent a sign-in link to {email}
+          </Text>
+          <Text style={styles.footerText}>
+            Click the link in your email to sign in. The link will expire in 10 minutes.
+          </Text>
+          <TouchableOpacity
+            style={[styles.button, styles.socialButton]}
+            onPress={() => {
+              setMode("default");
+              setError(null);
+            }}
+          >
+            <Text style={[styles.socialButtonText, { color: colors.text }]}>
+              Use a Different Method
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -103,7 +129,7 @@ export default function SignInScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>Welcome Back</Text>
+        <Text style={styles.title}>Welcome</Text>
         <Text style={styles.subtitle}>Sign in to continue</Text>
 
         {error && (
@@ -111,6 +137,44 @@ export default function SignInScreen() {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
+
+        <View style={styles.socialButtons}>
+          <TouchableOpacity
+            style={[styles.button, styles.socialButton]}
+            onPress={handleGitHubSignIn}
+            disabled={isLoading}
+          >
+            <Text style={[styles.socialButtonText, { color: colors.text }]}>
+              Continue with GitHub
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.socialButton]}
+            onPress={handleGoogleSignIn}
+            disabled={isLoading}
+          >
+            <Text style={[styles.socialButtonText, { color: colors.text }]}>
+              Continue with Google
+            </Text>
+          </TouchableOpacity>
+
+          {Platform.OS === "ios" && (
+            <TouchableOpacity
+              style={[styles.button, styles.socialButton, styles.appleButton]}
+              onPress={handleAppleSignIn}
+              disabled={isLoading}
+            >
+              <Text style={styles.socialButtonText}>Continue with Apple</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
 
         <View style={styles.form}>
           <TextInput
@@ -124,16 +188,6 @@ export default function SignInScreen() {
             autoComplete="email"
             testID="auth-email"
           />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={colors.textMuted}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoComplete="password"
-            testID="auth-password"
-          />
 
           <TouchableOpacity
             style={[styles.button, styles.primaryButton]}
@@ -145,44 +199,16 @@ export default function SignInScreen() {
             {isLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
+              <Text style={styles.buttonText}>Send Sign-In Link</Text>
             )}
           </TouchableOpacity>
         </View>
 
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
-        <View style={styles.socialButtons}>
-          {Platform.OS === "ios" && (
-            <TouchableOpacity
-              style={[styles.button, styles.socialButton, styles.appleButton]}
-              onPress={handleAppleSignIn}
-              disabled={isLoading}
-            >
-              <Text style={styles.socialButtonText}>Continue with Apple</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={[styles.button, styles.socialButton]}
-            onPress={handleGoogleSignIn}
-            disabled={isLoading}
-          >
-            <Text style={[styles.socialButtonText, { color: colors.text }]}>
-              Continue with Google
-            </Text>
-          </TouchableOpacity>
-        </View>
-
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Don't have an account? </Text>
+          <Text style={styles.footerText}>New to Mythos? </Text>
           <Link href="/(auth)/sign-up" asChild>
             <TouchableOpacity>
-              <Text style={styles.footerLink}>Sign Up</Text>
+              <Text style={styles.footerLink}>Learn more</Text>
             </TouchableOpacity>
           </Link>
         </View>

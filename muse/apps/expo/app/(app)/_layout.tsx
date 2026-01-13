@@ -12,30 +12,30 @@
 import { useEffect } from 'react';
 import { Slot, useRouter } from 'expo-router';
 import { View, useColorScheme, ActivityIndicator } from 'react-native';
+import { useConvexAuth } from 'convex/react';
 import { AppShell } from '@/components/layout';
 import { CommandPalette } from '@/components/CommandPalette';
 import { useKeyboardShortcuts } from '@/hooks';
 import { palette } from '@/design-system/colors';
-import { useSession } from '@/lib/auth';
 
 export default function AppLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const router = useRouter();
-  const { data: session, isPending } = useSession();
+  const { isLoading, isAuthenticated } = useConvexAuth();
 
   // Register global keyboard shortcuts (web only)
   useKeyboardShortcuts();
 
   // Redirect to sign-in if not authenticated
   useEffect(() => {
-    if (!isPending && !session?.user) {
+    if (!isLoading && !isAuthenticated) {
       router.replace('/sign-in');
     }
-  }, [session, isPending, router]);
+  }, [isAuthenticated, isLoading, router]);
 
   // Show loading while checking auth or redirecting
-  if (isPending || !session?.user) {
+  if (isLoading || !isAuthenticated) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? palette.gray[950] : palette.white }}>
         <ActivityIndicator size="large" color={isDark ? '#fff' : '#000'} />

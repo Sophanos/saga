@@ -12,7 +12,12 @@ bun run e2e:expo
 bun run e2e:tauri
 bun run e2e:typecheck
 bd ready | bd create "Title" -p 1 | bd close <id>
+bunx convex env list  # List Convex env vars
+bunx convex env set KEY value  # Set Convex env var
 ```
+
+## Package Manager
+**Always use `bun` and `bunx`** - never use `npm`, `npx`, `yarn`, or `pnpm`.
 
 ## Stack
 - Frontend: Expo SDK 54 + Router 6, React Native 0.81, Zustand
@@ -121,6 +126,9 @@ CONVEX_SELF_HOSTED_URL=https://convex.cascada.vision
 VITE_CONVEX_URL=https://convex.cascada.vision
 EXPO_PUBLIC_CONVEX_URL=https://convex.cascada.vision
 ```
+
+## Auth Configuration (Convex)
+Auth env vars: `SITE_URL`, `CONVEX_SITE_URL`, `CUSTOM_AUTH_SITE_URL`, `AUTH_REDIRECT_ALLOWLIST` (comma-separated origins). Deploy: `NODE_TLS_REJECT_UNAUTHORIZED=0 bunx convex deploy`
 
 ## Infrastructure
 - Convex: https://dashboard.cascada.vision/

@@ -6,14 +6,20 @@
  */
 
 import { v } from "convex/values";
-import {
-  query,
-  mutation,
-  internalQuery,
-  internalMutation,
-} from "./_generated/server";
 import { internal } from "./_generated/api";
-import { getAuthUserId, verifyProjectAccess, verifyProjectEditor, verifyProjectOwner } from "./lib/auth";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
+import {
+  getAuthUserId,
+  getUserById,
+  verifyProjectAccess,
+  verifyProjectEditor,
+  verifyProjectOwner,
+} from "./lib/auth";
 
 // ============================================================
 // INTERNAL PERMISSION HELPERS
@@ -100,17 +106,16 @@ export const listProjectMembersWithProfiles = query({
     const uniqueUserIds = Array.from(new Set(members.map((member) => member.userId)));
     const users = await Promise.all(
       uniqueUserIds.map(async (userId) =>
-        ctx.db
-          .query("users" as any)
-          .filter((q: any) => q.eq(q.field("id"), userId))
-          .first()
+        getUserById(ctx, userId)
       )
     );
 
     const userById = new Map<string, any>();
     for (const user of users) {
-      if (user?.id) {
-        userById.set(user.id, user);
+      const resolvedUserId =
+        typeof user?._id === "string" ? user._id : (user as { id?: string } | null)?.id;
+      if (resolvedUserId) {
+        userById.set(resolvedUserId, user);
       }
     }
 
@@ -186,17 +191,16 @@ export const listProjectInvitationsWithInviter = query({
     const inviterIds = Array.from(new Set(invitations.map((inv) => inv.invitedBy)));
     const inviters = await Promise.all(
       inviterIds.map(async (userId) =>
-        ctx.db
-          .query("users" as any)
-          .filter((q: any) => q.eq(q.field("id"), userId))
-          .first()
+        getUserById(ctx, userId)
       )
     );
 
     const inviterById = new Map<string, any>();
     for (const inviter of inviters) {
-      if (inviter?.id) {
-        inviterById.set(inviter.id, inviter);
+      const resolvedInviterId =
+        typeof inviter?._id === "string" ? inviter._id : (inviter as { id?: string } | null)?.id;
+      if (resolvedInviterId) {
+        inviterById.set(resolvedInviterId, inviter);
       }
     }
 

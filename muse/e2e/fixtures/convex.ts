@@ -22,7 +22,7 @@ const CONVEX_URL =
   process.env.PLAYWRIGHT_CONVEX_URL ||
   process.env.CONVEX_URL ||
   process.env.EXPO_PUBLIC_CONVEX_URL ||
-  "https://convex.cascada.vision";
+  "https://convex.rhei.team";
 
 const E2E_SECRET =
   process.env.PLAYWRIGHT_E2E_SECRET ||

@@ -75,7 +75,7 @@ export async function initRevenueCat(): Promise<void> {
 
 /**
  * Login to RevenueCat with user ID
- * Call after Better Auth login
+ * Call after auth login
  */
 export async function loginRevenueCat(userId: string): Promise<CustomerInfo | null> {
   if (!Purchases) {
@@ -95,7 +95,7 @@ export async function loginRevenueCat(userId: string): Promise<CustomerInfo | nu
 
 /**
  * Logout from RevenueCat
- * Call after Better Auth logout
+ * Call after auth logout
  */
 export async function logoutRevenueCat(): Promise<void> {
   if (!Purchases) return;
@@ -241,7 +241,7 @@ export function hasEntitlement(entitlement: string): boolean {
 }
 
 /**
- * Hook: Sync RevenueCat with Better Auth user
+ * Hook: Sync RevenueCat with the auth user
  */
 export function useRevenueCatSync() {
   const userId = useAuthStore((s) => s.user?.id);

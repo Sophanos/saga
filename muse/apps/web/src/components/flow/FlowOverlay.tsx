@@ -5,7 +5,7 @@
  * Renders as a portal over the entire application when flow mode is enabled.
  */
 
-import { useEffect, useState, useCallback, type ReactNode } from "react";
+import { useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   useFlowStore,
@@ -13,6 +13,7 @@ import {
   useFlowPreferences,
   useDimOpacity,
   useTypewriterScrolling,
+  useSessionWordsWritten,
   type SessionStats,
 } from "@mythos/state";
 import { FlowHeader } from "./FlowHeader";
@@ -30,12 +31,15 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
   const preferences = useFlowPreferences();
   const dimOpacity = useDimOpacity();
   const typewriterScrolling = useTypewriterScrolling();
+  const wordsWritten = useSessionWordsWritten();
   const exitFlowMode = useFlowStore((s) => s.exitFlowMode);
   const updateWordCount = useFlowStore((s) => s.updateWordCount);
 
   const [isExiting, setIsExiting] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
+  const [headerVisible, setHeaderVisible] = useState(false);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update word count in store when it changes
   useEffect(() => {
@@ -87,6 +91,43 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
     }
   }, [enabled, dimOpacity]);
 
+  // Auto-hide header - show on mouse proximity to top edge
+  useEffect(() => {
+    if (!enabled) return;
+
+    const TRIGGER_ZONE = 60; // px from top to trigger header
+    const HIDE_DELAY = 400; // ms delay before hiding
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const isNearTop = e.clientY < TRIGGER_ZONE;
+
+      if (isNearTop) {
+        // Clear any pending hide timeout
+        if (hideTimeoutRef.current) {
+          clearTimeout(hideTimeoutRef.current);
+          hideTimeoutRef.current = null;
+        }
+        setHeaderVisible(true);
+      } else {
+        // Delay hiding to prevent flickering
+        if (!hideTimeoutRef.current) {
+          hideTimeoutRef.current = setTimeout(() => {
+            setHeaderVisible(false);
+            hideTimeoutRef.current = null;
+          }, HIDE_DELAY);
+        }
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, [enabled]);
+
   // Close summary modal
   const handleCloseSummary = useCallback(() => {
     setShowSummary(false);
@@ -132,8 +173,15 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
         }}
       />
 
-      {/* Flow header */}
-      <FlowHeader onExit={handleExit} />
+      {/* Flow header - auto-hides, appears on mouse proximity to top */}
+      <div
+        className={`
+          transition-all duration-200 ease-out
+          ${headerVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none"}
+        `}
+      >
+        <FlowHeader onExit={handleExit} />
+      </div>
 
       {/* Content area */}
       <div
@@ -145,6 +193,21 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
         <div className="mx-auto max-w-3xl w-full h-full">
           {children}
         </div>
+      </div>
+
+      {/* Bottom-left word counter - subtle, dimmed */}
+      <div className="fixed bottom-4 left-4 z-20">
+        <span
+          className="flow-stat text-sm"
+          style={{ opacity: dimOpacity }}
+        >
+          {wordsWritten.toLocaleString()} words
+          {preferences.sessionWordGoal && (
+            <span className="text-mythos-text-muted">
+              {" "}/ {preferences.sessionWordGoal.toLocaleString()}
+            </span>
+          )}
+        </span>
       </div>
 
       {/* Bottom breathing room */}

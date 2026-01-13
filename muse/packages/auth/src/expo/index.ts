@@ -1,131 +1,58 @@
 /**
  * Expo Auth Client
  *
- * Better Auth client configured for Expo (React Native).
- * Uses SecureStore for token storage and deep links for OAuth.
+ * Convex Auth configured for Expo (React Native).
+ * Uses SecureStore for token storage.
  */
 
-import { createAuthClient } from "better-auth/react";
-import { convexClient } from "@convex-dev/better-auth/client/plugins";
-import { expoClient } from "@better-auth/expo/client";
-import { getAuthConfig, getPlatform } from "../config";
-
-// These are imported dynamically to avoid issues on non-Expo platforms
-let Constants: any;
-let SecureStore: any;
+// Re-export Convex Auth hooks
+export { useAuthActions, useAuthToken } from "@convex-dev/auth/react";
+export { useConvexAuth, Authenticated, Unauthenticated, AuthLoading } from "convex/react";
 
 /**
- * Initialize Expo-specific imports
+ * Create SecureStore storage adapter for Convex Auth
+ * Use this with ConvexAuthProvider's storage prop
  */
-async function initExpoModules() {
-  if (!Constants) {
-    Constants = (await import("expo-constants")).default;
-  }
-  if (!SecureStore) {
-    SecureStore = await import("expo-secure-store");
-  }
-}
+export async function createSecureStorage() {
+  const SecureStore = await import("expo-secure-store");
 
-/**
- * Create Expo auth client
- */
-export async function createExpoAuthClient() {
-  await initExpoModules();
-
-  const config = getAuthConfig();
-  const scheme = Constants?.expoConfig?.scheme || config.scheme;
-
-  return createAuthClient({
-    baseURL: config.convexSiteUrl,
-    plugins: [
-      expoClient({
-        scheme,
-        storagePrefix: scheme,
-        storage: SecureStore,
-      }),
-      convexClient(),
-    ],
-  });
-}
-
-/**
- * Singleton Expo auth client
- */
-let _expoAuthClient: Awaited<ReturnType<typeof createExpoAuthClient>> | null = null;
-
-export async function getExpoAuthClient() {
-  if (!_expoAuthClient) {
-    _expoAuthClient = await createExpoAuthClient();
-  }
-  return _expoAuthClient;
-}
-
-/**
- * Sign in with email/password (Expo)
- */
-export async function signInWithEmail(email: string, password: string) {
-  const client = await getExpoAuthClient();
-  return client.signIn.email({ email, password });
-}
-
-/**
- * Sign up with email/password (Expo)
- */
-export async function signUpWithEmail(
-  email: string,
-  password: string,
-  name?: string
-) {
-  const client = await getExpoAuthClient();
-  return client.signUp.email({ email, password, name: name || "" });
-}
-
-/**
- * Sign in with social provider (Expo)
- * Opens browser for OAuth flow, returns via deep link
- */
-export async function signInWithSocial(
-  provider: "apple" | "google",
-  callbackPath: string = "/auth/callback"
-) {
-  const client = await getExpoAuthClient();
-  const config = getAuthConfig();
-
-  // Construct the callback URL with deep link scheme
-  const callbackURL = `${config.scheme}://${callbackPath}`;
-
-  return client.signIn.social({
-    provider,
-    callbackURL,
-  });
-}
-
-/**
- * Sign out (Expo)
- */
-export async function signOut() {
-  const client = await getExpoAuthClient();
-  return client.signOut();
-}
-
-/**
- * Get current session (Expo)
- */
-export async function getSession() {
-  const client = await getExpoAuthClient();
-  return client.getSession();
-}
-
-/**
- * Hook to use session in Expo components
- */
-export function useExpoSession() {
-  // This will be used with React Query or the Better Auth hook
-  // The actual implementation depends on the Better Auth version
   return {
-    useSession: async () => {
-      const client = await getExpoAuthClient();
-      return client.useSession();
-    },
+    getItem: (key: string) => SecureStore.getItemAsync(key),
+    setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
+    removeItem: (key: string) => SecureStore.deleteItemAsync(key),
+  };
+}
+
+/**
+ * Sign in helpers for Expo
+ * These wrap useAuthActions for convenience
+ */
+export type AuthProvider = "github" | "google" | "apple" | "resend";
+
+/**
+ * Create a sign-in handler for OAuth providers
+ */
+export function createOAuthSignIn(
+  signIn: (provider: string) => Promise<{ redirect?: URL }>,
+  provider: AuthProvider
+) {
+  return async () => {
+    const result = await signIn(provider);
+    // For native, the redirect is handled automatically
+    // The ConvexAuthProvider manages the OAuth flow
+    return result;
+  };
+}
+
+/**
+ * Create a sign-in handler for magic link
+ */
+export function createMagicLinkSignIn(
+  signIn: (provider: string, data: FormData) => Promise<void>
+) {
+  return async (email: string) => {
+    const formData = new FormData();
+    formData.append("email", email);
+    await signIn("resend", formData);
   };
 }

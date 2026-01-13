@@ -13,6 +13,7 @@ import type { EmbeddingModelV3 } from "@ai-sdk/provider";
 const DEEPINFRA_INFERENCE_URL = "https://api.deepinfra.com/v1/inference";
 export const QWEN_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B";
 const EMBEDDING_DIMENSIONS = 4096;
+const MIN_EMBEDDING_DIMENSIONS = 32;
 
 interface DeepInfraEmbeddingResponse {
   embeddings: number[][];
@@ -44,6 +45,17 @@ export function createQwenEmbeddingModel(): EmbeddingModelV3 {
         throw new Error("DEEPINFRA_API_KEY not configured");
       }
 
+      const configuredDimensions = parseInt(
+        process.env["DEEPINFRA_EMBEDDING_DIMENSIONS"] ?? "",
+        10
+      );
+      const dimensions =
+        Number.isFinite(configuredDimensions) &&
+        configuredDimensions >= MIN_EMBEDDING_DIMENSIONS &&
+        configuredDimensions <= EMBEDDING_DIMENSIONS
+          ? configuredDimensions
+          : EMBEDDING_DIMENSIONS;
+
       const response = await fetch(
         `${DEEPINFRA_INFERENCE_URL}/${QWEN_EMBEDDING_MODEL}`,
         {
@@ -56,6 +68,7 @@ export function createQwenEmbeddingModel(): EmbeddingModelV3 {
             inputs: values,
             normalize: true,
             truncate: true,
+            dimensions,
           }),
           signal: abortSignal,
         }

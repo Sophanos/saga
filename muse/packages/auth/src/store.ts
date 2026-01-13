@@ -72,6 +72,7 @@ interface AuthStore extends AuthState {
   setSession: (session: Session | null) => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
+  updateUserProfile: (updates: Partial<User>) => void;
   reset: () => void;
 }
 
@@ -79,6 +80,15 @@ const initialAuthState: AuthState = {
   user: null,
   session: null,
   isLoading: true,
+  isAuthenticated: false,
+  error: null,
+};
+
+/** State after logout - loading is complete, just not authenticated */
+const signedOutState: AuthState = {
+  user: null,
+  session: null,
+  isLoading: false,
   isAuthenticated: false,
   error: null,
 };
@@ -123,8 +133,22 @@ export const useAuthStore = create<AuthStore>()(
 
       setError: (error) => set({ error, isLoading: false }),
 
+      updateUserProfile: (updates) =>
+        set((state) => {
+          if (!state.user) {
+            return {};
+          }
+
+          return {
+            user: {
+              ...state.user,
+              ...updates,
+            },
+          };
+        }),
+
       reset: () => {
-        set(initialAuthState);
+        set(signedOutState);
         emitLifecycleEvent({ type: "reset" });
       },
     }),

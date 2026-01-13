@@ -18,7 +18,7 @@ let initPromise: Promise<void> | null = null;
 // Configuration
 const POSTHOG_CONFIG = {
   apiKey: import.meta.env.VITE_POSTHOG_API_KEY as string | undefined,
-  host: (import.meta.env.VITE_POSTHOG_HOST as string) || 'https://posthog.cascada.vision',
+  host: (import.meta.env.VITE_POSTHOG_HOST as string) || 'https://posthog.rhei.team',
 };
 
 /**

@@ -3,7 +3,8 @@
  * Handles real-time collaboration features using Supabase Realtime
  */
 
-import type { SupabaseClient, RealtimeChannel } from "@supabase/supabase-js";
+import type { SupabaseClient, RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import type { REALTIME_SUBSCRIBE_STATES } from "@supabase/realtime-js";
 import { useCollaborationStore, generateCollaboratorColor } from "@mythos/state";
 import type { CollaboratorPresence, ActivityLogEntry, ProjectMember } from "@mythos/state";
 import type { DocumentChannel } from "./types";
@@ -158,8 +159,8 @@ export class CollaborationClient {
 
         store.updatePresence(presenceList);
       })
-      .on("presence", { event: "join" }, ({ key, newPresences }) => {
-        const presence = newPresences[0] as unknown as PresencePayload | undefined;
+      .on("presence", { event: "join" }, ({ key, newPresences }: { key: string; newPresences: PresencePayload[] }) => {
+        const presence = newPresences[0];
         if (presence && key !== this.userId) {
           store.upsertPresence({
             id: key,
@@ -172,12 +173,12 @@ export class CollaborationClient {
           });
         }
       })
-      .on("presence", { event: "leave" }, ({ key }) => {
+      .on("presence", { event: "leave" }, ({ key }: { key: string }) => {
         if (key !== this.userId) {
           store.removePresence(key);
         }
       })
-      .subscribe(async (status) => {
+      .subscribe(async (status: `${REALTIME_SUBSCRIBE_STATES}`) => {
         if (status === "SUBSCRIBED") {
           await channel.track({
             id: this.userId,

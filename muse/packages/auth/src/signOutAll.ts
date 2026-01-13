@@ -2,7 +2,7 @@
  * Sign Out All
  *
  * Central sign-out orchestrator that:
- * 1. Signs out from Better Auth
+ * 1. Signs out from the auth client
  * 2. Logs out from RevenueCat (on native)
  * 3. Resets all client state
  * 4. Optionally clears persisted storage
@@ -19,7 +19,7 @@ interface SignOutOptions {
 /**
  * Sign out from all services and reset client state.
  *
- * @param authClient - The Better Auth client instance
+ * @param authClient - The auth client instance
  * @param options - Sign out options
  */
 export async function signOutAll(
@@ -28,11 +28,11 @@ export async function signOutAll(
 ): Promise<void> {
   const { hard = false } = options ?? {};
 
-  // 1. Sign out from Better Auth
+  // 1. Sign out from auth client
   try {
     await authClient.signOut();
   } catch (error) {
-    console.error("[auth] Better Auth sign out failed:", error);
+    console.error("[auth] Auth sign out failed:", error);
   }
 
   // 2. Reset auth stores
