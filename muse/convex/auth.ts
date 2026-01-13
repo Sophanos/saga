@@ -40,7 +40,7 @@ assertAuthEnv();
 
 const { siteUrl, redirectAllowlist } = getAuthEnv();
 const normalizedSiteUrl = siteUrl.replace(/\/$/, "");
-const allowedRedirectSchemes = new Set(["mythos"]);
+const allowedRedirectSchemes = new Set(["rhei"]);
 const redirectAllowlistWithSite = [normalizedSiteUrl, ...redirectAllowlist].map((value) =>
   value.replace(/\/$/, "")
 );

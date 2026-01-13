@@ -6,10 +6,11 @@
 
 import { useEffect, useMemo } from "react";
 import { ConvexReactClient, useConvexAuth as useConvexAuthBase, useQuery } from "convex/react";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
+import { ConvexAuthProvider, useAuthActions } from "@convex-dev/auth/react";
 import { useAuthStore } from "@mythos/auth";
 import { ConvexOfflineProvider } from "@mythos/convex-client";
 import { api } from "../../../../convex/_generated/api";
+import { isTauri } from "../lib/tauriAuth";
 
 // Convex client singleton
 const convexUrl = import.meta.env["VITE_CONVEX_URL"] || "https://convex.rhei.team";
@@ -94,6 +95,66 @@ function AuthSync(): null {
 }
 
 /**
+ * Deep link handler for Tauri OAuth callbacks
+ * Listens for mythos:// deep links and completes the OAuth code exchange
+ */
+function TauriDeepLinkHandler(): null {
+  const { signIn } = useAuthActions();
+
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    let unlisten: (() => void) | undefined;
+
+    async function setup() {
+      try {
+        // Use the tauriAuth helper which handles dynamic imports
+        const { listenForDeepLinks } = await import("../lib/tauriAuth");
+
+        unlisten = await listenForDeepLinks(async (url) => {
+          console.log("[tauri-auth] Received deep link:", url);
+
+          try {
+            const urlObj = new URL(url);
+            const code = urlObj.searchParams.get("code");
+            const error = urlObj.searchParams.get("error");
+
+            if (error) {
+              console.error("[tauri-auth] OAuth error:", error, urlObj.searchParams.get("error_description"));
+              return;
+            }
+
+            if (!code) {
+              console.warn("[tauri-auth] Deep link missing code parameter");
+              return;
+            }
+
+            // Complete OAuth by exchanging code for tokens
+            console.log("[tauri-auth] Completing OAuth with code");
+            await signIn(undefined as unknown as string, { code });
+            console.log("[tauri-auth] OAuth complete");
+          } catch (err) {
+            console.error("[tauri-auth] Failed to complete OAuth:", err);
+          }
+        });
+
+        console.log("[tauri-auth] Deep link listener registered");
+      } catch (err) {
+        console.error("[tauri-auth] Failed to setup deep link listener:", err);
+      }
+    }
+
+    setup();
+
+    return () => {
+      unlisten?.();
+    };
+  }, [signIn]);
+
+  return null;
+}
+
+/**
  * Inner provider with offline support
  */
 function ConvexOfflineWrapper({ children }: ConvexProviderProps) {
@@ -125,6 +186,7 @@ export function ConvexProvider({ children }: ConvexProviderProps) {
   return (
     <ConvexAuthProvider client={client} replaceURL={replaceURL}>
       <AuthSync />
+      <TauriDeepLinkHandler />
       <ConvexOfflineWrapper>{children}</ConvexOfflineWrapper>
     </ConvexAuthProvider>
   );

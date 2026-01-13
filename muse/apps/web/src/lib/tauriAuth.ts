@@ -2,22 +2,28 @@
  * Tauri Auth Adapter
  *
  * Handles OAuth in Tauri context (deep links + system browser).
- * Only imported when running in Tauri.
+ * Uses window.__TAURI__ directly to avoid import resolution issues.
  */
 
-// Type declarations for Tauri APIs (dynamically imported at runtime)
-// These modules only exist in Tauri builds
-interface TauriShell {
-  open(url: string): Promise<void>;
-}
-interface TauriEvent {
-  listen<T>(
-    event: string,
-    handler: (event: { payload: T }) => void | Promise<void>
-  ): Promise<() => void>;
-}
+const SCHEME = "rhei";
 
-const SCHEME = "mythos";
+// Type for Tauri's global object
+declare global {
+  interface Window {
+    __TAURI__?: {
+      core: {
+        invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+      };
+      event: {
+        listen: <T>(
+          event: string,
+          handler: (event: { payload: T }) => void
+        ) => Promise<() => void>;
+      };
+    };
+    __TAURI_INTERNALS__?: unknown;
+  }
+}
 
 /**
  * Check if running in Tauri
@@ -30,10 +36,15 @@ export function isTauri(): boolean {
  * Open URL in system browser (Tauri only)
  */
 export async function openInBrowser(url: string): Promise<void> {
-  if (!isTauri()) return;
-  // @ts-expect-error - Tauri module only exists in Tauri builds
-  const mod = await import("@tauri-apps/plugin-shell") as TauriShell;
-  await mod.open(url);
+  if (!isTauri() || !window.__TAURI__) return;
+  try {
+    // Use Tauri's shell plugin via invoke
+    await window.__TAURI__.core.invoke("plugin:shell|open", {
+      path: url,
+    });
+  } catch (err) {
+    console.error("[tauriAuth] Failed to open browser:", err);
+  }
 }
 
 /**
@@ -47,48 +58,25 @@ export function getOAuthCallbackUrl(): string {
 }
 
 /**
- * Handle auth callback from deep link
+ * Listen for deep link events (Tauri only)
  */
-export async function handleAuthCallback(
-  url: string,
-  refreshSession: () => Promise<unknown>
-): Promise<boolean> {
-  try {
-    const urlObj = new URL(url);
-    if (urlObj.pathname === "/auth/callback") {
-      await refreshSession();
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Setup deep link listener for OAuth callbacks (Tauri only)
- */
-export async function setupAuthDeepLinks(
-  refreshSession: () => Promise<unknown>,
-  onAuthComplete?: () => void
+export async function listenForDeepLinks(
+  callback: (url: string) => void
 ): Promise<() => void> {
-  if (!isTauri()) {
+  if (!isTauri() || !window.__TAURI__) {
     return () => {};
   }
 
   try {
-    // @ts-expect-error - Tauri module only exists in Tauri builds
-    const mod = await import("@tauri-apps/api/event") as TauriEvent;
-    const unlisten = await mod.listen<string>("deep-link://new-url", async (event) => {
-      const url = event.payload;
-      const handled = await handleAuthCallback(url, refreshSession);
-      if (handled && onAuthComplete) {
-        onAuthComplete();
+    const unlisten = await window.__TAURI__.event.listen<string>(
+      "deep-link://new-url",
+      (event) => {
+        callback(event.payload);
       }
-    });
+    );
     return unlisten;
-  } catch (error) {
-    console.error("[tauriAuth] Failed to setup deep link listener:", error);
+  } catch (err) {
+    console.error("[tauriAuth] Failed to setup deep link listener:", err);
     return () => {};
   }
 }

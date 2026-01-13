@@ -1,8 +1,8 @@
 {
   "$schema": "https://tauri.app/schema/v2/config.json",
-  "productName": "Mythos",
+  "productName": "Rhei",
   "version": "0.0.1",
-  "identifier": "vision.cascada.mythos",
+  "identifier": "team.rhei.app",
   "build": {
     "beforeDevCommand": "cd ../web && bun run dev",
     "devUrl": "http://localhost:3005",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Mythos",
+        "title": "Rhei",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -25,11 +25,11 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "acceptFirstMouse": true,
-        "tabbingIdentifier": "mythos-editor"
+        "tabbingIdentifier": "rhei-editor"
       }
     ],
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost http://localhost:3005 https://convex.cascada.vision https://cascada.vision wss://convex.cascada.vision; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; frame-src 'self' asset: http://asset.localhost http://localhost:*; img-src 'self' asset: http://asset.localhost blob: data: https:; connect-src 'self' http://localhost:* ws://localhost:* https://convex.cascada.vision https://cascada.vision wss://convex.cascada.vision; font-src 'self' data:",
+      "csp": "default-src 'self' ipc: http://ipc.localhost http://localhost:3005 https://convex.rhei.team https://rhei.team wss://convex.rhei.team; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; frame-src 'self' asset: http://asset.localhost http://localhost:*; img-src 'self' asset: http://asset.localhost blob: data: https:; connect-src 'self' http://localhost:* ws://localhost:* https://convex.rhei.team https://rhei.team wss://convex.rhei.team; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
         "scope": ["$RESOURCE/**"]
@@ -39,7 +39,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["mythos"]
+        "schemes": ["rhei"]
       }
     }
   },
@@ -48,7 +48,7 @@
     "targets": ["dmg", "app"],
     "category": "Productivity",
     "shortDescription": "AI-powered creative writing environment",
-    "longDescription": "Mythos is an AI-powered creative writing environment with story-as-code methodology, entity tracking, and intelligent feedback.",
+    "longDescription": "Rhei is an AI-powered creative writing environment with story-as-code methodology, entity tracking, and intelligent feedback.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

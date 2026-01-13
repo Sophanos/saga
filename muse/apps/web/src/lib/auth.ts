@@ -7,6 +7,7 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { initAuthConfig, setPlatform } from "@mythos/auth";
 import { invalidateTokenCache } from "./tokenCache";
+import { isTauri } from "./tauriAuth";
 
 // Set platform
 setPlatform("web");
@@ -20,6 +21,10 @@ function getAuthRedirectTo(): string | undefined {
   if (typeof window === "undefined") {
     return undefined;
   }
+  // Use deep link callback for Tauri, web callback otherwise
+  if (isTauri()) {
+    return "rhei://auth/callback";
+  }
   return `${window.location.origin}/callback`;
 }
 
@@ -30,7 +35,7 @@ export function initAuth() {
   initAuthConfig({
     convexSiteUrl: CONVEX_SITE_URL,
     convexUrl: CONVEX_URL,
-    scheme: "mythos",
+    scheme: "rhei",
     environment: import.meta.env.DEV ? "development" : "production",
   });
 }

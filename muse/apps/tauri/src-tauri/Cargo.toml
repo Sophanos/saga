@@ -1,12 +1,12 @@
 [package]
-name = "mythos"
+name = "rhei"
 version = "0.0.1"
 description = "AI-powered creative writing environment"
-authors = ["Mythos Team"]
+authors = ["Rhei Team"]
 edition = "2021"
 
 [lib]
-name = "mythos_lib"
+name = "rhei_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

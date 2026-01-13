@@ -11,12 +11,17 @@ import { useState, useCallback } from "react";
 import { motion } from "motion/react";
 import { BookOpen, Mail, AlertCircle, Loader2, ArrowLeft, Github } from "lucide-react";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { isTauri, openInBrowser } from "../../lib/tauriAuth";
 
 type AuthMode = "default" | "email-sent";
 
 function getAuthRedirectTo(): string | undefined {
   if (typeof window === "undefined") {
     return undefined;
+  }
+  // Use deep link callback for Tauri, web callback otherwise
+  if (isTauri()) {
+    return "rhei://auth/callback";
   }
   return `${window.location.origin}/callback`;
 }
@@ -86,15 +91,19 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
 
-  const handleGitHubSignIn = useCallback(async () => {
+  // Helper to handle OAuth sign-in with Tauri support
+  const handleOAuthSignIn = useCallback(async (provider: "github" | "google" | "apple") => {
     setIsLoading(true);
     setError(null);
     try {
       const redirectTo = getAuthRedirectTo();
-      if (redirectTo) {
-        await signIn("github", { redirectTo });
-      } else {
-        await signIn("github");
+      const result = redirectTo
+        ? await signIn(provider, { redirectTo })
+        : await signIn(provider);
+
+      // In Tauri, open OAuth URL in system browser
+      if (isTauri() && result?.redirect) {
+        await openInBrowser(result.redirect.toString());
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
@@ -102,37 +111,9 @@ export function AuthScreen({ onBack }: AuthScreenProps) {
     }
   }, [signIn]);
 
-  const handleGoogleSignIn = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const redirectTo = getAuthRedirectTo();
-      if (redirectTo) {
-        await signIn("google", { redirectTo });
-      } else {
-        await signIn("google");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
-      setIsLoading(false);
-    }
-  }, [signIn]);
-
-  const handleAppleSignIn = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const redirectTo = getAuthRedirectTo();
-      if (redirectTo) {
-        await signIn("apple", { redirectTo });
-      } else {
-        await signIn("apple");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
-      setIsLoading(false);
-    }
-  }, [signIn]);
+  const handleGitHubSignIn = useCallback(() => handleOAuthSignIn("github"), [handleOAuthSignIn]);
+  const handleGoogleSignIn = useCallback(() => handleOAuthSignIn("google"), [handleOAuthSignIn]);
+  const handleAppleSignIn = useCallback(() => handleOAuthSignIn("apple"), [handleOAuthSignIn]);
 
   const handleEmailSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();

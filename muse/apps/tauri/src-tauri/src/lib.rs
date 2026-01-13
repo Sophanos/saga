@@ -1,4 +1,4 @@
-//! Mythos Tauri application library
+//! Rhei Tauri application library
 //!
 //! Features:
 //! - Editor WebView bridge
@@ -29,8 +29,8 @@ pub fn run() {
 
                 // Deep link registration fails in dev mode (not bundled)
                 // This is expected - OAuth callbacks won't work in dev
-                match app.deep_link().register("mythos") {
-                    Ok(_) => println!("[deep-link] Registered mythos:// scheme"),
+                match app.deep_link().register("rhei") {
+                    Ok(_) => println!("[deep-link] Registered rhei:// scheme"),
                     Err(e) => eprintln!("[deep-link] Failed to register (expected in dev): {}", e),
                 }
 
