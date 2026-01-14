@@ -39,6 +39,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Real-Time Collaboration | In progress | 80 |
 | Widgets & Artifacts (MVP1) | In progress | 35 |
 | Async Jobs + Notifications (MVP1.5) | Planned | 0 |
+| App Store Pricing + RevenueCat | In progress ([details](./PRICING_REVENUECAT_SETUP.md)) | 20 |
 | Overall MLP 1 | In progress | 97 |
 
 ## Recent Updates (condensed)
