@@ -31,6 +31,7 @@
     "@mythos/state": "workspace:*",
     "@mythos/storage": "workspace:*",
     "@mythos/theme": "workspace:*",
+    "@mythos/ui": "workspace:*",
     "@xyflow/react": "^12.6.4",
     "better-auth": "1.4.10",
     "convex": "^1.31.3",

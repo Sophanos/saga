@@ -15,6 +15,7 @@ export { FormField } from "./components/form-field";
 export { Select } from "./components/select";
 export { TextArea } from "./components/textarea";
 export { ImagePicker } from "./components/image-picker";
+export { Toaster, toast, toastConfig } from "./components/toaster";
 
 // Types
 export type { AvatarProps } from "./components/avatar";

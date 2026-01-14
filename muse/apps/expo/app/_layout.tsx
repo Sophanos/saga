@@ -27,6 +27,7 @@ import { initConsent } from '@/lib/consent';
 import { initClarity } from '@/lib/clarity';
 import { registerAllCommands } from '@mythos/commands';
 import { useAuthStore } from '@mythos/auth';
+import { Toaster } from '@mythos/ui';
 
 // Auth storage type
 type AuthStorage = {
@@ -182,6 +183,8 @@ export default function RootLayout(): JSX.Element {
               />
             </Stack>
           </ConvexAuthProvider>
+          {/* Toast notifications (web only - Sonner is DOM-based) */}
+          {Platform.OS === 'web' && <Toaster />}
         </SafeAreaProvider>
       </GestureHandlerRootView>
   );

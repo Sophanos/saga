@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useMythosStore } from "../stores";
 import { exportStory, type ExportOptions, type ExportStoryParams } from "../services/export";
 import type { Editor } from "@mythos/editor";
+import { toast } from "@mythos/ui";
 
 // ============================================================================
 // Types
@@ -78,6 +79,12 @@ export function useStoryExporter(): UseStoryExporterResult {
           options,
           currentDocumentId,
           currentEditorContent,
+        });
+
+        // Show success toast with format
+        const formatLabel = options.format.toUpperCase();
+        toast.success(`Exported as ${formatLabel}`, {
+          description: `${documents.length} document${documents.length === 1 ? "" : "s"} exported`,
         });
       } catch (err) {
         const message =

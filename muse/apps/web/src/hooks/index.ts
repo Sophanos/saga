@@ -130,6 +130,7 @@ export type { EditorChatContext } from "./useEditorChatContext";
 
 export { useProjectGraph } from "./useProjectGraph";
 export { useProjectTypeRegistry } from "./useProjectTypeRegistry";
+export { useEntitySlashCommands } from "./useEntitySlashCommands";
 export { useGraphLayout, type LayoutAlgorithm, type LayoutDirection } from "./useGraphLayout";
 export { useToolRuntime } from "./useToolRuntime";
 export type { UseToolRuntimeResult, ToolRuntimeResult } from "./useToolRuntime";

@@ -4,9 +4,9 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { X, User, Mail, Camera, Check, AlertCircle, Loader2, LogOut, Sparkles } from "lucide-react";
+import { X, User, Mail, Camera, Check, Loader2, LogOut, Sparkles } from "lucide-react";
 import { useMutation } from "convex/react";
-import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, FormField, Select, type SelectOption } from "@mythos/ui";
+import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, FormField, Select, type SelectOption, toast } from "@mythos/ui";
 import { api } from "../../../../../convex/_generated/api";
 import { useAuthStore } from "../../stores/auth";
 import { useSignOut } from "../../lib/auth";
@@ -87,8 +87,6 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
   // UI state
   const [isSaving, setIsSaving] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Reset form when user changes or modal opens
   useEffect(() => {
@@ -100,16 +98,12 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
       setNamingStyle(user.preferences?.writing?.namingStyle || "standard");
       setLogicStrictness(user.preferences?.writing?.logicStrictness || "balanced");
     }
-    setError(null);
-    setSuccessMessage(null);
   }, [user, isOpen]);
 
   const handleSave = useCallback(async () => {
     if (!user) return;
 
     setIsSaving(true);
-    setError(null);
-    setSuccessMessage(null);
 
     // Build preferences object, merging with existing
     const nextPreferences = {
@@ -140,10 +134,9 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
         image: trimmedAvatar,
       });
 
-      setSuccessMessage("Profile updated successfully");
-      setTimeout(() => setSuccessMessage(null), 3000);
+      toast.saved("Profile updated");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update profile");
+      toast.error(err instanceof Error ? err.message : "Failed to update profile");
       // Revert optimistic update
       updateUserProfile({
         name: user.name,
@@ -157,14 +150,12 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
 
   const handleSignOut = useCallback(async () => {
     setIsSigningOut(true);
-    setError(null);
 
     try {
       await signOut();
-      // If successful, the auth sync hook will handle the state update
       window.location.assign("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign out");
+      toast.error(err instanceof Error ? err.message : "Failed to sign out");
     } finally {
       setIsSigningOut(false);
     }
@@ -180,8 +171,6 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
       setNamingStyle(user.preferences?.writing?.namingStyle || "standard");
       setLogicStrictness(user.preferences?.writing?.logicStrictness || "balanced");
     }
-    setError(null);
-    setSuccessMessage(null);
     onClose();
   }, [user, onClose]);
 
@@ -227,22 +216,6 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Error message */}
-          {error && (
-            <div className="flex items-center gap-2 p-3 rounded-md bg-mythos-accent-red/10 border border-mythos-accent-red/30 text-mythos-accent-red text-sm">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Success message */}
-          {successMessage && (
-            <div className="flex items-center gap-2 p-3 rounded-md bg-mythos-accent-green/10 border border-mythos-accent-green/30 text-mythos-accent-green text-sm">
-              <Check className="w-4 h-4 flex-shrink-0" />
-              <span>{successMessage}</span>
-            </div>
-          )}
-
           {/* Avatar preview */}
           <div className="flex items-center gap-4">
             <div className="relative">

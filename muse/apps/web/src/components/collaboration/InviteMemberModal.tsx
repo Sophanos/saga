@@ -15,6 +15,7 @@ import {
   FormField,
   Select,
   ScrollArea,
+  toast,
 } from "@mythos/ui";
 import { useCurrentProject } from "../../stores";
 type InviteRole = "editor" | "viewer";
@@ -151,7 +152,6 @@ export function InviteMemberModal({
   const [formData, setFormData] = useState<InviteFormData>(initialFormData);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const [pendingInvitations, setPendingInvitations] = useState<
     ProjectInvitationWithInviter[]
@@ -171,17 +171,8 @@ export function InviteMemberModal({
     if (isOpen) {
       setFormData(initialFormData);
       setErrors({});
-      setFeedback(null);
     }
   }, [isOpen]);
-
-  // Clear feedback after 5 seconds
-  useEffect(() => {
-    if (feedback) {
-      const timer = setTimeout(() => setFeedback(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [feedback]);
 
   const loadPendingInvitations = useCallback(async () => {
     if (!project?.id) return;
@@ -216,7 +207,6 @@ export function InviteMemberModal({
       fieldNames.forEach((f) => delete next[f]);
       return next;
     });
-    setFeedback(null);
   }, []);
 
   const validate = useCallback((): boolean => {
@@ -246,7 +236,6 @@ export function InviteMemberModal({
       if (!validate() || isSubmitting || !project?.id || !currentUser?.id) return;
 
       setIsSubmitting(true);
-      setFeedback(null);
 
       try {
         await createInvitation({
@@ -256,22 +245,12 @@ export function InviteMemberModal({
           invitedBy: currentUser.id,
         });
 
-        setFeedback({
-          type: "success",
-          message: `Invitation sent to ${formData.email}`,
-        });
+        toast.success(`Invitation sent to ${formData.email}`);
         setFormData(initialFormData);
         await loadPendingInvitations();
         onInvited?.();
       } catch (error) {
-        console.error("[Collaboration] Failed to create invitation:", error);
-        setFeedback({
-          type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Failed to send invitation",
-        });
+        toast.error(error instanceof Error ? error.message : "Failed to send invitation");
       } finally {
         setIsSubmitting(false);
       }
@@ -289,16 +268,9 @@ export function InviteMemberModal({
         setPendingInvitations((prev) =>
           prev.filter((inv) => inv.id !== invitationId)
         );
-        setFeedback({
-          type: "success",
-          message: "Invitation cancelled",
-        });
+        toast.success("Invitation cancelled");
       } catch (error) {
-        console.error("[Collaboration] Failed to delete invitation:", error);
-        setFeedback({
-          type: "error",
-          message: "Failed to cancel invitation",
-        });
+        toast.error("Failed to cancel invitation");
       } finally {
         setDeletingId(null);
       }
@@ -381,32 +353,6 @@ export function InviteMemberModal({
                 disabled={isSubmitting}
               />
             </FormField>
-
-            {/* Feedback Messages */}
-            {feedback && (
-              <div
-                className={`flex items-center gap-2 p-3 rounded-md ${
-                  feedback.type === "success"
-                    ? "bg-mythos-accent-green/10 border border-mythos-accent-green/30"
-                    : "bg-mythos-accent-red/10 border border-mythos-accent-red/30"
-                }`}
-              >
-                {feedback.type === "success" ? (
-                  <CheckCircle className="w-4 h-4 text-mythos-accent-green flex-shrink-0" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-mythos-accent-red flex-shrink-0" />
-                )}
-                <p
-                  className={`text-sm ${
-                    feedback.type === "success"
-                      ? "text-mythos-accent-green"
-                      : "text-mythos-accent-red"
-                  }`}
-                >
-                  {feedback.message}
-                </p>
-              </div>
-            )}
 
             {/* Pending Invitations */}
             {pendingInvitations.length > 0 && (

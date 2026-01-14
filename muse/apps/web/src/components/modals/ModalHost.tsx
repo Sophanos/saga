@@ -14,6 +14,7 @@ import {
 import { InviteMemberModal } from "../collaboration/InviteMemberModal";
 import type { Entity, Relationship } from "@mythos/core";
 import { buildEntity, buildRelationship, getTypeSpecificUpdates } from "@mythos/core";
+import { toast } from "@mythos/ui";
 
 /**
  * ModalHost renders the currently open modal based on store state.
@@ -27,6 +28,7 @@ export function ModalHost() {
   const project = useMythosStore((s) => s.project.currentProject);
   const addEntity = useMythosStore((s) => s.addEntity);
   const updateEntity = useMythosStore((s) => s.updateEntity);
+  const setCanvasView = useMythosStore((s) => s.setCanvasView);
 
   const {
     createEntity,
@@ -61,6 +63,13 @@ export function ModalHost() {
           const result = await createEntity(entity, project.id);
           if (result.data) {
             addEntity(result.data);
+            toast.success(`${data.name} created`, {
+              description: "Added to project graph",
+              action: {
+                label: "View Graph",
+                onClick: () => setCanvasView("projectGraph"),
+              },
+            });
           }
           if (result.error) {
             return;
@@ -91,6 +100,7 @@ export function ModalHost() {
       updateEntity,
       closeModal,
       clearEntityError,
+      setCanvasView,
     ]
   );
 

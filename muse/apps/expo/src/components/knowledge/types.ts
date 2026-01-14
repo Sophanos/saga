@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { toast } from '@mythos/ui';
 
 export type KnowledgeTargetType = 'document' | 'entity' | 'relationship' | 'memory';
 export type KnowledgeStatus = 'proposed' | 'accepted' | 'rejected' | 'resolved';
@@ -162,6 +163,7 @@ export async function copyToClipboard(value: string): Promise<void> {
   }
   try {
     await navigator.clipboard.writeText(value);
+    toast.copied();
   } catch {
     // Ignore copy failures (permissions / unsupported browser).
   }

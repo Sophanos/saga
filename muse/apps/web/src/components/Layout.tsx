@@ -24,6 +24,7 @@ import { useGlobalShortcuts, useProgressiveLinter } from "../hooks";
 import { useCollaboration } from "../hooks/useCollaboration";
 import { useAuthStore } from "../stores/auth";
 import { useProgressivePanelVisibility } from "@mythos/state";
+import { Toaster } from "@mythos/ui";
 
 interface LayoutProps {
   /** Anonymous trial mode - shows trial variant of FloatingChat */
@@ -151,6 +152,9 @@ export function Layout({
 
       {/* Global Modal Host */}
       <ModalHost />
+
+      {/* Toast Notifications */}
+      <Toaster />
 
       {isAnonymous && <TryBootstrapController />}
       {isAnonymous && <TryPersonalizationModal />}

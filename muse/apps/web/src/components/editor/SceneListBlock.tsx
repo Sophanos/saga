@@ -1,7 +1,7 @@
 import type { NodeViewProps } from "@tiptap/react";
 import { NodeViewWrapper } from "@tiptap/react";
 import { FileText, Plus, Trash2, X } from "lucide-react";
-import { cn } from "@mythos/ui";
+import { cn, toast } from "@mythos/ui";
 import type { Document } from "@mythos/core";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
@@ -143,8 +143,9 @@ export function SceneListBlock({
       addDocument(newDocument);
       setCurrentDocument(newDocument);
       setCanvasView("editor");
+      toast.created(title);
     } catch (err) {
-      console.warn("Failed to create scene:", err);
+      toast.error("Failed to create scene");
     }
   };
 
@@ -157,8 +158,9 @@ export function SceneListBlock({
       if (document.currentDocument?.id === sceneId) {
         setCurrentDocument(chapterDocument ?? null);
       }
+      toast.deleted("Scene");
     } catch (err) {
-      console.warn("Failed to delete scene:", err);
+      toast.error("Failed to delete scene");
     }
   };
 
@@ -177,8 +179,9 @@ export function SceneListBlock({
       ) {
         setCurrentDocument(null);
       }
+      toast.deleted("Chapter");
     } catch (err) {
-      console.warn("Failed to delete chapter:", err);
+      toast.error("Failed to delete chapter");
     }
   };
 

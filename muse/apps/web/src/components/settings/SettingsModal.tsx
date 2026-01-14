@@ -15,7 +15,7 @@ import {
   EyeOff,
   ExternalLink,
 } from "lucide-react";
-import { Button, Input, FormField, Select, ScrollArea, cn } from "@mythos/ui";
+import { Button, Input, FormField, Select, ScrollArea, cn, toast } from "@mythos/ui";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useMythosStore } from "../../stores";
@@ -118,8 +118,6 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
   const [isSaving, setIsSaving] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [apiKeyInput, setApiKeyInput] = useState(key);
   const [showKey, setShowKey] = useState(false);
@@ -150,8 +148,6 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     }
     setApiKeyInput(key);
     setShowKey(false);
-    setError(null);
-    setSuccessMessage(null);
     setIsKeySaved(false);
   }, [user, key]);
 
@@ -203,8 +199,6 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
   const handleSaveProfile = useCallback(async () => {
     if (!user) return;
     setIsSaving(true);
-    setError(null);
-    setSuccessMessage(null);
 
     const nextPreferences = buildNextPreferences();
     const trimmedName = name.trim() || undefined;
@@ -224,10 +218,9 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
         image: trimmedAvatar,
       });
 
-      setSuccessMessage("Profile updated successfully");
-      setTimeout(() => setSuccessMessage(null), 3000);
+      toast.saved("Profile updated");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update profile");
+      toast.error(err instanceof Error ? err.message : "Failed to update profile");
       // Revert optimistic update
       updateUserProfile({
         name: user.name,
@@ -249,19 +242,15 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
   const handleSavePreferences = useCallback(async () => {
     if (!user) return;
     setIsAutoSaving(true);
-    setError(null);
-    setSuccessMessage(null);
 
     const nextPreferences = buildNextPreferences();
 
     try {
-      // Preferences are stored in zustand store (local)
-      // TODO: Add backend persistence for preferences if needed
       updateUserProfile({
         preferences: nextPreferences,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update preferences");
+      toast.error(err instanceof Error ? err.message : "Failed to update preferences");
       updateUserProfile({
         preferences: user.preferences,
       });
@@ -274,14 +263,12 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     if (!project) return;
     setIsRegistryUpdating(true);
     setRegistryAction("lock");
-    setError(null);
-    setSuccessMessage(null);
 
     try {
       await lockRegistry({ projectId: project.id as Id<"projects"> });
-      setSuccessMessage("Registry locked");
+      toast.success("Registry locked");
     } catch (err) {
-      setError(formatGraphErrorMessage(err, "Failed to lock registry"));
+      toast.error(formatGraphErrorMessage(err, "Failed to lock registry"));
     } finally {
       setIsRegistryUpdating(false);
       setRegistryAction(null);
@@ -292,14 +279,12 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     if (!project) return;
     setIsRegistryUpdating(true);
     setRegistryAction("unlock");
-    setError(null);
-    setSuccessMessage(null);
 
     try {
       await unlockRegistry({ projectId: project.id as Id<"projects"> });
-      setSuccessMessage("Registry unlocked");
+      toast.success("Registry unlocked");
     } catch (err) {
-      setError(formatGraphErrorMessage(err, "Failed to unlock registry"));
+      toast.error(formatGraphErrorMessage(err, "Failed to unlock registry"));
     } finally {
       setIsRegistryUpdating(false);
       setRegistryAction(null);
@@ -308,12 +293,11 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
 
   const handleSignOut = useCallback(async () => {
     setIsSigningOut(true);
-    setError(null);
     try {
       await signOut();
       window.location.assign("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign out");
+      toast.error(err instanceof Error ? err.message : "Failed to sign out");
     } finally {
       setIsSigningOut(false);
     }
@@ -323,6 +307,7 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     if (apiKeyInput.trim()) {
       saveKey(apiKeyInput.trim());
       setIsKeySaved(true);
+      toast.saved("API key saved");
       setTimeout(() => setIsKeySaved(false), 2000);
     }
   }, [apiKeyInput, saveKey]);
@@ -510,20 +495,6 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
             </header>
 
             <ScrollArea className="flex-1 px-6 py-5">
-              {error && (
-                <div className="flex items-center gap-2 p-3 rounded-md bg-mythos-accent-red/10 border border-mythos-accent-red/30 text-mythos-accent-red text-sm mb-4">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {successMessage && (
-                <div className="flex items-center gap-2 p-3 rounded-md bg-mythos-accent-green/10 border border-mythos-accent-green/30 text-mythos-accent-green text-sm mb-4">
-                  <Check className="w-4 h-4 flex-shrink-0" />
-                  <span>{successMessage}</span>
-                </div>
-              )}
-
               {activeSection === "profile" && (
                 <div className="space-y-6">
                   <section className="space-y-4">

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, Shapes, X } from "lucide-react";
 import {
   Button,
   FormField,
@@ -450,9 +450,14 @@ export function JsonSchemaObjectEditor({
       )}
 
       {!showSchemaFields && !showRawEditor && (
-        <p className="text-xs text-mythos-text-muted">
-          This schema does not allow additional properties.
-        </p>
+        <div className="py-6 text-center">
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-mythos-bg-tertiary mb-3">
+            <Shapes className="w-5 h-5 text-mythos-text-muted" />
+          </div>
+          <p className="text-sm text-mythos-text-muted">
+            No custom properties defined for this type.
+          </p>
+        </div>
       )}
 
       {showSchemaFields && (

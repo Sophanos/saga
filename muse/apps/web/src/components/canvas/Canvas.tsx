@@ -24,7 +24,7 @@ import {
 } from "@mythos/editor";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
-import { ScrollArea } from "@mythos/ui";
+import { ScrollArea, toast } from "@mythos/ui";
 import type { Entity, Document } from "@mythos/core";
 import { getCapabilitiesForSurface, isWidgetCapability } from "@mythos/capabilities";
 import { uploadProjectImage } from "@mythos/ai/assets/uploadImage";
@@ -32,6 +32,7 @@ import { useConvex, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useEntityClick } from "../../hooks/useEntityClick";
+import { useEntitySlashCommands } from "../../hooks/useEntitySlashCommands";
 import { useContentAnalysis } from "../../hooks/useContentAnalysis";
 import { useLinterFixes } from "../../hooks/useLinterFixes";
 import { useEntityDetection } from "../../hooks/useEntityDetection";
@@ -244,8 +245,9 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       addDocument(newDocument);
       setCurrentDocument(newDocument);
       setCanvasView("editor");
+      toast.created(title);
     } catch (err) {
-      console.warn("Failed to create scene:", err);
+      toast.error("Failed to create scene");
     }
   }, [
     currentProject,
@@ -355,8 +357,13 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   }, []);
 
   useEffect(() => {
-    const handleCreateNode = () => {
-      openModal({ type: "entityForm", mode: "create" });
+    const handleCreateNode = (event: Event) => {
+      const detail = (event as CustomEvent<{ entityType?: string }>).detail;
+      openModal({
+        type: "entityForm",
+        mode: "create",
+        entityType: detail?.entityType,
+      });
     };
     const handleOpenGraph = () => {
       setCanvasView("projectGraph");
@@ -373,6 +380,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   }, [openModal, setCanvasView]);
 
   const recentCommandIds = useRecentCommandIds(currentProject?.id);
+  const entitySlashCommands = useEntitySlashCommands();
 
   const slashItems = useMemo<SlashCommandItem[]>(() => {
     const widgetItems: SlashCommandItem[] = getCapabilitiesForSurface("slash_menu")
@@ -474,8 +482,8 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       },
     };
 
-    return [...recentWidgets, ...orderedWidgets, ...defaultSlashCommandItems, sceneItem];
-  }, [currentProject?.id, recentCommandIds]);
+    return [...recentWidgets, ...entitySlashCommands, ...orderedWidgets, ...defaultSlashCommandItems, sceneItem];
+  }, [currentProject?.id, recentCommandIds, entitySlashCommands]);
 
   // Determine initial content based on currentDocument
   const initialContent = useMemo(() => {

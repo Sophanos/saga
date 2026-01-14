@@ -13,6 +13,7 @@ import {
   CardFooter,
   Select,
   ScrollArea,
+  toast,
 } from "@mythos/ui";
 import {
   useProjectMembers,
@@ -323,7 +324,6 @@ export function MemberManagementModal({
   const removeProjectMember = useMutation(api.collaboration.removeProjectMember);
   const transferProjectOwnership = useMutation(api.collaboration.transferProjectOwnership);
 
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
@@ -338,18 +338,9 @@ export function MemberManagementModal({
     return (a.name || a.email).localeCompare(b.name || b.email);
   });
 
-  // Clear feedback after 5 seconds
-  useEffect(() => {
-    if (feedback) {
-      const timer = setTimeout(() => setFeedback(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [feedback]);
-
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
-      setFeedback(null);
       setConfirmingRemoveId(null);
       setUpdatingUserId(null);
     }
@@ -360,7 +351,6 @@ export function MemberManagementModal({
       if (!project?.id) return;
 
       setUpdatingUserId(userId);
-      setFeedback(null);
 
       try {
         await updateMemberRole({
@@ -368,14 +358,10 @@ export function MemberManagementModal({
           userId,
           role: newRole,
         });
-        setFeedback({ type: "success", message: "Role updated" });
+        toast.success("Role updated");
         onMembersChanged?.();
       } catch (error) {
-        console.error("[Collaboration] Failed to update role:", error);
-        setFeedback({
-          type: "error",
-          message: error instanceof Error ? error.message : "Failed to update role",
-        });
+        toast.error(error instanceof Error ? error.message : "Failed to update role");
       } finally {
         setUpdatingUserId(null);
       }
@@ -388,22 +374,17 @@ export function MemberManagementModal({
       if (!project?.id) return;
 
       setUpdatingUserId(userId);
-      setFeedback(null);
 
       try {
         await removeProjectMember({
           projectId: project.id as Id<"projects">,
           userId,
         });
-        setFeedback({ type: "success", message: "Member removed" });
+        toast.deleted("Member");
         setConfirmingRemoveId(null);
         onMembersChanged?.();
       } catch (error) {
-        console.error("[Collaboration] Failed to remove member:", error);
-        setFeedback({
-          type: "error",
-          message: error instanceof Error ? error.message : "Failed to remove member",
-        });
+        toast.error(error instanceof Error ? error.message : "Failed to remove member");
       } finally {
         setUpdatingUserId(null);
       }
@@ -416,7 +397,6 @@ export function MemberManagementModal({
       if (!project?.id || !currentUserId) return;
 
       setIsTransferring(true);
-      setFeedback(null);
 
       try {
         await transferProjectOwnership({
@@ -424,14 +404,10 @@ export function MemberManagementModal({
           currentOwnerId: currentUserId,
           newOwnerId,
         });
-        setFeedback({ type: "success", message: "Ownership transferred" });
+        toast.success("Ownership transferred");
         onMembersChanged?.();
       } catch (error) {
-        console.error("[Collaboration] Failed to transfer ownership:", error);
-        setFeedback({
-          type: "error",
-          message: error instanceof Error ? error.message : "Failed to transfer ownership",
-        });
+        toast.error(error instanceof Error ? error.message : "Failed to transfer ownership");
       } finally {
         setIsTransferring(false);
       }
@@ -492,32 +468,6 @@ export function MemberManagementModal({
         </CardHeader>
 
         <CardContent className="space-y-4 pb-4">
-          {/* Feedback Messages */}
-          {feedback && (
-            <div
-              className={`flex items-center gap-2 p-3 rounded-md ${
-                feedback.type === "success"
-                  ? "bg-mythos-accent-green/10 border border-mythos-accent-green/30"
-                  : "bg-mythos-accent-red/10 border border-mythos-accent-red/30"
-              }`}
-            >
-              {feedback.type === "success" ? (
-                <CheckCircle className="w-4 h-4 text-mythos-accent-green flex-shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-mythos-accent-red flex-shrink-0" />
-              )}
-              <p
-                className={`text-sm ${
-                  feedback.type === "success"
-                    ? "text-mythos-accent-green"
-                    : "text-mythos-accent-red"
-                }`}
-              >
-                {feedback.message}
-              </p>
-            </div>
-          )}
-
           {/* Member List */}
           <div>
             <h4 className="text-sm font-medium text-mythos-text-secondary mb-2">

@@ -13,6 +13,7 @@ import { blocksToText } from "../services/export/ir";
 import { tiptapDocToBlocks } from "../services/export/tiptap/tiptapToIr";
 import { useApiKey } from "./useApiKey";
 import { useEntityPersistence } from "./useEntityPersistence";
+import { toast } from "@mythos/ui";
 
 // ============================================================================
 // Types
@@ -210,6 +211,12 @@ export function useStoryImporter(): UseStoryImporterResult {
             }
           }
         }
+
+        toast.success(`Imported ${createdDocuments.length} document${createdDocuments.length === 1 ? "" : "s"}`, {
+          description: result.entityUpserts
+            ? `${result.entityUpserts.created.length + result.entityUpserts.updated.length} entities detected`
+            : undefined,
+        });
 
         return { ...result, documents: createdDocuments };
       } catch (err) {

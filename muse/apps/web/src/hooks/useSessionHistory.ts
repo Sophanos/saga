@@ -27,6 +27,7 @@ import {
   type ChatToolInvocation,
 } from "../stores";
 import { useAuthStore } from "../stores/auth";
+import { toast } from "@mythos/ui";
 
 /**
  * Map a store ChatMessage to a DB insert record
@@ -38,6 +39,7 @@ function toChatMessageInsert(sessionId: string, m: ChatMessage) {
     role: m.role,
     content: m.content,
     mentions: m.mentions as unknown as Record<string, unknown>[] | undefined,
+    attachments: m.attachments as unknown as Record<string, unknown>[] | undefined,
     tool: m.tool as unknown as Record<string, unknown> | undefined,
     createdAt: m.timestamp.getTime(),
   };
@@ -52,6 +54,7 @@ function fromDbMessage(m: {
   role: string;
   content: string;
   mentions?: Record<string, unknown>[] | null;
+  attachments?: Record<string, unknown>[] | null;
   tool?: Record<string, unknown> | null;
   createdAt: number;
 }): ChatMessage {
@@ -61,6 +64,7 @@ function fromDbMessage(m: {
     content: m.content,
     timestamp: new Date(m.createdAt),
     mentions: m.mentions as unknown as ChatMention[] | undefined,
+    attachments: m.attachments as unknown as ChatMessage["attachments"] | undefined,
     kind: m.tool ? "tool" : undefined,
     tool: m.tool as unknown as ChatToolInvocation | undefined,
   };
@@ -248,12 +252,14 @@ export function useSessionHistory(): UseSessionHistoryResult {
         removeSessionFromList(sessionId);
         sessionEnsurePromises.current.delete(sessionId);
 
+        toast.deleted("Session");
+
         // If we deleted the current session, start a new one
         if (sessionId === conversationId) {
           startNewConversation();
         }
       } catch (error) {
-        console.error("Failed to delete session:", error);
+        toast.error("Failed to delete session");
       }
     },
     [conversationId, currentProject?.id, removeSessionFromList, removeSessionMutation, startNewConversation]

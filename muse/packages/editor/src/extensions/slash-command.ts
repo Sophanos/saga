@@ -209,7 +209,7 @@ export const defaultSlashCommandItems: SlashCommandItem[] = [
     id: "node",
     label: "Create Node",
     description: "Add to project graph",
-    icon: "Sparkles",
+    icon: "CirclePlus",
     category: "Graph",
     keywords: ["node", "entity", "character", "location", "item", "graph"],
     action: () => {
