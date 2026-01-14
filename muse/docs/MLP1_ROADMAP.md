@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-14 (Planning tools + Image pipeline)
+> Last Updated: 2026-01-14 (Billing production readiness)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -43,6 +43,19 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Overall MLP 1 | In progress | 97 |
 
 ## Recent Updates (condensed)
+
+**2026-01-14 (BYOK settings UI, main aa266e7)**
+- BYOK settings UI: Web SettingsModal OpenRouter section + Expo AI Settings section.
+- Preferred model: `/billing-preferred-model` endpoint, public mutations for Expo, `preferredModel` in billing snapshot + Zustand store.
+- Expo: `useBilling` hook (Convex React), billing mode toggle, API key input, model picker (radio-style).
+- UX: warning banner re async operations using managed infrastructure.
+
+**2026-01-14 (Billing production readiness, main 380833a)**
+- Stripe web billing: `/stripe-checkout` + `/stripe-portal` routes, `/webhooks/stripe` signature verification, billing customer mapping.
+- RevenueCat hardening: idempotent events + ordering guard, billing-issue → grace period, dual-secret support.
+- Billing core: canonical subscription updates, entitlement-first tier resolution, snapshot uses DB tier overrides.
+- BYOK: `x-openrouter-key` passthrough, quota bypass for BYOK, per-user preferred model stored + used.
+- Quota enforcement: preflight checks + max_tokens clamp + monthly counters; usage handler writes `billingUsagePeriods`.  
 
 **2026-01-14 (Planning tools + Image pipeline)**
 - Planning tools: `write_todos` (Claude Code style - full state replacement), `spawn_task` (sub-agent spawner).
