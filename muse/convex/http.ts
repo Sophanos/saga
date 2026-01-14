@@ -44,7 +44,16 @@ import {
   upsertPoints,
   type QdrantFilter,
 } from "./lib/qdrant";
-import { verifyRevenueCatWebhook } from "./lib/webhookSecurity";
+import {
+  verifyRevenueCatWebhook,
+  verifyStripeWebhook,
+} from "./lib/webhookSecurity";
+import {
+  createBillingPortalSession,
+  createCheckoutSession,
+  createStripeCustomer,
+} from "./lib/stripeClient";
+import { assertAiAllowed, type AiEndpoint } from "./lib/quotaEnforcement";
 
 const http = httpRouter();
 
@@ -275,6 +284,39 @@ http.route({
   }),
 });
 
+http.route({
+  path: "/billing-mode",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/stripe-checkout",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/stripe-portal",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
 // ============================================================
 // Health Check
 // ============================================================
@@ -302,61 +344,76 @@ auth.addHttpRoutes(http);
 // RevenueCat Webhook
 // ============================================================
 
+async function handleRevenueCatWebhook(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  request: Request
+): Promise<Response> {
+  logRequestStart(request, "/webhooks/revenuecat");
+  try {
+    // Verify webhook authenticity
+    const authHeader = request.headers.get("Authorization");
+    const isValid = await verifyRevenueCatWebhook(authHeader);
+
+    if (!isValid) {
+      console.error("[webhook/revenuecat] Invalid authorization");
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const body = await request.json();
+    const event = body.event;
+
+    if (!event || !event.type) {
+      return new Response(JSON.stringify({ error: "Invalid event payload" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Log for debugging (remove in production)
+    console.log(`[webhook/revenuecat] Received event: ${event.type}`, {
+      appUserId: event.app_user_id,
+      productId: event.product_id,
+      store: event.store,
+      environment: event.environment,
+    });
+
+    // Process the webhook event
+    const result = await ctx.runMutation(internal.subscriptions.processWebhookEvent, {
+      event,
+    });
+
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("[webhook/revenuecat] Error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Webhook processing failed" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+}
+
 http.route({
   path: "/webhooks/revenuecat",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    logRequestStart(request, "/webhooks/revenuecat");
-    try {
-      // Verify webhook authenticity
-      const authHeader = request.headers.get("Authorization");
-      const isValid = await verifyRevenueCatWebhook(authHeader);
+    return handleRevenueCatWebhook(ctx, request);
+  }),
+});
 
-      if (!isValid) {
-        console.error("[webhook/revenuecat] Invalid authorization");
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      const body = await request.json();
-      const event = body.event;
-
-      if (!event || !event.type) {
-        return new Response(JSON.stringify({ error: "Invalid event payload" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      // Log for debugging (remove in production)
-      console.log(`[webhook/revenuecat] Received event: ${event.type}`, {
-        appUserId: event.app_user_id,
-        productId: event.product_id,
-        store: event.store,
-        environment: event.environment,
-      });
-
-      // Process the webhook event
-      const result = await ctx.runMutation(internal.subscriptions.processWebhookEvent, {
-        event,
-      });
-
-      return new Response(JSON.stringify(result), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (error) {
-      console.error("[webhook/revenuecat] Error:", error);
-      return new Response(
-        JSON.stringify({ error: error instanceof Error ? error.message : "Webhook processing failed" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
+http.route({
+  path: "/api/webhooks/revenuecat",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    return handleRevenueCatWebhook(ctx, request);
   }),
 });
 
@@ -373,6 +430,65 @@ http.route({
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
       },
     });
+  }),
+});
+
+http.route({
+  path: "/api/webhooks/revenuecat",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      },
+    });
+  }),
+});
+
+// ============================================================
+// Stripe Webhook
+// ============================================================
+
+http.route({
+  path: "/webhooks/stripe",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    logRequestStart(request, "/webhooks/stripe");
+    try {
+      const payload = await request.text();
+      const signature = request.headers.get("Stripe-Signature");
+      const isValid = await verifyStripeWebhook(payload, signature);
+
+      if (!isValid) {
+        console.error("[webhook/stripe] Invalid signature");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const event = JSON.parse(payload);
+      const result = await ctx.runMutation((internal as any).stripe.processWebhookEvent, {
+        event,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[webhook/stripe] Error:", error);
+      return new Response(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Webhook processing failed" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
   }),
 });
 
@@ -527,6 +643,7 @@ http.route({
           resultEditorContext,
           MAX_EDITOR_CONTEXT_CHARS
         );
+        const byokKey = request.headers.get("x-openrouter-key") ?? undefined;
         return handleToolResult(ctx, {
           projectId,
           threadId,
@@ -537,6 +654,7 @@ http.route({
           editorContext: sanitizedEditorContext,
           auth,
           origin,
+          byokKey,
         });
       }
 
@@ -564,6 +682,7 @@ http.route({
 
       const sanitizedEditorContext = sanitizeContextRecord(editorContext, MAX_EDITOR_CONTEXT_CHARS);
       const sanitizedContextHints = sanitizeContextRecord(contextHints, MAX_CONTEXT_HINTS_CHARS);
+      const byokKey = request.headers.get("x-openrouter-key") ?? undefined;
 
       return handleSagaChat(ctx, {
         projectId,
@@ -576,6 +695,7 @@ http.route({
         attachments,
         auth,
         origin,
+        byokKey,
       });
     } catch (error) {
       console.error("[http/ai/saga] Error:", error);
@@ -649,6 +769,8 @@ http.route({
         });
       }
 
+      const byokKey = request.headers.get("x-openrouter-key") ?? undefined;
+
       if (stream !== false) {
         return handleSagaChat(ctx, {
           projectId,
@@ -656,6 +778,7 @@ http.route({
           mentions,
           auth,
           origin,
+          byokKey,
         });
       }
 
@@ -664,6 +787,7 @@ http.route({
         prompt,
         mentions,
         auth,
+        byokKey,
       });
 
       return new Response(JSON.stringify(result), {
@@ -826,6 +950,17 @@ http.route({
         userId: auth.userId,
       });
 
+      const quotaResponse = await enforceAiQuota({
+        ctx,
+        origin,
+        userId: auth.userId,
+        endpoint: "detect",
+        promptText: text,
+      });
+      if (quotaResponse) {
+        return quotaResponse;
+      }
+
       const detectionStart = Date.now();
       const result = await ctx.runAction((internal as any)["ai/detect"].detectEntities, {
         text,
@@ -970,6 +1105,17 @@ http.route({
         userId: auth.userId,
       });
 
+      const quotaResponse = await enforceAiQuota({
+        ctx,
+        origin,
+        userId: auth.userId,
+        endpoint: "lint",
+        promptText: documentContent,
+      });
+      if (quotaResponse) {
+        return quotaResponse;
+      }
+
       const result = await ctx.runAction((internal as any)["ai/lint"].runLint, {
         projectId,
         userId: auth.userId,
@@ -1047,6 +1193,17 @@ http.route({
         userId: auth.userId,
       });
 
+      const quotaResponse = await enforceAiQuota({
+        ctx,
+        origin,
+        userId: auth.userId,
+        endpoint: "dynamics",
+        promptText: content,
+      });
+      if (quotaResponse) {
+        return quotaResponse;
+      }
+
       const result = await ctx.runAction((internal as any)["ai/dynamics"].extractDynamics, {
         projectId,
         userId: auth.userId,
@@ -1121,6 +1278,17 @@ http.route({
           status: 401,
           headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
         });
+      }
+
+      const quotaResponse = await enforceAiQuota({
+        ctx,
+        origin,
+        userId: auth.userId,
+        endpoint: "genesis",
+        promptText: prompt,
+      });
+      if (quotaResponse) {
+        return quotaResponse;
       }
 
       const result = await ctx.runAction((internal as any)["ai/genesis"].runGenesis, {
@@ -1210,6 +1378,17 @@ http.route({
           });
         }
 
+        const quotaResponse = await enforceAiQuota({
+          ctx,
+          origin,
+          userId: auth.userId,
+          endpoint: "image_generate",
+          promptText: sceneText,
+        });
+        if (quotaResponse) {
+          return quotaResponse;
+        }
+
         const result = await ctx.runAction((internal as any)["ai/image"].illustrateSceneAction, {
           projectId,
           userId: auth.userId,
@@ -1276,6 +1455,17 @@ http.route({
           status: 400,
           headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
         });
+      }
+
+      const quotaResponse = await enforceAiQuota({
+        ctx,
+        origin,
+        userId: auth.userId,
+        endpoint: "image_generate",
+        promptText: subject,
+      });
+      if (quotaResponse) {
+        return quotaResponse;
       }
 
       const result = await ctx.runAction((internal as any)["ai/image"].generateImageAction, {
@@ -1384,6 +1574,17 @@ http.route({
         projectId: projectId as Id<"projects">,
         userId: auth.userId,
       });
+
+      const quotaResponse = await enforceAiQuota({
+        ctx,
+        origin,
+        userId: auth.userId,
+        endpoint: "image_generate",
+        promptText: analysisPrompt ?? "image analysis",
+      });
+      if (quotaResponse) {
+        return quotaResponse;
+      }
 
       const { imageUrl, assetId } = await resolveImageSource(ctx, {
         projectId,
@@ -1502,6 +1703,17 @@ http.route({
         projectId: projectId as Id<"projects">,
         userId: auth.userId,
       });
+
+      const quotaResponse = await enforceAiQuota({
+        ctx,
+        origin,
+        userId: auth.userId,
+        endpoint: "search",
+        promptText: query,
+      });
+      if (quotaResponse) {
+        return quotaResponse;
+      }
 
       const startTime = Date.now();
       const cappedLimit = Math.min(limit ?? 10, 50);
@@ -1803,6 +2015,232 @@ http.route({
 });
 
 // ============================================================
+// Billing Mode (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/billing-mode",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    logRequestStart(request, "/billing-mode");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid || !auth.userId) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: auth.error ?? "Unauthorized",
+            code: "UNAUTHORIZED",
+          },
+        }),
+        {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    try {
+      const body = await request.json().catch(() => ({}));
+      const mode = body?.mode === "byok" ? "byok" : "managed";
+
+      const result = await ctx.runMutation(
+        (internal as any).billingSettings.setBillingMode,
+        {
+          userId: auth.userId,
+          mode,
+        }
+      );
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[http/billing-mode] Error:", error);
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: error instanceof Error ? error.message : "Billing mode update failed",
+            code: "BILLING_ERROR",
+          },
+        }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Stripe Checkout (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/stripe-checkout",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    logRequestStart(request, "/stripe-checkout");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid || !auth.userId) {
+      return new Response(
+        JSON.stringify({
+          error: { message: auth.error ?? "Unauthorized", code: "UNAUTHORIZED" },
+        }),
+        {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    try {
+      const body = await request.json().catch(() => ({}));
+      const tier = body?.tier;
+      const billingInterval = body?.billingInterval === "annual" ? "annual" : "monthly";
+
+      if (tier !== "pro" && tier !== "team") {
+        return new Response(
+          JSON.stringify({ error: { message: "Unsupported tier", code: "VALIDATION_ERROR" } }),
+          {
+            status: 400,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const priceId = resolveStripePriceId(tier, billingInterval);
+      if (!priceId) {
+        return new Response(
+          JSON.stringify({
+            error: { message: "Stripe price ID not configured", code: "CONFIGURATION_ERROR" },
+          }),
+          {
+            status: 500,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const customerId = await resolveStripeCustomerId(ctx, auth.userId);
+      const successUrl = resolveStripeReturnUrl(
+        origin,
+        process.env["STRIPE_CHECKOUT_SUCCESS_URL"]
+      );
+      const cancelUrl = resolveStripeReturnUrl(
+        origin,
+        process.env["STRIPE_CHECKOUT_CANCEL_URL"]
+      );
+      const entitlement = tier === "team" ? "team" : "pro";
+
+      const session = await createCheckoutSession({
+        customerId,
+        priceId,
+        successUrl,
+        cancelUrl,
+        userId: auth.userId,
+        entitlement,
+      });
+
+      if (!session.url) {
+        throw new Error("Stripe session missing URL");
+      }
+
+      return new Response(JSON.stringify({ url: session.url }), {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[http/stripe-checkout] Error:", error);
+      return new Response(
+        JSON.stringify({
+          error: { message: error instanceof Error ? error.message : "Stripe checkout failed" },
+        }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Stripe Portal (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/stripe-portal",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    logRequestStart(request, "/stripe-portal");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid || !auth.userId) {
+      return new Response(
+        JSON.stringify({
+          error: { message: auth.error ?? "Unauthorized", code: "UNAUTHORIZED" },
+        }),
+        {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    try {
+      const record = await ctx.runQuery(
+        (internal as any).billingCustomers.getByUser,
+        { userId: auth.userId }
+      );
+
+      if (!record) {
+        return new Response(
+          JSON.stringify({
+            error: { message: "No billing profile found", code: "NOT_FOUND" },
+          }),
+          {
+            status: 404,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const returnUrl = resolveStripeReturnUrl(
+        origin,
+        process.env["STRIPE_PORTAL_RETURN_URL"]
+      );
+      const session = await createBillingPortalSession({
+        customerId: record.stripeCustomerId,
+        returnUrl,
+      });
+
+      return new Response(JSON.stringify({ url: session.url }), {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[http/stripe-portal] Error:", error);
+      return new Response(
+        JSON.stringify({
+          error: { message: error instanceof Error ? error.message : "Stripe portal failed" },
+        }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
 // Handlers
 // ============================================================
 
@@ -1858,6 +2296,77 @@ async function attachVectorUsage(
       },
     };
   }
+}
+
+async function enforceAiQuota(params: {
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0];
+  origin: string | null;
+  userId: string;
+  endpoint: AiEndpoint;
+  promptText: string;
+}): Promise<Response | null> {
+  const { ctx, origin, userId, endpoint, promptText } = params;
+
+  try {
+    await assertAiAllowed(ctx, { userId, endpoint, promptText });
+    return null;
+  } catch (error) {
+    return new Response(
+      JSON.stringify({
+        error: {
+          message: error instanceof Error ? error.message : "Quota exceeded",
+          code: "QUOTA_EXCEEDED",
+        },
+      }),
+      {
+        status: 403,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      }
+    );
+  }
+}
+
+function resolveStripePriceId(
+  tier: string,
+  billingInterval: "monthly" | "annual"
+): string | null {
+  if (tier === "pro") {
+    return billingInterval === "annual"
+      ? process.env["STRIPE_PRICE_PRO_ANNUAL"] ?? null
+      : process.env["STRIPE_PRICE_PRO_MONTHLY"] ?? null;
+  }
+  if (tier === "team") {
+    return billingInterval === "annual"
+      ? process.env["STRIPE_PRICE_TEAM_ANNUAL"] ?? null
+      : process.env["STRIPE_PRICE_TEAM_MONTHLY"] ?? null;
+  }
+  return null;
+}
+
+function resolveStripeReturnUrl(origin: string | null, fallback?: string): string {
+  if (fallback) return fallback;
+  if (origin) return `${origin}/settings/billing`;
+  return "https://mythos.app/settings/billing";
+}
+
+async function resolveStripeCustomerId(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  userId: string
+): Promise<string> {
+  const record = await ctx.runQuery((internal as any).billingCustomers.getByUser, {
+    userId,
+  });
+  if (record?.stripeCustomerId) {
+    return record.stripeCustomerId;
+  }
+
+  const customer = await createStripeCustomer({ userId });
+  await ctx.runMutation((internal as any).billingCustomers.upsertByUser, {
+    userId,
+    stripeCustomerId: customer.id,
+  });
+
+  return customer.id;
 }
 
 function buildSceneDescription(sceneText: string): string {
@@ -1935,9 +2444,10 @@ async function runSagaChatToJson(
     prompt: string;
     mentions?: Array<{ type: string; id: string; name: string }>;
     auth: AuthResult;
+    byokKey?: string;
   }
 ): Promise<{ content: string; context: unknown }> {
-  const { projectId, prompt, auth } = params;
+  const { projectId, prompt, auth, byokKey } = params;
 
   const streamId = await ctx.runMutation((internal as any)["ai/streams"].create, {
     projectId,
@@ -1950,6 +2460,7 @@ async function runSagaChatToJson(
     projectId,
     userId: auth.userId!,
     prompt,
+    byokKey,
   });
 
   const streamState = await ctx.runQuery((internal as any)["ai/streams"].getChunks, {
@@ -1997,6 +2508,7 @@ interface SagaChatParams {
   }>;
   auth: AuthResult;
   origin: string | null;
+  byokKey?: string;
 }
 
 async function handleSagaChat(
@@ -2013,6 +2525,7 @@ async function handleSagaChat(
     attachments,
     auth,
     origin,
+    byokKey,
   } = params;
 
   // Create generation stream for persistence
@@ -2036,6 +2549,7 @@ async function handleSagaChat(
         editorContext,
         contextHints,
         attachments,
+        byokKey,
       });
 
       // Stream is managed by the action via delta table
@@ -2227,13 +2741,14 @@ interface ToolResultParams {
   editorContext?: Record<string, unknown>;
   auth: AuthResult;
   origin: string | null;
+  byokKey?: string;
 }
 
 async function handleToolResult(
   ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
   params: ToolResultParams
 ): Promise<Response> {
-  const { projectId, threadId, promptMessageId, toolCallId, toolName, result, editorContext, auth, origin } = params;
+  const { projectId, threadId, promptMessageId, toolCallId, toolName, result, editorContext, auth, origin, byokKey } = params;
 
   if (!threadId) {
     return new Response(JSON.stringify({ error: "threadId is required" }), {
@@ -2260,6 +2775,7 @@ async function handleToolResult(
         toolName,
         result,
         editorContext,
+        byokKey,
       });
 
       await streamDeltasToSSE(ctx, streamId, sse);

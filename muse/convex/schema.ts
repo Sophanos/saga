@@ -809,7 +809,9 @@ export default defineSchema({
     // User reference (Better Auth user ID)
     userId: v.string(),
     // RevenueCat customer ID
-    revenuecatId: v.string(),
+    revenuecatId: v.optional(v.string()),
+    // Provider-specific customer identifier (Stripe customer ID, etc.)
+    providerCustomerId: v.optional(v.string()),
     // Current subscription status
     status: subscriptionStatus,
     // Store that processed the purchase
@@ -834,6 +836,7 @@ export default defineSchema({
     currency: v.optional(v.string()),
     // Metadata
     lastSyncedAt: v.number(),
+    lastEventTimeMs: v.optional(v.number()),
     rawEvent: v.optional(v.any()), // Last webhook event for debugging
   })
     .index("by_user", ["userId"])
@@ -846,7 +849,8 @@ export default defineSchema({
   // ============================================================
   subscriptionEvents: defineTable({
     userId: v.string(),
-    revenuecatId: v.string(),
+    revenuecatId: v.optional(v.string()),
+    eventId: v.string(),
     eventType: v.string(), // INITIAL_PURCHASE, RENEWAL, CANCELLATION, etc.
     store: subscriptionStore,
     productId: v.string(),
@@ -855,11 +859,46 @@ export default defineSchema({
     priceInCents: v.optional(v.number()),
     currency: v.optional(v.string()),
     rawEvent: v.any(),
+    eventTimeMs: v.optional(v.number()),
     processedAt: v.number(),
   })
     .index("by_user", ["userId"])
     .index("by_revenuecat", ["revenuecatId"])
-    .index("by_type", ["eventType"]),
+    .index("by_type", ["eventType"])
+    .index("by_event_id", ["eventId"]),
+
+  // ============================================================
+  // BILLING CUSTOMERS (Stripe customer mapping)
+  // ============================================================
+  billingCustomers: defineTable({
+    userId: v.string(),
+    stripeCustomerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_stripe_customer", ["stripeCustomerId"]),
+
+  // ============================================================
+  // BILLING SETTINGS (BYOK vs managed)
+  // ============================================================
+  userBillingSettings: defineTable({
+    userId: v.string(),
+    billingMode: v.string(), // "managed" | "byok"
+    preferredModel: v.optional(v.string()), // OpenRouter model ID for BYOK users
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // ============================================================
+  // BILLING USAGE PERIODS (fast counters)
+  // ============================================================
+  billingUsagePeriods: defineTable({
+    userId: v.string(),
+    periodStartMs: v.number(),
+    tokensUsedManaged: v.number(),
+    callsUsed: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_period", ["userId", "periodStartMs"]),
 
   // ============================================================
   // E2E TEST FIXTURES (guarded by E2E_TEST_MODE)

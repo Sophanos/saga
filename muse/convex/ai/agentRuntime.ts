@@ -31,6 +31,9 @@ import { projectManageTool } from "./tools/projectManageTools";
 import { webSearchTool, webExtractTool } from "./tools/webSearchTools";
 import { getEmbeddingModelForTask } from "../lib/embeddings";
 import { ServerAgentEvents } from "../lib/analytics";
+import { createUsageHandler } from "../lib/rateLimiting";
+import { assertAiAllowed } from "../lib/quotaEnforcement";
+import { resolveOpenRouterKey, isByokRequest } from "../lib/openRouterKey";
 import {
   hasIdentityChange,
   isSignificantStrengthChange,
@@ -142,14 +145,23 @@ const E2E_TEST_MODE = process.env["E2E_TEST_MODE"] === "true";
 const SAGA_TEST_MODE = process.env["SAGA_TEST_MODE"] === "true";
 const TEST_MODE = E2E_TEST_MODE || SAGA_TEST_MODE;
 
-const openrouter = createOpenAI({
-  apiKey: process.env["OPENROUTER_API_KEY"],
-  baseURL: OPENROUTER_BASE_URL,
-  headers: {
-    "HTTP-Referer": process.env["OPENROUTER_SITE_URL"] ?? "https://mythos.app",
-    "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
-  },
-});
+/**
+ * Creates an OpenRouter client with the given API key.
+ * Used for both platform key and BYOK.
+ */
+function createOpenRouterClient(apiKey: string) {
+  return createOpenAI({
+    apiKey,
+    baseURL: OPENROUTER_BASE_URL,
+    headers: {
+      "HTTP-Referer": process.env["OPENROUTER_SITE_URL"] ?? "https://rhei.team",
+      "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Rhei",
+    },
+  });
+}
+
+// Default client using platform key (for backward compatibility)
+const openrouter = createOpenRouterClient(process.env["OPENROUTER_API_KEY"] ?? "");
 
 export type SagaTestStreamChunk = LanguageModelV3StreamPart;
 
@@ -206,13 +218,16 @@ function createTestLanguageModel() {
   });
 }
 
-function createSagaAgent() {
+function createSagaAgent(byokKey?: string, model?: string) {
   const testMode = TEST_MODE;
-  const languageModel = testMode ? createTestLanguageModel() : openrouter.chat(DEFAULT_MODEL);
+  const client = byokKey ? createOpenRouterClient(byokKey) : openrouter;
+  const modelId = model ?? DEFAULT_MODEL;
+  const languageModel = testMode ? createTestLanguageModel() : client.chat(modelId);
 
   return new Agent(components.agent, {
     name: "Saga",
     languageModel,
+    usageHandler: createUsageHandler(),
 
     // Thread memory: vector search for similar past messages
     textEmbeddingModel: testMode ? undefined : getEmbeddingModelForTask("embed_document"),
@@ -1280,6 +1295,7 @@ function createSubAgent(spec: SubAgentSpec, maxSteps: number): Agent {
   return new Agent(components.agent, {
     name: spec.name,
     languageModel,
+    usageHandler: createUsageHandler(),
     textEmbeddingModel: undefined,
     contextOptions: {
       recentMessages: 0,
@@ -1570,19 +1586,43 @@ export const runSagaAgentChatToStream = internalAction({
     editorContext: v.optional(v.any()),
     contextHints: v.optional(v.any()),
     attachments: v.optional(v.array(v.any())),
+    byokKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { streamId, projectId, userId, prompt, mode, editorContext, contextHints, attachments } = args;
+    const { streamId, projectId, userId, prompt, mode, editorContext, contextHints, attachments, byokKey } = args;
     const isTemplateBuilder = projectId === "template-builder";
     const projectIdValue = projectId as Id<"projects">;
     const testMode = TEST_MODE;
+    const isByok = isByokRequest(byokKey);
 
-    if (!testMode && !process.env["OPENROUTER_API_KEY"]) {
-      await ctx.runMutation((internal as any)["ai/streams"].fail, {
-        streamId,
-        error: "OPENROUTER_API_KEY not configured",
-      });
-      return;
+    // Validate API key is available (BYOK or platform)
+    if (!testMode) {
+      try {
+        resolveOpenRouterKey(byokKey);
+      } catch {
+        await ctx.runMutation((internal as any)["ai/streams"].fail, {
+          streamId,
+          error: "OPENROUTER_API_KEY not configured",
+        });
+        return;
+      }
+    }
+
+    // Skip quota check for BYOK users - they pay their own API costs
+    if (!testMode && !isTemplateBuilder && !isByok) {
+      try {
+        await assertAiAllowed(ctx, {
+          userId,
+          endpoint: "chat",
+          promptText: prompt,
+        });
+      } catch (error) {
+        await ctx.runMutation((internal as any)["ai/streams"].fail, {
+          streamId,
+          error: error instanceof Error ? error.message : "Quota enforcement failed",
+        });
+        return;
+      }
     }
 
     let presenceDocumentId: string | undefined;
@@ -1618,7 +1658,12 @@ export const runSagaAgentChatToStream = internalAction({
         setSagaTestScript(script.steps as SagaTestStreamStep[]);
       }
 
-      const sagaAgent = createSagaAgent();
+      // Get user's preferred model (for BYOK users)
+      const preferredModel = isByok
+        ? await ctx.runQuery((internal as any).billingSettings.getPreferredModel, { userId })
+        : undefined;
+
+      const sagaAgent = createSagaAgent(isByok ? byokKey : undefined, preferredModel);
       const templateHints = resolveTemplateBuilderHints(contextHints);
       let threadId = args.threadId;
       const editorDocumentId = resolveEditorDocumentId(editorContext);
@@ -2170,6 +2215,7 @@ export const applyToolResultAndResumeToStream = internalAction({
     toolName: v.string(),
     result: v.any(),
     editorContext: v.optional(v.any()),
+    byokKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const {
@@ -2182,6 +2228,7 @@ export const applyToolResultAndResumeToStream = internalAction({
       toolName,
       result,
       editorContext,
+      byokKey,
     } = args;
     const isTemplateBuilder = projectId === "template-builder";
     const projectIdValue = projectId as Id<"projects">;
@@ -2192,13 +2239,19 @@ export const applyToolResultAndResumeToStream = internalAction({
       actorName: "Muse",
     };
     const testMode = TEST_MODE;
+    const isByok = isByokRequest(byokKey);
 
-    if (!testMode && !process.env["OPENROUTER_API_KEY"]) {
-      await ctx.runMutation((internal as any)["ai/streams"].fail, {
-        streamId,
-        error: "OPENROUTER_API_KEY not configured",
-      });
-      return;
+    // Resolve API key (BYOK or platform)
+    if (!testMode) {
+      try {
+        resolveOpenRouterKey(byokKey);
+      } catch {
+        await ctx.runMutation((internal as any)["ai/streams"].fail, {
+          streamId,
+          error: "OPENROUTER_API_KEY not configured",
+        });
+        return;
+      }
     }
 
     let presenceDocumentId: string | undefined;
@@ -2233,7 +2286,12 @@ export const applyToolResultAndResumeToStream = internalAction({
         setSagaTestScript(script.steps as SagaTestStreamStep[]);
       }
 
-      const sagaAgent = createSagaAgent();
+      // Get user's preferred model (for BYOK users)
+      const preferredModel = isByok
+        ? await ctx.runQuery((internal as any).billingSettings.getPreferredModel, { userId })
+        : undefined;
+
+      const sagaAgent = createSagaAgent(isByok ? byokKey : undefined, preferredModel);
       if (isTemplateBuilder) {
         await ctx.runQuery((internal as any).templateBuilderSessions.assertThreadOwner, {
           threadId,

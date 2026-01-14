@@ -5,7 +5,13 @@
  * Checks user subscription status and entitlements.
  */
 
-import type { QueryCtx, MutationCtx } from "../_generated/server";
+import { v } from "convex/values";
+import {
+  internalQuery,
+  type QueryCtx,
+  type MutationCtx,
+} from "../_generated/server";
+import { resolveTierFromSubscription } from "./billingCore";
 
 /**
  * Database context type - only Query and Mutation contexts have direct DB access.
@@ -90,14 +96,10 @@ export async function getUserTier(
     return "free";
   }
 
-  // Map product ID to tier
-  const productId = subscription.productId.toLowerCase();
-
-  if (productId.includes("enterprise")) return "enterprise";
-  if (productId.includes("team")) return "team";
-  if (productId.includes("pro")) return "pro";
-
-  return "free";
+  return resolveTierFromSubscription({
+    entitlements: subscription.entitlements,
+    productId: subscription.productId,
+  });
 }
 
 /**
@@ -148,3 +150,21 @@ export async function getMemoryRetentionDays(
 
   return config.memory.retentionDays ?? null; // null = forever
 }
+
+// ============================================================
+// Internal Queries (for ActionCtx usage)
+// ============================================================
+
+export const getUserTierInternal = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    return await getUserTier(ctx, args.userId);
+  },
+});
+
+export const canAccessFeatureInternal = internalQuery({
+  args: { userId: v.string(), feature: v.string() },
+  handler: async (ctx, args) => {
+    return await canAccessFeature(ctx, args.userId, args.feature as any);
+  },
+});

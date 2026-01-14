@@ -56,11 +56,22 @@ export const processWebhookEvent = internalMutation({
   handler: async (ctx, args) => {
     const event = args.event as RevenueCatEvent;
     const now = Date.now();
+    const eventTimeMs = resolveEventTimeMs(event, now);
+
+    // Idempotency: ignore duplicate events
+    const existingEvent = await ctx.db
+      .query("subscriptionEvents")
+      .withIndex("by_event_id", (q: any) => q.eq("eventId", event.id))
+      .first();
+    if (existingEvent) {
+      return { success: true, eventType: event.type, duplicate: true };
+    }
 
     // Log the event for audit
     await ctx.db.insert("subscriptionEvents", {
       userId: event.app_user_id,
       revenuecatId: event.original_app_user_id,
+      eventId: event.id,
       eventType: event.type,
       store: event.store as any,
       productId: event.product_id,
@@ -71,6 +82,7 @@ export const processWebhookEvent = internalMutation({
         : undefined,
       currency: event.currency,
       rawEvent: event,
+      eventTimeMs,
       processedAt: now,
     });
 
@@ -79,33 +91,37 @@ export const processWebhookEvent = internalMutation({
       case "INITIAL_PURCHASE":
       case "RENEWAL":
       case "PRODUCT_CHANGE":
-        await upsertSubscription(ctx, event, "active", now);
+        await upsertSubscription(ctx, event, "active", now, eventTimeMs);
         break;
 
       case "CANCELLATION":
-        await upsertSubscription(ctx, event, "canceled", now);
+        if (event.cancel_reason === "BILLING_ERROR") {
+          await upsertSubscription(ctx, event, "grace_period", now, eventTimeMs);
+        } else {
+          await upsertSubscription(ctx, event, "canceled", now, eventTimeMs);
+        }
         break;
 
       case "EXPIRATION":
-        await upsertSubscription(ctx, event, "expired", now);
+        await upsertSubscription(ctx, event, "expired", now, eventTimeMs);
         break;
 
       case "BILLING_ISSUE":
-        await upsertSubscription(ctx, event, "grace_period", now);
+        await upsertSubscription(ctx, event, "grace_period", now, eventTimeMs);
         break;
 
       case "SUBSCRIPTION_PAUSED":
-        await upsertSubscription(ctx, event, "paused", now);
+        await upsertSubscription(ctx, event, "paused", now, eventTimeMs);
         break;
 
       case "UNCANCELLATION":
         // User re-enabled auto-renew
-        await upsertSubscription(ctx, event, "active", now);
+        await upsertSubscription(ctx, event, "active", now, eventTimeMs);
         break;
 
       case "TRANSFER":
         // Subscription transferred to another user
-        await handleTransfer(ctx, event, now);
+        await handleTransfer(ctx, event, now, eventTimeMs);
         break;
 
       default:
@@ -123,7 +139,8 @@ async function upsertSubscription(
   ctx: any,
   event: RevenueCatEvent,
   status: string,
-  now: number
+  now: number,
+  eventTimeMs: number
 ) {
   // Find existing subscription
   const existing = await ctx.db
@@ -131,9 +148,16 @@ async function upsertSubscription(
     .withIndex("by_user", (q: any) => q.eq("userId", event.app_user_id))
     .first();
 
+  if (existing?.lastEventTimeMs && eventTimeMs < existing.lastEventTimeMs) {
+    return;
+  }
+
+  const shouldRenew =
+    status === "active" || status === "trialing" || status === "grace_period";
   const subscriptionData = {
     userId: event.app_user_id,
     revenuecatId: event.original_app_user_id,
+    providerCustomerId: event.original_app_user_id,
     status: status as any,
     store: event.store as any,
     productId: event.product_id,
@@ -142,7 +166,7 @@ async function upsertSubscription(
     expiresAt: event.expiration_at_ms,
     gracePeriodExpiresAt: event.grace_period_expiration_at_ms,
     canceledAt: status === "canceled" ? now : undefined,
-    willRenew: status === "active" && event.type !== "CANCELLATION",
+    willRenew: shouldRenew,
     isTrialPeriod: event.is_trial_period || false,
     trialExpiresAt: event.is_trial_period ? event.expiration_at_ms : undefined,
     priceInCents: event.price_in_purchased_currency
@@ -150,6 +174,7 @@ async function upsertSubscription(
       : undefined,
     currency: event.currency,
     lastSyncedAt: now,
+    lastEventTimeMs: eventTimeMs,
     rawEvent: event,
   };
 
@@ -166,7 +191,8 @@ async function upsertSubscription(
 async function handleTransfer(
   ctx: any,
   event: RevenueCatEvent,
-  now: number
+  now: number,
+  eventTimeMs: number
 ) {
   // Mark old subscription as transferred/expired
   const oldSubscription = await ctx.db
@@ -180,11 +206,21 @@ async function handleTransfer(
     await ctx.db.patch(oldSubscription._id, {
       status: "expired",
       lastSyncedAt: now,
+      lastEventTimeMs: eventTimeMs,
     });
   }
 
   // Create new subscription for new user
-  await upsertSubscription(ctx, event, "active", now);
+  await upsertSubscription(ctx, event, "active", now, eventTimeMs);
+}
+
+function resolveEventTimeMs(event: RevenueCatEvent, now: number): number {
+  return (
+    event.purchased_at_ms ??
+    event.expiration_at_ms ??
+    event.grace_period_expiration_at_ms ??
+    now
+  );
 }
 
 // ============================================================

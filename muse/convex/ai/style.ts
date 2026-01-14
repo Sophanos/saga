@@ -13,6 +13,7 @@ import type { Id } from "../_generated/dataModel";
 import { generateEmbedding } from "../lib/embeddings";
 import { upsertPoints } from "../lib/qdrant";
 import { getModelForTaskSync, checkTaskAccess, type TierId } from "../lib/providers";
+import { assertAiAllowed } from "../lib/quotaEnforcement";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MAX_FINDINGS = 8;
@@ -200,6 +201,14 @@ export const learnStyle = internalAction({
     const resolved = getModelForTaskSync("style", tierId);
     const maxFindings = Math.min(Math.max(1, args.maxFindings ?? DEFAULT_MAX_FINDINGS), 20);
 
+    const userPrompt = `Analyze this text and extract up to ${maxFindings} style rules:\n\n${truncatedContent.slice(0, 20000)}`;
+    const { maxOutputTokens } = await assertAiAllowed(ctx, {
+      userId,
+      endpoint: "style",
+      promptText: userPrompt,
+      requestedMaxOutputTokens: 1024,
+    });
+
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {
@@ -214,11 +223,11 @@ export const learnStyle = internalAction({
           { role: "system", content: STYLE_EXTRACTION_PROMPT },
           {
             role: "user",
-            content: `Analyze this text and extract up to ${maxFindings} style rules:\n\n${truncatedContent.slice(0, 20000)}`,
+            content: userPrompt,
           },
         ],
         temperature: 0.3,
-        max_tokens: 1024,
+        max_tokens: maxOutputTokens,
       }),
     });
 
@@ -289,18 +298,24 @@ export const learnStyle = internalAction({
       }
     }
 
-    await ctx.runMutation(internal.aiUsage.trackUsage, {
-      userId,
-      projectId,
-      endpoint: "style",
-      model: resolved.model,
-      promptTokens: data.usage?.prompt_tokens ?? 0,
-      completionTokens: data.usage?.completion_tokens ?? 0,
-      totalTokens: data.usage?.total_tokens ?? 0,
-      billingMode: "managed",
-      latencyMs: Date.now() - startTime,
-      success: true,
-    });
+    const billingMode = await ctx.runQuery(
+      (internal as any).billingSettings.getBillingMode,
+      { userId }
+    );
+    if (billingMode !== "byok") {
+      await ctx.runMutation(internal.aiUsage.trackUsage, {
+        userId,
+        projectId,
+        endpoint: "style",
+        model: resolved.model,
+        promptTokens: data.usage?.prompt_tokens ?? 0,
+        completionTokens: data.usage?.completion_tokens ?? 0,
+        totalTokens: data.usage?.total_tokens ?? 0,
+        billingMode,
+        latencyMs: Date.now() - startTime,
+        success: true,
+      });
+    }
 
     return {
       learned,

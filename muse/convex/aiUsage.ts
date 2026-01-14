@@ -49,6 +49,32 @@ export const trackUsage = internalMutation({
       errorMessage: args.errorMessage,
       createdAt: Date.now(),
     });
+
+    if (args.billingMode === "managed") {
+      const periodStartMs = getStartOfMonth();
+      const existing = await ctx.db
+        .query("billingUsagePeriods")
+        .withIndex("by_user_period", (q) =>
+          q.eq("userId", args.userId).eq("periodStartMs", periodStartMs)
+        )
+        .first();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          tokensUsedManaged: existing.tokensUsedManaged + args.totalTokens,
+          callsUsed: existing.callsUsed + 1,
+          updatedAt: Date.now(),
+        });
+      } else {
+        await ctx.db.insert("billingUsagePeriods", {
+          userId: args.userId,
+          periodStartMs,
+          tokensUsedManaged: args.totalTokens,
+          callsUsed: 1,
+          updatedAt: Date.now(),
+        });
+      }
+    }
   },
 });
 

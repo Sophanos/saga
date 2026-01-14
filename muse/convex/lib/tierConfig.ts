@@ -140,7 +140,7 @@ export const TIER_DEFAULTS: Record<TierId, TierConfig> = {
     id: "pro",
     name: "Pro",
     description: "For serious writers",
-    price: { monthly: 20, yearly: 192 },
+    price: { monthly: 15, yearly: 120 }, // App Store: $14.99/$119.99
     ai: {
       tokensPerMonth: 500_000,
       callsPerDay: 1000,
@@ -197,7 +197,7 @@ export const TIER_DEFAULTS: Record<TierId, TierConfig> = {
     id: "team",
     name: "Team",
     description: "For writing teams and studios",
-    price: { monthly: 50, yearly: 480 },
+    price: { monthly: 50, yearly: 300 }, // App Store: $49.99/$299.99
     ai: {
       tokensPerMonth: 2_000_000,
       callsPerDay: 5000,

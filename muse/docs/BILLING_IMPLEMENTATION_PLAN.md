@@ -1,346 +1,271 @@
 # Billing & Usage System
 
-> Usage Dashboard + Hybrid Billing (MANAGED/BYOK) via RevenueCat + Convex
+> Hybrid Billing: Managed quota + BYOK via RevenueCat (mobile) + Stripe (web)
 
 ## Pricing Tiers
 
 Source of truth: `convex/lib/tierConfig.ts`
 
-| Tier | Monthly | Yearly | AI Tokens/mo | Features |
-|------|---------|--------|--------------|----------|
-| **Free** | $0 | $0 | 10,000 | 3 projects, basic AI |
-| **Pro** | $14.99 | $119.99 | 500,000 | 20 projects, all AI, image gen |
-| **Team** | $49.99 | $299.99 | 2,000,000 | 100 projects, collaboration |
-| **Enterprise** | Custom | Custom | Unlimited | API access, custom limits |
+| Tier | Monthly | Yearly | Managed Tokens/mo | Projects | Async AI |
+|------|---------|--------|-------------------|----------|----------|
+| **Free** | $0 | $0 | 10,000 | 3 | ❌ |
+| **Pro** | $14.99 | $119.99 | 500,000 | 20 | ✅ |
+| **Team** | $49.99 | $299.99 | 2,000,000 | Unlimited | ✅ |
+
+---
+
+## Billing Modes
+
+| Mode | Description | API Key Source | Quota |
+|------|-------------|----------------|-------|
+| **MANAGED** | Platform provides AI | Platform key | Tier limit |
+| **BYOK** | User provides key | `x-openrouter-key` header | Unlimited (interactive) |
+
+### BYOK Strategy
+
+**Available to all tiers** (Free, Pro, Team) for growth:
+- Costs platform $0 (user pays OpenRouter)
+- Attracts power users/developers
+- "Half-open source" goodwill
+- Can tighten later if needed
+
+**Interactive vs Async split:**
+
+| Feature Type | BYOK | Managed |
+|--------------|------|---------|
+| Chat/agents (sync) | ✅ Unlimited | Quota |
+| Linting (user-triggered) | ✅ Unlimited | Quota |
+| Image generation | ✅ Unlimited | Quota |
+| Pulse (scheduled) | ❌ | ✅ Pro+ |
+| Async widgets | ❌ | ✅ Pro+ |
+| Background jobs | ❌ | ✅ Pro+ |
+
+**Rationale:** Async features need server-side key → natural paywall for Pro+.
 
 ---
 
 ## Architecture
 
 ```
-RevenueCat (App Store/Play Store)
-    ↓ webhook
-Convex HTTP endpoint (/api/webhooks/revenuecat)
-    ↓ update
-subscriptions table + tierConfig
-    ↓ query
-useBilling hook → UI
+Client Request
+      │
+      ├── x-openrouter-key header? ──► BYOK path (skip quota)
+      │                                    │
+      │                                    ▼
+      │                              Use client key
+      │                              No usage tracking
+      │
+      └── No header ──► MANAGED path
+                              │
+                              ▼
+                        Check quota
+                              │
+                              ├── Quota OK ──► Use platform key
+                              │                Track usage
+                              │
+                              └── Quota exceeded ──► 429 + paywall
 ```
 
 ---
 
-## Billing Modes
+## Implementation Status
 
-| Mode | Description | API Key Source | Pricing |
-|------|-------------|----------------|---------|
-| **MANAGED** | Platform provides AI tokens | Platform key | Full price |
-| **BYOK** | User provides own API key | `x-openrouter-key` header | 50% discount |
+### Complete ✅
 
-- BYOK stays for power users (lower friction, lower platform cost)
-- MANAGED is default for non-technical users
-- Mode switching allowed at any time
+| Component | Location |
+|-----------|----------|
+| Tier config | `convex/lib/tierConfig.ts` |
+| Entitlements | `convex/lib/entitlements.ts` |
+| Billing core | `convex/lib/billingCore.ts` |
+| Quota enforcement | `convex/lib/quotaEnforcement.ts` |
+| Rate limiting | `convex/lib/rateLimiting.ts` |
+| Usage tracking | `convex/aiUsage.ts` |
+| Billing snapshot | `convex/billing.ts` |
+| Stripe checkout | `convex/http.ts` → `/stripe-checkout` |
+| Stripe portal | `convex/http.ts` → `/stripe-portal` |
+| Stripe webhooks | `convex/stripe.ts` |
+| RevenueCat webhooks | `convex/subscriptions.ts` |
+| Webhook security | `convex/lib/webhookSecurity.ts` |
+| Customer mapping | `convex/billingCustomers.ts` |
+| Billing settings | `convex/billingSettings.ts` |
 
----
+### In Progress 🔄
 
-## Current State
+| Component | Status |
+|-----------|--------|
+| BYOK header passthrough | Needs implementation |
+| Per-request OpenRouter key | Needs implementation |
+| BYOK quota bypass | Needs implementation |
 
-| Component | Status | Location |
-|-----------|--------|----------|
-| BYOK key storage | Exists | `@mythos/ai/hooks/useApiKey.ts` |
-| BYOK header passing | Exists | Agent runtime client |
-| Pricing tiers config | Exists | `convex/lib/tierConfig.ts` |
-| Billing snapshot endpoint | Exists | `convex/billing.ts`, `convex/http.ts` |
-
-### Missing
+### Pending 📋
 
 | Component | Priority |
 |-----------|----------|
-| `subscriptions` table | P0 |
-| `tokenUsage` table | P0 |
-| RevenueCat webhook handler | P0 |
-| Billing state store | P1 |
 | Usage Dashboard UI | P1 |
-| Quota enforcement in agent | P1 |
+| Billing mode toggle UI | P1 |
+| Paywall modal (Expo) | P1 |
+| Pulse async billing | P2 |
 
 ---
 
-## Schema (Convex)
+## BYOK Implementation
+
+### HTTP Layer
+
+Pass `x-openrouter-key` header through to internal actions:
+
+```typescript
+// convex/http.ts - AI endpoints
+const byokKey = request.headers.get("x-openrouter-key");
+
+await ctx.runAction(internal.ai.agentRuntime.run, {
+  // ... other args
+  byokKey: byokKey ?? undefined,
+});
+```
+
+### Agent Runtime
+
+Use BYOK key when present, skip quota:
+
+```typescript
+// convex/ai/agentRuntime.ts
+async function getApiKeyAndMode(ctx, userId, byokKey) {
+  if (byokKey) {
+    // BYOK: use client key, skip quota
+    return {
+      apiKey: byokKey,
+      billingMode: "byok",
+      trackUsage: false
+    };
+  }
+
+  // MANAGED: check quota, use platform key
+  await assertQuota(ctx, userId);
+  return {
+    apiKey: process.env.OPENROUTER_API_KEY,
+    billingMode: "managed",
+    trackUsage: true
+  };
+}
+```
+
+### All AI Endpoints
+
+Apply BYOK to:
+- `/ai/saga` - Agent runtime
+- `/ai/chat` - Simple chat
+- `/ai/widgets` - Widget execution
+- `/ai/detect` - Entity detection
+- `/ai/lint` - Consistency linting
+- `/ai/dynamics` - Interaction extraction
+- `/ai/coach` - Writing coach
+- `/ai/style` - Style analysis
+- `/ai/image` - Image generation
+
+---
+
+## Database Schema
 
 ```typescript
 // convex/schema.ts
 
 subscriptions: defineTable({
-  userId: v.id("users"),
-  tier: v.union(v.literal("free"), v.literal("pro"), v.literal("team"), v.literal("enterprise")),
+  userId: v.string(),
+  status: v.string(), // active, canceled, past_due, trialing
+  store: v.string(), // REVENUECAT, STRIPE
+  productId: v.string(),
+  entitlements: v.array(v.string()),
+  purchasedAt: v.optional(v.number()),
+  expiresAt: v.optional(v.number()),
+  willRenew: v.optional(v.boolean()),
+  // ...
+})
+
+billingSettings: defineTable({
+  userId: v.string(),
   billingMode: v.union(v.literal("managed"), v.literal("byok")),
-  status: v.string(), // active, canceled, past_due
-  revenueCatId: v.optional(v.string()),
-  currentPeriodStart: v.optional(v.number()),
-  currentPeriodEnd: v.optional(v.number()),
+  // ...
 })
-.index("by_user", ["userId"])
-.index("by_revenuecat", ["revenueCatId"])
 
-tokenUsage: defineTable({
-  userId: v.id("users"),
-  periodStart: v.number(),
-  periodEnd: v.number(),
-  tokensIncluded: v.number(),
-  tokensUsed: v.number(),
-  wordsWritten: v.number(),
-  aiCalls: v.object({
-    chat: v.number(),
-    lint: v.number(),
-    coach: v.number(),
-    detect: v.number(),
-    search: v.number(),
-  }),
+billingCustomers: defineTable({
+  userId: v.string(),
+  stripeCustomerId: v.optional(v.string()),
+  revenuecatId: v.optional(v.string()),
+  // ...
 })
-.index("by_user_period", ["userId", "periodStart"])
+
+aiUsage: defineTable({
+  userId: v.string(),
+  projectId: v.optional(v.string()),
+  endpoint: v.string(),
+  model: v.string(),
+  promptTokens: v.number(),
+  completionTokens: v.number(),
+  totalTokens: v.number(),
+  billingMode: v.string(),
+  // ...
+})
 ```
-
----
-
-## Queries & Mutations
-
-```typescript
-// convex/billing.ts
-
-// Get billing context for quota checks
-export const getBillingContext = query({
-  args: { userId: v.id("users") },
-  returns: v.object({
-    tier: v.string(),
-    billingMode: v.string(),
-    tokensIncluded: v.number(),
-    tokensUsed: v.number(),
-    tokensRemaining: v.number(),
-    canUseAI: v.boolean(),
-  }),
-});
-
-// Record token usage after AI call
-export const recordTokenUsage = mutation({
-  args: {
-    userId: v.id("users"),
-    tokens: v.number(),
-    callType: v.string(),
-  },
-});
-
-// Record words written (on document save)
-export const recordWordsWritten = mutation({
-  args: {
-    userId: v.id("users"),
-    wordsDelta: v.number(),
-  },
-});
-
-// Switch billing mode
-export const setBillingMode = mutation({
-  args: {
-    userId: v.id("users"),
-    mode: v.union(v.literal("managed"), v.literal("byok")),
-  },
-});
-```
-
----
-
-## RevenueCat Webhook
-
-```typescript
-// convex/http.ts
-
-http.route({
-  path: "/api/webhooks/revenuecat",
-  method: "POST",
-  handler: async (ctx, req) => {
-    // Verify auth header
-    const auth = req.headers.get("Authorization");
-    if (auth !== `Bearer ${process.env.REVENUECAT_WEBHOOK_AUTH_KEY}`) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-
-    const body = await req.json();
-
-    switch (body.event.type) {
-      case "INITIAL_PURCHASE":
-      case "RENEWAL":
-      case "PRODUCT_CHANGE":
-        await ctx.runMutation(internal.subscriptions.activate, {
-          userId: body.event.app_user_id,
-          productId: body.event.product_id,
-          expiresAt: body.event.expiration_at_ms,
-        });
-        break;
-
-      case "CANCELLATION":
-      case "EXPIRATION":
-        await ctx.runMutation(internal.subscriptions.deactivate, {
-          userId: body.event.app_user_id,
-        });
-        break;
-    }
-
-    return new Response("OK", { status: 200 });
-  },
-});
-```
-
----
-
-## Quota Enforcement
-
-In AI agent runtime, check billing before executing:
-
-```typescript
-// convex/ai/agentRuntime.ts
-
-async function checkBillingAndGetKey(ctx, userId) {
-  const billing = await ctx.runQuery(api.billing.getBillingContext, { userId });
-
-  if (billing.billingMode === "byok") {
-    // BYOK: expect key from request context
-    const apiKey = ctx.headers?.get("x-openrouter-key");
-    if (!apiKey) throw new Error("BYOK mode requires API key");
-    return { apiKey, record: false };
-  }
-
-  // MANAGED: check quota
-  if (!billing.canUseAI && billing.tier === "free") {
-    throw new Error("Token limit reached. Upgrade to continue.");
-  }
-
-  return { apiKey: process.env.OPENROUTER_API_KEY, record: true };
-}
-
-// After AI call completes:
-if (record) {
-  await ctx.runMutation(api.billing.recordTokenUsage, {
-    userId,
-    tokens: result.usage?.totalTokens ?? 0,
-    callType: "chat",
-  });
-}
-```
-
----
-
-## Frontend Components
-
-### UsageDashboard
-
-```typescript
-// apps/web/src/components/settings/UsageDashboard.tsx
-
-export function UsageDashboard({ usage, subscription }) {
-  return (
-    <div>
-      {/* Token Usage Meter */}
-      <UsageMeter
-        used={usage.tokensUsed}
-        included={usage.tokensIncluded}
-        label="AI Tokens"
-      />
-
-      {/* Words Written */}
-      <StatCard
-        label="Words Written"
-        value={usage.wordsWritten.toLocaleString()}
-        subtext="This month"
-      />
-
-      {/* AI Calls Breakdown */}
-      <div className="grid grid-cols-2 gap-4">
-        <StatCard label="Chat" value={usage.aiCalls.chat} />
-        <StatCard label="Linter" value={usage.aiCalls.lint} />
-        <StatCard label="Coach" value={usage.aiCalls.coach} />
-        <StatCard label="Search" value={usage.aiCalls.search} />
-      </div>
-
-      {/* Upgrade CTA */}
-      {usage.tokensRemaining < usage.tokensIncluded * 0.2 && (
-        <UpgradeBanner tier={subscription.tier} />
-      )}
-    </div>
-  );
-}
-```
-
-### useBilling Hook
-
-```typescript
-// packages/ai/src/hooks/useBilling.ts
-
-export function useBilling() {
-  const subscription = useQuery(api.billing.getSubscription);
-  const usage = useQuery(api.billing.getCurrentUsage);
-
-  const setBillingMode = useMutation(api.billing.setBillingMode);
-
-  return {
-    subscription,
-    usage,
-    setBillingMode,
-    isLoading: subscription === undefined,
-  };
-}
-```
-
----
-
-## Implementation Phases
-
-### Phase 1: Database
-- [ ] Add `subscriptions` table to Convex schema
-- [ ] Add `tokenUsage` table
-- [ ] Create `getBillingContext` query
-- [ ] Create `recordTokenUsage` mutation
-
-### Phase 2: RevenueCat Integration
-- [ ] Add webhook endpoint to `convex/http.ts`
-- [ ] Handle subscription events
-- [ ] Sync entitlements to tier
-- [ ] Test with sandbox
-
-### Phase 3: Quota Enforcement
-- [ ] Add billing check to agent runtime
-- [ ] Record usage after AI calls (MANAGED only)
-- [ ] Enforce hard limit for free tier
-- [ ] Allow overage for paid tiers
-
-### Phase 4: Frontend
-- [ ] Create `useBilling` hook
-- [ ] Create `UsageDashboard` component
-- [ ] Create `BillingSettings` component
-- [ ] Add usage meter to settings
-- [ ] Update word count tracking in autosave
 
 ---
 
 ## Environment Variables
 
+### Stripe (Web)
+```env
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_PRO_MONTHLY=price_1SpXRYPNSLaIbAGJ0mYQPsgs
+STRIPE_PRICE_PRO_ANNUAL=price_1SpXRoPNSLaIbAGJ8UHsrmFq
+STRIPE_PRICE_TEAM_MONTHLY=price_1SpXRvPNSLaIbAGJP2Q5yed0
+STRIPE_PRICE_TEAM_ANNUAL=price_1SpXRvPNSLaIbAGJ83LnGst0
+STRIPE_CHECKOUT_SUCCESS_URL=https://rhei.team/settings?checkout=success
+STRIPE_CHECKOUT_CANCEL_URL=https://rhei.team/settings?checkout=cancel
+STRIPE_PORTAL_RETURN_URL=https://rhei.team/settings
+```
+
+### RevenueCat (Mobile)
 ```env
 REVENUECAT_PUBLIC_KEY=appl_xxxxxxxx
+REVENUECAT_WEBHOOK_SECRET=xxxxx
 REVENUECAT_WEBHOOK_AUTH_KEY=xxxxx
 ```
 
-## App Store Product IDs
-
-See [PRICING_REVENUECAT_SETUP.md](./PRICING_REVENUECAT_SETUP.md) for full details.
-
-- `rhei_pro_v2_monthly` / `rhei_pro_v2_yearly`
-- `rhei_team_v2_monthly` / `rhei_team_v2_yearly`
+### AI
+```env
+OPENROUTER_API_KEY=sk-or-... (platform key for managed)
+```
 
 ---
 
 ## Key Decisions
 
-1. **RevenueCat for App Store** - Cross-platform subscription management
-2. **BYOK stays** - Power users get 50% discount, lower platform cost
-3. **MANAGED is default** - Non-technical users don't need API keys
-4. **Monthly token limits** - Simple to understand, resets each billing cycle
-5. **Overage for paid only** - Free tier has hard limit
-6. **Words tracked separately** - Different metric from tokens, useful for analytics
-7. **No usage recording for BYOK** - Users pay their own API costs
+1. **BYOK open to all tiers** - Growth strategy, $0 cost, can restrict later
+2. **Interactive vs Async split** - BYOK = sync only, async = managed (Pro+)
+3. **Stripe for web** - Direct billing, no app store cut
+4. **RevenueCat for mobile** - Cross-platform subscription management
+5. **Per-request BYOK** - No server-side key storage (security/compliance)
+6. **Usage tracking for managed only** - BYOK users pay their own API costs
+7. **Team = collaboration features** - Not just more tokens (BYOK makes that worthless)
+
+---
+
+## Testing
+
+### Stripe Flow
+1. `POST /stripe-checkout` with `{ tier: "pro", billingInterval: "monthly" }`
+2. Complete checkout with test card `4242 4242 4242 4242`
+3. Verify webhook at `/webhooks/stripe`
+4. Check `/billing-subscription` returns updated entitlements
+
+### BYOK Flow
+1. Set `x-openrouter-key` header on AI request
+2. Verify request succeeds without quota check
+3. Verify no usage tracked in `aiUsage` table
+
+### Quota Enforcement
+1. Use managed mode (no BYOK header)
+2. Exhaust free tier quota
+3. Verify 429 response with paywall message
+4. Upgrade to Pro, verify quota reset

@@ -14,6 +14,7 @@ import type { Id } from "../_generated/dataModel";
 import { WRITING_COACH_SYSTEM, GENRE_COACH_CONTEXTS } from "./prompts/coach";
 import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
 import { getModelForTaskSync, checkTaskAccess, type TierId } from "../lib/providers";
+import { assertAiAllowed } from "../lib/quotaEnforcement";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_ANALYZE_TEXT_MAX_CHARS = 20000;
@@ -312,6 +313,13 @@ export const runCoach = internalAction({
 
     const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre, canonDecisionsText);
 
+    const { maxOutputTokens } = await assertAiAllowed(ctx, {
+      userId,
+      endpoint: "coach",
+      promptText: userPrompt,
+      requestedMaxOutputTokens: 4096,
+    });
+
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {
@@ -327,7 +335,7 @@ export const runCoach = internalAction({
           { role: "user", content: userPrompt },
         ],
         temperature: 0.3,
-        max_tokens: 4096,
+        max_tokens: maxOutputTokens,
       }),
     });
 
@@ -341,18 +349,25 @@ export const runCoach = internalAction({
     const content = data.choices[0]?.message?.content ?? "";
     const analysis = parseResponse(content);
 
-    await ctx.runMutation(internal.aiUsage.trackUsage, {
-      userId,
-      projectId: projectId as Id<"projects">,
-      endpoint: "coach",
-      model: resolved.model,
-      promptTokens: data.usage?.prompt_tokens ?? 0,
-      completionTokens: data.usage?.completion_tokens ?? 0,
-      totalTokens: data.usage?.total_tokens ?? 0,
-      billingMode: "managed",
-      latencyMs: processingTimeMs,
-      success: true,
-    });
+    const billingMode = await ctx.runQuery(
+      (internal as any).billingSettings.getBillingMode,
+      { userId }
+    );
+
+    if (billingMode !== "byok") {
+      await ctx.runMutation(internal.aiUsage.trackUsage, {
+        userId,
+        projectId: projectId as Id<"projects">,
+        endpoint: "coach",
+        model: resolved.model,
+        promptTokens: data.usage?.prompt_tokens ?? 0,
+        completionTokens: data.usage?.completion_tokens ?? 0,
+        totalTokens: data.usage?.total_tokens ?? 0,
+        billingMode,
+        latencyMs: processingTimeMs,
+        success: true,
+      });
+    }
 
     return {
       ...analysis,
@@ -417,6 +432,23 @@ export const runCoachToStream = internalAction({
 
       const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre, canonDecisionsText);
 
+      let maxOutputTokens = 4096;
+      try {
+        const result = await assertAiAllowed(ctx, {
+          userId,
+          endpoint: "coach",
+          promptText: userPrompt,
+          requestedMaxOutputTokens: 4096,
+        });
+        maxOutputTokens = result.maxOutputTokens;
+      } catch (error) {
+        await ctx.runMutation((internal as any)["ai/streams"].fail, {
+          streamId,
+          error: error instanceof Error ? error.message : "Quota enforcement failed",
+        });
+        return;
+      }
+
       const response = await fetch(OPENROUTER_API_URL, {
         method: "POST",
         headers: {
@@ -432,7 +464,7 @@ export const runCoachToStream = internalAction({
             { role: "user", content: userPrompt },
           ],
           temperature: 0.3,
-          max_tokens: 4096,
+          max_tokens: maxOutputTokens,
         }),
       });
 
@@ -462,18 +494,24 @@ export const runCoachToStream = internalAction({
         },
       } as never);
 
-      await ctx.runMutation(internal.aiUsage.trackUsage, {
-        userId,
-        projectId: projectId as Id<"projects">,
-        endpoint: "coach",
-        model: resolved.model,
-        promptTokens: data.usage?.prompt_tokens ?? 0,
-        completionTokens: data.usage?.completion_tokens ?? 0,
-        totalTokens: data.usage?.total_tokens ?? 0,
-        billingMode: "managed",
-        latencyMs: processingTimeMs,
-        success: true,
-      });
+      const billingMode = await ctx.runQuery(
+        (internal as any).billingSettings.getBillingMode,
+        { userId }
+      );
+      if (billingMode !== "byok") {
+        await ctx.runMutation(internal.aiUsage.trackUsage, {
+          userId,
+          projectId: projectId as Id<"projects">,
+          endpoint: "coach",
+          model: resolved.model,
+          promptTokens: data.usage?.prompt_tokens ?? 0,
+          completionTokens: data.usage?.completion_tokens ?? 0,
+          totalTokens: data.usage?.total_tokens ?? 0,
+          billingMode,
+          latencyMs: processingTimeMs,
+          success: true,
+        });
+      }
 
       await ctx.runMutation((internal as unknown as { "ai/streams": { complete: unknown } })["ai/streams"]["complete"] as typeof internal.aiUsage.trackUsage, {
         streamId,

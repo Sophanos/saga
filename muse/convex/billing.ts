@@ -8,7 +8,13 @@ import { v } from "convex/values";
 import { internalQuery, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { getActiveSubscription } from "./lib/entitlements";
-import { getTierDefaults, type TierConfig, type TierId } from "./lib/tierConfig";
+import {
+  dbToTierConfig,
+  getTierDefaults,
+  type TierConfig,
+  type TierId,
+} from "./lib/tierConfig";
+import { resolveTierFromSubscription } from "./lib/billingCore";
 
 export type BillingTier = TierId;
 
@@ -29,6 +35,7 @@ export interface BillingSubscriptionSnapshot {
     currentPeriodEnd: string | null;
     cancelAtPeriodEnd: boolean;
   };
+  billingMode: "managed" | "byok";
   usage: {
     tokensUsed: number;
     tokensIncluded: number;
@@ -80,6 +87,7 @@ interface BillingUsageDetail {
 
 type SubscriptionRecord = {
   productId: string;
+  entitlements?: string[];
   status: string;
   expiresAt?: number;
   willRenew: boolean;
@@ -106,21 +114,19 @@ export const getBillingSubscriptionSnapshot = internalQuery({
     const periodEndMs = getBillingPeriodEndMs(nowMs);
 
     const subscription = await getLatestSubscription(ctx, args.userId);
-    const tier = resolveTierFromProductId(subscription?.productId);
-    const tierConfig = getTierDefaults(tier);
+    const tier = resolveTierFromSubscription({
+      entitlements: subscription?.entitlements,
+      productId: subscription?.productId,
+    });
+    const billingMode = await getBillingMode(ctx, args.userId);
+    const tierConfig = await getTierConfig(ctx, tier);
 
-    const usageRecords = await ctx.db
-      .query("aiUsage")
-      .withIndex("by_user_date", (q) =>
-        q.eq("userId", args.userId).gte("createdAt", periodStartMs)
-      )
-      .collect();
+    const usageCounters = await getUsageCounters(ctx, args.userId, periodStartMs);
 
-    const tokensUsed = usageRecords.reduce(
-      (sum, record) => sum + record.totalTokens,
-      0
-    );
-    const tokensIncluded = tierConfig.ai.tokensPerMonth ?? 0;
+    const tokensUsed =
+      billingMode === "managed" ? usageCounters.tokensUsedManaged : 0;
+    const tokensIncluded =
+      billingMode === "managed" ? tierConfig.ai.tokensPerMonth ?? 0 : 0;
     const tokensRemaining = calculateTokensRemaining(tokensIncluded, tokensUsed);
 
     let usageDetail: BillingUsageDetail | undefined;
@@ -145,6 +151,7 @@ export const getBillingSubscriptionSnapshot = internalQuery({
           : null,
         cancelAtPeriodEnd: subscription ? !subscription.willRenew : false,
       },
+      billingMode,
       usage: {
         tokensUsed,
         tokensIncluded,
@@ -158,6 +165,21 @@ export const getBillingSubscriptionSnapshot = internalQuery({
       limits: buildLimits(tierConfig),
       usageDetail,
     };
+  },
+});
+
+export const getBillingUsageCounters = internalQuery({
+  args: {
+    userId: v.string(),
+    periodStartMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("billingUsagePeriods")
+      .withIndex("by_user_period", (q) =>
+        q.eq("userId", args.userId).eq("periodStartMs", args.periodStartMs)
+      )
+      .first();
   },
 });
 
@@ -196,16 +218,6 @@ function normalizeSubscriptionStatus(
     default:
       return "canceled";
   }
-}
-
-function resolveTierFromProductId(productId?: string | null): BillingTier {
-  if (!productId) return "free";
-
-  const normalized = productId.toLowerCase();
-  if (normalized.includes("enterprise")) return "enterprise";
-  if (normalized.includes("team")) return "team";
-  if (normalized.includes("pro")) return "pro";
-  return "free";
 }
 
 function calculateTokensRemaining(tokensIncluded: number, tokensUsed: number): number {
@@ -278,6 +290,62 @@ async function getLatestSubscription(
 
   const sorted = subscriptions.sort((a, b) => b.purchasedAt - a.purchasedAt);
   return sorted[0] as SubscriptionRecord;
+}
+
+async function getBillingMode(
+  ctx: QueryCtx,
+  userId: string
+): Promise<"managed" | "byok"> {
+  const record = await ctx.db
+    .query("userBillingSettings")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .first();
+  return record?.billingMode === "byok" ? "byok" : "managed";
+}
+
+async function getTierConfig(ctx: QueryCtx, tier: TierId): Promise<TierConfig> {
+  const record = await ctx.db
+    .query("tierConfigs")
+    .withIndex("by_tier", (q) => q.eq("tier", tier))
+    .filter((q) => q.eq(q.field("isActive"), true))
+    .first();
+  if (!record) {
+    return getTierDefaults(tier);
+  }
+  return dbToTierConfig(record as any);
+}
+
+async function getUsageCounters(
+  ctx: QueryCtx,
+  userId: string,
+  periodStartMs: number
+): Promise<{ tokensUsedManaged: number; callsUsed: number }> {
+  const record = await ctx.db
+    .query("billingUsagePeriods")
+    .withIndex("by_user_period", (q) =>
+      q.eq("userId", userId).eq("periodStartMs", periodStartMs)
+    )
+    .first();
+
+  if (record) {
+    return {
+      tokensUsedManaged: record.tokensUsedManaged,
+      callsUsed: record.callsUsed,
+    };
+  }
+
+  const usageRecords = await ctx.db
+    .query("aiUsage")
+    .withIndex("by_user_date", (q) =>
+      q.eq("userId", userId).gte("createdAt", periodStartMs)
+    )
+    .collect();
+
+  const tokensUsedManaged = usageRecords.reduce(
+    (sum, record) => sum + record.totalTokens,
+    0
+  );
+  return { tokensUsedManaged, callsUsed: usageRecords.length };
 }
 
 async function assertProjectAccess(

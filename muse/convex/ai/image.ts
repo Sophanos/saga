@@ -19,6 +19,7 @@ import {
   checkTaskAccess,
   type TierId,
 } from "../lib/providers";
+import { assertAiAllowed } from "../lib/quotaEnforcement";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -118,7 +119,7 @@ export const storeGeneratedAsset = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    return await ctx.db.insert("projectAssets", {
+    const assetId = await ctx.db.insert("projectAssets", {
       projectId: args.projectId,
       entityId: args.entityId,
       type: args.type,
@@ -134,6 +135,13 @@ export const storeGeneratedAsset = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    await ctx.scheduler.runAfter(0, internal.ai.imageEmbeddings.embedImageAsset, {
+      assetId,
+      projectId: args.projectId,
+    });
+
+    return assetId;
   },
 });
 
@@ -188,6 +196,13 @@ export const generateImageAction = internalAction({
         negativePrompt
       );
 
+      const { maxOutputTokens } = await assertAiAllowed(ctx, {
+        userId,
+        endpoint: "image_generate",
+        promptText: prompt,
+        requestedMaxOutputTokens: 4096,
+      });
+
       const response = await fetch(OPENROUTER_API_URL, {
         method: "POST",
         headers: {
@@ -200,7 +215,7 @@ export const generateImageAction = internalAction({
           model: resolved.model,
           messages: [{ role: "user", content: prompt }],
           temperature: 0.7,
-          max_tokens: 4096,
+          max_tokens: maxOutputTokens,
         }),
       });
 
@@ -259,19 +274,25 @@ export const generateImageAction = internalAction({
 
       const imageUrl = await ctx.storage.getUrl(storageId);
 
-      await ctx.runMutation(internal.aiUsage.trackUsage, {
-        userId,
-        projectId,
-        endpoint: "image_generate",
-        model: resolved.model,
-        promptTokens: data.usage?.prompt_tokens ?? 0,
-        completionTokens: data.usage?.completion_tokens ?? 0,
-        totalTokens: data.usage?.total_tokens ?? 0,
-        costMicros: Math.round(tierConfig.pricePerImage * 1_000_000),
-        billingMode: "managed",
-        latencyMs: Date.now() - startTime,
-        success: true,
-      });
+      const billingMode = await ctx.runQuery(
+        (internal as any).billingSettings.getBillingMode,
+        { userId }
+      );
+      if (billingMode !== "byok") {
+        await ctx.runMutation(internal.aiUsage.trackUsage, {
+          userId,
+          projectId,
+          endpoint: "image_generate",
+          model: resolved.model,
+          promptTokens: data.usage?.prompt_tokens ?? 0,
+          completionTokens: data.usage?.completion_tokens ?? 0,
+          totalTokens: data.usage?.total_tokens ?? 0,
+          costMicros: Math.round(tierConfig.pricePerImage * 1_000_000),
+          billingMode,
+          latencyMs: Date.now() - startTime,
+          success: true,
+        });
+      }
 
       return {
         success: true,
@@ -282,19 +303,25 @@ export const generateImageAction = internalAction({
     } catch (error) {
       console.error("[ai/image] Generation error:", error);
 
-      await ctx.runMutation(internal.aiUsage.trackUsage, {
-        userId,
-        projectId,
-        endpoint: "image_generate",
-        model: resolved.model,
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-        billingMode: "managed",
-        latencyMs: Date.now() - startTime,
-        success: false,
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
-      });
+      const billingMode = await ctx.runQuery(
+        (internal as any).billingSettings.getBillingMode,
+        { userId }
+      );
+      if (billingMode !== "byok") {
+        await ctx.runMutation(internal.aiUsage.trackUsage, {
+          userId,
+          projectId,
+          endpoint: "image_generate",
+          model: resolved.model,
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          billingMode,
+          latencyMs: Date.now() - startTime,
+          success: false,
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
 
       return {
         success: false,
@@ -369,6 +396,13 @@ Return as JSON: { description, characters, mood, setting, style }`;
 
     const prompt = analysisPrompt ?? defaultPrompt;
 
+    const { maxOutputTokens } = await assertAiAllowed(ctx, {
+      userId,
+      endpoint: "image_generate",
+      promptText: prompt,
+      requestedMaxOutputTokens: 2048,
+    });
+
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {
@@ -389,6 +423,7 @@ Return as JSON: { description, characters, mood, setting, style }`;
           },
         ],
         temperature: 0.3,
+        max_tokens: maxOutputTokens,
       }),
     });
 
@@ -400,18 +435,24 @@ Return as JSON: { description, characters, mood, setting, style }`;
     const data = (await response.json()) as OpenRouterImageResponse;
     const content = data.choices[0]?.message?.content ?? "";
 
-    await ctx.runMutation(internal.aiUsage.trackUsage, {
-      userId,
-      projectId,
-      endpoint: "image-analyze",
-      model: "google/gemini-2.0-flash",
-      promptTokens: data.usage?.prompt_tokens ?? 0,
-      completionTokens: data.usage?.completion_tokens ?? 0,
-      totalTokens: data.usage?.total_tokens ?? 0,
-      billingMode: "managed",
-      latencyMs: Date.now() - startTime,
-      success: true,
-    });
+    const billingMode = await ctx.runQuery(
+      (internal as any).billingSettings.getBillingMode,
+      { userId }
+    );
+    if (billingMode !== "byok") {
+      await ctx.runMutation(internal.aiUsage.trackUsage, {
+        userId,
+        projectId,
+        endpoint: "image-analyze",
+        model: "google/gemini-2.0-flash",
+        promptTokens: data.usage?.prompt_tokens ?? 0,
+        completionTokens: data.usage?.completion_tokens ?? 0,
+        totalTokens: data.usage?.total_tokens ?? 0,
+        billingMode,
+        latencyMs: Date.now() - startTime,
+        success: true,
+      });
+    }
 
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);

@@ -14,7 +14,7 @@
 
 import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
 import type { UsageHandler } from "@convex-dev/agent";
-import { components } from "../_generated/api";
+import { components, internal } from "../_generated/api";
 
 // ============================================================
 // Rate Limiter Configuration
@@ -261,25 +261,40 @@ export function createUsageHandler(options?: {
       const outputTokens = usage.outputTokens ?? 0;
       const costMicros = calculateCostMicros(model, inputTokens, outputTokens);
 
+      // @ts-expect-error - internal API reference for billingSettings
+      const getBillingModeFn = internal.billingSettings?.getBillingMode;
+      const billingMode: "managed" | "byok" = getBillingModeFn
+        ? await (ctx.runQuery as any)(getBillingModeFn, { userId })
+        : "managed";
+      if (billingMode === "byok") {
+        return;
+      }
+
       // Resolve projectId from threadId if resolver provided
       let projectId: string | undefined;
       if (options?.projectIdResolver && threadId) {
         projectId = await options.projectIdResolver(threadId);
+      } else if (threadId) {
+        const thread = await ctx.runQuery((internal as any)["ai/threads"].getThread, {
+          threadId,
+        });
+        projectId = thread?.projectId ?? undefined;
       }
 
-      // Note: aiUsage tracking requires a separate aiUsage module to be created
-      // For now, we just log the usage
-      console.log("[usage] AI usage tracked", {
+      await ctx.runMutation(internal.aiUsage.trackUsage, {
         userId,
         projectId,
         threadId,
         agentName,
         provider,
+        endpoint: agentName ?? "saga",
         model,
-        inputTokens,
-        outputTokens,
-        totalTokens: usage.totalTokens,
+        promptTokens: inputTokens,
+        completionTokens: outputTokens,
+        totalTokens: usage.totalTokens ?? inputTokens + outputTokens,
         costMicros,
+        billingMode,
+        success: true,
       });
     }
   };

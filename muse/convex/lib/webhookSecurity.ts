@@ -24,9 +24,13 @@ export async function verifyRevenueCatWebhook(
     return false;
   }
 
-  const expectedToken = process.env["REVENUECAT_WEBHOOK_SECRET"];
+  const expectedToken =
+    process.env["REVENUECAT_WEBHOOK_SECRET"] ??
+    process.env["REVENUECAT_WEBHOOK_AUTH_KEY"];
   if (!expectedToken) {
-    console.error("[webhookSecurity] REVENUECAT_WEBHOOK_SECRET not configured");
+    console.error(
+      "[webhookSecurity] RevenueCat webhook secret not configured"
+    );
     return false;
   }
 

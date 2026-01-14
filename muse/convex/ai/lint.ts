@@ -14,6 +14,7 @@ import type { Id } from "../_generated/dataModel";
 import { CONSISTENCY_LINTER_SYSTEM } from "./prompts/linter";
 import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
 import { getModelForTaskSync, checkTaskAccess, type TierId } from "../lib/providers";
+import { assertAiAllowed } from "../lib/quotaEnforcement";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_ANALYZE_TEXT_MAX_CHARS = 20000;
@@ -195,6 +196,13 @@ export const runLint = internalAction({
       canonDecisionsText
     );
 
+    const { maxOutputTokens } = await assertAiAllowed(ctx, {
+      userId,
+      endpoint: "lint",
+      promptText: userPrompt,
+      requestedMaxOutputTokens: 4096,
+    });
+
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {
@@ -211,7 +219,7 @@ export const runLint = internalAction({
         ],
         response_format: { type: "json_object" },
         temperature: 0.2,
-        max_tokens: 4096,
+        max_tokens: maxOutputTokens,
       }),
     });
 
@@ -225,18 +233,24 @@ export const runLint = internalAction({
     const content = data.choices[0]?.message?.content ?? "";
     const issues = parseResponse(content);
 
-    await ctx.runMutation(internal.aiUsage.trackUsage, {
-      userId,
-      projectId: projectId as Id<"projects">,
-      endpoint: "lint",
-      model: resolved.model,
-      promptTokens: data.usage?.prompt_tokens ?? 0,
-      completionTokens: data.usage?.completion_tokens ?? 0,
-      totalTokens: data.usage?.total_tokens ?? 0,
-      billingMode: "managed",
-      latencyMs: processingTimeMs,
-      success: true,
-    });
+    const billingMode = await ctx.runQuery(
+      (internal as any).billingSettings.getBillingMode,
+      { userId }
+    );
+    if (billingMode !== "byok") {
+      await ctx.runMutation(internal.aiUsage.trackUsage, {
+        userId,
+        projectId: projectId as Id<"projects">,
+        endpoint: "lint",
+        model: resolved.model,
+        promptTokens: data.usage?.prompt_tokens ?? 0,
+        completionTokens: data.usage?.completion_tokens ?? 0,
+        totalTokens: data.usage?.total_tokens ?? 0,
+        billingMode,
+        latencyMs: processingTimeMs,
+        success: true,
+      });
+    }
 
     return {
       issues,

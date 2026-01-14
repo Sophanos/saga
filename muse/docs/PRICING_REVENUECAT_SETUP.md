@@ -1,18 +1,92 @@
-# Pricing & RevenueCat Setup
+# Pricing & Billing Setup
 
-> App Store pricing + RevenueCat for Rhei
+> Multi-platform billing: RevenueCat (iOS/Android) + Stripe (Web)
 
 ## Pricing (Source of Truth: `convex/lib/tierConfig.ts`)
 
-| Tier | Monthly | Yearly | AI Tokens/mo |
-|------|---------|--------|--------------|
-| **Free** | $0 | $0 | 10,000 |
-| **Pro** | $14.99 | $119.99 | 500,000 |
-| **Team** | $49.99 | $299.99 | 2,000,000 |
+| Tier | Monthly | Yearly | Managed Tokens/mo | Projects |
+|------|---------|--------|-------------------|----------|
+| **Free** | $0 | $0 | 10,000 | 3 |
+| **Pro** | $14.99 | $119.99 | 500,000 | 20 |
+| **Team** | $49.99 | $299.99 | 2,000,000 | Unlimited |
 
-## App Store Connect
+## BYOK (Bring Your Own Key)
 
-### Product IDs (v2)
+BYOK allows users to use their own OpenRouter API key for **unlimited interactive AI**.
+
+| Aspect | Details |
+|--------|---------|
+| **Available to** | All tiers (Free, Pro, Team) |
+| **Scope** | Interactive/sync AI only |
+| **Async features** | Require managed quota (Pro+) |
+| **Cost to platform** | $0 (user pays OpenRouter directly) |
+
+### What BYOK Covers (Interactive)
+- Chat/agent conversations
+- Entity detection
+- Linting/consistency checks (user-triggered)
+- Style analysis
+- Image generation
+- Coach feedback
+- Widget execution (user-triggered)
+
+### What BYOK Does NOT Cover (Async)
+- Pulse (scheduled background analysis)
+- Scheduled widgets
+- Server-triggered consistency checks
+- Webhook-triggered AI processing
+
+**Rationale:** Async features require server-side API key. BYOK users must use managed quota for these, creating natural paywall for Pro+.
+
+---
+
+## Stripe (Web)
+
+### Products & Prices (Test Mode)
+
+| Product | Price ID | Amount | Interval |
+|---------|----------|--------|----------|
+| Rhei Pro | `price_1SpXRYPNSLaIbAGJ0mYQPsgs` | $14.99 | monthly |
+| Rhei Pro | `price_1SpXRoPNSLaIbAGJ8UHsrmFq` | $119.99 | yearly |
+| Rhei Team | `price_1SpXRvPNSLaIbAGJP2Q5yed0` | $49.99 | monthly |
+| Rhei Team | `price_1SpXRvPNSLaIbAGJ83LnGst0` | $299.99 | yearly |
+
+### Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/stripe-checkout` | POST | Create checkout session |
+| `/stripe-portal` | POST | Open billing portal |
+| `/webhooks/stripe` | POST | Webhook receiver |
+
+### Webhook Events
+
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.paid`
+- `invoice.payment_failed`
+
+### Environment Variables
+
+```env
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_PRO_MONTHLY=price_...
+STRIPE_PRICE_PRO_ANNUAL=price_...
+STRIPE_PRICE_TEAM_MONTHLY=price_...
+STRIPE_PRICE_TEAM_ANNUAL=price_...
+STRIPE_CHECKOUT_SUCCESS_URL=https://rhei.team/settings?checkout=success
+STRIPE_CHECKOUT_CANCEL_URL=https://rhei.team/settings?checkout=cancel
+STRIPE_PORTAL_RETURN_URL=https://rhei.team/settings
+```
+
+---
+
+## RevenueCat (iOS/Android)
+
+### App Store Connect - Product IDs
 
 | Product ID | Tier | Duration | Price | Free Trial |
 |------------|------|----------|-------|------------|
@@ -30,83 +104,57 @@
 
 ### Localizations
 
-| Product | Display Name (EN) | Display Name (DE) | Description (EN) | Description (DE) |
-|---------|-------------------|-------------------|------------------|------------------|
-| `rhei_pro_v2_monthly` | Pro Plan | Pro-Abo | 500K AI tokens, 20 projects | 500K KI-Tokens, 20 Projekte |
-| `rhei_pro_v2_yearly` | Pro Plan (Annual) | Pro-Abo (Jährlich) | Save 33% - 500K tokens/month | 33% sparen - 500K Tokens/Monat |
-| `rhei_team_v2_monthly` | Team Plan | Team-Abo | 2M AI tokens, collaboration | 2M KI-Tokens, Zusammenarbeit |
-| `rhei_team_v2_yearly` | Team Plan (Annual) | Team-Abo (Jährlich) | Save 50% - 2M tokens/month | 50% sparen - 2M Tokens/Monat |
+| Product | Display Name (EN) | Display Name (DE) |
+|---------|-------------------|-------------------|
+| `rhei_pro_v2_monthly` | Pro Plan | Pro-Abo |
+| `rhei_pro_v2_yearly` | Pro Plan (Annual) | Pro-Abo (Jährlich) |
+| `rhei_team_v2_monthly` | Team Plan | Team-Abo |
+| `rhei_team_v2_yearly` | Team Plan (Annual) | Team-Abo (Jährlich) |
 
-### Subscription Group Localization
+### RevenueCat Setup
 
-| Field | EN (USA) | DE (Germany) |
-|-------|----------|--------------|
-| **Display Name** | Rhei Pro | Rhei Pro |
+1. **Project**: "Rhei" with bundle ID `team.rhei.app`
+2. **Entitlements**: `pro`, `team`
+3. **Webhook**: `https://convex.rhei.team/webhooks/revenuecat`
 
-### Submission Checklist
-
-- [x] Products created (4)
-- [x] Free trials added
-- [x] Prices set (USD/EUR)
-- [x] Localizations added (EN/DE)
-- [ ] Paywall UI built ([PAYWALL_SPEC.md](./PAYWALL_SPEC.md))
-- [ ] Paywall screenshot uploaded
-- [ ] Review information filled
-- [ ] Submit for review
-
-## RevenueCat Setup
-
-### 1. Create Project
-- Project name: "Rhei"
-- Add App Store app with bundle ID: `team.rhei.app`
-
-### 2. Entitlements
-| ID | Description |
-|----|-------------|
-| `pro` | Pro tier access |
-| `team` | Team tier access |
-
-### 3. Products → Entitlements
-| Product | Entitlement |
-|---------|-------------|
-| `rhei_pro_monthly` | pro |
-| `rhei_pro_yearly` | pro |
-| `rhei_team_monthly` | team |
-| `rhei_team_yearly` | team |
-
-### 4. Webhook
-URL: `https://convex.rhei.team/api/webhooks/revenuecat`
-
-## Environment Variables
+### Environment Variables
 
 ```env
 REVENUECAT_PUBLIC_KEY=appl_xxxxxxxx
+REVENUECAT_WEBHOOK_SECRET=xxxxx
 REVENUECAT_WEBHOOK_AUTH_KEY=xxxxx
 ```
 
-## Convex Webhook Handler
+---
 
-```typescript
-// convex/http.ts
-http.route({
-  path: "/api/webhooks/revenuecat",
-  method: "POST",
-  handler: async (ctx, req) => {
-    const body = await req.json();
-    switch (body.event.type) {
-      case "INITIAL_PURCHASE":
-      case "RENEWAL":
-        await ctx.runMutation(internal.subscriptions.activate, {...});
-        break;
-      case "CANCELLATION":
-      case "EXPIRATION":
-        await ctx.runMutation(internal.subscriptions.deactivate, {...});
-        break;
-    }
-    return new Response("OK");
-  },
-});
+## Architecture
+
 ```
+┌─────────────────┐     ┌─────────────────┐
+│   iOS/Android   │     │       Web       │
+│   RevenueCat    │     │     Stripe      │
+└────────┬────────┘     └────────┬────────┘
+         │ webhook               │ webhook
+         ▼                       ▼
+┌─────────────────────────────────────────┐
+│        Convex HTTP Endpoints            │
+│  /webhooks/revenuecat  /webhooks/stripe │
+└────────────────────┬────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────┐
+│         Canonical Subscription          │
+│    subscriptions table + billingCore    │
+└────────────────────┬────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────┐
+│          Quota Enforcement              │
+│   quotaEnforcement.ts + rateLimiting    │
+└─────────────────────────────────────────┘
+```
+
+---
 
 ## Entitlement → Tier Mapping
 
@@ -119,8 +167,30 @@ export function entitlementToTier(entitlements: string[]): TierId {
 }
 ```
 
+---
+
 ## Testing
 
+### Stripe
+1. Use test mode keys (`sk_test_...`)
+2. Test card: `4242 4242 4242 4242`
+3. Verify webhook in Stripe dashboard
+
+### RevenueCat
 1. Create Sandbox Tester in App Store Connect
-2. Enable RevenueCat debug logging in dev
+2. Enable RevenueCat debug logging
 3. Test: purchase → restore → expiration → tier sync
+
+---
+
+## Submission Checklist
+
+- [x] Stripe products created
+- [x] Stripe webhook configured
+- [x] Stripe env vars set
+- [x] RevenueCat products created
+- [x] RevenueCat entitlements configured
+- [ ] RevenueCat webhook configured
+- [ ] Paywall UI complete
+- [ ] App Store review info filled
+- [ ] Submit for review
