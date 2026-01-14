@@ -67,6 +67,7 @@ export interface BillingState {
 
   // Billing mode
   billingMode: BillingMode;
+  preferredModel: string | null;
 
   // Loading state
   isLoading: boolean;
@@ -77,6 +78,7 @@ export interface BillingActions {
   setSubscription: (subscription: Subscription) => void;
   setUsage: (usage: Usage) => void;
   setBillingMode: (mode: BillingMode) => void;
+  setPreferredModel: (model: string | null) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   clearError: () => void;
@@ -96,6 +98,7 @@ const initialState: BillingState = {
   tokensRemaining: 0,
   wordsWritten: 0,
   billingMode: "managed",
+  preferredModel: null,
   isLoading: true,
   error: null,
 };
@@ -129,6 +132,8 @@ export function createBillingStore(storage: StorageAdapter) {
 
         setBillingMode: (billingMode) => set({ billingMode }),
 
+        setPreferredModel: (preferredModel) => set({ preferredModel }),
+
         setLoading: (isLoading) => set({ isLoading }),
 
         setError: (error) => set({ error, isLoading: false }),
@@ -148,6 +153,7 @@ export function createBillingStore(storage: StorageAdapter) {
         })),
         partialize: (state) => ({
           billingMode: state.billingMode,
+          preferredModel: state.preferredModel,
         }),
       }
     )
@@ -238,4 +244,11 @@ export function useBillingLoading(store: BillingStoreType) {
  */
 export function useBillingError(store: BillingStoreType) {
   return store((state) => state.error);
+}
+
+/**
+ * Selector: Get preferred model for BYOK users
+ */
+export function usePreferredModel(store: BillingStoreType) {
+  return store((state) => state.preferredModel);
 }

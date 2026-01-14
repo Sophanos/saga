@@ -36,6 +36,7 @@ export interface BillingSubscriptionSnapshot {
     cancelAtPeriodEnd: boolean;
   };
   billingMode: "managed" | "byok";
+  preferredModel?: string;
   usage: {
     tokensUsed: number;
     tokensIncluded: number;
@@ -118,7 +119,9 @@ export const getBillingSubscriptionSnapshot = internalQuery({
       entitlements: subscription?.entitlements,
       productId: subscription?.productId,
     });
-    const billingMode = await getBillingMode(ctx, args.userId);
+    const billingSettings = await getBillingSettings(ctx, args.userId);
+    const billingMode = billingSettings.billingMode;
+    const preferredModel = billingMode === "byok" ? billingSettings.preferredModel : undefined;
     const tierConfig = await getTierConfig(ctx, tier);
 
     const usageCounters = await getUsageCounters(ctx, args.userId, periodStartMs);
@@ -152,6 +155,7 @@ export const getBillingSubscriptionSnapshot = internalQuery({
         cancelAtPeriodEnd: subscription ? !subscription.willRenew : false,
       },
       billingMode,
+      preferredModel,
       usage: {
         tokensUsed,
         tokensIncluded,
@@ -292,15 +296,20 @@ async function getLatestSubscription(
   return sorted[0] as SubscriptionRecord;
 }
 
-async function getBillingMode(
+const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
+
+async function getBillingSettings(
   ctx: QueryCtx,
   userId: string
-): Promise<"managed" | "byok"> {
+): Promise<{ billingMode: "managed" | "byok"; preferredModel: string }> {
   const record = await ctx.db
     .query("userBillingSettings")
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .first();
-  return record?.billingMode === "byok" ? "byok" : "managed";
+  return {
+    billingMode: record?.billingMode === "byok" ? "byok" : "managed",
+    preferredModel: record?.preferredModel ?? DEFAULT_MODEL,
+  };
 }
 
 async function getTierConfig(ctx: QueryCtx, tier: TierId): Promise<TierConfig> {

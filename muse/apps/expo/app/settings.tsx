@@ -2,16 +2,18 @@
  * Settings Screen - Modal presentation
  */
 
-import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Switch, Alert, ActivityIndicator, Platform } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable, Switch, Alert, ActivityIndicator, Platform, TextInput, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useAction, useConvexAuth } from 'convex/react';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { useTheme, spacing, typography, radii } from '@/design-system';
-import { useLayoutStore } from '@mythos/state';
+import { useLayoutStore, AI_MODELS } from '@mythos/state';
 import { useSignOut } from '@/lib/auth';
+import { useApiKey } from '@/hooks/useApiKey';
+import { useBilling } from '@/hooks/useBilling';
 
 function blurActiveElement(): void {
   if (Platform.OS !== 'web' || typeof document === 'undefined') {
@@ -40,6 +42,25 @@ export default function SettingsScreen() {
     documentCount: number;
     entityCount: number;
   } | null>(null);
+
+  // BYOK / API Key state
+  const { key: apiKey, saveKey, clearKey, hasKey, isLoading: isKeyLoading } = useApiKey();
+  const { billingMode, preferredModel, switchBillingMode, setPreferredModel, isLoading: isBillingLoading } = useBilling();
+  const [showKey, setShowKey] = useState(false);
+  const [keyInput, setKeyInput] = useState(apiKey);
+  const [selectedModel, setSelectedModel] = useState(preferredModel ?? 'anthropic/claude-sonnet-4');
+
+  // Sync keyInput when apiKey changes
+  useEffect(() => {
+    setKeyInput(apiKey);
+  }, [apiKey]);
+
+  // Sync selectedModel when preferredModel changes
+  useEffect(() => {
+    if (preferredModel) {
+      setSelectedModel(preferredModel);
+    }
+  }, [preferredModel]);
 
   // Convex API types are too deep for expo typecheck; treat as untyped.
   // @ts-ignore
@@ -168,6 +189,160 @@ export default function SettingsScreen() {
             <Text style={[styles.rowLabel, { color: colors.text }]}>Sidebar Collapsed</Text>
             <Switch value={sidebarCollapsed} onValueChange={toggleSidebar} />
           </View>
+        </View>
+
+        {/* AI Settings */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>AI SETTINGS</Text>
+
+          {/* Billing Mode Toggle */}
+          <View style={[styles.row, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
+            <Text style={[styles.rowLabel, { color: colors.text }]}>Billing Mode</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
+              <Text style={{ color: colors.textSecondary, fontSize: typography.sm }}>
+                {billingMode === 'byok' ? 'BYOK' : 'Managed'}
+              </Text>
+              <Switch
+                value={billingMode === 'byok'}
+                onValueChange={(value) => {
+                  void switchBillingMode(value ? 'byok' : 'managed');
+                }}
+                disabled={isBillingLoading}
+              />
+            </View>
+          </View>
+
+          {/* API Key Input - Only when BYOK */}
+          {billingMode === 'byok' && (
+            <>
+              <View style={[styles.row, {
+                backgroundColor: colors.bgSurface,
+                borderColor: colors.border,
+                flexDirection: 'column',
+                alignItems: 'stretch',
+                gap: spacing[3],
+              }]}>
+                <Text style={[styles.rowLabel, { color: colors.text }]}>OpenRouter API Key</Text>
+                <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+                  <TextInput
+                    style={{
+                      flex: 1,
+                      paddingHorizontal: spacing[3],
+                      paddingVertical: spacing[2],
+                      borderRadius: radii.md,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.bgApp,
+                      color: colors.text,
+                      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                      fontSize: typography.sm,
+                    }}
+                    value={keyInput}
+                    onChangeText={setKeyInput}
+                    placeholder="sk-or-v1-..."
+                    placeholderTextColor={colors.textMuted}
+                    secureTextEntry={!showKey}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <Pressable
+                    onPress={() => setShowKey(!showKey)}
+                    style={{
+                      padding: spacing[2],
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: colors.accent, fontSize: typography.sm }}>
+                      {showKey ? 'Hide' : 'Show'}
+                    </Text>
+                  </Pressable>
+                </View>
+                <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+                  <Pressable
+                    onPress={() => saveKey(keyInput)}
+                    disabled={!keyInput.trim() || keyInput === apiKey || isKeyLoading}
+                    style={{
+                      paddingVertical: spacing[2],
+                      paddingHorizontal: spacing[4],
+                      borderRadius: radii.md,
+                      backgroundColor: (!keyInput.trim() || keyInput === apiKey) ? colors.bgActive : colors.accent,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: String(typography.medium) as any, fontSize: typography.sm }}>
+                      Save Key
+                    </Text>
+                  </Pressable>
+                  {hasKey && (
+                    <Pressable
+                      onPress={clearKey}
+                      style={{
+                        paddingVertical: spacing[2],
+                        paddingHorizontal: spacing[4],
+                        borderRadius: radii.md,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Text style={{ color: colors.text, fontSize: typography.sm }}>
+                        Clear
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+
+              {/* Model Picker - Only when BYOK + hasKey */}
+              {hasKey && (
+                <View style={[styles.row, {
+                  backgroundColor: colors.bgSurface,
+                  borderColor: colors.border,
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                  gap: spacing[2],
+                }]}>
+                  <Text style={[styles.rowLabel, { color: colors.text, marginBottom: spacing[1] }]}>Preferred Model</Text>
+                  {Object.entries(AI_MODELS)
+                    .filter(([key]) => key !== 'auto')
+                    .map(([key, model]) => (
+                      <Pressable
+                        key={key}
+                        onPress={async () => {
+                          setSelectedModel(model.modelId);
+                          await setPreferredModel(model.modelId);
+                        }}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingVertical: spacing[2],
+                          paddingHorizontal: spacing[3],
+                          borderRadius: radii.md,
+                          backgroundColor: selectedModel === model.modelId ? colors.bgActive : 'transparent',
+                        }}
+                      >
+                        <Text style={{ color: colors.text, fontSize: typography.sm }}>
+                          {model.label} {model.badge && `(${model.badge})`}
+                        </Text>
+                        {selectedModel === model.modelId && (
+                          <Text style={{ color: colors.accent, fontSize: typography.base }}>✓</Text>
+                        )}
+                      </Pressable>
+                    ))}
+                </View>
+              )}
+
+              {/* Warning */}
+              <View style={[styles.row, {
+                backgroundColor: '#fef3c7',
+                borderColor: '#f59e0b',
+                paddingVertical: spacing[3],
+              }]}>
+                <Text style={{ color: '#92400e', fontSize: typography.xs, flex: 1 }}>
+                  Your API key is stored locally. Background AI operations use managed infrastructure.
+                </Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* About */}

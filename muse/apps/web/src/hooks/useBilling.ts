@@ -9,6 +9,7 @@ import {
   useSubscription,
   useUsage,
   useBillingMode,
+  usePreferredModel,
   useBillingLoading,
   useBillingError,
   type BillingMode,
@@ -65,6 +66,8 @@ interface BillingUsageDetail {
 interface SubscriptionResponse {
   subscription: Subscription;
   usage: Usage;
+  billingMode: BillingMode;
+  preferredModel?: string;
   period?: BillingPeriod;
   limits?: BillingLimits;
   usageDetail?: BillingUsageDetail;
@@ -75,15 +78,22 @@ interface BillingModeResponse {
   billingMode: BillingMode;
 }
 
+interface PreferredModelResponse {
+  success: boolean;
+  preferredModel: string;
+}
+
 interface UseBillingResult {
   subscription: Subscription;
   usage: Usage;
   billingMode: BillingMode;
+  preferredModel: string | null;
   isLoading: boolean;
   error: string | null;
   openCheckout: (tier: BillingTier, billingInterval?: "monthly" | "annual") => Promise<void>;
   openPortal: () => Promise<void>;
   switchBillingMode: (mode: BillingMode, byokKey?: string) => Promise<boolean>;
+  setPreferredModel: (model: string) => Promise<boolean>;
   refresh: () => Promise<void>;
   clearError: () => void;
 }
@@ -93,6 +103,7 @@ export function useBilling(): UseBillingResult {
   const subscription = useSubscription();
   const usage = useUsage();
   const billingMode = useBillingMode();
+  const preferredModel = usePreferredModel();
   const isLoading = useBillingLoading();
   const error = useBillingError();
 
@@ -111,6 +122,8 @@ export function useBilling(): UseBillingResult {
 
       store.setSubscription(response.subscription);
       store.setUsage(response.usage);
+      store.setBillingMode(response.billingMode);
+      store.setPreferredModel(response.preferredModel ?? null);
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Failed to load billing data";
@@ -213,6 +226,41 @@ export function useBilling(): UseBillingResult {
     [store]
   );
 
+  /**
+   * Set preferred model for BYOK users
+   * @param model - OpenRouter model ID (e.g., "anthropic/claude-sonnet-4")
+   * @returns true if successful, false otherwise
+   */
+  const setPreferredModel = useCallback(
+    async (model: string): Promise<boolean> => {
+      store.setLoading(true);
+      store.setError(null);
+
+      try {
+        const response = await callEdgeFunction<
+          { model: string },
+          PreferredModelResponse
+        >("billing-preferred-model", { model });
+
+        if (response.success) {
+          store.setPreferredModel(response.preferredModel);
+          return true;
+        }
+        return false;
+      } catch (err) {
+        const message =
+          err instanceof ApiError
+            ? err.message
+            : "Failed to set preferred model";
+        store.setError(message);
+        return false;
+      } finally {
+        store.setLoading(false);
+      }
+    },
+    [store]
+  );
+
   // Fetch billing data on mount
   useEffect(() => {
     refresh();
@@ -228,6 +276,7 @@ export function useBilling(): UseBillingResult {
     subscription,
     usage,
     billingMode,
+    preferredModel,
     isLoading,
     error,
 
@@ -235,6 +284,7 @@ export function useBilling(): UseBillingResult {
     openCheckout,
     openPortal,
     switchBillingMode,
+    setPreferredModel,
     refresh,
     clearError,
   };

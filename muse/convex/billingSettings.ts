@@ -3,7 +3,8 @@
  */
 
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation, internalQuery, query, mutation } from "./_generated/server";
+import { getAuthUserId } from "@convex-dev/auth/server";
 
 export const getBillingMode = internalQuery({
   args: { userId: v.string() },
@@ -120,5 +121,101 @@ export const getBillingSettings = internalQuery({
       billingMode: record?.billingMode === "byok" ? "byok" : "managed",
       preferredModel: record?.preferredModel ?? DEFAULT_MODEL,
     };
+  },
+});
+
+// ============================================================
+// Public API (for Expo/React Native clients)
+// ============================================================
+
+/**
+ * Get current user's billing settings.
+ */
+export const getMyBillingSettings = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const record = await ctx.db
+      .query("userBillingSettings")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+
+    return {
+      billingMode: (record?.billingMode === "byok" ? "byok" : "managed") as "managed" | "byok",
+      preferredModel: record?.preferredModel ?? DEFAULT_MODEL,
+    };
+  },
+});
+
+/**
+ * Set current user's billing mode.
+ */
+export const setMyBillingMode = mutation({
+  args: { mode: v.union(v.literal("managed"), v.literal("byok")) },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("userBillingSettings")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        billingMode: args.mode,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("userBillingSettings", {
+        userId,
+        billingMode: args.mode,
+        updatedAt: now,
+      });
+    }
+
+    return { success: true, billingMode: args.mode };
+  },
+});
+
+/**
+ * Set current user's preferred model.
+ */
+export const setMyPreferredModel = mutation({
+  args: { model: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("userBillingSettings")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        preferredModel: args.model,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("userBillingSettings", {
+        userId,
+        billingMode: "byok",
+        preferredModel: args.model,
+        updatedAt: now,
+      });
+    }
+
+    return { success: true, preferredModel: args.model };
   },
 });

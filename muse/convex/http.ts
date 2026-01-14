@@ -296,6 +296,17 @@ http.route({
 });
 
 http.route({
+  path: "/billing-preferred-model",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("Origin")),
+    });
+  }),
+});
+
+http.route({
   path: "/stripe-checkout",
   method: "OPTIONS",
   handler: httpAction(async (_, request) => {
@@ -2063,6 +2074,73 @@ http.route({
         JSON.stringify({
           error: {
             message: error instanceof Error ? error.message : "Billing mode update failed",
+            code: "BILLING_ERROR",
+          },
+        }),
+        {
+          status: 500,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+  }),
+});
+
+// ============================================================
+// Billing Preferred Model (JSON Response)
+// ============================================================
+
+http.route({
+  path: "/billing-preferred-model",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    logRequestStart(request, "/billing-preferred-model");
+
+    const auth = await validateAuth(ctx, request);
+    if (!auth.isValid || !auth.userId) {
+      return new Response(
+        JSON.stringify({
+          error: { message: auth.error ?? "Unauthorized", code: "UNAUTHORIZED" },
+        }),
+        {
+          status: 401,
+          headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    try {
+      const body = await request.json().catch(() => ({}));
+      const model = typeof body?.model === "string" ? body.model : null;
+
+      if (!model) {
+        return new Response(
+          JSON.stringify({
+            error: { message: "Model is required", code: "VALIDATION_ERROR" },
+          }),
+          {
+            status: 400,
+            headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const result = await ctx.runMutation(
+        (internal as any).billingSettings.setPreferredModel,
+        { userId: auth.userId, model }
+      );
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[http/billing-preferred-model] Error:", error);
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: error instanceof Error ? error.message : "Failed to set preferred model",
             code: "BILLING_ERROR",
           },
         }),

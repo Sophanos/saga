@@ -22,6 +22,8 @@ import { useMythosStore } from "../../stores";
 import { useAuthStore } from "../../stores/auth";
 import { useSignOut } from "../../lib/auth";
 import { useApiKey } from "../../hooks/useApiKey";
+import { useBilling } from "../../hooks/useBilling";
+import { AI_MODELS } from "@mythos/state";
 import { formatGraphErrorMessage } from "../../utils";
 import { UpgradeBanner } from "./UpgradeBanner";
 import type { NameCulture, NameStyle, LogicStrictness, SmartModeLevel, SmartModeConfig } from "@mythos/agent-protocol";
@@ -124,6 +126,10 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
   const [showKey, setShowKey] = useState(false);
   const [isKeySaved, setIsKeySaved] = useState(false);
 
+  // BYOK model selection
+  const { billingMode, preferredModel, setPreferredModel, isLoading: isBillingLoading } = useBilling();
+  const [selectedModel, setSelectedModel] = useState(preferredModel ?? "anthropic/claude-sonnet-4");
+
   const registryStatus = useQuery(
     api.projectTypeRegistry.getStatus,
     project ? { projectId: project.id as Id<"projects"> } : "skip"
@@ -196,6 +202,13 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
     }
     wasOpenRef.current = isOpen;
   }, [isOpen, resetFormState, initialSection]);
+
+  // Sync selectedModel when preferredModel changes from server
+  useEffect(() => {
+    if (preferredModel) {
+      setSelectedModel(preferredModel);
+    }
+  }, [preferredModel]);
 
   const handleSaveProfile = useCallback(async () => {
     if (!user) return;
@@ -864,6 +877,60 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
                   </section>
+
+                  {/* Preferred Model - Only show when BYOK mode with key */}
+                  {billingMode === "byok" && hasKey && (
+                    <section className="space-y-4 pt-4 border-t border-mythos-border-default">
+                      <div>
+                        <div className="text-sm font-medium text-mythos-text-primary">
+                          Preferred Model
+                        </div>
+                        <p className="text-xs text-mythos-text-muted">
+                          Select your default model for AI features when using BYOK.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-mythos-border-default bg-mythos-bg-tertiary/40 p-4 space-y-4">
+                        <Select
+                          value={selectedModel}
+                          onChange={setSelectedModel}
+                          options={Object.entries(AI_MODELS)
+                            .filter(([k]) => k !== "auto")
+                            .map(([, model]) => ({
+                              value: model.modelId,
+                              label: `${model.label}${model.badge ? ` (${model.badge})` : ""}`,
+                            }))}
+                          className="w-full"
+                        />
+
+                        <Button
+                          onClick={async () => {
+                            const success = await setPreferredModel(selectedModel);
+                            if (success) {
+                              toast.success("Model preference saved");
+                            }
+                          }}
+                          disabled={selectedModel === preferredModel || isBillingLoading}
+                          className="gap-1.5"
+                        >
+                          {isBillingLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            "Save Model Preference"
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Warning about async operations */}
+                      <div className="flex items-start gap-2 p-3 rounded-lg bg-mythos-accent-amber/10 border border-mythos-accent-amber/30">
+                        <AlertCircle className="w-4 h-4 text-mythos-accent-amber mt-0.5 flex-shrink-0" />
+                        <p className="text-xs text-mythos-text-secondary">
+                          <strong>Note:</strong> Your API key is stored locally and used for real-time AI requests.
+                          Background operations (like scheduled analysis) still use managed infrastructure.
+                        </p>
+                      </div>
+                    </section>
+                  )}
                 </div>
               )}
 

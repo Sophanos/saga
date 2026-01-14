@@ -181,6 +181,7 @@ export {
   useSubscription,
   useUsage,
   useBillingMode,
+  usePreferredModel,
   useCanUseAI,
   useUsagePercentage,
   useIsSubscriptionActive,
@@ -330,6 +331,37 @@ export {
   useEditorMetricsLastUpdated,
 } from "./editorMetrics";
 export type { EditorMetricsState } from "./editorMetrics";
+
+// ============================================================
+// ARTIFACT STORE
+// ============================================================
+export {
+  useArtifactStore,
+  useArtifactPanelMode,
+  useActiveArtifact,
+  useArtifacts,
+  ARTIFACT_TYPE_LABELS,
+  ARTIFACT_TYPE_ICONS,
+} from "./artifact";
+export type {
+  Artifact,
+  ArtifactType,
+  ArtifactState,
+  ArtifactPanelMode,
+  IterationMessage,
+  ArtifactVersion,
+} from "./artifact";
+export type {
+  ArtifactOp,
+  ArtifactPatch,
+  ArtifactOpLogEntry,
+  JsonPatchOperation,
+} from "./artifactEngine";
+export {
+  applyArtifactPatch,
+  applyJsonPatch,
+  compileArtifactOp,
+} from "./artifactEngine";
 
 // ============================================================
 // RESET UTILITIES

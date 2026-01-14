@@ -8,6 +8,7 @@ import {
   useSubscription as useSubscriptionSelector,
   useUsage as useUsageSelector,
   useBillingMode as useBillingModeSelector,
+  usePreferredModel as usePreferredModelSelector,
   useCanUseAI as useCanUseAISelector,
   useUsagePercentage as useUsagePercentageSelector,
   useIsSubscriptionActive as useIsSubscriptionActiveSelector,
@@ -31,6 +32,7 @@ export const useBillingStore = createBillingStore(webStorage);
 export const useSubscription = () => useSubscriptionSelector(useBillingStore);
 export const useUsage = () => useUsageSelector(useBillingStore);
 export const useBillingMode = () => useBillingModeSelector(useBillingStore);
+export const usePreferredModel = () => usePreferredModelSelector(useBillingStore);
 export const useCanUseAI = () => useCanUseAISelector(useBillingStore);
 export const useUsagePercentage = () =>
   useUsagePercentageSelector(useBillingStore);
