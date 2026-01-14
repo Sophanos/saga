@@ -308,8 +308,35 @@ Defer (costly early):
 
 ---
 
+## Craft → Rhei: Proactivity Without Clutter
+
+**Observation:** Craft has Calendar + Tasks built-in. Heavy, but users love the "everything in one place" feel.
+
+**Rhei approach:** Replace explicit task/calendar with **Living Model + Pulse**. Proactivity surfaces what matters without manual tracking.
+
+### How Proactivity Replaces Craft Features by Persona
+
+| Persona | Craft Feature | Rhei Equivalent |
+|---------|---------------|-----------------|
+| **Writer** | Daily writing goals | Pulse: "3 chapters need review" + Flow Mode streaks |
+| **Engineer** | Task lists, deadlines | Pulse: "Spec drift detected" + Knowledge PRs for ADR updates |
+| **Product** | Calendar milestones | Pulse: "5 requirements unlinked to specs" + Impact PRs |
+| **Comms** | Content calendar | Pulse: "Hub messaging outdated" + PR drafts for refresh |
+| **Support** | Ticket tracking | Pulse: "KB article contradicts v2.3 release" |
+
+### Design Principle
+
+```
+Craft: User manages calendar + tasks → feels organized
+Rhei:  System surfaces what matters → user stays in flow
+```
+
+**Key difference:** Rhei is proactive but silent. No calendar to maintain, no tasks to check off. The Living Model tracks state; Pulse surfaces signals; Knowledge PRs propose changes.
+
+---
+
 ## Optional bets (post-MLP2)
 
 - **Memgraph/graph DB**: add when multi-hop traversal + impact analysis become primary UX; keep the abstraction so you can start with adjacency tables and cached traversals (see `muse/docs/MLP1_ROADMAP.md`).
-- **DOCX tracked-changes export**: make “PR output” shippable (writers + compliance workflows) without rethinking the core system.
-- **Connector breadth via MCP**: add Notion/Office/GitHub/SAP as *evidence sources* (delta capture + citations), not as a promise to “index everything”.
+- **DOCX tracked-changes export**: make "PR output" shippable (writers + compliance workflows) without rethinking the core system.
+- **Connector breadth via MCP**: add Notion/Office/GitHub/SAP as *evidence sources* (delta capture + citations), not as a promise to "index everything".

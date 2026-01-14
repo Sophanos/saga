@@ -49,6 +49,7 @@
 - [x] Free trials added
 - [x] Prices set (USD/EUR)
 - [x] Localizations added (EN/DE)
+- [ ] Paywall UI built ([PAYWALL_SPEC.md](./PAYWALL_SPEC.md))
 - [ ] Paywall screenshot uploaded
 - [ ] Review information filled
 - [ ] Submit for review

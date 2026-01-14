@@ -446,6 +446,7 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 - Universal entity profile page not implemented.
 - Template icon/color defaults incomplete for non-writer templates.
 - Web entity/relationship diffs missing (Expo has them).
+- Canvas heading shortcuts (##, ###) missing from toolbar; add formatting buttons like Ulysses.
 
 ## MLP1 → MLP2 Bridge (Recommended Path)
 
