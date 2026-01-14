@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Sparkles } from "lucide-react";
 import { cn, Button } from "@mythos/ui";
 import { bg, text, border, accent } from "@mythos/theme";
+import type { ChatAttachment } from "@mythos/ai/hooks";
 import {
   useMythosStore,
   useChatMessages,
@@ -38,6 +39,7 @@ import { useSagaAgent } from "../../hooks/useSagaAgent";
 import { useSessionHistory } from "../../hooks/useSessionHistory";
 import { useEditorSelection } from "../../hooks/useEditorSelection";
 import { useApiKey } from "../../hooks/useApiKey";
+import { useAIQuotaGuard } from "../../hooks/useQuotaGuard";
 import { ContextBar } from "../console/AISidebar/ContextBar";
 import { QuickActions } from "../console/AISidebar/QuickActions";
 import { ChatMessages } from "../console/AISidebar/ChatMessages";
@@ -128,6 +130,9 @@ export function ChatPanel({
   // Get API key status for capability filtering
   const { hasKey: hasApiKey } = useApiKey();
 
+  // Quota guard for authenticated users
+  const { guard: checkAIQuota } = useAIQuotaGuard();
+
   // Build capability context
   const capabilityContext: CapabilityContext = useMemo(
     () => ({
@@ -141,17 +146,19 @@ export function ChatPanel({
 
   // Handle message send
   const handleSend = useCallback(
-    (content: string, mentions: ChatMention[]) => {
-      if (isTrial && isTrialExhausted) return;
-      sendMessage(content, mentions);
+    (content: string, mentions: ChatMention[], attachments?: ChatAttachment[]) => {
+      // Check quota (handles both trial and authenticated users, shows upgrade prompt if blocked)
+      if (!checkAIQuota({ useToast: true })) return;
+      sendMessage(content, { mentions, attachments });
     },
-    [sendMessage, isTrial, isTrialExhausted]
+    [sendMessage, checkAIQuota]
   );
 
   // Handle capability invocation
   const handleCapabilityInvoke = useCallback(
     async (capability: Capability) => {
-      if (isTrial && isTrialExhausted) return;
+      // Check quota (handles both trial and authenticated users)
+      if (!checkAIQuota({ useToast: true, feature: capability.label })) return;
       const invokerContext: CapabilityInvokerContext = {
         capabilityContext,
         setActiveTab: (tab: ConsoleTab) => setActiveTab(tab),
@@ -159,11 +166,11 @@ export function ChatPanel({
           const modalPayload = payload as Record<string, unknown> | undefined;
           openModal({ type: modal, ...modalPayload } as Parameters<typeof openModal>[0]);
         },
-        sendChatPrompt: (prompt: string) => sendMessage(prompt, []),
+        sendChatPrompt: (prompt: string) => sendMessage(prompt, { mentions: [] }),
       };
       await invokeCapability(capability, invokerContext);
     },
-    [capabilityContext, sendMessage, setActiveTab, openModal, isTrial, isTrialExhausted]
+    [capabilityContext, sendMessage, setActiveTab, openModal, checkAIQuota]
   );
 
   // Handle clear selection

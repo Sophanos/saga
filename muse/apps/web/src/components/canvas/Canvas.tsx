@@ -34,6 +34,7 @@ import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useEntityClick } from "../../hooks/useEntityClick";
 import { useEntitySlashCommands } from "../../hooks/useEntitySlashCommands";
 import { useContentAnalysis } from "../../hooks/useContentAnalysis";
+import { useAIQuotaGuard } from "../../hooks/useQuotaGuard";
 import { useLinterFixes } from "../../hooks/useLinterFixes";
 import { useEntityDetection } from "../../hooks/useEntityDetection";
 import { useDynamicsExtraction } from "../../hooks/useDynamicsExtraction";
@@ -120,6 +121,13 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   const currentProject = useCurrentProject();
   const convex = useConvex();
   const createDocumentMutation = useMutation(api.documents.create);
+
+  // Quota guard for inline AI
+  const { guard: checkAIQuota } = useAIQuotaGuard();
+  const checkAIQuotaRef = useRef(checkAIQuota);
+  useEffect(() => {
+    checkAIQuotaRef.current = checkAIQuota;
+  }, [checkAIQuota]);
 
   // Store actions and state
   const setEditorInstance = useMythosStore((state) => state.setEditorInstance);
@@ -279,6 +287,11 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       if (!query) return;
       const projectId = currentProject?.id;
       if (!projectId) return;
+
+      // Check quota before AI execution
+      if (!checkAIQuotaRef.current({ useToast: true, feature: "Ask AI" })) {
+        return;
+      }
 
       if (detail?.selectionText) {
         useWidgetExecutionStore.getState().start({

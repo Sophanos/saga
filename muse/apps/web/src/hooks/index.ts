@@ -142,3 +142,16 @@ export type { UseProgressiveLinterOptions, UseProgressiveLinterResult } from "./
 // Saga AI Agent
 export { useSagaAgent } from "./useSagaAgent";
 export type { UseSagaAgentOptions, UseSagaAgentResult } from "./useSagaAgent";
+
+// Quota guard (paywall triggers)
+export {
+  useQuotaGuard,
+  useAIQuotaGuard,
+  useUsageWarning,
+} from "./useQuotaGuard";
+export type {
+  QuotaType,
+  QuotaCheckResult,
+  QuotaGuardResult,
+  PromptUpgradeOptions,
+} from "./useQuotaGuard";
