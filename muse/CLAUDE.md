@@ -27,8 +27,9 @@ bunx convex env set KEY value  # Set Convex env var
 ## Monorepo Layout
 ```
 apps/
-  expo/           # Universal app (web, iOS, macOS)
-  tauri/          # macOS desktop shell
+  expo/           # Universal app (web, iOS, macOS) - primary web client
+  tauri/          # macOS desktop shell - uses web/ components
+  web/            # React DOM component dev/testing for tauri (not a client)
 packages/
   state/          # Zustand stores (AI, workspace, layout, command palette)
   commands/       # Command registry + definitions
@@ -132,7 +133,7 @@ Auth env vars: `SITE_URL`, `CONVEX_SITE_URL`, `CUSTOM_AUTH_SITE_URL`, `AUTH_REDI
 
 ## Infrastructure
 - Convex: https://dashboard.cascada.vision/
-- PostHog: https://posthog.cascada.vision/
+- PostHog: https://posthog.rhei.team/
 - Qdrant: `qdrant.cascada.vision`
 - Convex API: `convex.cascada.vision`
 - Collection: `saga_vectors` (4096 dims)
