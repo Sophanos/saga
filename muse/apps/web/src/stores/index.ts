@@ -12,6 +12,7 @@ import type {
   Document,
 } from "@mythos/core";
 import type { ConsistencyIssue } from "@mythos/ai";
+import type { ChatAttachment } from "@mythos/ai/hooks";
 import type { Editor } from "@mythos/editor";
 
 // Import shared tool types from agent-protocol (single source of truth)
@@ -112,7 +113,7 @@ export type TemplatePickerStep = "start" | "browse" | "ai-builder" | "preview" |
 export type ModalState =
   | { type: "settings" }
   | { type: "billing" }
-  | { type: "import" }
+  | { type: "import"; files?: File[] }
   | { type: "export" }
   | { type: "entityForm"; mode: FormMode; entityType?: EntityType; entityId?: string }
   | {
@@ -244,6 +245,8 @@ export interface ChatMessage {
   timestamp: Date;
   /** Mentioned entity/document IDs for context */
   mentions?: ChatMention[];
+  /** Attachments (images, files) */
+  attachments?: ChatAttachment[];
   /** Whether this message is still being streamed */
   isStreaming?: boolean;
   /** Message kind - text or tool invocation */

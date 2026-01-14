@@ -18,6 +18,7 @@ import {
   CardContent,
   CardFooter,
 } from "@mythos/ui";
+import { DropOverlay } from "../shared/DropOverlay";
 import { useStoryImporter } from "../../hooks/useStoryImporter";
 import {
   type ImportFormat,
@@ -35,6 +36,7 @@ import type { EntityType } from "@mythos/core";
 export interface ImportModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialFiles?: File[];
 }
 
 interface FormatOption {
@@ -94,7 +96,7 @@ const ACCEPTED_EXTENSIONS = ".md,.markdown,.mdown,.mkd,.docx,.epub,.txt,.text";
 // Main Component
 // ============================================================================
 
-export function ImportModal({ isOpen, onClose }: ImportModalProps) {
+export function ImportModal({ isOpen, onClose, initialFiles }: ImportModalProps) {
   const {
     importStory,
     isImporting,
@@ -107,6 +109,7 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
 
   // File input ref
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef(0);
 
   // Form state
   const [file, setFile] = useState<File | null>(null);
@@ -119,6 +122,46 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
   ]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [detectedFormat, setDetectedFormat] = useState<ImportFormat | null>(null);
+  const [queuedFiles, setQueuedFiles] = useState<File[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [batchStatus, setBatchStatus] = useState<{
+    index: number;
+    total: number;
+    name: string;
+  } | null>(null);
+
+  const applyFiles = useCallback((nextFiles: File[]) => {
+    setFileError(null);
+    setDetectedFormat(null);
+
+    if (nextFiles.length === 0) {
+      setFile(null);
+      setQueuedFiles([]);
+      return;
+    }
+
+    const validFiles = nextFiles.filter((nextFile) => validateImportFile(nextFile).valid);
+    if (validFiles.length === 0) {
+      const first = nextFiles[0];
+      const validation = first ? validateImportFile(first) : { valid: false, error: "Invalid file" };
+      setFileError(validation.error ?? "Invalid file");
+      setFile(null);
+      setQueuedFiles([]);
+      return;
+    }
+
+    const firstInvalid = nextFiles.find((nextFile) => !validateImportFile(nextFile).valid);
+    if (firstInvalid) {
+      const validation = validateImportFile(firstInvalid);
+      setFileError(validation.error ?? "Invalid file");
+    }
+
+    setQueuedFiles(validFiles);
+    setFile(validFiles[0] ?? null);
+
+    const detected = detectFormatFromFile(validFiles[0]);
+    setDetectedFormat(detected);
+  }, []);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -130,35 +173,38 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
       setEntityTypes(["character", "location"]);
       setFileError(null);
       setDetectedFormat(null);
+      setQueuedFiles([]);
       clearError();
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+      if (initialFiles && initialFiles.length > 0) {
+        applyFiles(initialFiles);
+      }
     }
-  }, [isOpen, clearError]);
+  }, [applyFiles, clearError, initialFiles, isOpen]);
+
+  const queuedCount = queuedFiles.length;
+  const extraQueuedCount = Math.max(0, queuedCount - 1);
+  const overallPercent =
+    batchStatus && batchStatus.total > 1
+      ? Math.min(
+          100,
+          Math.round(
+            ((batchStatus.index - 1) + (progress?.percent ?? 0) / 100) /
+              batchStatus.total *
+              100
+          )
+        )
+      : null;
 
   // Handle file selection
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const selectedFile = e.target.files?.[0] ?? null;
-      setFile(selectedFile);
-      setFileError(null);
-      setDetectedFormat(null);
-
-      if (selectedFile) {
-        // Validate file
-        const validation = validateImportFile(selectedFile);
-        if (!validation.valid) {
-          setFileError(validation.error ?? "Invalid file");
-          return;
-        }
-
-        // Detect format for display
-        const detected = detectFormatFromFile(selectedFile);
-        setDetectedFormat(detected);
-      }
+      const selectedFiles = Array.from(e.target.files ?? []);
+      applyFiles(selectedFiles);
     },
-    []
+    [applyFiles]
   );
 
   // Handle drop zone
@@ -166,29 +212,38 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       e.stopPropagation();
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
 
-      const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile) {
-        setFile(droppedFile);
-        setFileError(null);
-        setDetectedFormat(null);
-
-        const validation = validateImportFile(droppedFile);
-        if (!validation.valid) {
-          setFileError(validation.error ?? "Invalid file");
-          return;
-        }
-
-        const detected = detectFormatFromFile(droppedFile);
-        setDetectedFormat(detected);
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      if (droppedFiles.length > 0) {
+        applyFiles(droppedFiles);
       }
     },
-    []
+    [applyFiles]
   );
+
+  const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    setIsDragOver(true);
   }, []);
 
   // Handle import
@@ -198,18 +253,48 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
       return;
     }
 
-    const result = await importStory(file, {
-      format,
-      mode,
-      detectEntities,
-      entityTypes,
-    });
+    const filesToImport = queuedFiles.length > 0 ? queuedFiles : [file];
+    let lastResult = null;
 
-    // Close modal on success
-    if (result) {
-      onClose();
+    try {
+      for (let i = 0; i < filesToImport.length; i += 1) {
+        const nextFile = filesToImport[i];
+        const effectiveMode = mode === "replace" && i > 0 ? "append" : mode;
+        setBatchStatus({
+          index: i + 1,
+          total: filesToImport.length,
+          name: nextFile.name,
+        });
+
+        const result = await importStory(nextFile, {
+          format,
+          mode: effectiveMode,
+          detectEntities,
+          entityTypes,
+        });
+
+        if (!result) {
+          return;
+        }
+        lastResult = result;
+      }
+
+      if (lastResult) {
+        onClose();
+      }
+    } finally {
+      setBatchStatus(null);
     }
-  }, [file, format, mode, detectEntities, entityTypes, importStory, onClose]);
+  }, [
+    file,
+    queuedFiles,
+    format,
+    mode,
+    detectEntities,
+    entityTypes,
+    importStory,
+    onClose,
+  ]);
 
   // Handle keyboard
   const handleKeyDown = useCallback(
@@ -295,12 +380,15 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
               ${isImporting ? "pointer-events-none opacity-50" : ""}
             `}
             onClick={() => fileInputRef.current?.click()}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
           >
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               accept={ACCEPTED_EXTENSIONS}
               onChange={handleFileChange}
               className="hidden"
@@ -312,12 +400,18 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                 <FileText className="w-10 h-10 mx-auto text-mythos-accent-primary" />
                 <p className="text-sm font-medium text-mythos-text-primary">
                   {file.name}
+                  {extraQueuedCount > 0 ? ` + ${extraQueuedCount} more` : ""}
                 </p>
                 <p className="text-xs text-mythos-text-muted">
                   {detectedFormat
                     ? `Detected: ${IMPORT_FORMAT_METADATA[detectedFormat].label}`
                     : "Click or drop to replace"}
                 </p>
+                {queuedCount > 1 && (
+                  <p className="text-xs text-mythos-text-muted">
+                    Batch import ready ({queuedCount} files)
+                  </p>
+                )}
               </div>
             ) : (
               <div className="space-y-2">
@@ -330,6 +424,12 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                 </p>
               </div>
             )}
+            <DropOverlay
+              visible={isDragOver}
+              label="Drop files here"
+              className="rounded-lg"
+              frameClassName="w-full h-full p-0 rounded-lg"
+            />
           </div>
 
           {/* Format Selection */}
@@ -494,6 +594,16 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
           {/* Progress */}
           {isImporting && progress && (
             <div className="space-y-2">
+              {batchStatus && batchStatus.total > 1 && (
+                <div className="flex items-center justify-between text-xs text-mythos-text-muted">
+                  <span>
+                    File {batchStatus.index} of {batchStatus.total}
+                  </span>
+                  <span className="max-w-[60%] truncate" title={batchStatus.name}>
+                    {batchStatus.name}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-sm">
                 <span className="text-mythos-text-secondary">
                   {progress.message}
@@ -506,6 +616,14 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                   style={{ width: `${progress.percent}%` }}
                 />
               </div>
+              {overallPercent !== null && (
+                <div className="h-1 bg-mythos-bg-tertiary/60 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-mythos-accent-primary/60 transition-all duration-300"
+                    style={{ width: `${overallPercent}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
 

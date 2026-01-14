@@ -188,7 +188,7 @@ export function ModalHost() {
       return <BillingSettings isOpen={true} onClose={closeModal} />;
 
     case "import":
-      return <ImportModal isOpen={true} onClose={closeModal} />;
+      return <ImportModal isOpen={true} onClose={closeModal} initialFiles={modal.files} />;
 
     case "export":
       return <ExportModal isOpen={true} onClose={closeModal} />;

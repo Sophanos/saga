@@ -388,6 +388,24 @@ export function EditorShell({
     onQuickAction?.(action);
   }, [onQuickAction]);
 
+  const emitOpenImport = useCallback(() => {
+    setShowMoreMenu(false);
+    window.dispatchEvent(
+      new CustomEvent('editor:open-import', {
+        detail: { source: 'more_menu' },
+      })
+    );
+  }, [setShowMoreMenu]);
+
+  const emitOpenExport = useCallback(() => {
+    setShowMoreMenu(false);
+    window.dispatchEvent(
+      new CustomEvent('editor:open-export', {
+        detail: { source: 'more_menu' },
+      })
+    );
+  }, [setShowMoreMenu]);
+
   const isEmpty = !activeDoc?.content || activeDoc.content === '<p></p>';
   const editorReady =
     !!collaborationDocumentId && readyDocumentId === collaborationDocumentId;
@@ -599,6 +617,8 @@ export function EditorShell({
               navigateTo(newId);
             }
           }}
+          onImport={emitOpenImport}
+          onExport={emitOpenExport}
           onUndo={() => {}}
           onVersionHistory={() => {
             setShowMoreMenu(false);

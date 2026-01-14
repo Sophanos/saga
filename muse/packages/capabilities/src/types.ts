@@ -99,7 +99,11 @@ export interface CapabilityContext {
  */
 export type UIAction =
   | { type: "open_console_tab"; tab: "chat" | "linter" | "search" | "dynamics" | "coach" }
-  | { type: "open_modal"; modal: "profile" | "settings" | "entity_form"; payload?: unknown };
+  | {
+      type: "open_modal";
+      modal: "profile" | "settings" | "entity_form" | "import" | "export";
+      payload?: unknown;
+    };
 
 // =============================================================================
 // Capability Interfaces

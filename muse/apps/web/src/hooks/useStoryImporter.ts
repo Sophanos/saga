@@ -1,4 +1,7 @@
 import { useState, useCallback, useRef } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import { useMythosStore } from "../stores";
 import {
   importStory,
@@ -6,7 +9,10 @@ import {
   type ImportResult,
   type ImportProgress,
 } from "../services/import";
+import { blocksToText } from "../services/export/ir";
+import { tiptapDocToBlocks } from "../services/export/tiptap/tiptapToIr";
 import { useApiKey } from "./useApiKey";
+import { useEntityPersistence } from "./useEntityPersistence";
 
 // ============================================================================
 // Types
@@ -59,8 +65,13 @@ export function useStoryImporter(): UseStoryImporterResult {
   const addDocument = useMythosStore((state) => state.addDocument);
   const setDocuments = useMythosStore((state) => state.setDocuments);
   const setCurrentDocument = useMythosStore((state) => state.setCurrentDocument);
-  const addEntity = useMythosStore((state) => state.addEntity);
-  const updateEntity = useMythosStore((state) => state.updateEntity);
+
+  // Convex mutations
+  const createDocumentMutation = useMutation(api.documents.create);
+  const removeDocumentMutation = useMutation(api.documents.remove);
+
+  // Entity persistence
+  const { createEntity, updateEntity } = useEntityPersistence();
 
   // Get API key for entity detection
   const { key: apiKey } = useApiKey();
@@ -99,36 +110,108 @@ export function useStoryImporter(): UseStoryImporterResult {
           existingDocuments: documents,
         });
 
+        if (signal?.aborted) {
+          throw new DOMException("Import cancelled", "AbortError");
+        }
+
+        if (options.mode === "replace" && documents.length > 0) {
+          const rootDocuments = documents.filter((doc) => !doc.parentId);
+          for (const doc of rootDocuments) {
+            await removeDocumentMutation({
+              id: doc.id as Id<"documents">,
+            });
+          }
+        }
+
+        const pendingDocuments = [...result.documents];
+        const createdDocuments: typeof result.documents = [];
+        const idMap = new Map<string, string>();
+        let deferrals = 0;
+
+        while (pendingDocuments.length > 0) {
+          const doc = pendingDocuments.shift();
+          if (!doc) break;
+
+          const parentId = doc.parentId ? idMap.get(doc.parentId) : undefined;
+          if (doc.parentId && !parentId) {
+            pendingDocuments.push(doc);
+            deferrals += 1;
+            if (deferrals > pendingDocuments.length + 2) {
+              throw new Error("Failed to resolve imported document hierarchy");
+            }
+            continue;
+          }
+
+          deferrals = 0;
+          const contentText = blocksToText(tiptapDocToBlocks(doc.content));
+          const createdId = await createDocumentMutation({
+            projectId: project.id as Id<"projects">,
+            parentId: parentId as Id<"documents"> | undefined,
+            type: doc.type,
+            title: doc.title,
+            content: doc.content as Record<string, unknown>,
+            contentText,
+            orderIndex: doc.orderIndex,
+          });
+
+          const createdDoc = {
+            ...doc,
+            id: createdId,
+            projectId: project.id,
+            parentId,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+
+          idMap.set(doc.id, createdId);
+          createdDocuments.push(createdDoc);
+
+          if (signal?.aborted) {
+            throw new DOMException("Import cancelled", "AbortError");
+          }
+        }
+
         // Apply result to store
         if (options.mode === "replace") {
           // Replace all documents
-          setDocuments(result.documents);
+          setDocuments(createdDocuments);
         } else {
           // Append documents
-          for (const doc of result.documents) {
+          for (const doc of createdDocuments) {
             addDocument(doc);
           }
         }
 
         // Set current document to the first imported chapter
-        const firstChapter = result.documents.find((d) => d.type === "chapter");
+        const firstChapter = createdDocuments.find((d) => d.type === "chapter");
         if (firstChapter) {
           setCurrentDocument(firstChapter);
-        } else if (result.documents.length > 0) {
-          setCurrentDocument(result.documents[0]);
+        } else if (createdDocuments.length > 0) {
+          setCurrentDocument(createdDocuments[0]);
         }
 
         // Apply entity upserts
         if (result.entityUpserts) {
           for (const entity of result.entityUpserts.created) {
-            addEntity(entity);
+            const persisted = await createEntity(entity, project.id);
+            if (persisted.error) {
+              console.warn("[useStoryImporter] Entity create failed:", persisted.error);
+            }
           }
           for (const entity of result.entityUpserts.updated) {
-            updateEntity(entity.id, entity);
+            const persisted = await updateEntity(entity.id, {
+              name: entity.name,
+              aliases: entity.aliases,
+              properties: entity.properties,
+              notes: entity.notes,
+            });
+            if (persisted.error) {
+              console.warn("[useStoryImporter] Entity update failed:", persisted.error);
+            }
           }
         }
 
-        return result;
+        return { ...result, documents: createdDocuments };
       } catch (err) {
         // Handle cancellation
         if (err instanceof DOMException && err.name === "AbortError") {
@@ -157,7 +240,9 @@ export function useStoryImporter(): UseStoryImporterResult {
       addDocument,
       setDocuments,
       setCurrentDocument,
-      addEntity,
+      createDocumentMutation,
+      removeDocumentMutation,
+      createEntity,
       updateEntity,
     ]
   );

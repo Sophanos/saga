@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo, useEffect, type KeyboardEvent, type DragEvent, type ClipboardEvent } from "react";
-import { Send, AtSign, X, FileText, Paperclip, Globe, ArrowUp, Image as ImageIcon } from "lucide-react";
+import { Send, AtSign, X, FileText, Paperclip, Globe, ArrowUp } from "lucide-react";
 import { Button, cn, ImagePicker, type ImagePickerResult, type ImagePickerAsset } from "@mythos/ui";
 import { bg, text, border, accent } from "@mythos/theme";
 import { useShallow } from "zustand/react/shallow";
@@ -9,6 +9,7 @@ import { uploadProjectImage } from "@mythos/ai/assets/uploadImage";
 import type { ChatAttachment } from "@mythos/ai/hooks";
 import { useMythosStore, type ChatMention } from "../../../stores";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
+import { DropOverlay } from "../../shared/DropOverlay";
 
 interface ChatInputProps {
   onSend: (message: string, mentions: ChatMention[], attachments?: ChatAttachment[]) => void;
@@ -482,22 +483,13 @@ export function ChatInput({
     </div>
   );
 
-  // Drag overlay
-  const dragOverlay = isDragOver && (
-    <div
-      className="absolute inset-0 rounded-xl flex items-center justify-center z-10 pointer-events-none"
-      style={{
-        background: `${accent.primaryBg}80`,
-        border: `2px dashed ${accent.primary}`,
-      }}
-    >
-      <div className="text-center">
-        <ImageIcon className="w-8 h-8 mx-auto mb-2" style={{ color: accent.primary }} />
-        <p className="text-sm font-medium" style={{ color: accent.primary }}>
-          Drop image here
-        </p>
-      </div>
-    </div>
+  const dragOverlay = (
+    <DropOverlay
+      visible={isDragOver}
+      label="Drop images here"
+      className="rounded-xl z-10"
+      frameClassName="w-full h-full p-0"
+    />
   );
 
   // Notion-style input variant

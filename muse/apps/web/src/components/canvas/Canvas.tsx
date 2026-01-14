@@ -27,7 +27,8 @@ import tippy, { type Instance as TippyInstance } from "tippy.js";
 import { ScrollArea } from "@mythos/ui";
 import type { Entity, Document } from "@mythos/core";
 import { getCapabilitiesForSurface, isWidgetCapability } from "@mythos/capabilities";
-import { useMutation } from "convex/react";
+import { uploadProjectImage } from "@mythos/ai/assets/uploadImage";
+import { useConvex, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useEntityClick } from "../../hooks/useEntityClick";
@@ -62,6 +63,8 @@ import { ProjectStartCanvas } from "../projects";
 import { ArtifactsView } from "../artifacts/ArtifactsView";
 import { ExecutionMarkerOverlay } from "../widgets/ExecutionMarkerOverlay";
 import { ImageInsertModal, type ImageInsertResult } from "../shared/ImageInsertModal";
+import { DropOverlay } from "../shared/DropOverlay";
+import { validateImportFile } from "../../services/import/utils";
 
 /**
  * Placeholder content shown when no document is selected
@@ -113,6 +116,7 @@ interface EditorCanvasProps {
 function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   const { handleEntityClick } = useEntityClick();
   const currentProject = useCurrentProject();
+  const convex = useConvex();
   const createDocumentMutation = useMutation(api.documents.create);
 
   // Store actions and state
@@ -140,6 +144,9 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     position: number;
     replacePlaceholder?: boolean;
   }>({ open: false, position: 0, replacePlaceholder: false });
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isDropUploading, setIsDropUploading] = useState(false);
+  const dragCounterRef = useRef(0);
 
   // Track the current document ID to detect changes
   const previousDocumentIdRef = useRef<string | null>(null);
@@ -667,14 +674,17 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     },
   });
 
-  // Handle image insertion from modal (must be after editor is created)
-  const handleImageInsert = useCallback(
-    (result: ImageInsertResult) => {
+  const insertImageAt = useCallback(
+    (
+      result: ImageInsertResult,
+      options: { position?: number; replacePlaceholder?: boolean } = {}
+    ) => {
       if (!editor || editor.isDestroyed) return;
 
-      const pos = imageInsertModal.position;
+      const pos = options.position ?? editor.state.selection.from;
+      const replacePlaceholder = options.replacePlaceholder ?? false;
 
-      if (imageInsertModal.replacePlaceholder && pos >= 0) {
+      if (replacePlaceholder && pos >= 0) {
         // Find and replace the placeholder node at this position
         const { doc } = editor.state;
         let nodePos = -1;
@@ -715,10 +725,117 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       } else {
         editor.chain().focus().setImage({ src: result.url, alt: result.altText }).run();
       }
+    },
+    [editor]
+  );
+
+  // Handle image insertion from modal (must be after editor is created)
+  const handleImageInsert = useCallback(
+    (result: ImageInsertResult) => {
+      insertImageAt(result, {
+        position: imageInsertModal.position,
+        replacePlaceholder: imageInsertModal.replacePlaceholder,
+      });
 
       setImageInsertModal({ open: false, position: 0, replacePlaceholder: false });
     },
-    [editor, imageInsertModal.position, imageInsertModal.replacePlaceholder]
+    [imageInsertModal.position, imageInsertModal.replacePlaceholder, insertImageAt]
+  );
+
+  const isFileDrag = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    return Array.from(e.dataTransfer.types ?? []).includes("Files");
+  }, []);
+
+  const handleCanvasDragEnter = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!currentProject?.id) return;
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounterRef.current += 1;
+      setIsDragOver(true);
+    },
+    [currentProject?.id, isFileDrag]
+  );
+
+  const handleCanvasDragLeave = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!currentProject?.id) return;
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounterRef.current -= 1;
+      if (dragCounterRef.current <= 0) {
+        dragCounterRef.current = 0;
+        setIsDragOver(false);
+      }
+    },
+    [currentProject?.id, isFileDrag]
+  );
+
+  const handleCanvasDragOver = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!currentProject?.id) return;
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    [currentProject?.id, isFileDrag]
+  );
+
+  const handleCanvasDrop = useCallback(
+    async (e: React.DragEvent<HTMLDivElement>) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+
+      const files = Array.from(e.dataTransfer.files);
+      if (!currentProject?.id || files.length === 0) return;
+
+      const importableFiles = files.filter((file) => validateImportFile(file).valid);
+      if (importableFiles.length > 0) {
+        openModal({ type: "import", files: importableFiles });
+        return;
+      }
+
+      const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+      if (imageFiles.length === 0) return;
+
+      setIsDropUploading(true);
+      try {
+        for (const imageFile of imageFiles) {
+          const upload = await uploadProjectImage({
+            convex,
+            projectAssets: api.projectAssets,
+            projectId: currentProject.id,
+            file: imageFile,
+            filename: imageFile.name || `upload-${Date.now()}.png`,
+            mimeType: imageFile.type || "image/png",
+            type: "reference",
+            altText: imageFile.name || undefined,
+          });
+
+          insertImageAt(
+            {
+              kind: "uploaded",
+              url: upload.url ?? "",
+              assetId: upload.assetId,
+              storageId: upload.storageId,
+              mimeType: imageFile.type,
+              altText: imageFile.name,
+            },
+            { position: editor?.state.selection.from ?? 0 }
+          );
+        }
+      } catch (error) {
+        console.warn("[Canvas] Failed to upload dropped images", error);
+      } finally {
+        setIsDropUploading(false);
+      }
+    },
+    [convex, currentProject, editor, insertImageAt, isFileDrag, openModal]
   );
 
   useEffect(() => {
@@ -888,12 +1005,21 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     return "idle";
   }, [isDirty, isSaving, lastSavedAt, saveError]);
 
+  const showDropOverlay = isDragOver || isDropUploading;
+  const dropOverlayLabel = isDropUploading
+    ? "Uploading image..."
+    : "Drop files to import or insert images";
+
   return (
     <div
-      className="h-full flex flex-col"
+      className="h-full flex flex-col relative"
       data-testid="editor-root"
       data-document-id={currentDocument?.id}
       data-project-id={currentProject?.id}
+      onDragEnter={handleCanvasDragEnter}
+      onDragLeave={handleCanvasDragLeave}
+      onDragOver={handleCanvasDragOver}
+      onDrop={handleCanvasDrop}
     >
       <span
         data-testid="editor-view"
@@ -921,6 +1047,12 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
           {saveError}
         </span>
       )}
+      <DropOverlay
+        visible={showDropOverlay}
+        label={dropOverlayLabel}
+        className="z-50"
+        showBackdrop
+      />
       {/* Scene Context Bar - shows cast, tension, and mood */}
       <SceneContextBar
         entities={sceneEntities}

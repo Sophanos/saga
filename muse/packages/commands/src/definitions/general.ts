@@ -4,6 +4,26 @@
 
 import type { Command } from '../types';
 
+function dispatchEditorIntent(
+  eventName: string,
+  detail: { source: 'command_palette' }
+): boolean {
+  const target = globalThis as {
+    dispatchEvent?: (event: { type: string }) => boolean;
+    CustomEvent?: new (
+      type: string,
+      init?: { detail?: unknown }
+    ) => { type: string };
+  };
+
+  if (typeof target.dispatchEvent === 'function' && typeof target.CustomEvent === 'function') {
+    target.dispatchEvent(new target.CustomEvent(eventName, { detail }));
+    return true;
+  }
+
+  return false;
+}
+
 export const generalCommands: Command[] = [
   {
     id: 'general.search',
@@ -15,6 +35,36 @@ export const generalCommands: Command[] = [
     shortcut: '⌘F',
     execute: () => {
       console.log('Search');
+    },
+  },
+  {
+    id: 'general.import',
+    label: 'Import Story',
+    description: 'Import content from a file',
+    icon: 'upload',
+    category: 'general',
+    keywords: ['import', 'upload', 'file', 'docx', 'epub', 'markdown', 'txt'],
+    shortcut: '⌘⇧I',
+    when: (ctx) => !!ctx.projectId,
+    execute: () => {
+      if (!dispatchEditorIntent('editor:open-import', { source: 'command_palette' })) {
+        console.log('Import requested (no event target available)');
+      }
+    },
+  },
+  {
+    id: 'general.export',
+    label: 'Export Story',
+    description: 'Export to PDF, DOCX, EPUB, or Markdown',
+    icon: 'download',
+    category: 'general',
+    keywords: ['export', 'download', 'pdf', 'docx', 'epub', 'markdown'],
+    shortcut: '⌘⇧E',
+    when: (ctx) => !!ctx.projectId,
+    execute: () => {
+      if (!dispatchEditorIntent('editor:open-export', { source: 'command_palette' })) {
+        console.log('Export requested (no event target available)');
+      }
     },
   },
   {
