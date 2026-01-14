@@ -4,6 +4,7 @@ import { useEntityPersistence } from "../../hooks/useEntityPersistence";
 import { useRelationshipPersistence } from "../../hooks/useRelationshipPersistence";
 import { BillingSettings } from "../settings/BillingSettings";
 import { SettingsModal } from "../settings/SettingsModal";
+import { PaywallModal } from "../paywall";
 import { ExportModal } from "./ExportModal";
 import { ImportModal } from "./ImportModal";
 import { EntityFormModal, type EntityFormData } from "./EntityFormModal";
@@ -196,6 +197,9 @@ export function ModalHost() {
 
     case "billing":
       return <BillingSettings isOpen={true} onClose={closeModal} />;
+
+    case "paywall":
+      return <PaywallModal isOpen={true} onClose={closeModal} />;
 
     case "import":
       return <ImportModal isOpen={true} onClose={closeModal} initialFiles={modal.files} />;

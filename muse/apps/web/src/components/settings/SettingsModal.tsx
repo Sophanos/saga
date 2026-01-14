@@ -23,6 +23,7 @@ import { useAuthStore } from "../../stores/auth";
 import { useSignOut } from "../../lib/auth";
 import { useApiKey } from "../../hooks/useApiKey";
 import { formatGraphErrorMessage } from "../../utils";
+import { UpgradeBanner } from "./UpgradeBanner";
 import type { NameCulture, NameStyle, LogicStrictness, SmartModeLevel, SmartModeConfig } from "@mythos/agent-protocol";
 
 type SettingsSection = "profile" | "personalization" | "api" | "project";
@@ -497,6 +498,9 @@ export function SettingsModal({ isOpen, onClose, initialSection = "profile" }: S
             <ScrollArea className="flex-1 px-6 py-5">
               {activeSection === "profile" && (
                 <div className="space-y-6">
+                  {/* Subscription Banner */}
+                  <UpgradeBanner className="mb-2" />
+
                   <section className="space-y-4">
                     <div className="text-sm font-medium text-mythos-text-primary">
                       Profile
