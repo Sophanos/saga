@@ -13,15 +13,6 @@ import { citationSchema } from "./citations";
 const entityTypeSchema = z.string();
 const relationTypeSchema = z.string();
 
-const itemCategorySchema = z.enum([
-  "weapon",
-  "armor",
-  "artifact",
-  "consumable",
-  "key",
-  "other",
-]);
-
 // =============================================================================
 // Graph Mutation Tool
 // =============================================================================
@@ -30,15 +21,11 @@ export const graphMutationParameters = z.union([
   z.object({
     action: z.literal("create"),
     target: z.enum(["entity", "node"]),
-    type: z.string().describe("Entity/node type"),
+    type: z.string().describe("Entity/node type (validated against project registry)"),
     name: z.string().describe("Entity/node name"),
     aliases: z.array(z.string()).optional().describe("Alternative names or nicknames"),
     notes: z.string().optional().describe("General notes about the entity/node"),
-    properties: z.record(z.any()).optional().describe("Template-specific properties"),
-    archetype: z.string().optional().describe("Character archetype"),
-    backstory: z.string().optional().describe("Character backstory"),
-    goals: z.array(z.string()).optional().describe("Character goals"),
-    fears: z.array(z.string()).optional().describe("Character fears"),
+    properties: z.record(z.any()).optional().describe("Properties as defined by project registry schema"),
     citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
   }),
   z.object({
@@ -59,7 +46,7 @@ export const graphMutationParameters = z.union([
   z.object({
     action: z.literal("create"),
     target: z.enum(["relationship", "edge"]),
-    type: z.string().describe("Relationship/edge type"),
+    type: z.string().describe("Relationship/edge type (validated against project registry)"),
     sourceName: z.string().describe("Source entity/node name"),
     targetName: z.string().describe("Target entity/node name"),
     bidirectional: z.boolean().optional().describe("Whether the relationship is bidirectional"),
@@ -100,27 +87,14 @@ export const graphMutationTool = tool({
 // =============================================================================
 
 export const createEntityParameters = z.object({
-  type: entityTypeSchema.describe("The type of entity to create"),
+  type: entityTypeSchema.describe("The type of entity to create (validated against project registry)"),
   name: z.string().describe("The name of the entity"),
   aliases: z.array(z.string()).optional().describe("Alternative names or nicknames"),
   notes: z.string().optional().describe("General notes about the entity"),
   properties: z
     .record(z.any())
     .optional()
-    .describe("Template-specific properties (shallow object)"),
-  archetype: z.string().optional().describe("Character archetype (hero, mentor, shadow, etc.)"),
-  backstory: z.string().optional().describe("Character's background story"),
-  goals: z.array(z.string()).optional().describe("Character's goals and motivations"),
-  fears: z.array(z.string()).optional().describe("Character's fears"),
-  climate: z.string().optional().describe("Climate or weather of the location"),
-  atmosphere: z.string().optional().describe("Mood and feeling of the place"),
-  category: itemCategorySchema.optional().describe("Category of item"),
-  abilities: z.array(z.string()).optional().describe("Special abilities or properties"),
-  leader: z.string().optional().describe("Name of the faction leader"),
-  headquarters: z.string().optional().describe("Main base or location"),
-  factionGoals: z.array(z.string()).optional().describe("Faction's goals"),
-  rules: z.array(z.string()).optional().describe("Rules of the magic system"),
-  limitations: z.array(z.string()).optional().describe("Limitations and costs"),
+    .describe("Entity properties as defined by the project's type registry schema"),
   citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
 });
 
@@ -148,19 +122,6 @@ export const updateEntityParameters = z.object({
         .record(z.any())
         .optional()
         .describe("Properties to merge into existing properties (shallow merge)"),
-      archetype: z.string().optional().describe("Updated archetype"),
-      backstory: z.string().optional().describe("Updated backstory"),
-      goals: z.array(z.string()).optional().describe("Updated goals"),
-      fears: z.array(z.string()).optional().describe("Updated fears"),
-      climate: z.string().optional().describe("Updated climate"),
-      atmosphere: z.string().optional().describe("Updated atmosphere"),
-      category: itemCategorySchema.optional().describe("Updated category"),
-      abilities: z.array(z.string()).optional().describe("Updated abilities"),
-      leader: z.string().optional().describe("Updated leader"),
-      headquarters: z.string().optional().describe("Updated headquarters"),
-      factionGoals: z.array(z.string()).optional().describe("Updated faction goals"),
-      rules: z.array(z.string()).optional().describe("Updated rules"),
-      limitations: z.array(z.string()).optional().describe("Updated limitations"),
     })
     .describe("Fields to update on the entity"),
   citations: z.array(citationSchema).max(10).optional().describe("Supporting canon citations"),
@@ -393,8 +354,12 @@ export function illustrateSceneNeedsApproval(): boolean {
 }
 
 export const analyzeImageParameters = z.object({
-  imageUrl: z.string().describe("URL of the image to analyze"),
-  analysisPrompt: z.string().optional().describe("Specific aspects to analyze"),
+  imageSource: z.string().describe("Storage ID, asset ID, URL, or data URL of the image"),
+  entityTypeHint: z.string().optional().describe("Optional entity type hint"),
+  extractionFocus: z
+    .enum(["full", "appearance", "environment", "object"])
+    .optional()
+    .describe("What aspect to focus extraction on"),
 });
 
 export type AnalyzeImageArgs = z.infer<typeof analyzeImageParameters>;

@@ -336,35 +336,10 @@ async function resolveEntityByName(
 
 function buildEntityProperties(args: {
   properties?: Record<string, unknown>;
-  archetype?: string;
-  backstory?: string;
-  goals?: string[];
-  fears?: string[];
-  climate?: string;
-  atmosphere?: string;
-  category?: string;
-  abilities?: string[];
-  leader?: string;
-  headquarters?: string;
-  factionGoals?: string[];
-  rules?: string[];
-  limitations?: string[];
 }): Record<string, unknown> {
-  const props: Record<string, unknown> = { ...(args.properties ?? {}) };
-  if (args.archetype !== undefined) props["archetype"] = args.archetype;
-  if (args.backstory !== undefined) props["backstory"] = args.backstory;
-  if (args.goals !== undefined) props["goals"] = args.goals;
-  if (args.fears !== undefined) props["fears"] = args.fears;
-  if (args.climate !== undefined) props["climate"] = args.climate;
-  if (args.atmosphere !== undefined) props["atmosphere"] = args.atmosphere;
-  if (args.category !== undefined) props["category"] = args.category;
-  if (args.abilities !== undefined) props["abilities"] = args.abilities;
-  if (args.leader !== undefined) props["leader"] = args.leader;
-  if (args.headquarters !== undefined) props["headquarters"] = args.headquarters;
-  if (args.factionGoals !== undefined) props["factionGoals"] = args.factionGoals;
-  if (args.rules !== undefined) props["rules"] = args.rules;
-  if (args.limitations !== undefined) props["limitations"] = args.limitations;
-  return Object.fromEntries(Object.entries(props).filter(([_, v]) => v !== undefined));
+  return Object.fromEntries(
+    Object.entries(args.properties ?? {}).filter(([_, v]) => v !== undefined)
+  );
 }
 
 async function getResolvedRegistry(
@@ -415,10 +390,6 @@ function normalizeGraphMutationArgs(args: GraphMutationArgs): NormalizedGraphMut
           aliases: args.aliases,
           notes: args.notes,
           properties: args.properties,
-          archetype: args.archetype,
-          backstory: args.backstory,
-          goals: args.goals,
-          fears: args.fears,
           citations: args.citations,
         },
         kind: "entity",
@@ -737,7 +708,7 @@ export const executeUpdateEntity = internalAction({
     if (!def) {
       return fail("INVALID_TYPE", `Unknown entity type: ${entity.type}`);
     }
-    const { name, aliases, notes, properties, ...legacyUpdates } = args.updates;
+    const { name, aliases, notes, properties } = args.updates;
 
     const dbUpdates: Record<string, unknown> = {};
     if (name !== undefined) {
@@ -750,7 +721,6 @@ export const executeUpdateEntity = internalAction({
     const existingProps = (entity.properties ?? {}) as Record<string, unknown>;
     const propertyUpdates = buildEntityProperties({
       properties: properties as Record<string, unknown> | undefined,
-      ...(legacyUpdates as Record<string, unknown>),
     });
     const nextProperties =
       Object.keys(propertyUpdates).length > 0

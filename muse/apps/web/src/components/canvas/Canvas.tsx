@@ -118,6 +118,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   // Store actions and state
   const setEditorInstance = useMythosStore((state) => state.setEditorInstance);
   const setWordCount = useMythosStore((state) => state.setWordCount);
+  const openModal = useMythosStore((state) => state.openModal);
   const setTensionLevel = useMythosStore((state) => state.setTensionLevel);
   const linterIssues = useMythosStore((state) => state.linter.issues);
   const showHud = useMythosStore((state) => state.showHud);
@@ -306,6 +307,25 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     };
   }, []);
 
+  useEffect(() => {
+    const handleOpenImport = () => {
+      if (!currentProject?.id) return;
+      openModal({ type: "import" });
+    };
+
+    const handleOpenExport = () => {
+      if (!currentProject?.id) return;
+      openModal({ type: "export" });
+    };
+
+    window.addEventListener("editor:open-import", handleOpenImport as EventListener);
+    window.addEventListener("editor:open-export", handleOpenExport as EventListener);
+    return () => {
+      window.removeEventListener("editor:open-import", handleOpenImport as EventListener);
+      window.removeEventListener("editor:open-export", handleOpenExport as EventListener);
+    };
+  }, [currentProject?.id, openModal]);
+
   // Handle /image command - open ImageInsertModal
   useEffect(() => {
     const handleInsertImage = (event: Event) => {
@@ -325,6 +345,24 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       window.removeEventListener("editor:insert-image", handleInsertImage);
     };
   }, []);
+
+  useEffect(() => {
+    const handleCreateNode = () => {
+      openModal({ type: "entityForm", mode: "create" });
+    };
+    const handleOpenGraph = () => {
+      setCanvasView("projectGraph");
+    };
+
+    window.addEventListener("editor:create-node", handleCreateNode);
+    window.addEventListener("command:create-node", handleCreateNode);
+    window.addEventListener("command:open-graph", handleOpenGraph);
+    return () => {
+      window.removeEventListener("editor:create-node", handleCreateNode);
+      window.removeEventListener("command:create-node", handleCreateNode);
+      window.removeEventListener("command:open-graph", handleOpenGraph);
+    };
+  }, [openModal, setCanvasView]);
 
   const recentCommandIds = useRecentCommandIds(currentProject?.id);
 

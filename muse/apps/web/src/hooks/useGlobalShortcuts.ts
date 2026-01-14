@@ -135,14 +135,11 @@ export function useGlobalShortcuts(options?: UseGlobalShortcutsOptions): void {
         let commandId: string | null = null;
 
         switch (key) {
-          case "c":
-            commandId = "entity.create.character";
+          case "n":
+            commandId = "node.create";
             break;
-          case "o":
-            commandId = "entity.create.location";
-            break;
-          case "i":
-            commandId = "entity.create.item";
+          case "g":
+            commandId = "graph.open";
             break;
           case "l":
             commandId = "ai.lint";

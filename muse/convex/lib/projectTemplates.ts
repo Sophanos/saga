@@ -58,7 +58,11 @@ export type ProjectTemplate = {
 
 export const DEFAULT_TEMPLATE_ID: ProjectTemplateId = "writer";
 
-const WRITER_IDENTITY_FIELDS = ["name", "archetype", "backstory", "goals"] as const;
+const WRITER_IDENTITY_FIELDS = ["name", "properties"] as const;
+
+// =============================================================================
+// Writer Entity Types (NO hardcoded schemas - schemas come from registry)
+// =============================================================================
 
 const WRITER_ENTITY_TYPES: TemplateTypeDef[] = [
   {

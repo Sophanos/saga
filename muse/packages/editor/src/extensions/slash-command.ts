@@ -40,6 +40,36 @@ export const defaultSlashCommandItems: SlashCommandItem[] = [
       window.dispatchEvent(event);
     },
   },
+  {
+    id: "import",
+    label: "Import",
+    description: "Import content from Markdown, Word, EPUB, or text",
+    icon: "FileUp",
+    category: "Actions",
+    keywords: ["import", "upload", "file", "markdown", "docx", "epub", "txt"],
+    action: () => {
+      window.dispatchEvent(
+        new CustomEvent("editor:open-import", {
+          detail: { source: "slash" },
+        })
+      );
+    },
+  },
+  {
+    id: "export",
+    label: "Export",
+    description: "Export your project to PDF, DOCX, EPUB, or Markdown",
+    icon: "FileDown",
+    category: "Actions",
+    keywords: ["export", "download", "file", "pdf", "docx", "epub", "markdown"],
+    action: () => {
+      window.dispatchEvent(
+        new CustomEvent("editor:open-export", {
+          detail: { source: "slash" },
+        })
+      );
+    },
+  },
   // Basic Blocks
   {
     id: "text",
@@ -160,7 +190,6 @@ export const defaultSlashCommandItems: SlashCommandItem[] = [
     category: "Media",
     keywords: ["image", "picture", "photo", "img"],
     action: (editor) => {
-      // Insert placeholder block if extension available, otherwise dispatch event
       if (editor.commands.setImagePlaceholder) {
         editor.commands.setImagePlaceholder();
       } else {
@@ -174,6 +203,17 @@ export const defaultSlashCommandItems: SlashCommandItem[] = [
           })
         );
       }
+    },
+  },
+  {
+    id: "node",
+    label: "Create Node",
+    description: "Add to project graph",
+    icon: "Sparkles",
+    category: "Graph",
+    keywords: ["node", "entity", "character", "location", "item", "graph"],
+    action: () => {
+      window.dispatchEvent(new CustomEvent("editor:create-node"));
     },
   },
 ];

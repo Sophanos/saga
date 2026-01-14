@@ -26,7 +26,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { ScrollArea, Input, Button, Select } from "@mythos/ui";
-import type { Entity, EntityType, Document, DocumentType, Character, Location, Item, MagicSystem, Faction } from "@mythos/core";
+import type { Entity, EntityType, Document, DocumentType } from "@mythos/core";
 import type { MemoryRecord, MemoryCategory } from "@mythos/memory";
 import { useEntities, useDocuments, useMythosStore, useCurrentProject } from "../../stores";
 import { EntityFormModal, type EntityFormData } from "../modals";
@@ -967,76 +967,12 @@ export function Manifest() {
         const id = `entity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         let newEntity: Entity;
 
-        switch (formData.type) {
-          case "character":
-            newEntity = {
-              ...baseEntity,
-              id,
-              createdAt: now,
-              type: "character",
-              archetype: formData.archetype,
-              traits: formData.traits || [],
-              status: {},
-              visualDescription: {},
-              backstory: formData.backstory,
-              goals: formData.goals,
-              fears: formData.fears,
-              voiceNotes: formData.voiceNotes,
-            } as Character;
-            break;
-          case "location":
-            newEntity = {
-              ...baseEntity,
-              id,
-              createdAt: now,
-              type: "location",
-              parentLocation: formData.parentLocation,
-              climate: formData.climate,
-              atmosphere: formData.atmosphere,
-            } as Location;
-            break;
-          case "item":
-            newEntity = {
-              ...baseEntity,
-              id,
-              createdAt: now,
-              type: "item",
-              category: formData.category || "other",
-              rarity: formData.rarity,
-              abilities: formData.abilities,
-            } as Item;
-            break;
-          case "magic_system":
-            newEntity = {
-              ...baseEntity,
-              id,
-              createdAt: now,
-              type: "magic_system",
-              rules: formData.rules || [],
-              limitations: formData.limitations || [],
-              costs: formData.costs,
-            } as MagicSystem;
-            break;
-          case "faction":
-            newEntity = {
-              ...baseEntity,
-              id,
-              createdAt: now,
-              type: "faction",
-              leader: formData.leader,
-              headquarters: formData.headquarters,
-              goals: formData.factionGoals,
-              rivals: formData.rivals,
-              allies: formData.allies,
-            } as Faction;
-            break;
-          default:
-            newEntity = {
-              ...baseEntity,
-              id,
-              createdAt: now,
-            } as Entity;
-        }
+        newEntity = {
+          ...baseEntity,
+          id,
+          createdAt: now,
+          properties: formData.properties ?? {},
+        } as Entity;
 
         // Persist to DB and add to store
         const result = await createEntity(newEntity, projectId);
@@ -1045,59 +981,14 @@ export function Manifest() {
           return;
         }
       } else if (editingEntity) {
-        // Update existing entity
         const updates: Partial<Entity> = {
           name: formData.name,
           aliases: formData.aliases,
           notes: formData.notes,
+          properties: formData.properties ?? {},
           updatedAt: now,
         };
 
-        // Add type-specific updates
-        switch (formData.type) {
-          case "character":
-            Object.assign(updates, {
-              archetype: formData.archetype,
-              traits: formData.traits || [],
-              backstory: formData.backstory,
-              goals: formData.goals,
-              fears: formData.fears,
-              voiceNotes: formData.voiceNotes,
-            });
-            break;
-          case "location":
-            Object.assign(updates, {
-              parentLocation: formData.parentLocation,
-              climate: formData.climate,
-              atmosphere: formData.atmosphere,
-            });
-            break;
-          case "item":
-            Object.assign(updates, {
-              category: formData.category,
-              rarity: formData.rarity,
-              abilities: formData.abilities,
-            });
-            break;
-          case "magic_system":
-            Object.assign(updates, {
-              rules: formData.rules || [],
-              limitations: formData.limitations || [],
-              costs: formData.costs,
-            });
-            break;
-          case "faction":
-            Object.assign(updates, {
-              leader: formData.leader,
-              headquarters: formData.headquarters,
-              goals: formData.factionGoals,
-              rivals: formData.rivals,
-              allies: formData.allies,
-            });
-            break;
-        }
-
-        // Persist to DB and update in store
         const result = await updateEntity(editingEntity.id, updates);
         if (result.error) {
           console.error("[Manifest] Failed to update entity:", result.error);
