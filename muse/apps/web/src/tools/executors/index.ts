@@ -40,3 +40,8 @@ export type {
   WriteContentResult,
   WriteContentOperation,
 } from "@mythos/agent-protocol";
+export { viewVersionHistoryExecutor } from "./viewVersionHistory";
+export { deleteDocumentExecutor } from "./deleteDocument";
+export { searchUsersExecutor } from "./searchUsers";
+export { viewCommentsExecutor } from "./viewComments";
+export { addCommentExecutor } from "./addComment";

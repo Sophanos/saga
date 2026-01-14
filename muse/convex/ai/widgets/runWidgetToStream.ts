@@ -3,6 +3,7 @@ import { internalAction, type ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { getServerWidgetDef } from "./registry";
+import { webExtractTool } from "../tools/webSearchTools";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -83,6 +84,108 @@ export const runWidgetToStream = internalAction({
       content: "",
       data: { stage: "gathering" },
     });
+
+    if (widget.id === "widget.fetch") {
+      const sourceValue =
+        (args.parameters as { source?: string } | undefined)?.source ??
+        args.selectionText ??
+        "";
+      if (!sourceValue.trim()) {
+        await ctx.runMutation((internal as any).widgetExecutions.patchInternal, {
+          executionId,
+          patch: { status: "error", error: "Source is required for fetch." },
+        });
+        await failStream(ctx, args.streamId, "Source is required for fetch.");
+        return;
+      }
+
+      const url = normalizeFetchSource(sourceValue.trim());
+
+      await appendStreamChunk(ctx, args.streamId, {
+        type: "context",
+        content: "",
+        data: { stage: "generating" },
+      });
+
+      try {
+        const extracted = await (webExtractTool as any).execute?.({ url }, {});
+        const title = extracted?.title ?? url;
+        const content = extracted?.content ?? extracted?.text ?? "";
+        const output = `# ${title}\n\n${content}`.trim();
+
+        const sourceEntry = {
+          type: sourceValue.startsWith("github:") ? ("github" as const) : ("web" as const),
+          id: url,
+          title,
+          manual: false,
+          addedAt: now,
+          sourceUpdatedAt: now,
+        };
+
+        await appendStreamChunk(ctx, args.streamId, {
+          type: "delta",
+          content: output,
+        });
+
+        await ctx.runMutation((internal as any).widgetExecutions.patchInternal, {
+          executionId,
+          patch: {
+            status: "preview",
+            output,
+            sources: [...sources, sourceEntry],
+            completedAt: Date.now(),
+          },
+        });
+
+        const manifestDraft = {
+          type: widget.artifactType ?? "web",
+          status: "draft" as const,
+          sources: [...sources, sourceEntry],
+          createdBy: args.userId,
+          createdAt: now,
+          executionContext: {
+            widgetId: widget.id,
+            widgetVersion: widget.version,
+            model: widget.defaultModel,
+            inputs: {
+              documentId: args.documentId,
+              selectionText: args.selectionText,
+              selectionRange: args.selectionRange,
+              parameters: args.parameters,
+            },
+            startedAt: now,
+            completedAt: Date.now(),
+          },
+        };
+
+        await appendStreamChunk(ctx, args.streamId, {
+          type: "context",
+          content: "",
+          data: {
+            stage: "preview",
+            result: {
+              executionId,
+              widgetType: widget.widgetType,
+              titleSuggestion: title,
+              manifestDraft,
+            },
+          },
+        });
+
+        await ctx.runMutation((internal as any)["ai/streams"].complete, {
+          streamId: args.streamId,
+        });
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Fetch failed";
+        await ctx.runMutation((internal as any).widgetExecutions.patchInternal, {
+          executionId,
+          patch: { status: "error", error: message },
+        });
+        await failStream(ctx, args.streamId, message);
+        return;
+      }
+    }
 
     const apiKey = process.env["OPENROUTER_API_KEY"];
     if (!apiKey) {
@@ -273,10 +376,30 @@ function buildTitleSuggestion(widget: { widgetType: string; artifactType?: strin
     brief: "Brief",
     notes: "Notes",
     "release-notes": "Release Notes",
+    diagram: "Diagram",
+    web: "Web Clip",
   };
   const label = widget.artifactType ? labelMap[widget.artifactType] ?? "Artifact" : "Artifact";
   if (documentTitle && documentTitle.trim().length > 0) {
     return `${label} - ${documentTitle}`;
   }
   return `${label} - ${date}`;
+}
+
+function normalizeFetchSource(source: string): string {
+  if (source.startsWith("url:")) {
+    return source.slice(4).trim();
+  }
+  if (source.startsWith("github:")) {
+    const parts = source.replace("github:", "").split("/");
+    const [owner, repo, ...pathParts] = parts;
+    if (!owner || !repo || pathParts.length === 0) return source;
+    const path = pathParts.join("/");
+    return `https://raw.githubusercontent.com/${owner}/${repo}/main/${path}`;
+  }
+  if (source.startsWith("arxiv:")) {
+    const id = source.replace("arxiv:", "").trim();
+    return `https://arxiv.org/abs/${id}`;
+  }
+  return source;
 }

@@ -28,6 +28,11 @@ import { nameGeneratorExecutor } from "./executors/nameGenerator";
 import { commitDecisionExecutor } from "./executors/commitDecision";
 import { askQuestionExecutor } from "./executors/askQuestion";
 import { writeContentExecutor } from "./executors/writeContent";
+import { viewVersionHistoryExecutor } from "./executors/viewVersionHistory";
+import { deleteDocumentExecutor } from "./executors/deleteDocument";
+import { searchUsersExecutor } from "./executors/searchUsers";
+import { viewCommentsExecutor } from "./executors/viewComments";
+import { addCommentExecutor } from "./executors/addComment";
 import { graphMutationExecutor } from "./executors/graphMutation";
 import { analyzeContentExecutor } from "./executors/analyzeContent";
 // Web research tools
@@ -75,6 +80,11 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   commit_decision: commitDecisionExecutor as ToolDefinition<unknown, unknown>,
   ask_question: askQuestionExecutor as ToolDefinition<unknown, unknown>,
   write_content: writeContentExecutor as ToolDefinition<unknown, unknown>,
+  view_version_history: viewVersionHistoryExecutor as ToolDefinition<unknown, unknown>,
+  delete_document: deleteDocumentExecutor as ToolDefinition<unknown, unknown>,
+  search_users: searchUsersExecutor as ToolDefinition<unknown, unknown>,
+  view_comments: viewCommentsExecutor as ToolDefinition<unknown, unknown>,
+  add_comment: addCommentExecutor as ToolDefinition<unknown, unknown>,
   // Web research tools
   web_search: webSearchExecutor as ToolDefinition<unknown, unknown>,
   web_extract: webExtractExecutor as ToolDefinition<unknown, unknown>,

@@ -18,7 +18,7 @@ export interface WidgetInvokeRequest {
   parameters?: Record<string, unknown>;
 }
 
-export type ArtifactSourceType = "document" | "entity" | "memory";
+export type ArtifactSourceType = "document" | "entity" | "memory" | "web" | "github";
 
 export interface ArtifactSourceRef {
   type: ArtifactSourceType;

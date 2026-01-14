@@ -59,6 +59,11 @@ export type ToolName =
   // Human-in-the-loop editor tools
   | "ask_question"
   | "write_content"
+  | "view_version_history"
+  | "delete_document"
+  | "search_users"
+  | "view_comments"
+  | "add_comment"
   // Web research tools
   | "web_search"
   | "web_extract"
@@ -764,6 +769,83 @@ export interface WriteContentResult {
 }
 
 // =============================================================================
+// Document + Collaboration Tool Arguments
+// =============================================================================
+
+export interface ViewVersionHistoryArgs {
+  documentId: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface VersionHistoryEntry {
+  versionId: string;
+  createdAt: number;
+  createdBy?: string;
+  summary?: string;
+}
+
+export interface ViewVersionHistoryResult {
+  versions: VersionHistoryEntry[];
+  nextCursor?: string;
+}
+
+export interface DeleteDocumentArgs {
+  documentId: string;
+  reason?: string;
+}
+
+export interface DeleteDocumentResult {
+  documentId: string;
+  status: "deleted";
+}
+
+export interface SearchUsersArgs {
+  query: string;
+  limit?: number;
+}
+
+export interface UserSearchHit {
+  id: string;
+  name: string;
+  email?: string;
+}
+
+export interface SearchUsersResult {
+  users: UserSearchHit[];
+}
+
+export interface ViewCommentsArgs {
+  documentId: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface CommentEntry {
+  id: string;
+  authorId: string;
+  content: string;
+  createdAt: string;
+  selectionRange?: { from: number; to: number };
+}
+
+export interface ViewCommentsResult {
+  comments: CommentEntry[];
+  nextCursor?: string;
+}
+
+export interface AddCommentArgs {
+  documentId: string;
+  content: string;
+  selectionRange?: { from: number; to: number };
+}
+
+export interface AddCommentResult {
+  commentId: string;
+  documentId: string;
+}
+
+// =============================================================================
 // Web Research Tool Arguments (Parallel Web SDK)
 // =============================================================================
 
@@ -1138,6 +1220,11 @@ export interface ToolArgsMap {
   // Human-in-the-loop editor tools
   ask_question: AskQuestionArgs;
   write_content: WriteContentArgs;
+  view_version_history: ViewVersionHistoryArgs;
+  delete_document: DeleteDocumentArgs;
+  search_users: SearchUsersArgs;
+  view_comments: ViewCommentsArgs;
+  add_comment: AddCommentArgs;
   // Web research tools
   web_search: WebSearchArgs;
   web_extract: WebExtractArgs;
@@ -1763,6 +1850,11 @@ export interface ToolResultsMap {
   // Human-in-the-loop editor tools
   ask_question: AskQuestionResult;
   write_content: WriteContentResult;
+  view_version_history: ViewVersionHistoryResult;
+  delete_document: DeleteDocumentResult;
+  search_users: SearchUsersResult;
+  view_comments: ViewCommentsResult;
+  add_comment: AddCommentResult;
   // Web research tools
   web_search: WebSearchResult;
   web_extract: WebExtractResult;

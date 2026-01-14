@@ -27,7 +27,13 @@ export const subscriptionStore = v.union(
 );
 
 const artifactSourceSchema = v.object({
-  type: v.union(v.literal("document"), v.literal("entity"), v.literal("memory")),
+  type: v.union(
+    v.literal("document"),
+    v.literal("entity"),
+    v.literal("memory"),
+    v.literal("web"),
+    v.literal("github")
+  ),
   id: v.string(),
   title: v.optional(v.string()),
   manual: v.boolean(),

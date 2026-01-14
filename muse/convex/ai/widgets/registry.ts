@@ -184,6 +184,38 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
       user: "Create release notes from the current document context:\n\n{{document}}",
     },
   },
+  "widget.fetch": {
+    id: "widget.fetch",
+    version: "1",
+    widgetType: "artifact",
+    artifactType: "web",
+    defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    costWeight: 2,
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    requiresSelection: false,
+    requiresProject: true,
+    prompt: {
+      system: "You fetch external content and return the raw text with a short title.",
+      user: "Fetch the following source and return the content:\n\n{{source}}",
+    },
+  },
+  "widget.diagram": {
+    id: "widget.diagram",
+    version: "1",
+    widgetType: "artifact",
+    artifactType: "diagram",
+    defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    costWeight: 3,
+    contextBudget: "adaptive",
+    clarifyOnAmbiguity: false,
+    requiresSelection: false,
+    requiresProject: true,
+    prompt: {
+      system: "You generate mermaid diagrams that are easy to read.",
+      user: "Create a {{diagramType}} diagram based on the current context:\n\n{{document}}\n\nSelection:\n{{selection}}",
+    },
+  },
 };
 
 export function getServerWidgetDef(widgetId: string): ServerWidgetDef {
