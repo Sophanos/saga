@@ -40,6 +40,9 @@ import { findSimilarImagesExecutor } from "./executors/findSimilarImages";
 import { analyzeImageExecutor } from "./executors/analyzeImage";
 import { createEntityFromImageExecutor } from "./executors/createEntityFromImage";
 import { illustrateSceneExecutor } from "./executors/illustrateScene";
+// Planning tools
+import { writeTodosExecutor } from "./executors/writeTodos";
+import { spawnTaskExecutor } from "./executors/spawnTask";
 
 // =============================================================================
 // Tool Registry
@@ -82,6 +85,9 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   analyze_image: analyzeImageExecutor as ToolDefinition<unknown, unknown>,
   create_entity_from_image: createEntityFromImageExecutor as ToolDefinition<unknown, unknown>,
   illustrate_scene: illustrateSceneExecutor as ToolDefinition<unknown, unknown>,
+  // Planning tools
+  write_todos: writeTodosExecutor as ToolDefinition<unknown, unknown>,
+  spawn_task: spawnTaskExecutor as ToolDefinition<unknown, unknown>,
 };
 
 /**

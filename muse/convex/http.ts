@@ -409,6 +409,7 @@ http.route({
         mode,
         editorContext,
         contextHints,
+        attachments,
       } = body as {
         kind?: "chat" | "execute_tool" | "tool-result" | "tool-approval";
         projectId: string;
@@ -419,6 +420,16 @@ http.route({
         mode?: string;
         editorContext?: Record<string, unknown>;
         contextHints?: Record<string, unknown>;
+        attachments?: Array<{
+          kind: string;
+          assetId?: string;
+          storageId?: string;
+          url?: string;
+          mimeType?: string;
+          width?: number;
+          height?: number;
+          altText?: string;
+        }>;
       };
 
       if (!projectId) {
@@ -433,6 +444,44 @@ http.route({
           status: 401,
           headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
         });
+      }
+
+      // Validate attachments
+      const ALLOWED_IMAGE_MIMES = ["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"];
+      const MAX_ATTACHMENTS = 5;
+      const MAX_DATA_URL_SIZE = 5 * 1024 * 1024; // 5MB
+
+      if (attachments && attachments.length > 0) {
+        if (attachments.length > MAX_ATTACHMENTS) {
+          return new Response(
+            JSON.stringify({ error: `Maximum ${MAX_ATTACHMENTS} attachments allowed` }),
+            { status: 400, headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" } }
+          );
+        }
+
+        for (const att of attachments) {
+          // Validate MIME type if provided
+          if (att.mimeType && !ALLOWED_IMAGE_MIMES.includes(att.mimeType)) {
+            return new Response(
+              JSON.stringify({ error: `Invalid image type: ${att.mimeType}` }),
+              { status: 400, headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" } }
+            );
+          }
+
+          // Validate data URL size (if embedded)
+          if (att.url?.startsWith("data:")) {
+            const base64Part = att.url.split(",")[1];
+            if (base64Part) {
+              const sizeBytes = (base64Part.length * 3) / 4;
+              if (sizeBytes > MAX_DATA_URL_SIZE) {
+                return new Response(
+                  JSON.stringify({ error: "Image too large (max 5MB)" }),
+                  { status: 400, headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" } }
+                );
+              }
+            }
+          }
+        }
       }
 
       const isTemplateBuilder = projectId === "template-builder";
@@ -524,6 +573,7 @@ http.route({
         mode,
         editorContext: sanitizedEditorContext,
         contextHints: sanitizedContextHints,
+        attachments,
         auth,
         origin,
       });
@@ -1935,6 +1985,16 @@ interface SagaChatParams {
   mode?: string;
   editorContext?: Record<string, unknown>;
   contextHints?: Record<string, unknown>;
+  attachments?: Array<{
+    kind: string;
+    assetId?: string;
+    storageId?: string;
+    url?: string;
+    mimeType?: string;
+    width?: number;
+    height?: number;
+    altText?: string;
+  }>;
   auth: AuthResult;
   origin: string | null;
 }
@@ -1943,7 +2003,17 @@ async function handleSagaChat(
   ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
   params: SagaChatParams
 ): Promise<Response> {
-  const { projectId, prompt, threadId, mode, editorContext, contextHints, auth, origin } = params;
+  const {
+    projectId,
+    prompt,
+    threadId,
+    mode,
+    editorContext,
+    contextHints,
+    attachments,
+    auth,
+    origin,
+  } = params;
 
   // Create generation stream for persistence
   const streamId = await ctx.runMutation((internal as any)["ai/streams"].create, {
@@ -1965,6 +2035,7 @@ async function handleSagaChat(
         mode,
         editorContext,
         contextHints,
+        attachments,
       });
 
       // Stream is managed by the action via delta table

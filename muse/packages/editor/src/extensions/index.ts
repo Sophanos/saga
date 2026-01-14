@@ -44,6 +44,11 @@ export {
 } from "./task-list";
 export { imageExtension, Image, type ImageOptions } from "./image";
 export {
+  ImagePlaceholder,
+  type ImagePlaceholderOptions,
+  type ImagePlaceholderAttributes,
+} from "./image-placeholder";
+export {
   tableExtensions,
   Table,
   TableRow,

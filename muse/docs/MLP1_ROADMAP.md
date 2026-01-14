@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-12 (Coherence spec added)
+> Last Updated: 2026-01-14 (Planning tools + Image pipeline)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -33,13 +33,26 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Platform Integration | In progress (Web done; Tauri scaffold; Expo partial) | 80 |
 | RAG Pipeline | Done | 100 |
 | Web Research Tools | Done | 100 |
+| Image Pipeline + CLIP Embeddings | Done | 100 |
+| Planning Tools + Sub-Agents | Done | 100 |
 | Supabase -> Convex Migration | Done | 100 |
 | Real-Time Collaboration | In progress | 80 |
 | Widgets & Artifacts (MVP1) | In progress | 35 |
 | Async Jobs + Notifications (MVP1.5) | Planned | 0 |
-| Overall MLP 1 | In progress | 95 |
+| Overall MLP 1 | In progress | 97 |
 
 ## Recent Updates (condensed)
+
+**2026-01-14 (Planning tools + Image pipeline)**
+- Planning tools: `write_todos` (Claude Code style - full state replacement), `spawn_task` (sub-agent spawner).
+- Sub-agents: research/analysis/writing agents with scoped tools and system prompts.
+- Frontend: `TodoListCard` (progress bar + checklist), `SpawnTaskCard` (expandable output).
+- Image pipeline: shared `ImagePicker` component (upload/URL/assets tabs), client-side validation (5MB, PNG/JPG/GIF/WebP).
+- Editor `/image` command: inserts `ImagePlaceholder` block; click opens `ImageInsertModal`.
+- Image embeddings: CLIP via DeepInfra → Qdrant `saga_images` collection (512-dim vectors).
+- Chat attachments: drag-drop, paste, URL embed with server-side validation in `http.ts`.
+- Protocol: `TodoItem` with status, `SubAgentType`, `WriteTodosArgs/Result`, `SpawnTaskArgs/Result`.
+- Schema: `agentTodos` table with status field; `getByThread`/`getByProject` queries.
 
 **2026-01-11 (AI centralization)**
 - `@mythos/ai/client`: shared streaming, SSE parsing, tool execution
@@ -212,7 +225,7 @@ Core deliverables:
 
 ## AI Tools Overview
 
-### Active Tools (12 registered in agentRuntime.ts)
+### Active Tools (14 registered in agentRuntime.ts)
 
 | Category | Tool | Purpose | Approval |
 |----------|------|---------|----------|
@@ -226,8 +239,11 @@ Core deliverables:
 | | `web_extract` | Extract full page content from URL | Auto |
 | **Entity Management** | `graph_mutation` | Create/update/delete entities + relationships | Risk-based |
 | **Analysis** | `analyze_content` | Unified analysis (entities/consistency/logic/clarity/policy) | Auto |
+| | `analyze_image` | Extract visual details from image | Auto |
 | **Project Setup** | `project_manage` | Bootstrap project (template + seed flag) | User approval |
 | | `generate_template` | Create template draft (used internally) | User approval |
+| **Planning** | `write_todos` | Track tasks with status (Claude Code style) | Auto |
+| | `spawn_task` | Run sub-agent (research/analysis/writing) | Auto |
 
 ### Defined but Not Registered
 
@@ -268,6 +284,37 @@ Core deliverables:
 - Type definitions: `packages/agent-protocol/src/tools.ts`
 - Client executors: `apps/web/src/tools/executors/*.ts`
 - Client registry: `apps/web/src/tools/registry.ts`
+
+### Sub-Agents (native)
+
+Factory in `convex/ai/agentRuntime.ts`:
+
+| Agent | Tools | System Prompt Focus |
+|-------|-------|---------------------|
+| **research** | web_search, web_extract, search_context, read_document, get_entity | Citations-first, summarize sources |
+| **analysis** | analyze_content, search_context, read_document, get_entity | Structured issues + recommendations |
+| **writing** | search_context, read_document, get_entity | Proposed edits + rationale |
+
+Flow: `spawn_task` → `createSubAgent(spec)` → tool loop (4 iterations) → return output.
+
+### Image Pipeline
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `ImagePicker` | `packages/ui/src/components/image-picker.tsx` | Shared upload/URL/assets picker |
+| `ImageInsertModal` | `apps/web/src/components/shared/ImageInsertModal.tsx` | Modal wrapper for editor |
+| `ImagePlaceholder` | `packages/editor/src/extensions/image-placeholder.ts` | Notion-style "Add image" block |
+| `embedImageAsset` | `convex/ai/imageEmbeddings.ts` | CLIP embedding via DeepInfra |
+| `deepinfraImageEmbedding` | `convex/lib/providers/deepinfraImageEmbedding.ts` | CLIP API client |
+
+Storage flow:
+```
+Upload → Convex _storage → projectAssets table → Qdrant saga_images (CLIP 512-dim)
+```
+
+Env vars:
+- `QDRANT_IMAGE_COLLECTION=saga_images`
+- `QDRANT_IMAGE_VECTOR_NAME=image`
 
 ## Platform Strategy
 
@@ -354,6 +401,25 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 - `muse/apps/web/src/components/flow/*`
 - `muse/convex/flowSessions.ts`
 - `muse/apps/web/src/hooks/useGlobalShortcuts.ts`
+
+**Planning Tools + Sub-Agents**
+- `muse/convex/ai/tools/planningTools.ts` (write_todos, spawn_task schemas)
+- `muse/convex/ai/todos.ts` (createTodos, getByThread, getByProject)
+- `muse/convex/ai/agentRuntime.ts` (getSubAgentSpec, createSubAgent, tool handlers)
+- `muse/packages/agent-protocol/src/tools.ts` (TodoItem, TodoStatus, SubAgentType)
+- `muse/apps/web/src/components/console/AISidebar/TodoListCard.tsx`
+- `muse/apps/web/src/components/console/AISidebar/SpawnTaskCard.tsx`
+- `muse/apps/web/src/tools/executors/writeTodos.ts`
+- `muse/apps/web/src/tools/executors/spawnTask.ts`
+
+**Image Pipeline**
+- `muse/packages/ui/src/components/image-picker.tsx` (shared ImagePicker)
+- `muse/apps/web/src/components/shared/ImageInsertModal.tsx`
+- `muse/packages/editor/src/extensions/image-placeholder.ts`
+- `muse/convex/ai/imageEmbeddings.ts` (embedImageAsset, deleteImageEmbeddings)
+- `muse/convex/lib/providers/deepinfraImageEmbedding.ts` (CLIP client)
+- `muse/convex/projectAssets.ts` (saveAsset, storeFromUrl)
+- `muse/apps/web/src/components/console/AISidebar/ChatInput.tsx` (drag-drop, paste)
 
 **Platform shells**
 - `muse/apps/expo/`

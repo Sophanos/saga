@@ -346,6 +346,44 @@
   border-color: var(--mythos-text-muted);
 }
 
+/* =============================================================================
+   Image Placeholder Block
+   Notion-style "Add image" placeholder
+   ============================================================================= */
+
+.image-placeholder-wrapper {
+  @apply my-4 rounded-lg;
+  background: var(--mythos-bg-secondary, #202020);
+  border: 1px solid var(--mythos-border-subtle, rgba(255,255,255,0.06));
+}
+
+.image-placeholder-button {
+  @apply w-full flex items-center gap-3 px-4 py-3 text-left transition-colors rounded-lg;
+  color: var(--mythos-text-muted, #6B6B64);
+}
+
+.image-placeholder-button:hover {
+  background: var(--mythos-bg-hover, rgba(255,255,255,0.04));
+  color: var(--mythos-text-secondary, #9B9A97);
+}
+
+.image-placeholder-icon {
+  @apply flex-shrink-0;
+}
+
+.image-placeholder-icon svg {
+  @apply w-5 h-5;
+}
+
+.image-placeholder-text {
+  @apply text-sm;
+}
+
+/* Editor image styling */
+.editor-image {
+  @apply rounded-lg max-w-full h-auto my-4;
+}
+
 @layer base {
   .ProseMirror {
     white-space: pre-wrap;

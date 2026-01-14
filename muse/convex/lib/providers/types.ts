@@ -54,6 +54,7 @@ export const AI_TASK_CATEGORIES = {
     "image_edit", // Inpaint, outpaint, remix
     "image_analyze", // Image → text (vision)
     "image_upscale", // Enhance resolution
+    "image_embed", // Image embeddings (CLIP)
   ],
   audio: [
     "tts", // Text → speech

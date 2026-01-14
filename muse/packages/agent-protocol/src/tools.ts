@@ -54,6 +54,8 @@ export type ToolName =
   | "analyze_content"
   | "name_generator"
   | "commit_decision"
+  | "write_todos"
+  | "spawn_task"
   // Human-in-the-loop editor tools
   | "ask_question"
   | "write_content"
@@ -901,6 +903,53 @@ export interface CommitDecisionArgs {
 }
 
 // =============================================================================
+// Planning Tools
+// =============================================================================
+
+/** Todo item status (Claude Code style - agent manages full state) */
+export type TodoStatus = "pending" | "in_progress" | "completed";
+
+/** A single todo item */
+export interface TodoItem {
+  id: string;
+  label: string;
+  description?: string;
+  status: TodoStatus;
+  priority?: "low" | "medium" | "high";
+  dependsOn?: string[];
+}
+
+export interface WriteTodosArgs {
+  title?: string;
+  /** Full list of todos - each call replaces previous state */
+  todos: TodoItem[];
+  target?: { documentId?: string; selectionRange?: { from: number; to: number } };
+}
+
+export interface WriteTodosResult {
+  todoCount: number;
+  stored?: boolean;
+  todoIds?: string[];
+}
+
+/** Sub-agent type */
+export type SubAgentType = "research" | "analysis" | "writing";
+
+export interface SpawnTaskArgs {
+  agent: SubAgentType;
+  title: string;
+  instructions: string;
+  maxSteps?: number;
+  requireCitations?: boolean;
+}
+
+export interface SpawnTaskResult {
+  agent: SubAgentType;
+  output: string;
+  artifacts?: ToolArtifact[];
+}
+
+// =============================================================================
 // Phase 3: Reference Image → Entity
 // =============================================================================
 
@@ -1084,6 +1133,8 @@ export interface ToolArgsMap {
   analyze_content: AnalyzeContentArgs;
   name_generator: NameGeneratorArgs;
   commit_decision: CommitDecisionArgs;
+  write_todos: WriteTodosArgs;
+  spawn_task: SpawnTaskArgs;
   // Human-in-the-loop editor tools
   ask_question: AskQuestionArgs;
   write_content: WriteContentArgs;
@@ -1707,6 +1758,8 @@ export interface ToolResultsMap {
   analyze_content: AnalyzeContentResult;
   name_generator: NameGeneratorResult;
   commit_decision: CommitDecisionResult;
+  write_todos: WriteTodosResult;
+  spawn_task: SpawnTaskResult;
   // Human-in-the-loop editor tools
   ask_question: AskQuestionResult;
   write_content: WriteContentResult;

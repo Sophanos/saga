@@ -7,12 +7,15 @@
 
 import { v } from "convex/values";
 import {
-  query,
-  mutation,
   action,
   internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  type MutationCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 
 const assetTypeValidator = v.union(
   v.literal("portrait"),
@@ -22,6 +25,51 @@ const assetTypeValidator = v.union(
   v.literal("reference"),
   v.literal("other")
 );
+
+function shouldEmbedAsset(mimeType: string): boolean {
+  return mimeType.startsWith("image/");
+}
+
+async function scheduleImageEmbedding(
+  ctx: MutationCtx,
+  assetId: Id<"projectAssets">,
+  projectId: Id<"projects">,
+  mimeType: string
+): Promise<void> {
+  if (!shouldEmbedAsset(mimeType)) return;
+  await ctx.scheduler.runAfter(0, internal.ai.imageEmbeddings.embedImageAsset, {
+    assetId,
+    projectId,
+  });
+}
+
+async function scheduleImageEmbeddingDeletion(
+  ctx: MutationCtx,
+  assetIds: Id<"projectAssets">[]
+): Promise<void> {
+  if (assetIds.length === 0) return;
+  await ctx.scheduler.runAfter(0, internal.ai.imageEmbeddings.deleteImageEmbeddings, {
+    assetIds,
+  });
+}
+
+async function scheduleProjectImageEmbeddingDeletion(
+  ctx: MutationCtx,
+  projectId: Id<"projects">
+): Promise<void> {
+  await ctx.scheduler.runAfter(0, internal.ai.imageEmbeddings.deleteImageEmbeddingsByProject, {
+    projectId,
+  });
+}
+
+async function scheduleEntityImageEmbeddingDeletion(
+  ctx: MutationCtx,
+  entityId: Id<"entities">
+): Promise<void> {
+  await ctx.scheduler.runAfter(0, internal.ai.imageEmbeddings.deleteImageEmbeddingsByEntity, {
+    entityId,
+  });
+}
 
 // ============================================================
 // QUERIES
@@ -77,6 +125,13 @@ export const get = query({
   },
 });
 
+export const getInternal = internalQuery({
+  args: { id: v.id("projectAssets") },
+  handler: async (ctx, { id }) => {
+    return ctx.db.get(id);
+  },
+});
+
 export const getUrl = query({
   args: { storageId: v.id("_storage") },
   handler: async (ctx, { storageId }) => {
@@ -113,11 +168,15 @@ export const saveAsset = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    return ctx.db.insert("projectAssets", {
+    const assetId = await ctx.db.insert("projectAssets", {
       ...args,
       createdAt: now,
       updatedAt: now,
     });
+
+    await scheduleImageEmbedding(ctx, assetId, args.projectId, args.mimeType);
+
+    return assetId;
   },
 });
 
@@ -140,11 +199,15 @@ export const saveAssetInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    return ctx.db.insert("projectAssets", {
+    const assetId = await ctx.db.insert("projectAssets", {
       ...args,
       createdAt: now,
       updatedAt: now,
     });
+
+    await scheduleImageEmbedding(ctx, assetId, args.projectId, args.mimeType);
+
+    return assetId;
   },
 });
 
@@ -211,6 +274,10 @@ export const hardDelete = mutation({
     }
 
     await ctx.db.delete(id);
+
+    if (shouldEmbedAsset(asset.mimeType)) {
+      await scheduleImageEmbeddingDeletion(ctx, [asset._id]);
+    }
   },
 });
 
@@ -234,6 +301,10 @@ export const deleteByProject = internalMutation({
       await ctx.db.delete(asset._id);
     }
 
+    if (assets.length > 0) {
+      await scheduleProjectImageEmbeddingDeletion(ctx, projectId);
+    }
+
     return { deleted: assets.length };
   },
 });
@@ -254,6 +325,10 @@ export const deleteByEntity = internalMutation({
       await ctx.db.delete(asset._id);
     }
 
+    if (assets.length > 0) {
+      await scheduleEntityImageEmbeddingDeletion(ctx, entityId);
+    }
+
     return { deleted: assets.length };
   },
 });
@@ -272,13 +347,20 @@ export const cleanupSoftDeleted = internalMutation({
       (a) => a.deletedAt && a.deletedAt < cutoff
     );
 
-    for (const asset of toDelete.slice(0, 100)) {
+    const assetsToDelete = toDelete.slice(0, 100);
+    const embeddableIds = assetsToDelete
+      .filter((asset) => shouldEmbedAsset(asset.mimeType))
+      .map((asset) => asset._id);
+
+    for (const asset of assetsToDelete) {
       await ctx.storage.delete(asset.storageId);
       if (asset.thumbnailStorageId) {
         await ctx.storage.delete(asset.thumbnailStorageId);
       }
       await ctx.db.delete(asset._id);
     }
+
+    await scheduleImageEmbeddingDeletion(ctx, embeddableIds);
 
     return { deleted: Math.min(toDelete.length, 100) };
   },
@@ -303,7 +385,7 @@ export const storeFromUrlInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    return ctx.db.insert("projectAssets", {
+    const assetId = await ctx.db.insert("projectAssets", {
       projectId: args.projectId,
       entityId: args.entityId,
       type: args.type,
@@ -317,6 +399,10 @@ export const storeFromUrlInternal = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    await scheduleImageEmbedding(ctx, assetId, args.projectId, args.mimeType);
+
+    return assetId;
   },
 });
 

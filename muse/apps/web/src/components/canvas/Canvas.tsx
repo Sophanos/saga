@@ -17,6 +17,8 @@ import {
   SceneList,
   defaultSlashCommandItems,
   filterSlashCommandItems,
+  imageExtension,
+  ImagePlaceholder,
   type SlashCommandItem,
   ReactRenderer,
 } from "@mythos/editor";
@@ -36,7 +38,7 @@ import { useDynamicsExtraction } from "../../hooks/useDynamicsExtraction";
 import { useAutoSave } from "../../hooks/useAutoSave";
 import { useAutoApplyEntityMarks } from "../../hooks/useEntityMarks";
 import { useMythosStore, useEntities, useCanvasView, useCurrentProject } from "../../stores";
-import { useCommandPaletteStore, useRecentCommandIds } from "../../stores/commandPalette";
+import { useRecentCommandIds } from "../../stores/commandPalette";
 import { useWidgetExecutionStore } from "../../stores/widgetExecution";
 import {
   useMood,
@@ -59,6 +61,7 @@ import { ProjectGraphView } from "../project-graph";
 import { ProjectStartCanvas } from "../projects";
 import { ArtifactsView } from "../artifacts/ArtifactsView";
 import { ExecutionMarkerOverlay } from "../widgets/ExecutionMarkerOverlay";
+import { ImageInsertModal, type ImageInsertResult } from "../shared/ImageInsertModal";
 
 /**
  * Placeholder content shown when no document is selected
@@ -131,6 +134,11 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
   );
   const updateDocumentInStore = useMythosStore((state) => state.updateDocument);
   const [isEditorReady, setIsEditorReady] = useState(false);
+  const [imageInsertModal, setImageInsertModal] = useState<{
+    open: boolean;
+    position: number;
+    replacePlaceholder?: boolean;
+  }>({ open: false, position: 0, replacePlaceholder: false });
 
   // Track the current document ID to detect changes
   const previousDocumentIdRef = useRef<string | null>(null);
@@ -298,6 +306,26 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     };
   }, []);
 
+  // Handle /image command - open ImageInsertModal
+  useEffect(() => {
+    const handleInsertImage = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        insertPosition: number;
+        replacePlaceholder?: boolean;
+      }>).detail;
+      setImageInsertModal({
+        open: true,
+        position: detail?.insertPosition ?? 0,
+        replacePlaceholder: detail?.replacePlaceholder ?? false,
+      });
+    };
+
+    window.addEventListener("editor:insert-image", handleInsertImage);
+    return () => {
+      window.removeEventListener("editor:insert-image", handleInsertImage);
+    };
+  }, []);
+
   const recentCommandIds = useRecentCommandIds(currentProject?.id);
 
   const slashItems = useMemo<SlashCommandItem[]>(() => {
@@ -442,6 +470,8 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
         minLength: 100,
         onSubstantialPaste: stableHandlePaste,
       }),
+      imageExtension(),
+      ImagePlaceholder,
       SlashCommand.configure({
         suggestion: {
           items: ({ query }) => {
@@ -598,6 +628,60 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
       }
     },
   });
+
+  // Handle image insertion from modal (must be after editor is created)
+  const handleImageInsert = useCallback(
+    (result: ImageInsertResult) => {
+      if (!editor || editor.isDestroyed) return;
+
+      const pos = imageInsertModal.position;
+
+      if (imageInsertModal.replacePlaceholder && pos >= 0) {
+        // Find and replace the placeholder node at this position
+        const { doc } = editor.state;
+        let nodePos = -1;
+        let nodeSize = 0;
+
+        doc.descendants((node, p) => {
+          if (node.type.name === "imagePlaceholder" && p === pos) {
+            nodePos = p;
+            nodeSize = node.nodeSize;
+            return false;
+          }
+          return true;
+        });
+
+        if (nodePos >= 0) {
+          // Delete placeholder and insert image
+          editor
+            .chain()
+            .focus()
+            .deleteRange({ from: nodePos, to: nodePos + nodeSize })
+            .insertContentAt(nodePos, {
+              type: "image",
+              attrs: { src: result.url, alt: result.altText ?? "" },
+            })
+            .run();
+        } else {
+          // Fallback: just insert at position
+          editor.chain().focus().insertContentAt(pos, {
+            type: "image",
+            attrs: { src: result.url, alt: result.altText ?? "" },
+          }).run();
+        }
+      } else if (pos > 0) {
+        editor.chain().focus().insertContentAt(pos, {
+          type: "image",
+          attrs: { src: result.url, alt: result.altText ?? "" },
+        }).run();
+      } else {
+        editor.chain().focus().setImage({ src: result.url, alt: result.altText }).run();
+      }
+
+      setImageInsertModal({ open: false, position: 0, replacePlaceholder: false });
+    },
+    [editor, imageInsertModal.position, imageInsertModal.replacePlaceholder]
+  );
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -908,6 +992,14 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
         onClose={closeModal}
         onApply={applyEntities}
         isProcessing={isDetecting || isCreating}
+      />
+
+      {/* Image Insert Modal */}
+      <ImageInsertModal
+        open={imageInsertModal.open}
+        onClose={() => setImageInsertModal({ open: false, position: 0 })}
+        onInsert={handleImageInsert}
+        projectId={currentProject?.id ?? null}
       />
     </div>
   );

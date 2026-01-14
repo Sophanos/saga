@@ -160,9 +160,19 @@ export const defaultSlashCommandItems: SlashCommandItem[] = [
     category: "Media",
     keywords: ["image", "picture", "photo", "img"],
     action: (editor) => {
-      const url = window.prompt("Enter image URL:");
-      if (url) {
-        editor.chain().focus().setImage({ src: url }).run();
+      // Insert placeholder block if extension available, otherwise dispatch event
+      if (editor.commands.setImagePlaceholder) {
+        editor.commands.setImagePlaceholder();
+      } else {
+        const { from, to } = editor.state.selection;
+        window.dispatchEvent(
+          new CustomEvent("editor:insert-image", {
+            detail: {
+              insertPosition: from,
+              selectionRange: { from, to },
+            },
+          })
+        );
       }
     },
   },

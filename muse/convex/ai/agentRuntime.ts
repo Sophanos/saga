@@ -23,8 +23,9 @@ import { buildSystemPrompt, retrieveRAGContext, type RAGContext } from "./rag";
 import { askQuestionTool, writeContentTool } from "./tools/editorTools";
 import { commitDecisionTool } from "./tools/memoryTools";
 import { searchContextTool, readDocumentTool, getEntityTool } from "./tools/ragTools";
-import { graphMutationTool } from "./tools/projectGraphTools";
+import { analyzeImageTool, graphMutationTool } from "./tools/projectGraphTools";
 import { analyzeContentTool } from "./tools/analysisTools";
+import { spawnTaskTool, writeTodosTool } from "./tools/planningTools";
 import { generateTemplateTool } from "./tools/templateTools";
 import { projectManageTool } from "./tools/projectManageTools";
 import { webSearchTool, webExtractTool } from "./tools/webSearchTools";
@@ -43,8 +44,7 @@ const AI_PRESENCE_ROOM_PREFIXES = {
 };
 
 // Pre-extract function references to avoid deep type instantiation
-// @ts-expect-error - internal type is too deeply nested, causes TS2589
-const internalAny: Record<string, Record<string, unknown>> = internal;
+const internalAny: Record<string, Record<string, unknown>> = internal as Record<string, Record<string, unknown>>;
 
 function resolveEditorDocumentId(editorContext: unknown): string | undefined {
   if (!editorContext || typeof editorContext !== "object") return undefined;
@@ -111,6 +111,7 @@ async function setAiPresence(
 }
 
 const AI_KEEPALIVE_INTERVAL_MS = 8_000;
+const MAX_BASE64_IMAGE_CHARS = 5_000_000;
 
 async function maybeKeepAiTypingAlive(opts: {
   ctx: ActionCtx;
@@ -248,6 +249,9 @@ function createSagaAgent() {
       generate_template: generateTemplateTool,
       graph_mutation: graphMutationTool,
       analyze_content: analyzeContentTool,
+      analyze_image: analyzeImageTool,
+      write_todos: writeTodosTool,
+      spawn_task: spawnTaskTool,
       web_search: webSearchTool,
       web_extract: webExtractTool,
     },
@@ -279,6 +283,9 @@ const TOOL_POLICY: Record<string, ToolPolicy> = {
   generate_template: { category: "project", autoExecute: false },
   graph_mutation: { category: "graph", autoExecute: false },
   analyze_content: { category: "analysis", autoExecute: true },
+  analyze_image: { category: "analysis", autoExecute: true },
+  write_todos: { category: "analysis", autoExecute: true },
+  spawn_task: { category: "project", autoExecute: true },
 };
 
 function getToolPolicy(toolName: string): ToolPolicy | undefined {
@@ -1090,11 +1097,339 @@ async function executeWebTool(
   }
 }
 
+function buildAnalyzeImagePrompt(args: {
+  entityTypeHint?: string;
+  extractionFocus?: string;
+}): string | undefined {
+  const focus = typeof args.extractionFocus === "string" ? args.extractionFocus : undefined;
+  const hint = typeof args.entityTypeHint === "string" ? args.entityTypeHint : undefined;
+  if (!focus && !hint) return undefined;
+  const parts = ["Analyze this image and return JSON: { description, characters, mood, setting, style }."];
+  if (focus) {
+    parts.push(`Focus on ${focus} details.`);
+  }
+  if (hint) {
+    parts.push(`Entity type hint: ${hint}.`);
+  }
+  return parts.join("\n");
+}
+
+async function resolveImageSourceForAnalysis(
+  ctx: ActionCtx,
+  projectId: string,
+  imageSource: string
+): Promise<{ imageUrl: string; assetId?: string }> {
+  if (imageSource.startsWith("http://") || imageSource.startsWith("https://")) {
+    return { imageUrl: imageSource };
+  }
+
+  if (imageSource.startsWith("data:")) {
+    const match = imageSource.match(/^data:(.+);base64,(.*)$/);
+    if (!match) {
+      throw new Error("Invalid base64 image source");
+    }
+    const base64Data = match[2] ?? "";
+    if (base64Data.length > MAX_BASE64_IMAGE_CHARS) {
+      throw new Error("Image payload too large");
+    }
+    return { imageUrl: imageSource };
+  }
+
+  const asset = await ctx.runQuery((internal as any).projectAssets.get, {
+    id: imageSource as Id<"projectAssets">,
+  });
+  if (asset && String(asset.projectId) === projectId) {
+    const imageUrl = await ctx.storage.getUrl(asset.storageId);
+    if (!imageUrl) {
+      throw new Error("Failed to resolve stored image URL");
+    }
+    return { imageUrl, assetId: asset._id };
+  }
+
+  const imageUrl = await ctx.storage.getUrl(imageSource as Id<"_storage">);
+  if (!imageUrl) {
+    throw new Error("Failed to resolve image source");
+  }
+  return { imageUrl };
+}
+
+async function executeAnalyzeImageTool(
+  ctx: ActionCtx,
+  args: Record<string, unknown>,
+  projectId: string,
+  userId: string
+): Promise<unknown> {
+  const imageSource = typeof args["imageSource"] === "string" ? (args["imageSource"] as string) : "";
+  if (!imageSource) {
+    throw new Error("imageSource is required");
+  }
+
+  const { imageUrl, assetId } = await resolveImageSourceForAnalysis(ctx, projectId, imageSource);
+  const analysisPrompt = buildAnalyzeImagePrompt({
+    entityTypeHint: typeof args["entityTypeHint"] === "string" ? (args["entityTypeHint"] as string) : undefined,
+    extractionFocus: typeof args["extractionFocus"] === "string" ? (args["extractionFocus"] as string) : undefined,
+  });
+
+  const analysis = await ctx.runAction((internal as any)["ai/image"].analyzeImageAction, {
+    projectId,
+    userId,
+    imageUrl,
+    analysisPrompt,
+  });
+
+  const suggestedEntityType =
+    typeof args["entityTypeHint"] === "string"
+      ? (args["entityTypeHint"] as string)
+      : Array.isArray((analysis as any)?.characters) && (analysis as any).characters.length > 0
+      ? "character"
+      : (analysis as any)?.setting
+      ? "location"
+      : "character";
+
+  const suggestedName = Array.isArray((analysis as any)?.characters)
+    ? (analysis as any).characters[0]
+    : undefined;
+
+  const visualDescription = {
+    artStyle: typeof (analysis as any)?.style === "string" ? (analysis as any).style : undefined,
+    mood: typeof (analysis as any)?.mood === "string" ? (analysis as any).mood : undefined,
+    atmosphere: typeof (analysis as any)?.setting === "string" ? (analysis as any).setting : undefined,
+  };
+
+  return {
+    suggestedEntityType,
+    suggestedName,
+    visualDescription,
+    description: (analysis as any)?.description ?? "",
+    confidence: 0.7,
+    assetId,
+    imageUrl,
+  };
+}
+
+type SpawnedAgentType = "research" | "analysis" | "writing";
+
+type SubAgentSpec = {
+  name: string;
+  systemPrompt: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tools: Record<string, any>;
+};
+
+function getSubAgentSpec(agent: SpawnedAgentType, requireCitations?: boolean): SubAgentSpec {
+  const citationLine = requireCitations
+    ? "Include citations with URLs for any external claims."
+    : "Citations are optional; add them when useful.";
+
+  switch (agent) {
+    case "research":
+      return {
+        name: "Research",
+        systemPrompt: [
+          "You are a research sub-agent focused on sourcing accurate information.",
+          "Use web_search and web_extract when external sources are needed.",
+          "Summarize findings with clear bullet points.",
+          citationLine,
+        ].join("\n"),
+        tools: {
+          web_search: webSearchTool,
+          web_extract: webExtractTool,
+          search_context: searchContextTool,
+          read_document: readDocumentTool,
+          get_entity: getEntityTool,
+        },
+      };
+    case "analysis":
+      return {
+        name: "Analysis",
+        systemPrompt: [
+          "You are an analysis sub-agent focused on identifying issues and recommendations.",
+          "Use analyze_content when structured analysis helps.",
+          "Provide concise bullet-pointed findings and next steps.",
+          citationLine,
+        ].join("\n"),
+        tools: {
+          analyze_content: analyzeContentTool,
+          search_context: searchContextTool,
+          read_document: readDocumentTool,
+          get_entity: getEntityTool,
+        },
+      };
+    case "writing":
+    default:
+      return {
+        name: "Writing",
+        systemPrompt: [
+          "You are a writing sub-agent focused on producing draft text and suggestions.",
+          "Provide clear output with brief rationale when helpful.",
+          citationLine,
+        ].join("\n"),
+        tools: {
+          search_context: searchContextTool,
+          read_document: readDocumentTool,
+          get_entity: getEntityTool,
+        },
+      };
+  }
+}
+
+function createSubAgent(spec: SubAgentSpec, maxSteps: number): Agent {
+  const testMode = TEST_MODE;
+  const languageModel = testMode ? createTestLanguageModel() : openrouter.chat(DEFAULT_MODEL);
+
+  return new Agent(components.agent, {
+    name: spec.name,
+    languageModel,
+    textEmbeddingModel: undefined,
+    contextOptions: {
+      recentMessages: 0,
+      searchOptions: {
+        limit: 0,
+        vectorSearch: false,
+        textSearch: false,
+        messageRange: { before: 0, after: 0 },
+      },
+      searchOtherThreads: false,
+    },
+    tools: spec.tools,
+    maxSteps,
+  });
+}
+
+async function executeWriteTodosTool(
+  ctx: ActionCtx,
+  args: Record<string, unknown>,
+  projectId: string,
+  userId: string,
+  threadId?: string
+): Promise<unknown> {
+  const todos = Array.isArray(args["todos"]) ? (args["todos"] as unknown[]) : [];
+  if (todos.length === 0) {
+    throw new Error("todos is required");
+  }
+
+  const title = typeof args["title"] === "string" ? (args["title"] as string) : undefined;
+  const target =
+    args["target"] && typeof args["target"] === "object"
+      ? (args["target"] as Record<string, unknown>)
+      : undefined;
+
+  const result = await ctx.runMutation((internal as any)["ai/todos"].createTodos, {
+    projectId: projectId as Id<"projects">,
+    userId,
+    threadId,
+    title,
+    todos,
+    target,
+  });
+
+  return {
+    todoCount: todos.length,
+    stored: true,
+    todoIds: (result as { todoIds?: string[] }).todoIds,
+  };
+}
+
+async function executeSpawnTaskTool(
+  ctx: ActionCtx,
+  args: Record<string, unknown>,
+  projectId: string,
+  userId: string
+): Promise<unknown> {
+  const agent = args["agent"] as SpawnedAgentType | undefined;
+  const title = typeof args["title"] === "string" ? (args["title"] as string) : "Spawned Task";
+  const instructions =
+    typeof args["instructions"] === "string" ? (args["instructions"] as string) : "";
+  if (!agent || !instructions) {
+    throw new Error("agent and instructions are required");
+  }
+
+  const maxSteps =
+    typeof args["maxSteps"] === "number" && Number.isFinite(args["maxSteps"])
+      ? Math.max(1, Math.min(12, args["maxSteps"] as number))
+      : 6;
+  const requireCitations = Boolean(args["requireCitations"]);
+
+  const spec = getSubAgentSpec(agent, requireCitations);
+  const subAgent = createSubAgent(spec, maxSteps);
+
+  const { threadId } = await subAgent.createThread(ctx, {
+    userId,
+    title: `${spec.name}: ${title}`,
+  });
+
+  const { messageId: promptMessageId } = await subAgent.saveMessage(ctx, {
+    threadId,
+    userId,
+    message: { role: "user", content: instructions },
+    metadata: {
+      providerMetadata: { saga: { projectId, parentTool: "spawn_task" } },
+    },
+  });
+
+  let output = "";
+  let result = await subAgent.streamText(
+    ctx,
+    { threadId },
+    { promptMessageId, system: spec.systemPrompt } as any
+  );
+
+  for await (const delta of result.textStream) {
+    if (delta) output += delta;
+  }
+
+  let toolCalls = await result.toolCalls;
+  let loopCount = 0;
+
+  while (toolCalls.length > 0 && loopCount < 4) {
+    loopCount += 1;
+
+    for (const call of toolCalls) {
+      const toolResult = await executeAutoTool(
+        ctx,
+        call.toolName,
+        call.input as Record<string, unknown>,
+        projectId,
+        userId,
+        threadId
+      );
+
+      await subAgent.saveMessage(ctx, {
+        threadId,
+        userId,
+        message: {
+          role: "tool",
+          content: [{ type: "tool-result", toolCallId: call.toolCallId, toolName: call.toolName, result: toolResult }],
+        },
+      });
+    }
+
+    result = await subAgent.streamText(
+      ctx,
+      { threadId },
+      { promptMessageId, system: spec.systemPrompt } as any
+    );
+
+    for await (const delta of result.textStream) {
+      if (delta) output += delta;
+    }
+
+    toolCalls = await result.toolCalls;
+  }
+
+  return {
+    agent,
+    output: output.trim(),
+  };
+}
+
 async function executeAutoTool(
   ctx: ActionCtx,
   toolName: string,
   args: Record<string, unknown>,
-  projectId: string
+  projectId: string,
+  userId: string,
+  threadId?: string
 ): Promise<unknown> {
   const category = getToolPolicy(toolName)?.category;
   if (category === "web") {
@@ -1102,6 +1437,23 @@ async function executeAutoTool(
   }
   if (category === "rag") {
     return executeRagTool(ctx, toolName, args, projectId);
+  }
+  if (toolName === "analyze_content") {
+    return ctx.runAction((internal as any)["ai/tools"].execute, {
+      toolName,
+      input: args,
+      projectId,
+      userId,
+    });
+  }
+  if (toolName === "analyze_image") {
+    return executeAnalyzeImageTool(ctx, args, projectId, userId);
+  }
+  if (toolName === "write_todos") {
+    return executeWriteTodosTool(ctx, args, projectId, userId, threadId);
+  }
+  if (toolName === "spawn_task") {
+    return executeSpawnTaskTool(ctx, args, projectId, userId);
   }
   throw new Error(`Unknown auto-execute tool: ${toolName}`);
 }
@@ -1217,9 +1569,10 @@ export const runSagaAgentChatToStream = internalAction({
     mode: v.optional(v.string()),
     editorContext: v.optional(v.any()),
     contextHints: v.optional(v.any()),
+    attachments: v.optional(v.array(v.any())),
   },
   handler: async (ctx, args) => {
-    const { streamId, projectId, userId, prompt, mode, editorContext, contextHints } = args;
+    const { streamId, projectId, userId, prompt, mode, editorContext, contextHints, attachments } = args;
     const isTemplateBuilder = projectId === "template-builder";
     const projectIdValue = projectId as Id<"projects">;
     const testMode = TEST_MODE;
@@ -1341,7 +1694,7 @@ export const runSagaAgentChatToStream = internalAction({
         },
         metadata: {
           providerMetadata: {
-            saga: { projectId, editorContext, contextHints },
+            saga: { projectId, editorContext, contextHints, attachments },
           },
         },
       });
@@ -1399,6 +1752,7 @@ export const runSagaAgentChatToStream = internalAction({
             mode,
             ragContext,
             editorContext,
+            attachments,
           });
 
       const result = await sagaAgent.streamText(
@@ -1445,7 +1799,9 @@ export const runSagaAgentChatToStream = internalAction({
               ctx,
               call.toolName,
               call.input as Record<string, unknown>,
-              projectId
+              projectId,
+              userId,
+              threadId ?? undefined
             );
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Unknown tool error";

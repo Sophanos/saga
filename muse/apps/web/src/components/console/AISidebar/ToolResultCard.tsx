@@ -17,6 +17,8 @@ import {
   ShieldAlert,
   ImageIcon,
   ExternalLink,
+  ListTodo,
+  Workflow,
 } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import {
@@ -37,6 +39,9 @@ import type {
   AskQuestionResult,
   WriteContentOperation,
   WriteContentResult,
+  WriteTodosArgs,
+  SpawnTaskArgs,
+  SpawnTaskResult,
   ToolApprovalType,
   ToolApprovalDanger,
   ToolName,
@@ -44,6 +49,8 @@ import type {
 import type { SagaSessionWriter } from "../../../hooks/useSessionHistory";
 import { api } from "../../../../../../convex/_generated/api";
 import { AskQuestion } from "./ask-question";
+import { TodoListCard } from "./TodoListCard";
+import { SpawnTaskCard } from "./SpawnTaskCard";
 
 interface ToolResultCardProps {
   messageId: string;
@@ -166,6 +173,8 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
   const canRetry = isFailed || isCanceled;
   const isAskQuestion = tool.toolName === "ask_question";
   const isWriteContent = tool.toolName === "write_content";
+  const isWriteTodos = tool.toolName === "write_todos";
+  const isSpawnTask = tool.toolName === "spawn_task";
 
   const approvalType =
     tool.approvalType ??
@@ -494,6 +503,12 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
     if (tool.toolName === "generate_template") {
       return <LayoutTemplate className="w-4 h-4" />;
     }
+    if (tool.toolName === "write_todos") {
+      return <ListTodo className="w-4 h-4" />;
+    }
+    if (tool.toolName === "spawn_task") {
+      return <Workflow className="w-4 h-4" />;
+    }
     return <FileText className="w-4 h-4" />;
   };
 
@@ -612,6 +627,24 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
               {getArg<string>("content")}
             </pre>
           )}
+        </div>
+      )}
+
+      {/* Todo list rendering */}
+      {isWriteTodos && (
+        <div className="mb-2">
+          <TodoListCard args={tool.args as WriteTodosArgs} />
+        </div>
+      )}
+
+      {/* Spawn task rendering */}
+      {isSpawnTask && (
+        <div className="mb-2">
+          <SpawnTaskCard
+            args={tool.args as SpawnTaskArgs}
+            result={tool.result as SpawnTaskResult | undefined}
+            isExecuting={isExecuting}
+          />
         </div>
       )}
 

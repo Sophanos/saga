@@ -24,9 +24,11 @@ const DEFAULT_RETRY_MAX_DELAY_MS = 5000;
 // Types
 // ============================================================
 
+export type QdrantVector = number[] | Record<string, number[]>;
+
 export interface QdrantPoint {
   id: string;
-  vector: number[];
+  vector: QdrantVector;
   payload: Record<string, unknown>;
 }
 
@@ -34,7 +36,7 @@ export interface QdrantSearchResult {
   id: string;
   score: number;
   payload: Record<string, unknown>;
-  vector?: number[];
+  vector?: QdrantVector;
 }
 
 export interface QdrantFilter {
@@ -133,6 +135,20 @@ function calculateBackoffDelay(attempt: number, config: RetryConfig): number {
   return Math.random() * cappedDelay;
 }
 
+function resolveSearchVector(vector: QdrantVector): { vector: number[]; using?: string } {
+  if (Array.isArray(vector)) {
+    return { vector };
+  }
+
+  const entries = Object.entries(vector);
+  if (entries.length === 0) {
+    throw new QdrantError("Named vector search requires at least one vector");
+  }
+
+  const [name, values] = entries[0];
+  return { vector: values, using: name };
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -217,7 +233,7 @@ async function qdrantRequest<T>(
 // ============================================================
 
 export async function searchPoints(
-  vector: number[],
+  vector: QdrantVector,
   limit: number = 10,
   filter?: QdrantFilter,
   config?: Partial<QdrantConfig>
@@ -225,11 +241,16 @@ export async function searchPoints(
   const envConfig = getQdrantConfig();
   const finalConfig: QdrantConfig = { ...envConfig, ...config };
 
+  const resolvedVector = resolveSearchVector(vector);
   const body: Record<string, unknown> = {
-    vector,
+    vector: resolvedVector.vector,
     limit,
     with_payload: true,
   };
+
+  if (resolvedVector.using) {
+    body["using"] = resolvedVector.using;
+  }
 
   if (filter) {
     body["filter"] = filter;
@@ -325,7 +346,7 @@ export async function deletePointsByFilter(
 export interface QdrantScrollResult {
   id: string;
   payload: Record<string, unknown>;
-  vector?: number[];
+  vector?: QdrantVector;
 }
 
 export interface QdrantOrderBy {

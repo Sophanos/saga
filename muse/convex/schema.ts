@@ -629,12 +629,39 @@ export default defineSchema({
     role: v.string(),
     content: v.string(),
     mentions: v.optional(v.any()),
+    attachments: v.optional(v.any()),
     tool: v.optional(v.any()),
     createdAt: v.number(),
   })
     .index("by_session_createdAt", ["sessionId", "createdAt"])
     .index("by_thread_createdAt", ["threadId", "createdAt"])
     .index("by_project", ["projectId"]),
+
+  // ============================================================
+  // AGENT TODOS (Claude Code style - full state replacement)
+  // ============================================================
+  agentTodos: defineTable({
+    projectId: v.id("projects"),
+    userId: v.string(),
+    threadId: v.optional(v.string()),
+    title: v.optional(v.string()),
+    todos: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        description: v.optional(v.string()),
+        status: v.union(v.literal("pending"), v.literal("in_progress"), v.literal("completed")),
+        priority: v.optional(v.string()),
+        dependsOn: v.optional(v.array(v.string())),
+      })
+    ),
+    target: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_thread", ["threadId"])
+    .index("by_project_createdAt", ["projectId", "createdAt"]),
 
   // ============================================================
   // AI THREAD MAPPINGS

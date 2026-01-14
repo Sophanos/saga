@@ -402,6 +402,16 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskSlug, LlmTaskConfig> = {
     minTier: "pro",
     enabled: true,
   },
+  image_embed: {
+    taskSlug: "image_embed",
+    modality: "image",
+    description: "Generate embeddings for images (CLIP)",
+    directModel: "sentence-transformers/clip-ViT-B-32",
+    directProvider: "deepinfra",
+    responseFormat: "text",
+    minTier: "free",
+    enabled: true,
+  },
   image_upscale: {
     taskSlug: "image_upscale",
     modality: "image",
