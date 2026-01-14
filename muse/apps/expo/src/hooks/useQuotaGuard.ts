@@ -1,17 +1,22 @@
 /**
  * useQuotaGuard Hook (Expo)
  * Quota checking with upgrade prompts for native platforms
+ * Integrates with RevenueCat for in-app purchases
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Alert, Linking, Platform } from "react-native";
 import {
   createBillingStore,
   useCanUseAI as useCanUseAISelector,
   useUsagePercentage as useUsagePercentageSelector,
-  type BillingTier,
 } from "@mythos/state";
 import { expoStorage } from "@mythos/storage";
+import {
+  getOfferings,
+  purchasePackage,
+  restorePurchases,
+} from "@mythos/auth/revenuecat";
 
 // Create expo billing store
 const useBillingStore = createBillingStore(expoStorage);
@@ -85,13 +90,69 @@ const QUOTA_MESSAGES: Record<QuotaType, { title: string; description: string }> 
  */
 async function openSubscriptionSettings() {
   if (Platform.OS === "ios") {
-    // iOS Settings > Apple ID > Subscriptions
     await Linking.openURL("itms-apps://apps.apple.com/account/subscriptions");
   } else if (Platform.OS === "android") {
-    // Google Play subscriptions
-    await Linking.openURL(
-      "https://play.google.com/store/account/subscriptions"
-    );
+    await Linking.openURL("https://play.google.com/store/account/subscriptions");
+  }
+}
+
+/**
+ * Show RevenueCat paywall with available packages
+ */
+async function showRevenueCatPaywall(): Promise<boolean> {
+  try {
+    const offerings = await getOfferings();
+    if (!offerings?.current?.availablePackages?.length) {
+      // Fallback to subscription settings if no offerings
+      await openSubscriptionSettings();
+      return false;
+    }
+
+    // Get the first available package (usually "pro" or default)
+    const packages = offerings.current.availablePackages;
+
+    return new Promise((resolve) => {
+      // Show package selection alert
+      const buttons = packages.slice(0, 3).map((pkg: any) => ({
+        text: `${pkg.product.title} - ${pkg.product.priceString}`,
+        onPress: async () => {
+          try {
+            await purchasePackage(pkg);
+            resolve(true);
+          } catch {
+            resolve(false);
+          }
+        },
+      }));
+
+      buttons.push({
+        text: "Restore Purchases",
+        onPress: async () => {
+          try {
+            await restorePurchases();
+            resolve(true);
+          } catch {
+            resolve(false);
+          }
+        },
+      });
+
+      buttons.push({
+        text: "Cancel",
+        onPress: () => resolve(false),
+        style: "cancel" as const,
+      });
+
+      Alert.alert(
+        "Upgrade to Pro",
+        "Order, without effort.\nFor people working inside complexity.",
+        buttons as any
+      );
+    });
+  } catch (error) {
+    console.error("[useQuotaGuard] Failed to show paywall:", error);
+    await openSubscriptionSettings();
+    return false;
   }
 }
 
@@ -171,9 +232,7 @@ export function useQuotaGuard(quotaType: QuotaType = "ai"): QuotaGuardResult {
 
   // Open native paywall (RevenueCat)
   const openPaywall = useCallback(async () => {
-    // TODO: Integrate with RevenueCat paywall UI
-    // For now, open subscription settings
-    await openSubscriptionSettings();
+    await showRevenueCatPaywall();
   }, []);
 
   // Prompt upgrade with native alert

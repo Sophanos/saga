@@ -39,7 +39,7 @@ import { useSagaAgent } from "../../hooks/useSagaAgent";
 import { useSessionHistory } from "../../hooks/useSessionHistory";
 import { useEditorSelection } from "../../hooks/useEditorSelection";
 import { useApiKey } from "../../hooks/useApiKey";
-import { useAIQuotaGuard } from "../../hooks/useQuotaGuard";
+import { useAIQuotaGuard, useQuotaGuard, useUsageWarning } from "../../hooks/useQuotaGuard";
 import { ContextBar } from "../console/AISidebar/ContextBar";
 import { QuickActions } from "../console/AISidebar/QuickActions";
 import { ChatMessages } from "../console/AISidebar/ChatMessages";
@@ -130,8 +130,12 @@ export function ChatPanel({
   // Get API key status for capability filtering
   const { hasKey: hasApiKey } = useApiKey();
 
-  // Quota guard for authenticated users
+  // Quota guards for authenticated users
   const { guard: checkAIQuota } = useAIQuotaGuard();
+  const { guard: checkImageGenQuota } = useQuotaGuard("imageGen");
+
+  // Usage warning at 80% threshold
+  const { showWarning: showUsageWarning, percentage: usagePercentage } = useUsageWarning(80);
 
   // Build capability context
   const capabilityContext: CapabilityContext = useMemo(
@@ -150,15 +154,27 @@ export function ChatPanel({
       // Check quota (handles both trial and authenticated users, shows upgrade prompt if blocked)
       if (!checkAIQuota({ useToast: true })) return;
       sendMessage(content, { mentions, attachments });
+      // Show usage warning if approaching limit (80%+)
+      showUsageWarning();
     },
-    [sendMessage, checkAIQuota]
+    [sendMessage, checkAIQuota, showUsageWarning]
   );
 
   // Handle capability invocation
   const handleCapabilityInvoke = useCallback(
     async (capability: Capability) => {
-      // Check quota (handles both trial and authenticated users)
-      if (!checkAIQuota({ useToast: true, feature: capability.label })) return;
+      // Check for image generation capabilities (require Pro tier)
+      const isImageGen = capability.kind === "tool" &&
+        ("toolName" in capability &&
+         (capability.toolName === "generate_image" || capability.toolName === "edit_image"));
+
+      if (isImageGen) {
+        if (!checkImageGenQuota({ feature: "Image generation" })) return;
+      } else {
+        // Check general AI quota
+        if (!checkAIQuota({ useToast: true, feature: capability.label })) return;
+      }
+
       const invokerContext: CapabilityInvokerContext = {
         capabilityContext,
         setActiveTab: (tab: ConsoleTab) => setActiveTab(tab),
@@ -170,7 +186,7 @@ export function ChatPanel({
       };
       await invokeCapability(capability, invokerContext);
     },
-    [capabilityContext, sendMessage, setActiveTab, openModal, checkAIQuota]
+    [capabilityContext, sendMessage, setActiveTab, openModal, checkAIQuota, checkImageGenQuota]
   );
 
   // Handle clear selection
