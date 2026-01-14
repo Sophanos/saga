@@ -115,15 +115,6 @@ export function useStoryImporter(): UseStoryImporterResult {
           throw new DOMException("Import cancelled", "AbortError");
         }
 
-        if (options.mode === "replace" && documents.length > 0) {
-          const rootDocuments = documents.filter((doc) => !doc.parentId);
-          for (const doc of rootDocuments) {
-            await removeDocumentMutation({
-              id: doc.id as Id<"documents">,
-            });
-          }
-        }
-
         const pendingDocuments = [...result.documents];
         const createdDocuments: typeof result.documents = [];
         const idMap = new Map<string, string>();
@@ -169,6 +160,15 @@ export function useStoryImporter(): UseStoryImporterResult {
 
           if (signal?.aborted) {
             throw new DOMException("Import cancelled", "AbortError");
+          }
+        }
+
+        if (options.mode === "replace" && documents.length > 0) {
+          const rootDocuments = documents.filter((doc) => !doc.parentId);
+          for (const doc of rootDocuments) {
+            await removeDocumentMutation({
+              id: doc.id as Id<"documents">,
+            });
           }
         }
 
