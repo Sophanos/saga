@@ -12,6 +12,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, sizing, typography, radii, shadows } from '@/design-system';
 import { useLayoutStore, type AIPanelMode, useAIStore, useCurrentThread, useHasMessages, type QuickAction, type ChatMessage } from '@mythos/state';
+import { useSagaAgent } from '@/hooks';
 import { MuseAvatar } from './MuseAvatar';
 import { ChatSelector } from './ChatSelector';
 import { WelcomeState } from './WelcomeState';
@@ -25,7 +26,8 @@ interface AIPanelProps {
 export function AIPanel({ mode = 'side' }: AIPanelProps) {
   const { colors } = useTheme();
   const { setAIPanelMode } = useLayoutStore();
-  const { showChatSelector, setShowChatSelector, sendMessage, createThread, isStreaming } = useAIStore();
+  const { showChatSelector, setShowChatSelector, createThread } = useAIStore();
+  const { sendMessage, isStreaming } = useSagaAgent();
 
   const thread = useCurrentThread();
   const hasMessages = useHasMessages();
