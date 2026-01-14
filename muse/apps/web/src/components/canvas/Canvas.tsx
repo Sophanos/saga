@@ -64,6 +64,7 @@ import { ArtifactsView } from "../artifacts/ArtifactsView";
 import { ExecutionMarkerOverlay } from "../widgets/ExecutionMarkerOverlay";
 import { ImageInsertModal, type ImageInsertResult } from "../shared/ImageInsertModal";
 import { DropOverlay } from "../shared/DropOverlay";
+import { DropHint } from "../shared/DropHint";
 import { validateImportFile } from "../../services/import/utils";
 
 /**
@@ -1132,6 +1133,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
             <p className="mt-2 text-sm">
               Select a document from the manifest or create a new one to start writing.
             </p>
+            <DropHint />
           </div>
         )}
       </div>
