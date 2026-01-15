@@ -35,3 +35,6 @@ export * from "./trial/payload";
 
 // Mappers (Convex → Core)
 export * from "./mappers";
+
+// Deep links (rhei:// URL scheme)
+export * from "./deeplinks/rhei";

@@ -43,7 +43,12 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 
 ## Recent Updates (condensed)
 
-**2026-01-15 (Artifacts Phase 2 completion)**
+**2026-01-15 (Artifacts Phase 2-4 completion)**
+- **Expo native table**: `ArtifactTableNative.tsx` with gesture-based drag-to-reorder (uses reanimated + gesture-handler), row selection, inline cell editing.
+- **Op-persistence pipeline**: `handleApplyOp` in Expo ArtifactPanel with remote-then-local-fallback strategy.
+- **Sync metadata**: `ArtifactSyncMetadata` type with `pendingOps`, `pendingContent`, dirty tracking; `mergeServerArtifacts` preserves dirty local content.
+- **Write-through sync**: `useArtifactWriteThrough` hook flushes dirty artifacts to server with retry logic.
+- **Deep links**: `rhei://` scheme added to Expo config; centralized `parseRheiUrl`/`buildRheiUrl` in `@mythos/core/deeplinks/rhei.ts`; Expo `useRheiDeepLinkListener` + Tauri `useDeepLinks` handlers; focusId plumbing through artifact route and renderers.
 - Batch PDF export: offscreen rendering with `batchRenderArtifacts()` utility; renders each artifact to PNG/SVG before PDF assembly.
 - Thread summarization: `convex/ai/summarizeThread.ts` action with `estimateThreadTokens`, `shouldAutoSummarize`, `getThreadUsageEstimate`.
 - ChatUsageIndicator: "Summarize" button appears when context is high (>6k tokens), triggers thread summarization.
@@ -250,7 +255,7 @@ Docs:
 | **Tool Executors** | Client-side executors wired to Convex | `apps/web/src/tools/executors/` |
 | **Artifact Renderers** | prose (+ dialogue/lore/code/map variants), table, diagram, timeline, chart, outline, entityCard (11 types) | `apps/web/src/components/artifacts/runtime/` |
 | **Thread Summarization** | Token estimation, auto-summarization thresholds, summarize action, new thread with summary | `convex/ai/summarizeThread.ts` |
-| **Artifact Sync** | Expo hydration from Convex | `apps/expo/src/hooks/useArtifactSync.ts` |
+| **Artifact Sync** | Expo hydration from Convex with merge-safe updates | `apps/expo/src/hooks/useArtifactSync.ts`, `useArtifactWriteThrough.ts` |
 | **Canvas Integration** | Insert artifact content, revision with artifactVersionId | `apps/web/src/components/canvas/Canvas.tsx` |
 | **Artifact Export** | Runtime PNG/SVG/JSON + Artifact Panel PDF export + batch JSON (batch PDF is text-first) | `apps/web/src/components/artifacts/ArtifactPanel.tsx`, `apps/web/src/services/export/artifacts/pdf.ts`, `apps/web/src/components/artifacts/runtime/` |
 | **Artifact References (v0)** | References/backlinks + graph view in Artifact Panel | `apps/web/src/components/artifacts/ArtifactReferences.tsx`, `apps/web/src/components/artifacts/ArtifactGraph.tsx` |
@@ -262,7 +267,7 @@ Docs:
 | **Widget Execution Pipeline** | `widgetExecutions` table, `/ai/widgets` streaming, progress UI, preview modal, slash menu | P0 |
 | **Async Infrastructure** | `notificationInbox` table, workpool for long jobs, in-app toasts + inbox | P0 |
 | **Receipts Block (v1)** | Done - TipTap extension with staleness, sources, commands | Complete |
-| **Deep Linking (Web)** | URL routing, navigation from artifact links, copy link UI | P2 |
+| **Deep Linking** | Done - `rhei://` scheme, centralized parsing in `@mythos/core`, Expo + Tauri handlers | Complete |
 | **Batch PDF (rendered)** | Offscreen runtime render per artifact (SVG/PNG) + page-per-artifact PDF assembly | P2 |
 | **Platform Push** | Expo push, Web push (VAPID), Tauri OS notifications | P3 (post-MLP1) |
 

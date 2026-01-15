@@ -340,6 +340,7 @@ export {
   useArtifactPanelMode,
   useActiveArtifact,
   useArtifacts,
+  useArtifactFocusId,
   ARTIFACT_TYPE_LABELS,
   ARTIFACT_TYPE_ICONS,
 } from "./artifact";
@@ -349,6 +350,8 @@ export type {
   ArtifactStatus,
   ArtifactPanelMode,
   ArtifactSplitMode,
+  ArtifactSyncStatus,
+  ArtifactSyncMetadata,
   IterationMessage,
   ArtifactVersion,
 } from "./artifact";
@@ -386,6 +389,27 @@ export type {
   WidgetStreamExecutor,
   WidgetExecutionActions,
 } from "./widgetExecution";
+
+// ============================================================
+// ACTIVITY STORE
+// ============================================================
+export {
+  useActivityStore,
+  useActivityOpen,
+  useActivityTab,
+  useActivityItems,
+  useUnreadCount,
+  useNeedsAttentionCount,
+  useRunningCount,
+  useHasRunningWidgets,
+} from "./activity";
+export type {
+  ActivityTab,
+  ActivityItemStatus,
+  ActivityItem,
+  ActivityState,
+  ActivityActions,
+} from "./activity";
 
 // ============================================================
 // RESET UTILITIES

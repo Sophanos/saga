@@ -8,7 +8,7 @@
  * - Version history
  */
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -39,15 +39,18 @@ import {
   type Artifact,
   type ArtifactVersion,
   type ArtifactType,
+  type ArtifactOp,
 } from "@mythos/state";
 import { parseArtifactEnvelope, type ArtifactEnvelopeByType } from "@mythos/core";
 import { ArtifactRuntimeWebView } from "./ArtifactRuntimeWebView";
+import { ArtifactTableNative } from "./runtime/ArtifactTableNative";
 import { MermaidPreviewWebView } from "./MermaidPreviewWebView";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 
 interface ArtifactPanelProps {
   flowMode?: boolean;
+  focusId?: string | null;
 }
 
 // Helper to render artifact icon
@@ -56,7 +59,7 @@ function ArtifactIcon({ type, size = 16, color }: { type: ArtifactType; size?: n
   return <Feather name={iconName} size={size} color={color} />;
 }
 
-export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
+export function ArtifactPanel({ flowMode = false, focusId }: ArtifactPanelProps) {
   const { colors } = useTheme();
   const artifact = useActiveArtifact();
   const artifacts = useArtifacts();
@@ -67,10 +70,48 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
     enterSplitView,
     exitSplitView,
     setSplitView,
+    applyArtifactOp,
   } = useArtifactStore();
   const projectId = useProjectStore((s) => s.currentProjectId);
   const iterateArtifact = useAction((api as any).ai.artifactIteration.iterateArtifact);
   const setStatusRemote = useMutation((api as any).artifacts.setStatus);
+  const applyOpRemote = useMutation((api as any).artifacts.applyOp);
+
+  /**
+   * Apply artifact op with remote-then-local-fallback strategy
+   * - If projectId exists: try server mutation first, fallback to local on error
+   * - If no projectId: local apply only
+   */
+  const handleApplyOp = useCallback(
+    async (op: ArtifactOp): Promise<void> => {
+      if (!artifact) return;
+
+      if (projectId) {
+        try {
+          const result = await applyOpRemote({
+            projectId: projectId as Id<"projects">,
+            artifactKey: artifact.id,
+            op,
+          });
+
+          // Update local store with server result
+          if (result?.nextEnvelope) {
+            useArtifactStore.getState().updateArtifact(artifact.id, {
+              content: JSON.stringify(result.nextEnvelope, null, 2),
+            });
+          }
+        } catch (error) {
+          console.warn("[ArtifactPanel] Remote op failed, applying locally", error);
+          // Fallback to local apply
+          applyArtifactOp(artifact.id, op);
+        }
+      } else {
+        // No project - apply locally only
+        applyArtifactOp(artifact.id, op);
+      }
+    },
+    [artifact, projectId, applyOpRemote, applyArtifactOp]
+  );
 
   const [showVersions, setShowVersions] = useState(false);
   const [showArtifactList, setShowArtifactList] = useState(false);
@@ -580,13 +621,13 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
         {splitView.active && compareRight ? (
           <View>
             <Text style={[styles.compareLabel, { color: colors.textMuted }]}>Before</Text>
-            <ArtifactRenderer artifact={artifact} colors={colors} />
+            <ArtifactRenderer artifact={artifact} colors={colors} onApplyOp={handleApplyOp} focusId={focusId} />
             <View style={[styles.compareDivider, { borderBottomColor: colors.border }]} />
             <Text style={[styles.compareLabel, { color: colors.textMuted }]}>After</Text>
-            <ArtifactRenderer artifact={compareRight} colors={colors} />
+            <ArtifactRenderer artifact={compareRight} colors={colors} onApplyOp={handleApplyOp} />
           </View>
         ) : (
-          <ArtifactRenderer artifact={artifact} colors={colors} />
+          <ArtifactRenderer artifact={artifact} colors={colors} onApplyOp={handleApplyOp} focusId={focusId} />
         )}
       </ScrollView>
 
@@ -680,9 +721,13 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
 function ArtifactRenderer({
   artifact,
   colors,
+  onApplyOp,
+  focusId,
 }: {
   artifact: Artifact;
   colors: ReturnType<typeof useTheme>["colors"];
+  onApplyOp?: (op: ArtifactOp) => void;
+  focusId?: string | null;
 }) {
   const runtimeEnvelope = useMemo(() => {
     if (artifact.format !== "json") return null;
@@ -718,15 +763,26 @@ function ArtifactRenderer({
     return null;
   }, [runtimeEnvelope]);
 
+  // Route RAS table envelopes to native renderer for gesture-based reordering
+  if (runtimeEnvelope?.type === "table" && onApplyOp) {
+    return (
+      <ArtifactTableNative
+        envelope={runtimeEnvelope as Extract<ArtifactEnvelopeByType, { type: "table" }>}
+        focusId={focusId}
+        onApplyOp={onApplyOp}
+      />
+    );
+  }
+
+  // Use WebView runtime for diagram, timeline, chart
   const useWebViewRuntime =
     runtimeEnvelope &&
-    (runtimeEnvelope.type === "table" ||
-      runtimeEnvelope.type === "diagram" ||
+    (runtimeEnvelope.type === "diagram" ||
       runtimeEnvelope.type === "timeline" ||
       runtimeEnvelope.type === "chart");
 
   if (useWebViewRuntime) {
-    return <ArtifactRuntimeWebView artifact={artifact} />;
+    return <ArtifactRuntimeWebView artifact={artifact} focusId={focusId} />;
   }
 
   if (runtimeText != null) {

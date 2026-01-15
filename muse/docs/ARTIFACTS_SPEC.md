@@ -15,6 +15,21 @@ The key innovation: **Artifacts have their own mini-chat for iteration**.
 
 ---
 
+## Key Design Decisions (January 2026)
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| **Storage** | Full Convex sync | Real-time, persistent, shareable. No local-only. |
+| **Mixed content** | Yes, sections | One artifact = canvas with prose + diagram + table + code |
+| **Tabs** | Branches, not pins | User creates tabs to explore directions. Can merge tabs. |
+| **Agent context** | Full awareness | Agent sees complete artifact content to understand "update the diagram" |
+| **Scoping** | Project-scoped | Artifacts persist across doc switches, clear on project switch |
+| **TOC** | Reusable component | Notion-style dots for section navigation, used everywhere |
+| **Default behavior** | Add section to current | Agent adds content to existing artifact, not always new tab |
+| **Deep links** | Artifact + section level | `/artifact/{id}#section-{sectionId}` |
+
+---
+
 ## Visual Layout
 
 ### Editor + Artifact Panel
@@ -488,13 +503,14 @@ hung between them.
 ### Artifact Schema
 
 ```typescript
+// Artifacts support MIXED CONTENT via sections
+// Each artifact is a mini-canvas with multiple content types
+
 interface Artifact {
   id: string;
   artifactKey: string;
-  type: ArtifactType;
   title: string;
-  content: string;
-  format: "markdown" | "json" | "plain";
+  sections: ArtifactSection[];  // Mixed content - prose, diagram, table, etc.
   status: "draft" | "manually_modified" | "applied" | "saved";
   statusChangedAt?: number;
   statusBy?: string;
@@ -517,6 +533,22 @@ interface Artifact {
   updatedAt: number;
 }
 
+// Section within an artifact (supports mixed content)
+interface ArtifactSection {
+  id: string;
+  type: ArtifactSectionType;
+  title?: string;
+  content: string;
+  format: "markdown" | "mermaid" | "json" | "plain";
+  collapsed: boolean;
+  order: number;
+}
+
+type ArtifactSectionType =
+  | "prose" | "dialogue" | "code" | "lore"
+  | "diagram" | "timeline" | "table" | "chart"
+  | "entityCard" | "outline" | "map";
+
 interface ArtifactSource {
   type: "document" | "entity" | "memory" | "web" | "github";
   id: string;
@@ -526,6 +558,8 @@ interface ArtifactSource {
   sourceUpdatedAt?: number;
 }
 
+// Legacy: single-type artifacts (deprecated in favor of sections)
+// Kept for backward compatibility with existing artifacts
 type ArtifactType =
   | "prose" | "dialogue" | "entity" | "outline" | "lore"
   | "diagram" | "timeline" | "table" | "map"
@@ -550,100 +584,166 @@ interface ArtifactVersion {
 
 ```typescript
 // packages/state/src/stage.ts
+// Full Convex sync - all artifacts persisted and real-time
 
 interface StageState {
   isOpen: boolean;
-  mode: "single" | "split";
-  artifacts: Artifact[];
-  activeArtifactKey: string | null;
+  tabs: ArtifactTab[];           // Tabs = branches, not pins
+  activeTabId: string | null;
 
-  // Actions
-  open: (artifact: Artifact) => void;
-  show: (type: ArtifactType, content: ArtifactContent) => void;
-  split: (artifacts: Artifact[]) => void;
-  close: () => void;
+  // Tab operations (branch, merge, not pin)
+  createTab: (artifact?: Partial<Artifact>) => string;
+  focusTab: (tabId: string) => void;
+  closeTab: (tabId: string) => void;
+  renameTab: (tabId: string, title: string) => void;
+  mergeTabs: (sourceTabId: string, targetTabId: string) => void;
+  reorderTabs: (tabIds: string[]) => void;
+  branchFromSection: (artifactId: string, sectionId: string) => string;
+
+  // Artifact actions
+  updateArtifact: (artifactId: string, updates: Partial<Artifact>) => void;
+  addSection: (artifactId: string, section: Omit<ArtifactSection, "id" | "order">) => string;
+  updateSection: (artifactId: string, sectionId: string, updates: Partial<ArtifactSection>) => void;
+  removeSection: (artifactId: string, sectionId: string) => void;
+  reorderSections: (artifactId: string, sectionIds: string[]) => void;
 
   // Iteration
   sendIteration: (artifactKey: string, message: string) => Promise<void>;
 
   // Apply
-  insertAtCursor: (artifactKey: string) => void;
+  insertAtCursor: (artifactKey: string, sectionId?: string) => void;
+  insertSectionAtCursor: (artifactId: string, sectionId: string) => void;
   saveToEntity: (artifactKey: string, entityId: string) => void;
-  pinToCanon: (artifactKey: string) => void;
 }
+
+interface ArtifactTab {
+  id: string;
+  artifactId: string;
+  title: string;
+  order: number;
+}
+```
+
+### Agent Context
+
+```typescript
+// Agent receives FULL artifact panel state in context
+// Agent needs complete awareness to understand "update the diagram"
+
+interface AgentArtifactContext {
+  panelOpen: boolean;
+  activeTab: {
+    id: string;
+    title: string;
+  } | null;
+  activeArtifact: {
+    id: string;
+    title: string;
+    sections: {
+      id: string;
+      type: ArtifactSectionType;
+      title?: string;
+      content: string;  // Full content, not truncated
+    }[];
+  } | null;
+  otherTabs: { id: string; title: string }[];  // For reference
+  currentDocumentId: string | null;            // What user is editing
+}
+```
+
+### TOC Component
+
+```typescript
+// Reusable Table of Contents component
+// Used in: documents, artifacts, any scrollable content with sections
+// Like Notion's outline with hover dots
+
+interface TOCProps {
+  sections: { id: string; title: string; level?: number }[];
+  activeSection?: string;
+  onSectionClick: (sectionId: string) => void;
+  position: "left" | "right";  // Dots on left or right
+}
+
+// Features:
+// - Dots/lines indicating sections
+// - Hover dot → show section title tooltip
+// - Click dot → scroll to section
+// - Active section highlighted
+// - Collapsed sections shown differently
 ```
 
 ### Tool Definitions
 
 ```typescript
-// packages/agent-protocol/src/tools.ts
+// convex/ai/tools/artifactTools.ts
+// Agent has FULL control over artifact panel
 
 const artifactTools = {
-  table: {
-    description: "Create a table artifact",
+  // Main artifact tool - create, update, add sections
+  artifact: {
+    description: "Create or update artifact with sections (mixed content canvas)",
     parameters: z.object({
-      title: z.string(),
-      rows: z.array(z.array(z.union([z.string(), z.number()]))),
+      action: z.enum(["create", "update", "addSection", "updateSection", "removeSection"]),
+      artifactId: z.string().optional(),      // Required for update operations
+      title: z.string().optional(),           // For create/update artifact
+      sections: z.array(z.object({
+        type: z.enum(["prose", "diagram", "table", "timeline", "code", "entityCard", "outline"]),
+        title: z.string().optional(),
+        content: z.string(),
+      })).optional(),                          // For create
+      sectionId: z.string().optional(),       // For section operations
+      sectionContent: z.string().optional(),  // For updateSection
+      sectionType: z.string().optional(),     // For addSection
     }),
     autoExecute: true,
   },
 
-  diagram: {
-    description: "Create a mermaid diagram artifact",
-    parameters: z.object({
-      title: z.string(),
-      content: z.string(),
-    }),
-    autoExecute: true,
-  },
-
-  timeline: {
-    description: "Create a timeline artifact",
-    parameters: z.object({
-      title: z.string(),
-      events: z.array(z.tuple([z.number(), z.string()])),
-    }),
-    autoExecute: true,
-  },
-
-  prose: {
-    description: "Create prose content for the user's document",
-    parameters: z.object({
-      content: z.string(),
-      style: z.enum(["narrative", "description", "action"]).optional(),
-    }),
-    autoExecute: true,
-  },
-
-  entity: {
-    description: "Create an entity card artifact",
-    parameters: z.object({
-      type: z.enum(["character", "location", "item", "faction"]),
-      name: z.string(),
-      properties: z.record(z.unknown()),
-    }),
-    autoExecute: true,
-  },
-
+  // Tab/stage control
   stage: {
-    description: "Control the artifact panel",
+    description: "Control artifact panel tabs and navigation",
     parameters: z.discriminatedUnion("action", [
-      z.object({ action: z.literal("open"), type: z.string(), id: z.string() }),
-      z.object({ action: z.literal("show"), type: z.string(), title: z.string(), content: z.string() }),
-      z.object({ action: z.literal("split"), panels: z.array(z.unknown()) }),
+      z.object({ action: z.literal("newTab"), title: z.string().optional() }),
+      z.object({ action: z.literal("focusTab"), tabId: z.string() }),
+      z.object({ action: z.literal("closeTab"), tabId: z.string() }),
+      z.object({ action: z.literal("mergeTabs"), sourceTabId: z.string(), targetTabId: z.string() }),
+      z.object({ action: z.literal("branchSection"), artifactId: z.string(), sectionId: z.string() }),
       z.object({ action: z.literal("close") }),
     ]),
     autoExecute: true,
   },
 
+  // Deep linking
   link: {
     description: "Create a deep link to content",
     parameters: z.object({
-      type: z.enum(["entity", "document", "block", "artifact", "help"]),
+      type: z.enum(["entity", "document", "block", "artifact", "section", "help"]),
       id: z.string(),
+      sectionId: z.string().optional(),  // For artifact section links
       label: z.string(),
     }),
     autoExecute: true,
+  },
+};
+
+// Convenience tools that wrap artifact tool
+const contentTools = {
+  diagram: {
+    description: "Add mermaid diagram section to current artifact",
+    parameters: z.object({ title: z.string().optional(), content: z.string() }),
+    // Internally calls: artifact({ action: "addSection", sectionType: "diagram", ... })
+  },
+  table: {
+    description: "Add table section to current artifact",
+    parameters: z.object({ title: z.string().optional(), rows: z.array(z.array(z.unknown())) }),
+  },
+  timeline: {
+    description: "Add timeline section to current artifact",
+    parameters: z.object({ title: z.string().optional(), events: z.array(z.tuple([z.number(), z.string()])) }),
+  },
+  prose: {
+    description: "Add prose section to current artifact",
+    parameters: z.object({ title: z.string().optional(), content: z.string() }),
   },
 };
 ```
@@ -820,33 +920,51 @@ Want me to adapt any of these for your Three Laws of Binding?
 | **World** | `genesisWorldTool` | Done |
 | **Questions** | `askQuestionTool` | Done |
 
-### Missing Tools (Priority Order)
+### Recently Implemented Tools
+
+| Priority | Tool | What It Does | Status |
+|----------|------|--------------|--------|
+| **P1** | `viewVersionHistoryTool` | View document versions, compare snapshots | ✅ Done |
+| **P1** | `deleteDocumentTool` | Delete documents | ✅ Done |
+| **P2** | `searchUsersTool` | Find users by name/email | ✅ Done |
+| **P2** | `viewCommentsTool` | See editorial feedback on documents | ✅ Done |
+| **P2** | `addCommentTool` | AI participates in discussions | ✅ Done |
+
+### Still Missing Tools
 
 | Priority | Tool | What It Does | Why Needed |
 |----------|------|--------------|------------|
-| **P1** | `viewVersionHistoryTool` | View document versions, compare snapshots | Notion has this |
-| **P1** | `deleteDocumentTool` | Delete documents | CRUD completeness |
-| **P2** | `searchUsersTool` | Find users by name/email | @mentions in chat |
-| **P2** | `viewCommentsTool` | See editorial feedback on documents | Context for AI |
-| **P2** | `addCommentTool` | AI participates in discussions | Collaboration |
 | **P3** | `sendNotificationTool` | Notify collaborators | Team workflows |
 | **P3** | `batchCreateTool` | Create multiple docs/entities at once | Efficiency |
 | **P3** | `structuredQueryTool` | SQL-like queries on entities | Power users |
 
-### Artifact-Specific Tools (NEW)
+### Artifact-Specific Tools (NOT YET IMPLEMENTED)
 
-| Tool | Description | Auto-execute |
-|------|-------------|--------------|
-| `stageTool` | Control artifact panel (open/show/split/close) | Yes |
-| `tableTool` | Create table artifact | Yes |
-| `diagramTool` | Create mermaid diagram artifact | Yes |
-| `timelineTool` | Create timeline artifact | Yes |
-| `proseTool` | Create prose content artifact | Yes |
-| `entityCardTool` | Create entity card artifact | Yes |
-| `outlineTool` | Create story outline artifact | Yes |
-| `loreTool` | Create lore/canon artifact | Yes |
-| `linkTool` | Create deep link to content | Yes |
-| `compareTool` | Compare two documents side-by-side | Yes |
+These tools are defined in the spec but **not wired into agentRuntime.ts**. The UI renderers exist, but agents cannot create artifacts.
+
+**Revised Design (January 2026):**
+- Artifacts support **mixed content** via sections (prose + diagram + table in one artifact)
+- **Tabs = branches**, not pins (branch, merge, rename, reorder)
+- Agent has **full context** of artifact panel (not minimal)
+- **Full Convex sync** for all artifacts
+- **TOC component** for section navigation (reusable across app)
+
+| Tool | Description | Auto-execute | Status |
+|------|-------------|--------------|--------|
+| `artifactTool` | Create/update artifacts with sections (mixed content) | Yes | ❌ Planned |
+| `stageTool` | Control tabs: newTab, focusTab, mergeTabs, branchSection, close | Yes | ❌ Planned |
+| `linkTool` | Create deep links to artifacts, sections, entities | Yes | ❌ Planned |
+| `diagramTool` | Convenience: add diagram section to current artifact | Yes | ❌ Planned |
+| `tableTool` | Convenience: add table section to current artifact | Yes | ❌ Planned |
+| `timelineTool` | Convenience: add timeline section to current artifact | Yes | ❌ Planned |
+| `proseTool` | Convenience: add prose section to current artifact | Yes | ❌ Planned |
+
+**Implementation needed**:
+1. Create `convex/ai/tools/artifactTools.ts` with tool definitions
+2. Wire into `convex/ai/agentRuntime.ts`
+3. Update `packages/state/src/artifact.ts` to support sections and tabs
+4. Add `AgentArtifactContext` to agent context builder
+5. Create TOC component in `packages/ui/`
 
 ---
 
@@ -957,10 +1075,11 @@ Legend:
 
 Status (implementation):
 - Row handles + row selection checkboxes are rendered in ArtifactPanel tables (web + Expo).
-- Web runtime Table v1 supports drag reorder, inline cell edits, and row removal (RAS); Expo still uses iteration prompts for edits.
+- Web runtime Table v1 supports drag reorder, inline cell edits, and row removal (RAS).
+- Expo native table renderer (`ArtifactTableNative.tsx`) supports gesture-based drag-to-reorder with reanimated.
 - Mermaid rendering is enabled in web and Expo (Expo uses WebView preview).
 - Artifact insert action is wired for web editor insertion; Expo still logs for now.
-- RAS runtime renders table/diagram/timeline/chart/prose/outline/entity card on web; Expo uses WebView runtime for RAS tables/diagrams/timelines/charts.
+- RAS runtime renders table/diagram/timeline/chart/prose/outline/entity card on web; Expo uses WebView runtime for diagrams/timelines/charts.
 
 ---
 
@@ -982,7 +1101,7 @@ Status (implementation):
 | `diagram`, `timeline`, `entity` artifacts | Done (baseline) | Renderers exist; timeline/entity are JSON/text-based. |
 | Mermaid rendering | Done | Web + Expo render Mermaid (Expo via WebView). |
 | Iteration chat (basic) | Done | Mini-chat + history in panel. |
-| Row drag-to-reorder | Partial | Web RAS table supports drag reorder; Expo pending. |
+| Row drag-to-reorder | Done | Web + Expo support drag-to-reorder (Expo uses native gesture handler). |
 
 ### Phase 3: Full Iteration (status)
 
@@ -990,7 +1109,7 @@ Status (implementation):
 |------|--------|-------|
 | Version history with scrubbing | Done | Scrub UI + keyboard shortcuts on web; Expo has scrubbing buttons. |
 | Full iteration context | Partial | Iteration messages store artifact + document context on web; tool wiring pending. |
-| Artifact persistence | Partial | Local persistence via store; backend sync still pending. |
+| Artifact persistence | Done | Merge-safe sync with dirty tracking and write-through hook. |
 | Bulk row operations | Partial | Web RAS table supports remove-selected; more ops pending. |
 
 ### Phase 4: Widgets & Deep Links (status)
@@ -999,7 +1118,7 @@ Status (implementation):
 |------|--------|-------|
 | `/fetch` widget | Done | Widget registered (server + client); fetch uses web_extract. |
 | `/diagram` widget | Done | Widget registered (server + client) with mermaid prompt. |
-| Deep linking scheme (`rhei://...#block-{id}`) | Partial | Hash-based focus in renderers; routing TBD. |
+| Deep linking scheme (`rhei://...#block-{id}`) | Done | `rhei://` URL scheme with focusId support on Expo + Tauri. |
 | Cross-artifact references | Done (web) / Partial (Expo) | Web Artifact Panel shows outgoing refs + backlinks and a graph view; element-level copy links in renderers still pending. |
 
 ### Phase 5: Collaboration Tools (status)
@@ -1122,8 +1241,9 @@ Decision: Document-scoped artifacts with thread history retained for iteration p
 **Dependencies:** Artifact Runtime v1 (RAS-first)
 **Owner:** Codex
 **Acceptance Criteria:**
-- WebView runtime added for RAS table/diagram/timeline/chart. (Partial: embedded renderer, bundle parity pending)
-- Message bridge supports focus/selection/export hooks. (Partial: focus + selection + JSON export)
+- WebView runtime added for RAS diagram/timeline/chart. (Done: embedded renderer)
+- Native table renderer (`ArtifactTableNative.tsx`) with gesture-based drag-to-reorder. (Done)
+- Message bridge supports focus/selection/export hooks. (Done: focus + selection + JSON export)
 
 ## Ticket: Artifact Engine v1 (Domain Ops -> JSON Patch)
 **Phase:** 7
@@ -1149,8 +1269,10 @@ Decision: Document-scoped artifacts with thread history retained for iteration p
 **Dependencies:** Artifact Engine v1 (Domain Ops -> JSON Patch), React Flow Flagship Diagrams
 **Owner:** Codex
 **Acceptance Criteria:**
-- `rhei://project/{projectId}/artifact/{artifactKey}#{elementId}` supported. (Partial: hash focus in runtime)
+- `rhei://project/{projectId}/artifact/{artifactKey}#{elementId}` supported. (Done: Expo + Tauri handlers)
 - Diagram, table, timeline, and chart focus handlers implemented. (Done in runtime)
+- Expo deep link listener (`useRheiDeepLinkListener.ts`) with focusId support. (Done)
+- Tauri deep link handler (`useDeepLinks.ts`) with `@tauri-apps/plugin-deep-link`. (Done)
 
 ## Ticket: Export as First-Class Renderer Mode
 **Phase:** 10
@@ -1173,4 +1295,4 @@ Decision: Document-scoped artifacts with thread history retained for iteration p
 - Templates + cross-artifact links + staleness checks defined. (Partial: schema + staleness query)
 - Iteration history storage added. (Done in schema + state)
 
-*Last updated: January 2026*
+*Last updated: January 15, 2026 (revised: Expo native table reorder, merge-safe sync, rhei:// deep links)*

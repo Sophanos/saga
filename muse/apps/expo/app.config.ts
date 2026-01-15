@@ -7,7 +7,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   version: "1.0.0",
   orientation: "default",
   icon: "./assets/icon.png",
-  scheme: "mythos",
+  scheme: ["mythos", "rhei"],
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
 

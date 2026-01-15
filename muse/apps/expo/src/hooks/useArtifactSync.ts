@@ -65,6 +65,7 @@ export function useArtifactSync(): void {
 
   useEffect(() => {
     if (!mapped) return;
-    useArtifactStore.getState().upsertArtifacts(mapped);
+    // Use merge-safe sync to preserve dirty local artifacts
+    useArtifactStore.getState().mergeServerArtifacts(mapped);
   }, [mapped]);
 }

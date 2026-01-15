@@ -6,7 +6,8 @@ import { api } from "../../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../../convex/_generated/dataModel";
 import { useTheme, typography } from "@/design-system";
 import { ArtifactPanel } from "@/components/artifacts/ArtifactPanel";
-import { useArtifactStore, useProjectStore } from "@mythos/state";
+import { useArtifactStore, useProjectStore, useArtifactFocusId } from "@mythos/state";
+import { useArtifactDeepLinkFocus, clearArtifactFocus } from "@/hooks/useRheiDeepLinkListener";
 
 type DeepLinkAccess =
   | { allowed: true }
@@ -42,6 +43,9 @@ export default function ArtifactDeepLinkScreen(): JSX.Element {
 
   const setCurrentProjectId = useProjectStore((s) => s.setCurrentProjectId);
   const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
+
+  // Get focusId from deep link state (set by useRheiDeepLinkListener)
+  const focusId = useArtifactDeepLinkFocus(artifactKey ?? "");
 
   const access = useQuery(
     (api as any).deepLinks.checkAccess,
@@ -79,9 +83,16 @@ export default function ArtifactDeepLinkScreen(): JSX.Element {
     return <AccessDeniedView reason={access.reason} />;
   }
 
+  // Clear focus after scroll animation (handled by renderer)
+  useEffect(() => {
+    if (focusId && artifactKey) {
+      clearArtifactFocus(artifactKey);
+    }
+  }, [focusId, artifactKey]);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
-      <ArtifactPanel flowMode />
+      <ArtifactPanel flowMode focusId={focusId} />
     </View>
   );
 }

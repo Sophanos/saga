@@ -74,6 +74,22 @@ export type ArtifactStatus = 'draft' | 'manually_modified' | 'applied' | 'saved'
 
 export type ArtifactStalenessStatus = 'fresh' | 'stale' | 'missing' | 'external';
 
+/**
+ * Sync metadata for tracking artifact persistence state
+ */
+export type ArtifactSyncStatus = 'synced' | 'dirty' | 'syncing' | 'error';
+
+export interface ArtifactSyncMetadata {
+  status: ArtifactSyncStatus;
+  lastSyncedAt?: number;
+  lastError?: string;
+  pendingOps?: ArtifactOp[];
+  pendingContent?: {
+    content: string;
+    format: 'markdown' | 'mermaid' | 'json' | 'plain';
+  };
+}
+
 export interface ArtifactSource {
   type: string;
   id: string;
@@ -159,6 +175,9 @@ export interface Artifact {
   // Reference to opened content
   referenceId?: string; // document or entity ID
   referenceType?: 'document' | 'entity';
+
+  // Sync state
+  sync?: ArtifactSyncMetadata;
 }
 
 // Panel mode
@@ -173,6 +192,9 @@ interface ArtifactStore {
   setPanelMode: (mode: ArtifactPanelMode) => void;
   setPanelWidth: (width: number) => void;
   togglePanel: () => void;
+
+  // Focus state for deep links
+  focusedElements: Record<string, string | null>;
 
   // Compare / split view
   splitView: {
@@ -216,6 +238,14 @@ interface ArtifactStore {
 
   // RAS ops
   applyArtifactOp: (artifactId: string, op: ArtifactOp) => void;
+
+  // Sync management
+  markArtifactDirty: (artifactId: string) => void;
+  enqueueArtifactOp: (artifactId: string, op: ArtifactOp) => void;
+  clearPendingOps: (artifactId: string) => void;
+  setSyncStatus: (artifactId: string, status: ArtifactSyncStatus, error?: string) => void;
+  mergeServerArtifacts: (serverArtifacts: Artifact[]) => void;
+  setFocusId: (artifactId: string, focusId: string | null) => void;
 
   // Quick actions
   showArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt' | 'versions' | 'currentVersionId' | 'iterationHistory' | 'status' | 'opLog' | 'validationErrors'>) => void;
@@ -265,6 +295,8 @@ const initialState = {
   iterationInput: '',
   iterationPillExpanded: false,
   iterationHistoryVisible: true,
+  // Focus state for deep links
+  focusedElements: {} as Record<string, string | null>,
 };
 
 export const useArtifactStore = create<ArtifactStore>()(
@@ -511,8 +543,142 @@ export const useArtifactStore = create<ArtifactStore>()(
               opLog: nextLog,
               validationErrors: [],
               updatedAt: Date.now(),
+              // Mark as dirty when ops are applied locally
+              sync: {
+                ...artifact.sync,
+                status: 'dirty' as ArtifactSyncStatus,
+                pendingOps: [...(artifact.sync?.pendingOps ?? []), op],
+              },
             };
           }),
+        }));
+      },
+
+      // Sync management
+      markArtifactDirty: (artifactId) => {
+        set((s) => ({
+          artifacts: s.artifacts.map((artifact) =>
+            artifact.id === artifactId
+              ? {
+                  ...artifact,
+                  sync: { ...artifact.sync, status: 'dirty' as ArtifactSyncStatus },
+                }
+              : artifact
+          ),
+        }));
+      },
+
+      enqueueArtifactOp: (artifactId, op) => {
+        set((s) => ({
+          artifacts: s.artifacts.map((artifact) =>
+            artifact.id === artifactId
+              ? {
+                  ...artifact,
+                  sync: {
+                    ...artifact.sync,
+                    status: 'dirty' as ArtifactSyncStatus,
+                    pendingOps: [...(artifact.sync?.pendingOps ?? []), op],
+                  },
+                }
+              : artifact
+          ),
+        }));
+      },
+
+      clearPendingOps: (artifactId) => {
+        set((s) => ({
+          artifacts: s.artifacts.map((artifact) =>
+            artifact.id === artifactId
+              ? {
+                  ...artifact,
+                  sync: {
+                    ...artifact.sync,
+                    status: 'synced' as ArtifactSyncStatus,
+                    pendingOps: [],
+                    pendingContent: undefined,
+                    lastSyncedAt: Date.now(),
+                    lastError: undefined,
+                  },
+                }
+              : artifact
+          ),
+        }));
+      },
+
+      setSyncStatus: (artifactId, status, error) => {
+        set((s) => ({
+          artifacts: s.artifacts.map((artifact) =>
+            artifact.id === artifactId
+              ? {
+                  ...artifact,
+                  sync: {
+                    ...artifact.sync,
+                    status,
+                    lastError: error,
+                    lastSyncedAt: status === 'synced' ? Date.now() : artifact.sync?.lastSyncedAt,
+                  },
+                }
+              : artifact
+          ),
+        }));
+      },
+
+      mergeServerArtifacts: (serverArtifacts) => {
+        set((s) => {
+          const byId = new Map(s.artifacts.map((artifact) => [artifact.id, artifact]));
+
+          for (const serverArtifact of serverArtifacts) {
+            const existing = byId.get(serverArtifact.id);
+
+            if (!existing) {
+              // New artifact from server
+              byId.set(serverArtifact.id, {
+                ...serverArtifact,
+                sync: { status: 'synced' as ArtifactSyncStatus, lastSyncedAt: Date.now() },
+              });
+              continue;
+            }
+
+            // If local artifact is dirty, preserve local content
+            if (existing.sync?.status === 'dirty') {
+              // Don't overwrite content, but update metadata
+              byId.set(serverArtifact.id, {
+                ...existing,
+                // Update safe metadata from server
+                title: serverArtifact.title,
+                type: serverArtifact.type,
+                status: serverArtifact.status,
+                sources: serverArtifact.sources,
+                staleness: serverArtifact.staleness,
+                executionContext: serverArtifact.executionContext,
+                // Keep local content and sync state
+              });
+            } else {
+              // Local is synced, safe to update everything
+              byId.set(serverArtifact.id, {
+                ...existing,
+                ...serverArtifact,
+                sync: { status: 'synced' as ArtifactSyncStatus, lastSyncedAt: Date.now() },
+              });
+            }
+          }
+
+          const nextArtifacts = Array.from(byId.values());
+          const activeArtifactId =
+            s.activeArtifactId && byId.has(s.activeArtifactId)
+              ? s.activeArtifactId
+              : nextArtifacts[0]?.id ?? null;
+
+          return { artifacts: nextArtifacts, activeArtifactId };
+        });
+      },
+
+      setFocusId: (artifactId, focusId) => {
+        set((s) => ({
+          focusedElements: {
+            ...s.focusedElements,
+            [artifactId]: focusId,
+          },
         }));
       },
 
@@ -590,3 +756,5 @@ export const useActiveArtifact = () => {
   return artifacts.find((a) => a.id === activeId) ?? null;
 };
 export const useArtifacts = () => useArtifactStore((s) => s.artifacts);
+export const useArtifactFocusId = (artifactId: string) =>
+  useArtifactStore((s) => s.focusedElements[artifactId] ?? null);
