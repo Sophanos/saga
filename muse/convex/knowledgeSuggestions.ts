@@ -1675,6 +1675,55 @@ async function applySuggestionApprove(
     }
     case "write_content":
       return buildErrorEnvelope("Apply document changes from the editor UI.");
+    case "add_comment": {
+      const documentId = typeof toolArgs["documentId"] === "string" ? toolArgs["documentId"] : undefined;
+      const content = typeof toolArgs["content"] === "string" ? toolArgs["content"] : "";
+      const selectionRange = toolArgs["selectionRange"] as { from: number; to: number } | undefined;
+
+      if (!documentId) {
+        return buildErrorEnvelope("Missing documentId for add_comment");
+      }
+      if (!content) {
+        return buildErrorEnvelope("Missing comment content");
+      }
+
+      try {
+        const result = await ctx.runMutation(apiAny.comments.add, {
+          projectId,
+          documentId: documentId as Id<"documents">,
+          content,
+          selectionRange,
+        });
+        const commentId = typeof result?.commentId === "string" ? result.commentId : undefined;
+        return buildSuccessEnvelope(
+          commentId ? { kind: "document", id: documentId } : undefined,
+          { kind: "comment.add", commentId, documentId }
+        );
+      } catch (error) {
+        return buildErrorEnvelope(error instanceof Error ? error.message : "Failed to add comment");
+      }
+    }
+    case "delete_document": {
+      const documentId = typeof toolArgs["documentId"] === "string" ? toolArgs["documentId"] : undefined;
+      const reason = typeof toolArgs["reason"] === "string" ? toolArgs["reason"] : undefined;
+
+      if (!documentId) {
+        return buildErrorEnvelope("Missing documentId for delete_document");
+      }
+
+      try {
+        await ctx.runMutation(apiAny.documents.deleteDocument, {
+          id: documentId as Id<"documents">,
+          reason,
+        });
+        return buildSuccessEnvelope(
+          { kind: "document", id: documentId },
+          { kind: "document.delete", documentId }
+        );
+      } catch (error) {
+        return buildErrorEnvelope(error instanceof Error ? error.message : "Failed to delete document");
+      }
+    }
     default:
       return buildErrorEnvelope(`Unsupported tool for review: ${toolName}`);
   }

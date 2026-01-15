@@ -111,12 +111,42 @@ The key innovation: **Artifacts have their own mini-chat for iteration**.
 
 The editor supports an inline, block-level **receipt node** so artifacts can be embedded with provenance and navigation.
 
-- Node: `artifactReceipt` (TipTap node extension in `@mythos/editor`)
+- Node: `artifactReceipt` (TipTap node extension in `packages/editor/src/extensions/artifact-receipt.ts`)
 - Purpose: show artifact title/type, source summary + staleness badge, and provide jump-to-artifact
 - Default insertion: web Canvas inserts `artifactReceipt` immediately after inserted artifact content
 - NodeView events:
   - `artifact:open` `{ artifactKey }` → open Artifact Panel and focus that artifact
   - `artifact:receipt:refresh` `{ artifactKey, artifactId? }` → refresh staleness and update receipt attrs in-place
+
+### ArtifactReceiptExtension Features
+
+The `ArtifactReceiptExtension` is a TipTap node extension with:
+
+- **Attributes**: `artifactKey`, `artifactId`, `title`, `artifactType`, `sources` (array), `staleness`, `createdAt`, `updatedAt`, `createdBy`
+- **Commands**: `insertArtifactReceipt`, `updateArtifactReceipt`, `removeArtifactReceipt`
+- **Staleness badges**: `fresh`, `stale`, `external`, `unknown` with visual indicators
+- **Source types**: `document`, `entity`, `memory`, `web`, `github`
+- **Interactions**: Click to open artifact, keyboard navigation, refresh button
+- **Type icons**: Type-specific icons (memo, speech balloon, scroll, laptop, map, etc.)
+
+### Usage
+
+```typescript
+// Insert a receipt
+editor.commands.insertArtifactReceipt({
+  artifactKey: "prose-123",
+  title: "Chapter 3 Draft",
+  artifactType: "prose",
+  staleness: "fresh",
+  sources: [{ type: "document", id: "doc-456", title: "Chapter 2" }],
+});
+
+// Update staleness
+editor.commands.updateArtifactReceipt("prose-123", { staleness: "stale" });
+
+// Remove receipt
+editor.commands.removeArtifactReceipt("prose-123");
+```
 
 ---
 
@@ -972,15 +1002,25 @@ Status (implementation):
 | Deep linking scheme (`rhei://...#block-{id}`) | Partial | Hash-based focus in renderers; routing TBD. |
 | Cross-artifact references | Done (web) / Partial (Expo) | Web Artifact Panel shows outgoing refs + backlinks and a graph view; element-level copy links in renderers still pending. |
 
-### Phase 5: Missing Tools (status)
+### Phase 5: Collaboration Tools (status)
 
 | Item | Status | Notes |
 |------|--------|-------|
-| `viewVersionHistoryTool` | Done | `convex/revisions.viewVersionHistory` + client executor. |
-| `deleteDocumentTool` | Done | `convex/documents.deleteDocument` (soft-delete) + client executor. |
-| `searchUsersTool` | Done | `convex/users.searchProjectUsers` + client executor. |
-| `viewCommentsTool` | Done | `convex/comments.listByDocument` + client executor. |
-| `addCommentTool` | Done | `convex/comments.add` + client executor. |
+| `view_version_history` | Done | Backend: `convex/revisions.viewVersionHistory`, Agent: `convex/ai/tools/collaborationTools.ts`, Runtime: `convex/ai/agentRuntime.ts` (RAG category, auto-execute) |
+| `delete_document` | Done | Backend: `convex/documents.deleteDocument` (soft-delete), Agent: tool + HITL approval (destructive danger level) |
+| `search_users` | Done | Backend: `convex/users.searchProjectUsers`, Agent: RAG category, auto-execute |
+| `view_comments` | Done | Backend: `convex/comments.listByDocument`, Agent: RAG category, auto-execute |
+| `add_comment` | Done | Backend: `convex/comments.add`, Agent: HITL category, requires user approval |
+
+### Phase 5: Missing UI for Collaboration Tools
+
+| Component | Priority | Notes |
+|-----------|----------|-------|
+| `AddCommentApprovalCard` | P1 | HITL approval card in AI chat - show comment content, target document |
+| `DeleteDocumentApprovalCard` | P1 | HITL approval card with destructive warning - show document title, confirm action |
+| `VersionHistoryResultCard` | P1 | Display version list in chat - timestamp, author, diff preview, restore action |
+| `CommentsResultCard` | P1 | Display comments in chat - author avatar, timestamp, selection context |
+| `UserSearchResultCard` | P1 | Display user search results - name, email, avatar for @mention selection |
 
 ---
 
@@ -1109,6 +1149,8 @@ Decision: Document-scoped artifacts with thread history retained for iteration p
 **Acceptance Criteria:**
 - Export hooks per renderer (PNG/SVG/JSON; SVG falls back to PNG when needed; PDF assembly on web). (Done in web runtime + panel)
 - Layout determinism stored in `data` (not runtime-only). (Partial: RAS data stores positions/order)
+- Batch PDF export with offscreen rendering: `batchRenderArtifacts()` utility renders each artifact to PNG/SVG before pdfmake assembly. (Done)
+- Format picker in ArtifactPanel: PNG, SVG, PDF, JSON, Batch PDF, Batch JSON. (Done)
 
 ## Ticket: Refinements + Conflict Strategy
 **Phase:** 12

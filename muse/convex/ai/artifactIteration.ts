@@ -231,7 +231,6 @@ export const iterateArtifact = action({
       throw new Error("Unauthenticated");
     }
 
-    // @ts-expect-error - Convex generated types are too deep
     const apiAny: any = api;
     const internalAny: any = internal;
 

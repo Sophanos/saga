@@ -42,6 +42,13 @@ export {
 export { expandChunkContext } from "./ragHandlers";
 export { analyzeContentTool, type AnalyzeContentArgs } from "./analysisTools";
 export {
+  viewVersionHistoryTool,
+  viewCommentsTool,
+  addCommentTool,
+  searchUsersTool,
+  deleteDocumentTool,
+} from "./collaborationTools";
+export {
   executeCreateEntity,
   executeUpdateEntity,
   executeCreateRelationship,

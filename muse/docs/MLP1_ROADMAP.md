@@ -37,23 +37,30 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Planning Tools + Sub-Agents | Done | 100 |
 | Supabase -> Convex Migration | Done | 100 |
 | Real-Time Collaboration | In progress | 80 |
-| Widgets & Artifacts + Async (MVP1) | In progress ([details](#phase-5-widgets--artifacts--async-mvp1)) | 75 |
+| Widgets & Artifacts + Async (MVP1) | In progress ([details](#phase-5-widgets--artifacts--async-mvp1)) | 90 |
 | App Store Pricing + RevenueCat | In progress ([details](./PRICING_REVENUECAT_SETUP.md)) | 75 |
 | Overall MLP 1 | In progress | 97 |
 
 ## Recent Updates (condensed)
+
+**2026-01-15 (Artifacts Phase 2 completion)**
+- Batch PDF export: offscreen rendering with `batchRenderArtifacts()` utility; renders each artifact to PNG/SVG before PDF assembly.
+- Thread summarization: `convex/ai/summarizeThread.ts` action with `estimateThreadTokens`, `shouldAutoSummarize`, `getThreadUsageEstimate`.
+- ChatUsageIndicator: "Summarize" button appears when context is high (>6k tokens), triggers thread summarization.
+- ArtifactReceiptExtension: `updateArtifactReceipt()` and `removeArtifactReceipt()` commands added.
+- Collaboration tools HITL: `add_comment` and `delete_document` classified as knowledge suggestions for HITL approval.
 
 **2026-01-15 (Artifacts backend + client)**
 - Backend: `artifacts`, `artifactVersions`, `artifactMessages`, `artifactOps` tables; CRUD + staleness queries in `convex/artifacts.ts`.
 - Lifecycle: `setStatus` state machine with audit metadata; Canvas marks artifacts `applied`, panels can mark `saved`.
 - Engine: domain ops → JSON Patch with rev test in `packages/core/src/artifacts/engine.ts`.
 - Iteration: OpenRouter-backed artifact iteration action (persists messages + versions).
-- Missing tools: `viewVersionHistory`, `deleteDocument`, `searchUsers`, `viewComments`, `addComment` - all wired (Convex + client executors).
+- Collaboration tools: `view_version_history`, `delete_document`, `search_users`, `view_comments`, `add_comment` - fully wired (Convex + client executors + agentRuntime).
 - Soft-delete: `documents.deletedAt`/`deletedByUserId`; `comments` table for collaboration.
 - Client: Compare mode (Web side-by-side/diff, Expo stacked) + inline artifact receipt block (insert + refresh).
 - Cross-artifact references: Artifact Panel shows outgoing refs + backlinks + graph view; copy `artifact://{artifactId}#{elementId}` links.
-- Export: runtime PNG/SVG/JSON across renderers + Artifact Panel PDF export + batch JSON (batch PDF still text-first).
-- Chat input: monthly usage chip + per-message token estimate (heuristic).
+- Export: runtime PNG/SVG/JSON across renderers + Artifact Panel PDF/SVG export + batch PDF/JSON with full artifact rendering.
+- Chat input: monthly usage chip + per-message token estimate (heuristic) + "Summarize" button for high-context threads.
 - Deep links: Expo `rhei://project/.../artifact/{artifactKey}` routes + membership-gated access check.
 - Staleness: `external` status for web/github sources (can't track).
 
@@ -145,7 +152,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | 2 | Knowledge PRs review surface + hardening | In progress | [Phase 2](#phase-2-knowledge-prs-hardening) |
 | 3 | Integrations + Citations (MCP) | Planned | [Phase 3](#phase-3-integrations--citations) |
 | 4 | Clarity/Policy Coach | Complete | [Phase 4](#phase-4-claritypolicy-coach) |
-| 5 | Widgets & Artifacts + Async (MVP1) | In progress (75%) | [Phase 5](#phase-5-widgets--artifacts--async-mvp1) |
+| 5 | Widgets & Artifacts + Async (MVP1) | In progress (90%) | [Phase 5](#phase-5-widgets--artifacts--async-mvp1) |
 
 ## UI Integration Analysis (MLP1 Phase 1)
 
@@ -238,10 +245,11 @@ Docs:
 | **Artifact Iteration (AI)** | OpenRouter-backed iteration action + persisted message history | `convex/ai/artifactIteration.ts` |
 | **Compare Mode** | Split view / diff views (Web), stacked compare (Expo) | `packages/state/src/artifact.ts`, `apps/*/src/components/artifacts/` |
 | **Staleness** | Source tracking, `checkStaleness` query, external source handling | `convex/artifacts.ts` |
-| **Receipts Block (v0)** | Inline `artifactReceipt` editor node + refresh hook | `packages/editor/src/extensions/artifact-receipt.ts`, `apps/web/src/components/canvas/Canvas.tsx` |
-| **Collaboration Tools** | viewVersionHistory, deleteDocument, viewComments, addComment, searchUsers | `convex/revisions.ts`, `convex/comments.ts`, `convex/documents.ts`, `convex/users.ts` |
+| **Receipts Block (v1)** | Inline `artifactReceipt` editor node with staleness, sources, commands | `packages/editor/src/extensions/artifact-receipt.ts`, `apps/web/src/components/canvas/Canvas.tsx` |
+| **Collaboration Tools** | view_version_history, delete_document, view_comments, add_comment, search_users (agent + backend + client) | `convex/ai/tools/collaborationTools.ts`, `convex/ai/agentRuntime.ts`, `convex/revisions.ts`, `convex/comments.ts`, `convex/documents.ts`, `convex/users.ts` |
 | **Tool Executors** | Client-side executors wired to Convex | `apps/web/src/tools/executors/` |
 | **Artifact Renderers** | prose (+ dialogue/lore/code/map variants), table, diagram, timeline, chart, outline, entityCard (11 types) | `apps/web/src/components/artifacts/runtime/` |
+| **Thread Summarization** | Token estimation, auto-summarization thresholds, summarize action, new thread with summary | `convex/ai/summarizeThread.ts` |
 | **Artifact Sync** | Expo hydration from Convex | `apps/expo/src/hooks/useArtifactSync.ts` |
 | **Canvas Integration** | Insert artifact content, revision with artifactVersionId | `apps/web/src/components/canvas/Canvas.tsx` |
 | **Artifact Export** | Runtime PNG/SVG/JSON + Artifact Panel PDF export + batch JSON (batch PDF is text-first) | `apps/web/src/components/artifacts/ArtifactPanel.tsx`, `apps/web/src/services/export/artifacts/pdf.ts`, `apps/web/src/components/artifacts/runtime/` |
@@ -253,10 +261,86 @@ Docs:
 |-----------|---------------|----------|
 | **Widget Execution Pipeline** | `widgetExecutions` table, `/ai/widgets` streaming, progress UI, preview modal, slash menu | P0 |
 | **Async Infrastructure** | `notificationInbox` table, workpool for long jobs, in-app toasts + inbox | P0 |
-| **Receipts Block (v1)** | Source picker + stable UX for receipts block | P1 |
+| **Receipts Block (v1)** | Done - TipTap extension with staleness, sources, commands | Complete |
 | **Deep Linking (Web)** | URL routing, navigation from artifact links, copy link UI | P2 |
 | **Batch PDF (rendered)** | Offscreen runtime render per artifact (SVG/PNG) + page-per-artifact PDF assembly | P2 |
 | **Platform Push** | Expo push, Web push (VAPID), Tauri OS notifications | P3 (post-MLP1) |
+
+### MLP1 Gap Analysis (What's Missing)
+
+| Area | Item | Priority | Complexity | Effort | Notes |
+|------|------|----------|------------|--------|-------|
+| **Widgets (P0)** | Widget execution pipeline | P0 | High | 2-3 weeks | `widgetExecutions` table, `/ai/widgets` streaming, progress UI, preview modal |
+| | Slash menu widget trigger | P0 | Medium | 3-5 days | Editor integration, filter UI, keyboard navigation |
+| **Async (P0)** | Notification inbox | P0 | Medium | 1 week | `notificationInbox` table, inbox UI, toast integration |
+| | Workpool for long jobs | P0 | High | 1-2 weeks | `@convex-dev/workpool` setup, job status tracking |
+| **Artifacts (P1)** | Receipts block v1 | P1 | Medium | 3-5 days | Source picker, stable UX, stale badge |
+| | Batch PDF (rendered) | P2 | High | 1-2 weeks | Offscreen runtime render, SVG/PNG capture, PDF assembly |
+| **Deep Links (P1)** | Web URL routing | P2 | Medium | 3-5 days | React Router integration, artifact/{key} routes |
+| | Copy link UI | P2 | Low | 1-2 days | Menu items, clipboard integration |
+| **Billing (P1)** | RevenueCat native SDK | P1 | Medium | 1 week | iOS/macOS device testing |
+| | App Store products | P1 | Low | 2-3 days | Dashboard config, entitlement mapping |
+| | E2E purchase flow | P1 | Medium | 3-5 days | Real device testing, error handling |
+| **Platform (P2)** | Expo push | P3 | Medium | 1 week | `@convex-dev/expo-push-notifications` |
+| | Web push (VAPID) | P3 | Medium | 1 week | Service worker, subscription flow |
+| | Tauri OS notifications | P3 | Low | 2-3 days | Native API bridge |
+| **Graph (P2)** | Registry editor UI | P2 | High | 2 weeks | Type/schema editor, validation UI |
+| | Graph delete cascade | P2 | Medium | 3-5 days | Cascade policy, cleanup handlers |
+| | Universal entity profile | P2 | Medium | 1 week | Profile page, relationship view |
+| **Knowledge PRs (P1)** | Web entity/rel diffs | P1 | Medium | 3-5 days | Port DiffList from Expo |
+| | JSON Patch viewer | P1 | Low | 2-3 days | `JsonPatchView` component |
+| | Provenance deep-links | P1 | Low | 2-3 days | "Open memory" navigation |
+| **AI Tools (P2)** | Image generation tools | P2 | Medium | 1 week | Wire `generateImageTool`, `illustrateSceneTool` |
+| | Image search tools | P2 | Low | 2-3 days | Wire `search_images`, `find_similar_images` |
+| **Export (P2)** | ePub export | P2 | High | 2 weeks | Publishing workflow, metadata |
+| | Manuscript compile | P2 | High | 2 weeks | Scrivener-style output |
+
+### Missing UI Components
+
+| Area | Component | Priority | Complexity | Effort | Notes |
+|------|-----------|----------|------------|--------|-------|
+| **Collaboration Tools** | `AddCommentApprovalCard` | P1 | Low | 1-2 days | HITL approval UI in AI chat for `add_comment` tool |
+| | `DeleteDocumentApprovalCard` | P1 | Low | 1-2 days | HITL approval UI with destructive warning styling |
+| | `VersionHistoryResultCard` | P1 | Medium | 2-3 days | Display version history in chat, diff preview, restore action |
+| | `CommentsResultCard` | P1 | Low | 1-2 days | Display comments list in chat with author, timestamp, selection context |
+| | `UserSearchResultCard` | P1 | Low | 1 day | Display user search results for @mention picker |
+| **Widgets** | Widget progress indicator | P0 | Medium | 2-3 days | Spinner/progress bar during widget execution |
+| | Widget preview modal | P0 | Medium | 3-5 days | Preview artifact before confirm/apply |
+| | Slash menu widget picker | P0 | Medium | 3-5 days | `/widget` filter UI with categories, keyboard nav |
+| | Widget error state | P0 | Low | 1 day | Error display with retry action |
+| **Artifacts** | Receipts source picker | P1 | Medium | 2-3 days | Dropdown/modal to select artifact sources |
+| | Artifact staleness badge | P1 | Low | 1 day | Visual indicator for stale artifacts |
+| | Artifact compare toggle | P1 | Low | 1 day | Button to toggle split/diff view modes |
+| **Async/Notifications** | Notification inbox panel | P0 | Medium | 3-5 days | Inbox UI with filters, mark read, actions |
+| | Toast notification system | P0 | Medium | 2-3 days | In-app toast for async job completion |
+| | Job status indicator | P0 | Low | 1-2 days | Status badge for running background jobs |
+| **Knowledge PRs** | `DiffList` (Web) | P1 | Medium | 3-5 days | Port from Expo `KnowledgeSuggestionDetails.tsx` |
+| | `JsonPatchView` | P1 | Low | 2-3 days | Render `normalizedPatch` as readable diff |
+| | Provenance link | P1 | Low | 1 day | "Open memory" / "View source" navigation |
+| | Rollback impact preview | P1 | Low | 1-2 days | Show affected entities before rollback |
+| **Project Graph** | Registry editor modal | P2 | High | 1-2 weeks | CRUD for entity/relationship types, JSON Schema editor |
+| | Entity profile page | P2 | Medium | 1 week | Full entity view with relationships, history, mentions |
+| | Delete confirmation modal | P2 | Low | 1-2 days | Cascade warning, affected items list |
+| | Relationship filters | P2 | Medium | 2-3 days | Filter graph by relationship type (only entity filters exist) |
+| | Focus mode / depth selector | P2 | Medium | 2-3 days | Neighborhood-based graph filtering |
+| **Deep Links** | Copy link menu items | P2 | Low | 1 day | "Copy link to block/artifact" in context menus |
+| | Link preview tooltip | P2 | Low | 1-2 days | Hover preview for `rhei://` links |
+| **Editor** | Heading toolbar buttons | P2 | Low | 1 day | ## / ### buttons like Ulysses (currently only shortcuts) |
+| | Image placeholder menu | P2 | Low | 1 day | Click handler for `/image` block |
+
+**UI Effort Total (P0):** ~3-4 weeks for blocking UI
+**UI Effort Total (P1):** ~2-3 weeks for complete experience
+**UI Effort Total (P2):** ~4-5 weeks for polish items
+
+**Complexity Key:** Low = straightforward implementation, Medium = moderate architecture, High = significant design/coordination
+
+**Effort Key:** Assumes single developer, includes testing. Actual time varies by familiarity.
+
+**Priority Key:**
+- **P0**: Blocks MLP1 launch
+- **P1**: Required for complete MLP1 experience
+- **P2**: Nice-to-have for MLP1, can ship after
+- **P3**: Post-MLP1 / MLP2 scope
 
 ## Billing & Monetization (75%)
 
@@ -276,7 +360,7 @@ Docs:
 
 ## AI Tools Overview
 
-### Active Tools (14 registered in agentRuntime.ts)
+### Active Tools (19 registered in agentRuntime.ts)
 
 | Category | Tool | Purpose | Approval |
 |----------|------|---------|----------|
@@ -295,6 +379,11 @@ Docs:
 | | `generate_template` | Create template draft (used internally) | User approval |
 | **Planning** | `write_todos` | Track tasks with status (Claude Code style) | Auto |
 | | `spawn_task` | Run sub-agent (research/analysis/writing) | Auto |
+| **Collaboration** | `view_version_history` | View document revision history | Auto |
+| | `view_comments` | List comments on a document | Auto |
+| | `search_users` | Search project members for @mentions | Auto |
+| | `add_comment` | Add comment to document | User approval |
+| | `delete_document` | Soft-delete a document | User approval |
 
 ### Defined but Not Registered
 

@@ -1,12 +1,20 @@
-import { useMemo } from "react";
-import { cn } from "@mythos/ui";
+import { useMemo, useCallback, useState } from "react";
+import { useAction } from "convex/react";
+import { cn, toast } from "@mythos/ui";
 import { bg, text } from "@mythos/theme";
 import { useBillingMode, useUsage, useUsagePercentage } from "../../../stores/billing";
+import { useMythosStore } from "../../../stores";
+import { api } from "../../../../../../convex/_generated/api";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 export interface ChatUsageIndicatorProps {
   draft: string;
   variant?: "default" | "notion";
   className?: string;
+  /** Thread ID for context-aware summarization */
+  threadId?: string;
+  /** Callback when thread is summarized */
+  onSummarized?: (summary: string) => void;
 }
 
 function formatCompact(value: number): string {
@@ -31,13 +39,44 @@ export function ChatUsageIndicator({
   draft,
   variant = "default",
   className,
+  threadId,
+  onSummarized,
 }: ChatUsageIndicatorProps): JSX.Element {
   const billingMode = useBillingMode();
   const usage = useUsage();
   const usagePct = useUsagePercentage();
+  const projectId = useMythosStore((s) => s.project.currentProject?.id);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+
+  // Cast api to any to access generated actions
+  const summarizeThread = useAction((api as any).ai?.summarizeThread?.summarizeThread);
 
   const estimatedTokens = useMemo(() => estimateTokens(draft), [draft]);
   const estimateTone = useMemo(() => resolveEstimateTone(estimatedTokens), [estimatedTokens]);
+
+  // Show summarize button when context is high and we have a thread
+  const showSummarize = threadId && estimateTone === "danger" && summarizeThread;
+
+  const handleSummarize = useCallback(async () => {
+    if (!threadId || !projectId || !summarizeThread) return;
+    setIsSummarizing(true);
+    try {
+      const result = await summarizeThread({
+        threadId,
+        projectId: projectId as Id<"projects">,
+        createNewThread: false,
+      });
+      if (result.summary) {
+        toast.success(`Summarized ${result.originalMessageCount} messages`);
+        onSummarized?.(result.summary);
+      }
+    } catch (err) {
+      toast.error("Failed to summarize conversation");
+      console.error("Summarize error:", err);
+    } finally {
+      setIsSummarizing(false);
+    }
+  }, [threadId, projectId, summarizeThread, onSummarized]);
 
   const usageLabel = useMemo(() => {
     if (billingMode === "byok") return "BYOK";
@@ -88,6 +127,26 @@ export function ChatUsageIndicator({
         >
           <span className="tabular-nums">{estimateLabel}</span>
         </div>
+      ) : null}
+
+      {showSummarize ? (
+        <button
+          onClick={handleSummarize}
+          disabled={isSummarizing}
+          className={cn(
+            chipClassName,
+            "cursor-pointer hover:opacity-80 transition-opacity",
+            isSummarizing && "opacity-50 cursor-wait"
+          )}
+          style={{
+            background: "rgba(245, 158, 11, 0.2)",
+            color: "#fbbf24",
+            border: "none",
+          }}
+          title="Summarize conversation to reduce context size"
+        >
+          {isSummarizing ? "..." : "Summarize"}
+        </button>
       ) : null}
     </div>
   );

@@ -30,7 +30,15 @@ export interface ArtifactReceiptOptions {
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     artifactReceipt: {
+      /** Insert an artifact receipt block */
       insertArtifactReceipt: (attrs: ArtifactReceiptAttrs) => ReturnType;
+      /** Update an existing artifact receipt by key */
+      updateArtifactReceipt: (
+        artifactKey: string,
+        updates: Partial<ArtifactReceiptAttrs>
+      ) => ReturnType;
+      /** Remove an artifact receipt by key */
+      removeArtifactReceipt: (artifactKey: string) => ReturnType;
     };
   }
 }
@@ -105,6 +113,49 @@ export const ArtifactReceiptExtension = Node.create<ArtifactReceiptOptions>({
         (attrs) =>
         ({ commands }) => {
           return commands.insertContent({ type: this.name, attrs });
+        },
+
+      updateArtifactReceipt:
+        (artifactKey: string, updates: Partial<ArtifactReceiptAttrs>) =>
+        ({ tr, state, dispatch }) => {
+          let updated = false;
+          state.doc.descendants((node, pos) => {
+            if (
+              node.type.name === this.name &&
+              node.attrs["artifactKey"] === artifactKey
+            ) {
+              if (dispatch) {
+                tr.setNodeMarkup(pos, undefined, {
+                  ...node.attrs,
+                  ...updates,
+                });
+              }
+              updated = true;
+              return false;
+            }
+            return true;
+          });
+          return updated;
+        },
+
+      removeArtifactReceipt:
+        (artifactKey: string) =>
+        ({ tr, state, dispatch }) => {
+          let removed = false;
+          state.doc.descendants((node, pos) => {
+            if (
+              node.type.name === this.name &&
+              node.attrs["artifactKey"] === artifactKey
+            ) {
+              if (dispatch) {
+                tr.delete(pos, pos + node.nodeSize);
+              }
+              removed = true;
+              return false;
+            }
+            return true;
+          });
+          return removed;
         },
     };
   },

@@ -8,7 +8,7 @@
 
 import { v } from "convex/values";
 import { internalAction, type ActionCtx } from "../_generated/server";
-import { internal, components } from "../_generated/api";
+import { api, internal, components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { Agent } from "@convex-dev/agent";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -29,6 +29,13 @@ import { spawnTaskTool, writeTodosTool } from "./tools/planningTools";
 import { generateTemplateTool } from "./tools/templateTools";
 import { projectManageTool } from "./tools/projectManageTools";
 import { webSearchTool, webExtractTool } from "./tools/webSearchTools";
+import {
+  viewVersionHistoryTool,
+  viewCommentsTool,
+  addCommentTool,
+  searchUsersTool,
+  deleteDocumentTool,
+} from "./tools/collaborationTools";
 import { getEmbeddingModelForTask } from "../lib/embeddings";
 import { ServerAgentEvents } from "../lib/analytics";
 import { createUsageHandler } from "../lib/rateLimiting";
@@ -269,6 +276,11 @@ function createSagaAgent(byokKey?: string, model?: string) {
       spawn_task: spawnTaskTool,
       web_search: webSearchTool,
       web_extract: webExtractTool,
+      view_version_history: viewVersionHistoryTool,
+      view_comments: viewCommentsTool,
+      add_comment: addCommentTool,
+      search_users: searchUsersTool,
+      delete_document: deleteDocumentTool,
     },
     maxSteps: 8,
   });
@@ -301,6 +313,11 @@ const TOOL_POLICY: Record<string, ToolPolicy> = {
   analyze_image: { category: "analysis", autoExecute: true },
   write_todos: { category: "analysis", autoExecute: true },
   spawn_task: { category: "project", autoExecute: true },
+  view_version_history: { category: "rag", autoExecute: true },
+  view_comments: { category: "rag", autoExecute: true },
+  search_users: { category: "rag", autoExecute: true },
+  add_comment: { category: "hitl", autoExecute: false },
+  delete_document: { category: "hitl", autoExecute: false },
 };
 
 function getToolPolicy(toolName: string): ToolPolicy | undefined {
@@ -404,6 +421,8 @@ function classifyKnowledgeSuggestion(
     case "update_edge":
       return { targetType: "relationship", operation: toolName };
     case "write_content":
+    case "add_comment":
+    case "delete_document":
       return { targetType: "document", operation: toolName };
     case "commit_decision":
       return { targetType: "memory", operation: toolName };
@@ -971,6 +990,7 @@ function resolveApprovalDanger(toolName: string, args: Record<string, unknown>):
     }
     return "costly";
   }
+  if (toolName === "delete_document") return "destructive";
   if (isGraphTool(toolName)) return "destructive";
   return "safe";
 }
@@ -1074,6 +1094,8 @@ async function executeRagTool(
   args: Record<string, unknown>,
   projectId: string
 ): Promise<unknown> {
+  // @ts-expect-error - Convex generated types are too deep
+  const apiAny: any = api;
   switch (toolName) {
     case "search_context":
       return ctx.runAction((internal as any)["ai/tools/ragHandlers"].executeSearchContext, {
@@ -1092,6 +1114,25 @@ async function executeRagTool(
         projectId,
         entityId: args["entityId"] as string,
         includeRelationships: args["includeRelationships"] as boolean | undefined,
+      });
+    case "view_version_history":
+      return ctx.runQuery(apiAny.revisions.viewVersionHistory, {
+        documentId: args["documentId"] as Id<"documents">,
+        limit: args["limit"] as number | undefined,
+        cursor: args["cursor"] as string | undefined,
+      });
+    case "view_comments":
+      return ctx.runQuery(apiAny.comments.listByDocument, {
+        projectId: projectId as Id<"projects">,
+        documentId: args["documentId"] as Id<"documents">,
+        limit: args["limit"] as number | undefined,
+        cursor: args["cursor"] as string | undefined,
+      });
+    case "search_users":
+      return ctx.runQuery(apiAny.users.searchProjectUsers, {
+        projectId: projectId as Id<"projects">,
+        query: args["query"] as string,
+        limit: args["limit"] as number | undefined,
       });
     default:
       throw new Error(`Unknown RAG tool: ${toolName}`);

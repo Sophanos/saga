@@ -31,6 +31,7 @@ import { ArtifactReferences } from "./ArtifactReferences";
 import { ArtifactSplitView } from "./ArtifactSplitView";
 import { useMythosStore } from "../../stores";
 import { renderArtifactsPdf, decodeSvgDataUrlToSvg } from "../../services/export/artifacts/pdf";
+import { batchRenderArtifacts } from "../../services/export/artifacts/batchRender";
 import { downloadBlob, createTextBlob } from "../../services/export/utils/download";
 import { sanitizeFileName } from "../../services/export/utils/sanitizeFileName";
 import { api } from "../../../../../convex/_generated/api";
@@ -411,11 +412,8 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
     }
 
     if (exportAction === "batch_pdf") {
-      const pages = artifacts.map((a) => ({
-        title: a.title || a.id,
-        subtitle: `${a.type} · ${a.format} · key:${a.id}`,
-        text: a.content,
-      }));
+      toast.info("Rendering artifacts...");
+      const pages = await batchRenderArtifacts(artifacts, "png");
       const pdf = await renderArtifactsPdf({
         title: "Artifacts",
         pages,
