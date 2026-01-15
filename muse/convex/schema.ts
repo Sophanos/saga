@@ -173,6 +173,8 @@ export default defineSchema({
     orderIndex: v.number(),
     wordCount: v.number(),
     metadata: v.optional(v.any()), // Document metadata (template-specific)
+    deletedAt: v.optional(v.number()),
+    deletedByUserId: v.optional(v.string()),
     // Deprecated writer-only metadata
     beat: v.optional(v.string()),
     tensionLevel: v.optional(v.number()),
@@ -186,6 +188,7 @@ export default defineSchema({
     .index("by_parent", ["parentId"])
     .index("by_project_type", ["projectId", "type"])
     .index("by_project_order", ["projectId", "orderIndex"])
+    .index("by_project_deletedAt", ["projectId", "deletedAt"])
     .index("by_supabase_id", ["supabaseId"])
     .searchIndex("search_documents", {
       searchField: "contentText",
@@ -262,10 +265,19 @@ export default defineSchema({
 
   artifacts: defineTable({
     projectId: v.id("projects"),
+    artifactKey: v.optional(v.string()),
     createdBy: v.string(),
     type: v.string(),
-    status: v.union(v.literal("draft"), v.literal("manually_modified")),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("manually_modified"),
+      v.literal("applied"),
+      v.literal("saved")
+    ),
     title: v.string(),
+    format: v.optional(
+      v.union(v.literal("markdown"), v.literal("json"), v.literal("plain"))
+    ),
     content: v.string(),
     sources: v.array(artifactSourceSchema),
     executionContext: v.object({
@@ -281,19 +293,57 @@ export default defineSchema({
   })
     .index("by_project_updatedAt", ["projectId", "updatedAt"])
     .index("by_project_status", ["projectId", "status"])
-    .index("by_project_type", ["projectId", "type"]),
+    .index("by_project_type", ["projectId", "type"])
+    .index("by_project_artifactKey", ["projectId", "artifactKey"]),
 
   artifactVersions: defineTable({
     projectId: v.id("projects"),
     artifactId: v.id("artifacts"),
+    artifactKey: v.optional(v.string()),
     version: v.number(),
+    format: v.optional(
+      v.union(v.literal("markdown"), v.literal("json"), v.literal("plain"))
+    ),
     content: v.string(),
     sources: v.array(artifactSourceSchema),
     executionContext: v.optional(v.any()),
     createdAt: v.number(),
   })
     .index("by_artifact_version", ["artifactId", "version"])
-    .index("by_project_createdAt", ["projectId", "createdAt"]),
+    .index("by_project_createdAt", ["projectId", "createdAt"])
+    .index("by_project_artifactKey", ["projectId", "artifactKey"]),
+
+  artifactMessages: defineTable({
+    projectId: v.id("projects"),
+    artifactId: v.id("artifacts"),
+    artifactKey: v.string(),
+    role: v.union(v.literal("user"), v.literal("assistant")),
+    content: v.string(),
+    createdAt: v.number(),
+    context: v.optional(v.any()),
+  }).index("by_artifact_createdAt", ["artifactId", "createdAt"]),
+
+  artifactOps: defineTable({
+    projectId: v.id("projects"),
+    artifactId: v.id("artifacts"),
+    artifactKey: v.string(),
+    baseRev: v.number(),
+    nextRev: v.number(),
+    op: v.any(),
+    patch: v.any(),
+    createdAt: v.number(),
+    createdBy: v.string(),
+  }).index("by_artifact_createdAt", ["artifactId", "createdAt"]),
+
+  comments: defineTable({
+    projectId: v.id("projects"),
+    documentId: v.id("documents"),
+    authorId: v.string(),
+    content: v.string(),
+    selectionRange: v.optional(v.object({ from: v.number(), to: v.number() })),
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  }).index("by_document_createdAt", ["documentId", "createdAt"]),
 
   // ============================================================
   // KNOWLEDGE SUGGESTIONS (Graph + memory proposals / review)
