@@ -24,6 +24,10 @@
       "types": "./src/analysis/index.ts",
       "default": "./src/analysis/index.ts"
     },
+    "./artifacts": {
+      "types": "./src/artifacts/index.ts",
+      "default": "./src/artifacts/index.ts"
+    },
     "./trial/payload": {
       "types": "./src/trial/payload.ts",
       "default": "./src/trial/payload.ts"

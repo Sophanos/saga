@@ -12,6 +12,9 @@ export * from "./analysis";
 // Template system
 export * from "./templates";
 
+// Artifacts (RAS engine)
+export * from "./artifacts";
+
 // Template Builder (AI-assisted template creation)
 export * from "./templateBuilder";
 
