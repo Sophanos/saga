@@ -4,6 +4,7 @@
 
 import type { Entity, Relationship, EntityType, RelationType, StyleIssue, ReadabilityMetrics } from "@mythos/core";
 import type { ToolName, ToolArtifact, ToolDangerLevel, AnalysisScope, WritingPreferences } from "@mythos/agent-protocol";
+import type { ConvexReactClient } from "convex/react";
 
 // Re-export for backwards compatibility
 export type { ToolDangerLevel };
@@ -19,6 +20,8 @@ export type { ToolDangerLevel };
 export interface ToolExecutionContext {
   /** Current project ID */
   projectId: string;
+  /** Convex client (for server-backed tools) */
+  convex?: ConvexReactClient;
   /** Abort signal for cancellation support */
   signal?: AbortSignal;
   /** All entities in the project (by ID) */
