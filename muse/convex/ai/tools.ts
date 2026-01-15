@@ -19,6 +19,8 @@ import { POLICY_CHECK_SYSTEM } from "./prompts/policy";
 import type {
   AnalyzeContentArgs,
   AnalyzeContentResult,
+  AnalyzeImageArgs,
+  AnalyzeImageResult,
   GenerateTemplateArgs,
   GenerateTemplateResult,
   GenesisEntity,
@@ -224,11 +226,43 @@ export const execute = internalAction({
       case "commit_decision":
         return executeCommitDecision(ctx, input, projectId, userId, source ?? undefined);
 
-      case "search_images":
-        return executeSearchImages(input, projectId);
+      case "search_images": {
+        // Legacy alias: route through unified analyze_image with mode="search"
+        const searchResult = await executeAnalyzeImage(ctx, {
+          mode: "search",
+          query: input.query,
+          options: {
+            limit: input.limit,
+            assetType: input.assetType,
+            entityType: input.entityType,
+            style: input.style,
+          },
+        }, projectId, userId);
+        // Transform to legacy shape
+        if (searchResult.mode === "search") {
+          return { query: searchResult.query, results: searchResult.results };
+        }
+        throw new Error("Unexpected result mode from search_images");
+      }
 
-      case "find_similar_images":
-        return executeFindSimilarImages(input, projectId);
+      case "find_similar_images": {
+        // Legacy alias: route through unified analyze_image with mode="similar"
+        const similarResult = await executeAnalyzeImage(ctx, {
+          mode: "similar",
+          assetId: input.assetId,
+          entityName: input.entityName,
+          options: {
+            limit: input.limit,
+            assetType: input.assetType,
+            entityType: input.entityType,
+          },
+        }, projectId, userId);
+        // Transform to legacy shape
+        if (similarResult.mode === "similar") {
+          return { referenceAssetId: similarResult.referenceAssetId, results: similarResult.results };
+        }
+        throw new Error("Unexpected result mode from find_similar_images");
+      }
 
       case "check_logic": {
         const result = await executeAnalyzeContent(
@@ -252,12 +286,7 @@ export const execute = internalAction({
         return executeGenerateContent(input, projectId);
 
       case "analyze_image":
-        return ctx.runAction((internal as any)["ai/image"].analyzeImageAction, {
-          projectId,
-          userId,
-          imageUrl: input.imageUrl ?? input.imageSource,
-          analysisPrompt: input.analysisPrompt,
-        });
+        return executeAnalyzeImage(ctx, input as AnalyzeImageArgs, projectId, userId);
 
       default:
         throw new Error(
@@ -2057,7 +2086,114 @@ async function executeCommitDecision(
 }
 
 // ============================================================
-// Image Search Tools
+// Unified Image Analysis Tool
+// ============================================================
+
+/**
+ * Unified analyze_image executor with mode dispatch.
+ * Consolidates vision analysis, text→image search, and image→image similarity.
+ */
+async function executeAnalyzeImage(
+  ctx: ActionCtx,
+  input: AnalyzeImageArgs,
+  projectId: string,
+  userId: string
+): Promise<AnalyzeImageResult> {
+  // Default to vision mode for backwards compatibility (no mode specified)
+  const mode = input.mode ?? "vision";
+
+  switch (mode) {
+    case "vision": {
+      // Call the vision LLM action
+      if (!input.imageSource) {
+        throw new Error("imageSource is required for vision mode");
+      }
+      const visionResult = await ctx.runAction(
+        (internal as any)["ai/image"].analyzeImageAction,
+        {
+          projectId,
+          userId,
+          imageUrl: input.imageSource,
+          analysisPrompt: input.analysisPrompt,
+          entityTypeHint: input.entityTypeHint,
+          extractionFocus: input.extractionFocus,
+        }
+      );
+      return {
+        mode: "vision",
+        suggestedEntityType: visionResult.suggestedEntityType,
+        suggestedName: visionResult.suggestedName,
+        visualDescription: visionResult.visualDescription ?? {},
+        description: visionResult.description ?? "",
+        confidence: visionResult.confidence ?? 0.8,
+        assetId: visionResult.assetId,
+        imageUrl: visionResult.imageUrl,
+      };
+    }
+
+    case "search": {
+      // Text → image search via Qdrant
+      if (!input.query) {
+        throw new Error("query is required for search mode");
+      }
+      const searchResult = await executeAnalyzeImageSearch(
+        {
+          query: input.query,
+          limit: input.options?.limit,
+          assetType: input.options?.assetType,
+          entityType: input.options?.entityType,
+          style: input.options?.style,
+        },
+        projectId
+      );
+      return {
+        mode: "search",
+        query: input.query,
+        results: searchResult.images.map((img) => ({
+          assetId: img.id,
+          imageUrl: img.url,
+          score: img.score,
+          entityId: img.entityId,
+          assetType: img.assetType as any,
+          style: img.style as any,
+        })),
+      };
+    }
+
+    case "similar": {
+      // Image → image similarity via Qdrant
+      if (!input.assetId && !input.entityName) {
+        throw new Error("assetId or entityName is required for similar mode");
+      }
+      const similarResult = await executeAnalyzeImageSimilar(
+        {
+          assetId: input.assetId ?? "",
+          entityName: input.entityName,
+          limit: input.options?.limit,
+          assetType: input.options?.assetType,
+        },
+        projectId
+      );
+      return {
+        mode: "similar",
+        referenceAssetId: similarResult.sourceImage?.id ?? input.assetId ?? "",
+        results: similarResult.images.map((img) => ({
+          assetId: img.id,
+          imageUrl: img.url,
+          score: img.similarity,
+          entityId: img.entityId,
+          assetType: img.assetType as any,
+        })),
+      };
+    }
+
+    default:
+      throw new Error(`Unknown analyze_image mode: ${mode}`);
+  }
+}
+
+// ============================================================
+// Image Search Tools (Internal Helpers)
 // ============================================================
 
 interface SearchImagesInput {
@@ -2085,7 +2221,7 @@ interface ImageSearchResult {
   total: number;
 }
 
-async function executeSearchImages(
+async function executeAnalyzeImageSearch(
   input: SearchImagesInput,
   projectId: string
 ): Promise<ImageSearchResult> {
@@ -2153,6 +2289,7 @@ async function executeSearchImages(
 
 interface FindSimilarImagesInput {
   assetId: string;
+  entityName?: string;
   projectId?: string;
   limit?: number;
   assetType?: string;
@@ -2176,12 +2313,16 @@ interface SimilarImagesResult {
   };
 }
 
-async function executeFindSimilarImages(
+async function executeAnalyzeImageSimilar(
   input: FindSimilarImagesInput,
   projectId: string
 ): Promise<SimilarImagesResult> {
+  if (!input.assetId && !input.entityName) {
+    throw new Error("assetId or entityName is required for similar image search");
+  }
+  // TODO: If entityName is provided without assetId, look up entity portrait
   if (!input.assetId) {
-    throw new Error("assetId is required for similar image search");
+    throw new Error("entityName lookup not yet implemented - please provide assetId directly");
   }
 
   if (!isQdrantConfigured()) {

@@ -262,6 +262,7 @@ export const createEntityFromImageExecutor: ToolDefinition<CreateEntityFromImage
 
       // Build analysis result for reference
       const analysis: AnalyzeImageResult = {
+        mode: "vision",
         suggestedEntityType: analysisResponse.suggestedEntityType,
         suggestedName: analysisResponse.suggestedName,
         visualDescription: analysisResponse.visualDescription,

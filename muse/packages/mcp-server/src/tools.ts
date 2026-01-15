@@ -1253,13 +1253,14 @@ export const commitDecisionTool: Tool = {
 };
 
 /**
- * Search Images Tool
- * Semantic text→image search over project assets.
+ * Search Images Tool (Legacy Alias)
+ * Routes to unified analyze_image with mode="search".
+ * @deprecated Use analyze_image with mode="search" instead.
  */
 export const searchImagesTool: Tool = {
   name: "search_images",
   description:
-    "Search for images in the project using semantic text search (CLIP embeddings). Returns ranked image hits.",
+    "[DEPRECATED: Use analyze_image with mode='search'] Search for images in the project using semantic text search.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -1302,13 +1303,14 @@ export const searchImagesTool: Tool = {
 };
 
 /**
- * Find Similar Images Tool
- * Image→image similarity search using CLIP embeddings.
+ * Find Similar Images Tool (Legacy Alias)
+ * Routes to unified analyze_image with mode="similar".
+ * @deprecated Use analyze_image with mode="similar" instead.
  */
 export const findSimilarImagesTool: Tool = {
   name: "find_similar_images",
   description:
-    "Find images similar to a reference image (by assetId) or an entity's portrait. Returns ranked results.",
+    "[DEPRECATED: Use analyze_image with mode='similar'] Find images similar to a reference image.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -1345,13 +1347,13 @@ export const findSimilarImagesTool: Tool = {
 };
 
 /**
- * Analyze Image Tool
- * Extracts structured visual details from an image.
+ * Unified Analyze Image Tool
+ * Consolidates vision analysis, text→image search, and image→image similarity.
  */
 export const analyzeImageTool: Tool = {
   name: "analyze_image",
   description:
-    "Analyze an uploaded/reference image to extract structured visual details (appearance, environment, objects).",
+    "Unified image tool: analyze images (vision), search by text (search), or find similar images (similar). Set mode to select operation.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -1359,22 +1361,74 @@ export const analyzeImageTool: Tool = {
         type: "string",
         description: "The project ID",
       },
+      mode: {
+        type: "string",
+        enum: ["vision", "search", "similar"],
+        description: "Operation mode: vision (analyze image via LLM), search (text→image), similar (image→image)",
+      },
+      // Vision mode
       imageSource: {
         type: "string",
-        description: "Base64 data URL or storage path of the image",
+        description: "Base64 data URL or storage path of the image (required for vision mode)",
       },
       entityTypeHint: {
         type: "string",
         enum: ENTITY_TYPES,
-        description: "Optional entity type hint",
+        description: "Optional entity type hint (vision mode)",
       },
       extractionFocus: {
         type: "string",
         enum: EXTRACTION_FOCUS,
-        description: "What to focus extraction on (default full)",
+        description: "What to focus extraction on (vision mode, default full)",
+      },
+      analysisPrompt: {
+        type: "string",
+        description: "Custom analysis prompt (vision mode)",
+      },
+      // Search mode
+      query: {
+        type: "string",
+        description: "Text query for image search (required for search mode)",
+      },
+      // Similar mode
+      assetId: {
+        type: "string",
+        description: "Reference image asset ID (for similar mode)",
+      },
+      entityName: {
+        type: "string",
+        description: "Entity name to use their portrait as reference (for similar mode)",
+      },
+      // Shared options
+      options: {
+        type: "object",
+        description: "Search/filter options for search and similar modes",
+        properties: {
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 20,
+            description: "Maximum number of results (default 10)",
+          },
+          assetType: {
+            type: "string",
+            enum: ASSET_TYPES,
+            description: "Filter by asset type",
+          },
+          entityType: {
+            type: "string",
+            enum: ENTITY_TYPES,
+            description: "Filter by entity type",
+          },
+          style: {
+            type: "string",
+            enum: IMAGE_STYLES,
+            description: "Filter by art style",
+          },
+        },
       },
     },
-    required: ["imageSource"],
+    required: ["mode"],
   },
 };
 

@@ -1045,17 +1045,60 @@ export type ExtractionFocus = "full" | "appearance" | "environment" | "object";
  */
 export type SceneFocus = "action" | "dialogue" | "establishing" | "dramatic";
 
+// =============================================================================
+// Unified analyze_image Tool (Phase 3+4 consolidated)
+// =============================================================================
+
 /**
- * Arguments for analyze_image tool.
- * Analyzes an uploaded/reference image to extract visual details.
+ * Mode discriminator for unified analyze_image tool.
+ */
+export type AnalyzeImageMode = "vision" | "search" | "similar";
+
+/**
+ * Shared options for search/similar modes.
+ */
+export interface AnalyzeImageSearchOptions {
+  /** Maximum number of results (1-20) */
+  limit?: number;
+  /** Filter by asset type */
+  assetType?: AssetType;
+  /** Filter by entity type */
+  entityType?: EntityType;
+  /** Filter by art style */
+  style?: ImageStyle;
+}
+
+/**
+ * Arguments for unified analyze_image tool.
+ * Consolidates vision analysis, text→image search, and image→image similarity.
  */
 export interface AnalyzeImageArgs {
-  /** Base64 data URL or storage path of the image */
-  imageSource: string;
+  /** Operation mode */
+  mode: AnalyzeImageMode;
+
+  // Mode: "vision" - extract visual details via LLM
+  /** Base64 data URL or storage path of the image (required for vision mode) */
+  imageSource?: string;
   /** Optional entity type hint for better extraction */
   entityTypeHint?: EntityType;
   /** What aspect to focus extraction on */
   extractionFocus?: ExtractionFocus;
+  /** Custom analysis prompt for vision mode */
+  analysisPrompt?: string;
+
+  // Mode: "search" - text → image via Qdrant
+  /** Text query describing the visual content to find (required for search mode) */
+  query?: string;
+
+  // Mode: "similar" - image → image via Qdrant
+  /** UUID of the reference image (for similar mode) */
+  assetId?: string;
+  /** Entity name to use their portrait as reference (for similar mode) */
+  entityName?: string;
+
+  // Shared options (for search/similar modes)
+  /** Search/filter options */
+  options?: AnalyzeImageSearchOptions;
 }
 
 /**
@@ -1084,9 +1127,10 @@ export interface VisualDescription {
 }
 
 /**
- * Result of analyze_image tool.
+ * Vision mode result from analyze_image.
  */
-export interface AnalyzeImageResult {
+export interface AnalyzeImageVisionResult {
+  mode: "vision";
   /** Suggested entity type based on image content */
   suggestedEntityType: EntityType;
   /** Optional suggested name if discernible */
@@ -1102,6 +1146,36 @@ export interface AnalyzeImageResult {
   /** Public URL to the stored image */
   imageUrl?: string;
 }
+
+/**
+ * Search mode result from analyze_image.
+ */
+export interface AnalyzeImageSearchResult {
+  mode: "search";
+  /** The original query */
+  query: string;
+  /** Matching images */
+  results: ImageSearchHit[];
+}
+
+/**
+ * Similar mode result from analyze_image.
+ */
+export interface AnalyzeImageSimilarResult {
+  mode: "similar";
+  /** ID of the reference image used */
+  referenceAssetId: string;
+  /** Similar images found */
+  results: ImageSearchHit[];
+}
+
+/**
+ * Discriminated union result of analyze_image tool.
+ */
+export type AnalyzeImageResult =
+  | AnalyzeImageVisionResult
+  | AnalyzeImageSearchResult
+  | AnalyzeImageSimilarResult;
 
 /**
  * Arguments for create_entity_from_image tool.

@@ -353,25 +353,43 @@ export function illustrateSceneNeedsApproval(): boolean {
   return true;
 }
 
+// Shared options for search/similar modes
+const analyzeImageOptionsSchema = z.object({
+  limit: z.number().min(1).max(20).optional().describe("Maximum results (1-20)"),
+  assetType: z.string().optional().describe("Filter by asset type"),
+  entityType: z.string().optional().describe("Filter by entity type"),
+  style: z.string().optional().describe("Filter by art style"),
+}).optional();
+
 export const analyzeImageParameters = z.object({
-  imageSource: z.string().describe("Storage ID, asset ID, URL, or data URL of the image"),
-  entityTypeHint: z.string().optional().describe("Optional entity type hint"),
+  mode: z.enum(["vision", "search", "similar"]).describe("Operation mode: vision (analyze image), search (text→image), similar (image→image)"),
+  // Vision mode
+  imageSource: z.string().optional().describe("Storage ID, asset ID, URL, or data URL of the image (required for vision mode)"),
+  entityTypeHint: z.string().optional().describe("Optional entity type hint for vision mode"),
   extractionFocus: z
     .enum(["full", "appearance", "environment", "object"])
     .optional()
-    .describe("What aspect to focus extraction on"),
+    .describe("What aspect to focus extraction on (vision mode)"),
+  analysisPrompt: z.string().optional().describe("Custom analysis prompt for vision mode"),
+  // Search mode
+  query: z.string().optional().describe("Text query for image search (required for search mode)"),
+  // Similar mode
+  assetId: z.string().optional().describe("Reference image asset ID (for similar mode)"),
+  entityName: z.string().optional().describe("Entity name to use their portrait as reference (for similar mode)"),
+  // Shared options
+  options: analyzeImageOptionsSchema.describe("Search/filter options for search and similar modes"),
 });
 
 export type AnalyzeImageArgs = z.infer<typeof analyzeImageParameters>;
 
 export const analyzeImageTool = tool({
   description:
-    "Analyze an uploaded image to extract characters, settings, mood, and style information for use in the story.",
+    "Unified image tool: analyze images (vision), search by text (search), or find similar images (similar). Use mode='vision' to extract visual details, mode='search' for text→image search, mode='similar' for image→image similarity.",
   inputSchema: analyzeImageParameters,
 });
 
 export function analyzeImageNeedsApproval(): boolean {
-  return false; // Analysis doesn't modify anything
+  return false; // Analysis and search don't modify anything
 }
 
 // =============================================================================
