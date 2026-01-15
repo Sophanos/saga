@@ -147,6 +147,7 @@ export function Sidebar() {
 
       {/* Footer */}
       <View style={[styles.footer, { borderTopColor: colors.border }]}>
+        <SidebarItem icon="git-branch" label="Project Graph" onPress={() => router.push('/project-graph')} />
         <SidebarItem icon="settings" label="Settings" shortcut="⌘," onPress={() => router.push('/settings')} />
       </View>
     </View>

@@ -6,8 +6,8 @@
  */
 
 import React, { Suspense, lazy, useCallback, useEffect, useRef } from 'react';
-import { Platform, View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Platform, View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useAction } from 'convex/react';
 import { api } from '../../../../convex/_generated/api';
 import { useTheme, typography } from '@/design-system';
@@ -31,7 +31,6 @@ const LazyEditorShell = Platform.OS === 'web'
 
 export default function EditorScreen(): JSX.Element {
   const { colors } = useTheme();
-  const router = useRouter();
   const { aiPanelMode, aiPanelWidth, sidebarCollapsed, openKnowledgePanel, pendingWriteContent, clearPendingWriteContent } =
     useLayoutStore();
   const { panelMode: artifactPanelMode, panelWidth: artifactPanelWidth } = useArtifactStore();
@@ -133,20 +132,6 @@ export default function EditorScreen(): JSX.Element {
         </View>
       }>
         <View style={styles.webContainer}>
-          {!flowEnabled && (
-            <Pressable
-              testID="editor-open-project-graph"
-              onPress={() => router.push('/project-graph')}
-              style={({ pressed, hovered }) => [
-                styles.graphButton,
-                {
-                  backgroundColor: pressed || hovered ? colors.accent + 'CC' : colors.accent,
-                },
-              ]}
-            >
-              <Text style={styles.graphButtonText}>Open Project Graph</Text>
-            </Pressable>
-          )}
           <div style={{
             height: '100%',
             width: '100%',
@@ -225,20 +210,6 @@ const styles = StyleSheet.create({
   },
   webContainer: {
     flex: 1,
-  },
-  graphButton: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    zIndex: 10,
-  },
-  graphButtonText: {
-    color: '#fff',
-    fontSize: typography.xs,
-    fontWeight: '600',
   },
   text: {
     fontSize: typography.base,
