@@ -5,10 +5,10 @@
 import { create } from 'zustand';
 
 // Command categories
-export type CommandCategory = 'entity' | 'ai' | 'navigation' | 'general';
+export type CommandCategory = 'entity' | 'ai' | 'navigation' | 'general' | 'widget';
 export type CommandFilter = 'all' | CommandCategory;
 
-const FILTER_ORDER: CommandFilter[] = ['all', 'entity', 'ai', 'navigation', 'general'];
+const FILTER_ORDER: CommandFilter[] = ['all', 'entity', 'ai', 'widget', 'navigation', 'general'];
 
 interface CommandPaletteState {
   isOpen: boolean;

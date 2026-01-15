@@ -30,6 +30,7 @@ const FILTER_LABELS: Record<CommandFilter, string> = {
   all: 'All',
   entity: 'Entity',
   ai: 'AI',
+  widget: 'Widget',
   navigation: 'Nav',
   general: 'General',
 };

@@ -365,6 +365,29 @@ export {
 } from "./artifactEngine";
 
 // ============================================================
+// WIDGET EXECUTION STORE
+// ============================================================
+export {
+  useWidgetExecutionStore,
+  useWidgetStatus,
+  useWidgetPreviewContent,
+  useWidgetLabel,
+  useWidgetType,
+  useWidgetError,
+  useWidgetTitle,
+  useWidgetManifestDraft,
+} from "./widgetExecution";
+export type {
+  WidgetType,
+  WidgetSelection,
+  WidgetExecutionState,
+  WidgetStartParams,
+  WidgetContextData,
+  WidgetStreamExecutor,
+  WidgetExecutionActions,
+} from "./widgetExecution";
+
+// ============================================================
 // RESET UTILITIES
 // ============================================================
 export {

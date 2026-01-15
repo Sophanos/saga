@@ -5,10 +5,12 @@
 export { entityCommands } from './entity';
 export { navigationCommands } from './navigation';
 export { generalCommands } from './general';
+export { widgetCommands } from './widget';
 
 import { entityCommands } from './entity';
 import { navigationCommands } from './navigation';
 import { generalCommands } from './general';
+import { widgetCommands } from './widget';
 import { commandRegistry } from '../registry';
 
 /**
@@ -19,5 +21,6 @@ export function registerAllCommands(): void {
     ...entityCommands,
     ...navigationCommands,
     ...generalCommands,
+    ...widgetCommands,
   ]);
 }
