@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-14 (Billing production readiness)
+> Last Updated: 2026-01-14 (Billing status review: 20% → 75%)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -37,12 +37,20 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Planning Tools + Sub-Agents | Done | 100 |
 | Supabase -> Convex Migration | Done | 100 |
 | Real-Time Collaboration | In progress | 80 |
-| Widgets & Artifacts (MVP1) | In progress | 35 |
+| Widgets & Artifacts (MVP1) | In progress | 60 |
 | Async Jobs + Notifications (MVP1.5) | Planned | 0 |
-| App Store Pricing + RevenueCat | In progress ([details](./PRICING_REVENUECAT_SETUP.md)) | 20 |
+| App Store Pricing + RevenueCat | In progress ([details](./PRICING_REVENUECAT_SETUP.md)) | 75 |
 | Overall MLP 1 | In progress | 97 |
 
 ## Recent Updates (condensed)
+
+**2026-01-15 (Artifacts backend + client)**
+- Backend: `artifacts`, `artifactVersions`, `artifactMessages`, `artifactOps` tables; CRUD + staleness queries in `convex/artifacts.ts`.
+- Engine: domain ops → JSON Patch with rev test in `packages/core/src/artifacts/engine.ts`.
+- Missing tools: `viewVersionHistory`, `deleteDocument`, `searchUsers`, `viewComments`, `addComment` - all wired (Convex + client executors).
+- Soft-delete: `documents.deletedAt`/`deletedByUserId`; `comments` table for collaboration.
+- Client: Expo `useArtifactSync`, web `ArtifactPanel` with insert/export/applyOp, Canvas revision on artifact insert.
+- Staleness: `external` status for web/github sources (can't track).
 
 **2026-01-14 (BYOK settings UI, main aa266e7)**
 - BYOK settings UI: Web SettingsModal OpenRouter section + Expo AI Settings section.
@@ -236,6 +244,22 @@ Core deliverables:
 - Web: `widget` filter in Cmd+K, per-project recents, progress tile, preview modal, receipts block + source picker.
 - Slash menu: recent widgets, Widgets/Create sections, “Ask AI: {query}” fallback.
 - Expo: artifact widgets first (create/list/view) + receipts; inline widgets follow once selection replacement is stable.
+
+## Billing & Monetization (75%)
+
+**Done:**
+- Stripe: `/stripe-checkout`, `/stripe-portal` routes; webhook signature verification; `billingCustomers` mapping.
+- RevenueCat: webhook processing (idempotent + ordering guard); grace period handling; dual-secret support.
+- Billing core: canonical subscription updates; entitlement-first tier resolution; `subscriptions`, `subscriptionEvents`, `billingUsagePeriods` tables.
+- BYOK: `x-openrouter-key` passthrough; quota bypass; preferred model stored + used; `/billing-mode`, `/billing-preferred-model` endpoints.
+- Quota enforcement: preflight checks + max_tokens clamp; `useQuotaGuard` hook (Web + Expo); usage warning toasts.
+- UI: `PaywallModal` (Craft-inspired Pro/Team); `useBilling` hook; BYOK settings (Web SettingsModal + Expo AI Settings).
+
+**Remaining:**
+- RevenueCat native SDK testing on iOS/macOS devices.
+- App Store Connect product configuration (identifiers, pricing).
+- RevenueCat dashboard product setup + entitlement mapping.
+- End-to-end purchase flow testing on real devices.
 
 ## AI Tools Overview
 
