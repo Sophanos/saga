@@ -145,7 +145,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | 2 | Knowledge PRs review surface + hardening | In progress | [Phase 2](#phase-2-knowledge-prs-hardening) |
 | 3 | Integrations + Citations (MCP) | Planned | [Phase 3](#phase-3-integrations--citations) |
 | 4 | Clarity/Policy Coach | Complete | [Phase 4](#phase-4-claritypolicy-coach) |
-| 5 | Widgets & Artifacts + Async (MVP1) | In progress (70%) | [Phase 5](#phase-5-widgets--artifacts--async-mvp1) |
+| 5 | Widgets & Artifacts + Async (MVP1) | In progress (75%) | [Phase 5](#phase-5-widgets--artifacts--async-mvp1) |
 
 ## UI Integration Analysis (MLP1 Phase 1)
 
