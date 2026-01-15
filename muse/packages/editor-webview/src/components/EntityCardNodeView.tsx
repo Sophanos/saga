@@ -383,14 +383,14 @@ export function EntityCardNodeView({ node, deleteNode, updateAttributes }: NodeV
         <div className="entity-card__header" onClick={handleToggle}>
           <button
             type="button"
-            className="entity-card__toggle"
+            className="entity-card__toggle entity-card__toggle--close"
             onClick={(e) => {
               e.stopPropagation();
-              handleToggle();
+              deleteNode();
             }}
-            title={isExpanded ? 'Collapse' : 'Expand'}
+            title="Remove card"
           >
-            <IconChevron direction={isExpanded ? 'down' : 'right'} />
+            <IconX size={12} />
           </button>
 
           <div className="entity-card__avatar">
@@ -422,9 +422,11 @@ export function EntityCardNodeView({ node, deleteNode, updateAttributes }: NodeV
             >
               <IconPin size={14} pinned={isPinned} />
             </button>
-            <button className="entity-card__action-btn entity-card__action-btn--close" onClick={handleClose} title="Close">
-              <IconX size={14} />
-            </button>
+            {isPinned && (
+              <button className="entity-card__action-btn" onClick={handleMinimize} title="Minimize">
+                <IconMinus size={14} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -644,8 +646,8 @@ const styles = `
     flex-shrink: 0;
     background: none;
     border: none;
-    padding: 4px;
-    margin: -4px;
+    width: 20px;
+    height: 20px;
     border-radius: var(--radius-sm, 4px);
     cursor: pointer;
     transition: all 0.15s ease;
@@ -654,6 +656,11 @@ const styles = `
   .entity-card__toggle:hover {
     color: var(--color-text, rgba(255,255,255,0.9));
     background: var(--color-bg-hover, rgba(255,255,255,0.06));
+  }
+
+  .entity-card__toggle--close:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
   }
 
   .entity-card__avatar {

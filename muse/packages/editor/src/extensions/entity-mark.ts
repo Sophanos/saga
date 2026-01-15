@@ -20,6 +20,10 @@ declare module "@tiptap/core" {
 export const EntityMark = Mark.create<EntityMarkOptions>({
   name: "entity",
 
+  // Don't extend mark when typing at boundaries
+  inclusive: false,
+  exiting: true,
+
   addOptions() {
     return {
       HTMLAttributes: {},
