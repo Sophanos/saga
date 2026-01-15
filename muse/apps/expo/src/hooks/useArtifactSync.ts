@@ -6,6 +6,7 @@ import {
   useArtifactStore,
   useProjectStore,
   type Artifact,
+  type ArtifactStatus,
   type ArtifactType,
 } from "@mythos/state";
 
@@ -27,7 +28,7 @@ function mapServerArtifact(artifact: ArtifactDoc): Artifact {
     title: artifact.title,
     content: artifact.content,
     format: resolveArtifactFormat(artifact),
-    state: "draft",
+    status: artifact.status as ArtifactStatus,
     iterationHistory: [],
     versions: [
       {
@@ -67,4 +68,3 @@ export function useArtifactSync(): void {
     useArtifactStore.getState().upsertArtifacts(mapped);
   }, [mapped]);
 }
-

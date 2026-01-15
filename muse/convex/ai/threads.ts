@@ -115,3 +115,15 @@ export const assertThreadAccess = internalQuery({
     };
   },
 });
+
+export const getThread = internalQuery({
+  args: {
+    threadId: v.string(),
+  },
+  handler: async (ctx, { threadId }) => {
+    return await ctx.db
+      .query("sagaThreads")
+      .withIndex("by_thread", (q) => q.eq("threadId", threadId))
+      .first();
+  },
+});

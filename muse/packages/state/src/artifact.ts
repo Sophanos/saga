@@ -70,7 +70,28 @@ export const ARTIFACT_TYPE_ICONS: Record<ArtifactType, string> = {
   document: 'file',
 };
 
-export type ArtifactState = 'draft' | 'iterating' | 'applied' | 'saved' | 'stale';
+export type ArtifactStatus = 'draft' | 'manually_modified' | 'applied' | 'saved';
+
+export type ArtifactStalenessStatus = 'fresh' | 'stale' | 'missing' | 'external';
+
+export interface ArtifactSource {
+  type: string;
+  id: string;
+  title?: string;
+  manual: boolean;
+  addedAt: number;
+  sourceUpdatedAt?: number;
+  status?: ArtifactStalenessStatus;
+}
+
+export interface ArtifactExecutionContext {
+  widgetId: string;
+  widgetVersion: string;
+  model: string;
+  inputs: unknown;
+  startedAt: number;
+  completedAt: number;
+}
 
 // Iteration message in mini-chat
 export interface IterationMessage {
@@ -79,8 +100,8 @@ export interface IterationMessage {
   content: string;
   timestamp: number;
   context?: {
-    artifactId: string;
-    artifactContent: string;
+    artifactId?: string;
+    artifactContent?: string;
     referenceId?: string;
     referenceType?: 'document' | 'entity';
     documentId?: string;
@@ -105,8 +126,8 @@ export interface Artifact {
   content: string;
   format: 'markdown' | 'mermaid' | 'json' | 'plain';
 
-  // State
-  state: ArtifactState;
+  // Server status (persisted)
+  status: ArtifactStatus;
 
   // Iteration
   iterationHistory: IterationMessage[];
@@ -116,6 +137,8 @@ export interface Artifact {
   // Metadata
   createdAt: number;
   updatedAt: number;
+  projectId?: string;
+  createdBy?: string;
 
   // Source info
   source?: {
@@ -123,6 +146,11 @@ export interface Artifact {
     model?: string;
     threadId?: string;
   };
+
+  // Receipts / provenance (server-backed)
+  sources?: ArtifactSource[];
+  executionContext?: ArtifactExecutionContext;
+  staleness?: ArtifactStalenessStatus;
 
   // RAS validation + ops
   validationErrors?: string[];
@@ -136,6 +164,8 @@ export interface Artifact {
 // Panel mode
 export type ArtifactPanelMode = 'hidden' | 'side' | 'floating';
 
+export type ArtifactSplitMode = 'side-by-side' | 'before-after' | 'inline';
+
 interface ArtifactStore {
   // Panel state
   panelMode: ArtifactPanelMode;
@@ -143,6 +173,17 @@ interface ArtifactStore {
   setPanelMode: (mode: ArtifactPanelMode) => void;
   setPanelWidth: (width: number) => void;
   togglePanel: () => void;
+
+  // Compare / split view
+  splitView: {
+    active: boolean;
+    leftId: string | null;
+    rightId: string | null;
+    mode: ArtifactSplitMode;
+  };
+  setSplitView: (next: Partial<ArtifactStore['splitView']>) => void;
+  enterSplitView: (leftId: string, rightId: string, mode?: ArtifactSplitMode) => void;
+  exitSplitView: () => void;
 
   // Iteration pill state
   iterationInput: string;
@@ -158,8 +199,10 @@ interface ArtifactStore {
   setActiveArtifact: (id: string | null) => void;
 
   // CRUD
-  addArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt' | 'versions' | 'currentVersionId' | 'iterationHistory' | 'state' | 'opLog' | 'validationErrors'>) => string;
+  addArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt' | 'versions' | 'currentVersionId' | 'iterationHistory' | 'status' | 'opLog' | 'validationErrors'>) => string;
   updateArtifact: (id: string, updates: Partial<Artifact>) => void;
+  upsertArtifact: (artifact: Artifact) => void;
+  upsertArtifacts: (artifacts: Artifact[]) => void;
   removeArtifact: (id: string) => void;
   clearArtifacts: () => void;
 
@@ -175,7 +218,7 @@ interface ArtifactStore {
   applyArtifactOp: (artifactId: string, op: ArtifactOp) => void;
 
   // Quick actions
-  showArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt' | 'versions' | 'currentVersionId' | 'iterationHistory' | 'state' | 'opLog' | 'validationErrors'>) => void;
+  showArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt' | 'versions' | 'currentVersionId' | 'iterationHistory' | 'status' | 'opLog' | 'validationErrors'>) => void;
   openDocument: (documentId: string, title: string, content: string) => void;
   openEntity: (entityId: string, name: string, data: Record<string, unknown>) => void;
   closePanel: () => void;
@@ -211,6 +254,12 @@ function validateArtifactEnvelope(content: string): string[] {
 const initialState = {
   panelMode: 'hidden' as ArtifactPanelMode,
   panelWidth: PANEL_DEFAULT_WIDTH,
+  splitView: {
+    active: false,
+    leftId: null,
+    rightId: null,
+    mode: 'side-by-side' as ArtifactSplitMode,
+  },
   artifacts: [] as Artifact[],
   activeArtifactId: null as string | null,
   iterationInput: '',
@@ -232,6 +281,30 @@ export const useArtifactStore = create<ArtifactStore>()(
         set({ panelMode: current === 'hidden' ? 'side' : 'hidden' });
       },
 
+      // Compare / split view
+      setSplitView: (next) =>
+        set((state) => ({
+          splitView: { ...state.splitView, ...next },
+        })),
+      enterSplitView: (leftId, rightId, mode) =>
+        set({
+          splitView: {
+            active: true,
+            leftId,
+            rightId,
+            mode: mode ?? 'side-by-side',
+          },
+        }),
+      exitSplitView: () =>
+        set({
+          splitView: {
+            active: false,
+            leftId: null,
+            rightId: null,
+            mode: get().splitView.mode,
+          },
+        }),
+
       // Iteration pill
       setIterationInput: (value) => set({ iterationInput: value }),
       setIterationPillExpanded: (expanded) => set({ iterationPillExpanded: expanded }),
@@ -250,7 +323,7 @@ export const useArtifactStore = create<ArtifactStore>()(
         const newArtifact: Artifact = {
           ...artifact,
           id,
-          state: 'draft',
+          status: 'draft',
           iterationHistory: [],
           versions: [{ id: versionId, content: artifact.content, timestamp: now, trigger: 'creation' }],
           currentVersionId: versionId,
@@ -285,6 +358,40 @@ export const useArtifactStore = create<ArtifactStore>()(
         }));
       },
 
+      upsertArtifact: (artifact) => {
+        set((s) => {
+          const existingIndex = s.artifacts.findIndex((a) => a.id === artifact.id);
+          if (existingIndex === -1) {
+            return {
+              artifacts: [...s.artifacts, artifact],
+              activeArtifactId: s.activeArtifactId ?? artifact.id,
+            };
+          }
+
+          const nextArtifacts = [...s.artifacts];
+          nextArtifacts[existingIndex] = { ...nextArtifacts[existingIndex], ...artifact };
+          return { artifacts: nextArtifacts };
+        });
+      },
+
+      upsertArtifacts: (artifacts) => {
+        set((s) => {
+          const byId = new Map(s.artifacts.map((artifact) => [artifact.id, artifact]));
+          for (const artifact of artifacts) {
+            const existing = byId.get(artifact.id);
+            byId.set(artifact.id, existing ? { ...existing, ...artifact } : artifact);
+          }
+
+          const nextArtifacts = Array.from(byId.values());
+          const activeArtifactId =
+            s.activeArtifactId && byId.has(s.activeArtifactId)
+              ? s.activeArtifactId
+              : nextArtifacts[0]?.id ?? null;
+
+          return { artifacts: nextArtifacts, activeArtifactId };
+        });
+      },
+
       removeArtifact: (id) => {
         set((s) => {
           const newArtifacts = s.artifacts.filter((a) => a.id !== id);
@@ -309,7 +416,6 @@ export const useArtifactStore = create<ArtifactStore>()(
             a.id === artifactId
               ? {
                   ...a,
-                  state: 'iterating' as ArtifactState,
                   iterationHistory: [
                     ...a.iterationHistory,
                     {
@@ -444,6 +550,25 @@ export const useArtifactStore = create<ArtifactStore>()(
     {
       name: 'artifact-store',
       storage: createJSONStorage(() => createStorageAdapter()),
+      version: 1,
+      migrate: (persistedState) => {
+        const state = persistedState as any;
+        if (!state || typeof state !== 'object') return state;
+        if (!Array.isArray(state.artifacts)) return state;
+
+        state.artifacts = state.artifacts.map((artifact: any) => {
+          if (!artifact || typeof artifact !== 'object') return artifact;
+          if (artifact.status) return artifact;
+
+          const legacyState = artifact.state;
+          if (legacyState === 'applied' || legacyState === 'saved') {
+            return { ...artifact, status: legacyState };
+          }
+          return { ...artifact, status: 'draft' };
+        });
+
+        return state;
+      },
       partialize: (state) => ({
         panelMode: state.panelMode,
         panelWidth: state.panelWidth,

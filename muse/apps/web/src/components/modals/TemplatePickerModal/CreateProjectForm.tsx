@@ -4,19 +4,22 @@ import { api } from "../../../../../../convex/_generated/api";
 import { FolderPlus, Feather, Building2, ChevronDown, ChevronUp } from "lucide-react";
 import { Button, Input, FormField, TextArea } from "@mythos/ui";
 import { useProgressiveStore } from "@mythos/state";
-import type { ProjectTemplate } from "@mythos/core";
-import { getTemplateIcon } from "../../../utils/templateIcons";
+import type { TemplateDraft } from "@mythos/agent-protocol";
+import { PROJECT_TYPE_DEFS, type ProjectType } from "./projectTypes";
 import { useAuthStore } from "../../../stores/auth";
 
 interface CreateProjectFormProps {
-  template: ProjectTemplate;
+  projectType: ProjectType;
+  /** Optional AI-generated template draft */
+  templateDraft?: TemplateDraft;
   creationMode: "gardener" | "architect";
   onCreated: (projectId: string) => void;
   onClose: () => void;
 }
 
 export function CreateProjectForm({
-  template,
+  projectType,
+  templateDraft,
   creationMode: initialMode,
   onCreated,
   onClose,
@@ -29,6 +32,9 @@ export function CreateProjectForm({
   const [error, setError] = useState<string | null>(null);
   const userId = useAuthStore((state) => state.user?.id);
   const bootstrapProject = useMutation(api.projectBootstrap.bootstrap);
+
+  const projectTypeDef = PROJECT_TYPE_DEFS[projectType];
+  const isAIGenerated = !!templateDraft;
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -46,23 +52,27 @@ export function CreateProjectForm({
         const result = await bootstrapProject({
           name: name.trim(),
           description: description.trim() || undefined,
-          genre: template.defaultGenre,
-          templateId: template.id,
-          initialDocumentType: template.defaultDocumentKind || "chapter",
-          initialDocumentTitle: "Chapter 1",
-          seed: {
-            kind: "template",
-            projectName: name.trim(),
-            projectDescription: description.trim() || undefined,
-            templateId: template.id,
-            templateName: template.name,
-            templateDescription: template.description,
-            entityKinds: template.entityKinds.map((kind) => kind.label),
-            relationshipKinds: template.relationshipKinds.map((kind) => kind.label),
-            genre: template.defaultGenre,
-          },
-          templateEntityKinds: template.entityKinds,
-          templateRelationshipKinds: template.relationshipKinds,
+          templateId: projectTypeDef.baseTemplateId,
+          initialDocumentType: templateDraft?.documentKinds?.[0]?.kind ?? "chapter",
+          initialDocumentTitle: projectType === "story" ? "Chapter 1" : "Untitled",
+          seed: templateDraft
+            ? {
+                kind: "template" as const,
+                projectName: name.trim(),
+                projectDescription: description.trim() || undefined,
+                templateId: templateDraft.baseTemplateId ?? projectTypeDef.baseTemplateId,
+                templateName: templateDraft.name,
+                templateDescription: templateDraft.description,
+                entityKinds: templateDraft.entityKinds.map((k) => k.label),
+                relationshipKinds: templateDraft.relationshipKinds.map((k) => k.label),
+              }
+            : {
+                kind: "blank" as const,
+                projectName: name.trim(),
+                projectDescription: description.trim() || undefined,
+              },
+          templateEntityKinds: templateDraft?.entityKinds,
+          templateRelationshipKinds: templateDraft?.relationshipKinds,
         });
 
         // Initialize progressive state
@@ -88,10 +98,8 @@ export function CreateProjectForm({
         setIsSubmitting(false);
       }
     },
-    [name, description, template, creationMode, isSubmitting, onCreated, userId, bootstrapProject]
+    [name, description, projectType, projectTypeDef, templateDraft, creationMode, isSubmitting, onCreated, userId, bootstrapProject]
   );
-
-  const isBlank = template.id === "blank";
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -99,16 +107,20 @@ export function CreateProjectForm({
       <div className="p-4 rounded-lg border border-mythos-border-default bg-mythos-bg-secondary/50">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-mythos-accent-primary/10 text-mythos-accent-primary">
-            {getTemplateIcon(template.icon)}
+            <projectTypeDef.icon className="w-5 h-5" />
           </div>
           <div className="flex-1">
-            <h3 className="font-medium text-mythos-text-primary">{template.name}</h3>
-            <p className="text-xs text-mythos-text-muted">{template.description}</p>
+            <h3 className="font-medium text-mythos-text-primary">
+              {isAIGenerated ? templateDraft.name : projectTypeDef.label}
+            </h3>
+            <p className="text-xs text-mythos-text-muted">
+              {isAIGenerated ? templateDraft.description : projectTypeDef.description}
+            </p>
           </div>
         </div>
 
-        {/* Collapsible Details */}
-        {!isBlank && (
+        {/* Collapsible Details for AI-generated templates */}
+        {isAIGenerated && templateDraft && (
           <div className="mt-3 pt-3 border-t border-mythos-text-muted/10">
             <button
               type="button"
@@ -124,14 +136,14 @@ export function CreateProjectForm({
                 <div>
                   <span className="text-mythos-text-muted">Entity Types: </span>
                   <span className="text-mythos-text-secondary">
-                    {template.entityKinds.map((e) => e.label).join(", ")}
+                    {templateDraft.entityKinds.map((e) => e.label).join(", ")}
                   </span>
                 </div>
                 <div>
                   <span className="text-mythos-text-muted">Relationships: </span>
                   <span className="text-mythos-text-secondary">
-                    {template.relationshipKinds.slice(0, 5).map((r) => r.label).join(", ")}
-                    {template.relationshipKinds.length > 5 && ` +${template.relationshipKinds.length - 5} more`}
+                    {templateDraft.relationshipKinds.slice(0, 5).map((r) => r.label).join(", ")}
+                    {templateDraft.relationshipKinds.length > 5 && ` +${templateDraft.relationshipKinds.length - 5} more`}
                   </span>
                 </div>
               </div>

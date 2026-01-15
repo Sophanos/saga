@@ -72,7 +72,7 @@ export type Shadow = keyof typeof shadows;
  * Get React Native shadow style object
  */
 export function getNativeShadow(shadow: Shadow) {
-  const { boxShadow, ...native } = shadows[shadow];
+  const { boxShadow: _boxShadow, ...native } = shadows[shadow];
   return native;
 }
 

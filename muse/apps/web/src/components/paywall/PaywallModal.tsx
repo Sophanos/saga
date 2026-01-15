@@ -3,7 +3,7 @@
  * Craft-inspired paywall with Pro featured prominently, Team below
  */
 
-import React, { useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { X, Check, ChevronDown, ChevronUp, Sparkles, Users } from "lucide-react";
 import { Button, Card, cn } from "@mythos/ui";
 import { useBilling } from "../../hooks/useBilling";
@@ -53,7 +53,7 @@ const ALL_BENEFITS = [
 export function PaywallModal({ isOpen, onClose }: PaywallModalProps) {
   const [interval, setInterval] = useState<BillingInterval>("yearly");
   const [showAllBenefits, setShowAllBenefits] = useState(false);
-  const { subscription, openCheckout, isLoading } = useBilling();
+  const { subscription, openCheckout, openPortal, isLoading } = useBilling();
 
   const handlePurchase = useCallback(
     async (tier: BillingTier) => {
@@ -64,10 +64,9 @@ export function PaywallModal({ isOpen, onClose }: PaywallModalProps) {
   );
 
   const handleRestore = useCallback(() => {
-    // On web, this opens the Stripe portal
-    // On native, this would call restorePurchases()
-    window.open("https://billing.stripe.com/p/login/", "_blank");
-  }, []);
+    // On web, open the Stripe customer portal
+    void openPortal();
+  }, [openPortal]);
 
   if (!isOpen) return null;
 

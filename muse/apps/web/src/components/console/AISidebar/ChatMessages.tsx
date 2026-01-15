@@ -73,6 +73,37 @@ function MessageBubble({ message, sessionWriter }: { message: ChatMessage; sessi
           )}
         </div>
 
+        {!isTool && message.attachments && message.attachments.length > 0 && (
+          <div
+            className={cn(
+              "mt-2 grid grid-cols-2 gap-2",
+              isUser ? "justify-items-end" : "justify-items-start"
+            )}
+          >
+            {message.attachments.map((attachment, index) => {
+              if (attachment.kind !== "image") return null;
+              const src = attachment.url ?? attachment.dataUrl;
+              if (!src) return null;
+              return (
+                <a
+                  key={`${message.id}-attachment-${index}`}
+                  href={src}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block"
+                >
+                  <img
+                    src={src}
+                    alt={attachment.altText ?? "Attachment"}
+                    className="max-h-40 rounded-md border border-mythos-border-default object-cover"
+                    loading="lazy"
+                  />
+                </a>
+              );
+            })}
+          </div>
+        )}
+
         {/* Mentions */}
         {message.mentions && message.mentions.length > 0 && (
           <div className={cn(

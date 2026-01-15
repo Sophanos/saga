@@ -9,7 +9,7 @@ import { formatRelativeTime } from "../../utils/time";
 import { ReceiptsBlock } from "../widgets/ReceiptsBlock";
 
 type ArtifactDoc = Doc<"artifacts">;
-type SourceStatus = "fresh" | "stale" | "missing";
+type SourceStatus = "fresh" | "stale" | "missing" | "external";
 
 function buildSourceStatusMap(
   sources: Array<{ type: string; id: string; status: SourceStatus }>
@@ -23,9 +23,12 @@ function buildSourceStatusMap(
 
 function resolveManifest(artifact: ArtifactDoc | null): ArtifactManifestDraft | null {
   if (!artifact) return null;
+  // Map artifact status to manifest status (draft/manually_modified only)
+  const manifestStatus: "draft" | "manually_modified" =
+    artifact.status === "manually_modified" ? "manually_modified" : "draft";
   return {
     type: artifact.type,
-    status: artifact.status,
+    status: manifestStatus,
     sources: artifact.sources,
     createdBy: artifact.createdBy,
     createdAt: artifact.createdAt,
@@ -161,6 +164,8 @@ export function ArtifactsView(): JSX.Element {
               <option value="all">All status</option>
               <option value="draft">Draft</option>
               <option value="manually_modified">Modified</option>
+              <option value="applied">Applied</option>
+              <option value="saved">Saved</option>
             </select>
           </div>
         </div>

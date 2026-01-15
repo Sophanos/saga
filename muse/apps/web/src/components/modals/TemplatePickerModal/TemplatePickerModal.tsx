@@ -1,13 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { X, ChevronLeft } from "lucide-react";
 import { Button, Card, CardHeader, CardTitle, CardContent } from "@mythos/ui";
-import type { ProjectTemplate } from "@mythos/core";
-import { BLANK_TEMPLATE } from "@mythos/core";
 import type { TemplateDraft, GenesisEntity } from "@mythos/agent-protocol";
 import { StartOptions } from "./StartOptions";
 import { CreateProjectForm } from "./CreateProjectForm";
 import { AITemplateBuilder } from "./AITemplateBuilder";
-import { convertDraftToTemplate } from "./utils/convertDraftToTemplate";
 import type { ProjectType } from "./projectTypes";
 
 type Step = "start" | "ai-builder" | "create";
@@ -31,7 +28,7 @@ export function TemplatePickerModal({
 }: TemplatePickerModalProps): JSX.Element | null {
   const [step, setStep] = useState<Step>("start");
   const [projectType, setProjectType] = useState<ProjectType | null>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState<ProjectTemplate | null>(null);
+  const [templateDraft, setTemplateDraft] = useState<TemplateDraft | null>(null);
   const [creationMode, setCreationMode] = useState<"gardener" | "architect">("gardener");
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +37,7 @@ export function TemplatePickerModal({
     if (isOpen) {
       setStep("start");
       setProjectType(null);
-      setSelectedTemplate(null);
+      setTemplateDraft(null);
       setCreationMode("gardener");
       // Focus the modal for keyboard handling
       modalRef.current?.focus();
@@ -51,17 +48,17 @@ export function TemplatePickerModal({
     if (step === "ai-builder") {
       setStep("start");
     } else if (step === "create") {
-      if (selectedTemplate?.id?.startsWith("ai-")) {
+      if (templateDraft) {
         setStep("ai-builder");
       } else {
         setStep("start");
       }
     }
-  }, [step, selectedTemplate]);
+  }, [step, templateDraft]);
 
   const handleStartBlank = useCallback(() => {
     if (!projectType) return;
-    setSelectedTemplate(BLANK_TEMPLATE);
+    setTemplateDraft(null);
     setCreationMode("gardener");
     setStep("create");
   }, [projectType]);
@@ -73,8 +70,7 @@ export function TemplatePickerModal({
 
   const handleUseTemplate = useCallback(
     (draft: TemplateDraft, _entities?: GenesisEntity[]) => {
-      const generated = convertDraftToTemplate(draft);
-      setSelectedTemplate(generated);
+      setTemplateDraft(draft);
       setCreationMode("architect");
       setStep("create");
     },
@@ -161,9 +157,10 @@ export function TemplatePickerModal({
             />
           )}
 
-          {step === "create" && selectedTemplate && (
+          {step === "create" && projectType && (
             <CreateProjectForm
-              template={selectedTemplate}
+              projectType={projectType}
+              templateDraft={templateDraft ?? undefined}
               creationMode={creationMode}
               onCreated={onCreated}
               onClose={onClose}

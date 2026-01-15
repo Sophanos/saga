@@ -133,6 +133,7 @@ export const createMessage = mutation({
     role: v.string(),
     content: v.string(),
     mentions: v.optional(v.any()),
+    attachments: v.optional(v.any()),
     tool: v.optional(v.any()),
     createdAt: v.optional(v.number()),
   },
@@ -168,6 +169,7 @@ export const createMessage = mutation({
       role: args.role,
       content: args.content,
       mentions: args.mentions,
+      attachments: args.attachments,
       tool: args.tool,
       createdAt,
     });

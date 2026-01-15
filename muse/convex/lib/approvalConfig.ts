@@ -78,6 +78,8 @@ export function needsToolApproval(
     case "write_content":
     case "ask_question":
     case "commit_decision":
+    case "add_comment":
+    case "delete_document":
       return true;
 
     case "create_entity":

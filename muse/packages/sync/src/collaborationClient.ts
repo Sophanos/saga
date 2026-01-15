@@ -3,11 +3,12 @@
  * Handles real-time collaboration features using Supabase Realtime
  */
 
-import type { SupabaseClient, RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
-import type { REALTIME_SUBSCRIBE_STATES } from "@supabase/realtime-js";
+import type { SupabaseClient, RealtimeChannel } from "@supabase/supabase-js";
 import { useCollaborationStore, generateCollaboratorColor } from "@mythos/state";
 import type { CollaboratorPresence, ActivityLogEntry, ProjectMember } from "@mythos/state";
 import type { DocumentChannel } from "./types";
+
+type RealtimeSubscribeState = "SUBSCRIBED" | "TIMED_OUT" | "CLOSED" | "CHANNEL_ERROR";
 
 /**
  * Presence payload for Supabase Realtime
@@ -178,7 +179,7 @@ export class CollaborationClient {
           store.removePresence(key);
         }
       })
-      .subscribe(async (status: `${REALTIME_SUBSCRIBE_STATES}`) => {
+      .subscribe(async (status: RealtimeSubscribeState) => {
         if (status === "SUBSCRIBED") {
           await channel.track({
             id: this.userId,

@@ -1,6 +1,6 @@
 # MLP 1: AI Co-Author Roadmap
 
-> Last Updated: 2026-01-14 (Billing status review: 20% → 75%)
+> Last Updated: 2026-01-15 (Billing status review: 20% → 75%)
 > Target: Expo Web + macOS first, then iOS/iPad
 >
 > See also: [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md)
@@ -37,7 +37,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Planning Tools + Sub-Agents | Done | 100 |
 | Supabase -> Convex Migration | Done | 100 |
 | Real-Time Collaboration | In progress | 80 |
-| Widgets & Artifacts + Async (MVP1) | In progress ([details](#phase-5-widgets--artifacts--async-mvp1)) | 60 |
+| Widgets & Artifacts + Async (MVP1) | In progress ([details](#phase-5-widgets--artifacts--async-mvp1)) | 75 |
 | App Store Pricing + RevenueCat | In progress ([details](./PRICING_REVENUECAT_SETUP.md)) | 75 |
 | Overall MLP 1 | In progress | 97 |
 
@@ -45,10 +45,16 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 
 **2026-01-15 (Artifacts backend + client)**
 - Backend: `artifacts`, `artifactVersions`, `artifactMessages`, `artifactOps` tables; CRUD + staleness queries in `convex/artifacts.ts`.
+- Lifecycle: `setStatus` state machine with audit metadata; Canvas marks artifacts `applied`, panels can mark `saved`.
 - Engine: domain ops → JSON Patch with rev test in `packages/core/src/artifacts/engine.ts`.
+- Iteration: OpenRouter-backed artifact iteration action (persists messages + versions).
 - Missing tools: `viewVersionHistory`, `deleteDocument`, `searchUsers`, `viewComments`, `addComment` - all wired (Convex + client executors).
 - Soft-delete: `documents.deletedAt`/`deletedByUserId`; `comments` table for collaboration.
-- Client: Expo `useArtifactSync`, web `ArtifactPanel` with insert/export/applyOp, Canvas revision on artifact insert.
+- Client: Compare mode (Web side-by-side/diff, Expo stacked) + inline artifact receipt block (insert + refresh).
+- Cross-artifact references: Artifact Panel shows outgoing refs + backlinks + graph view; copy `artifact://{artifactId}#{elementId}` links.
+- Export: runtime PNG/SVG/JSON across renderers + Artifact Panel PDF export + batch JSON (batch PDF still text-first).
+- Chat input: monthly usage chip + per-message token estimate (heuristic).
+- Deep links: Expo `rhei://project/.../artifact/{artifactKey}` routes + membership-gated access check.
 - Staleness: `external` status for web/github sources (can't track).
 
 **2026-01-14 (BYOK settings UI, main aa266e7)**
@@ -139,7 +145,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | 2 | Knowledge PRs review surface + hardening | In progress | [Phase 2](#phase-2-knowledge-prs-hardening) |
 | 3 | Integrations + Citations (MCP) | Planned | [Phase 3](#phase-3-integrations--citations) |
 | 4 | Clarity/Policy Coach | Complete | [Phase 4](#phase-4-claritypolicy-coach) |
-| 5 | Widgets & Artifacts + Async (MVP1) | In progress (60%) | [Phase 5](#phase-5-widgets--artifacts--async-mvp1) |
+| 5 | Widgets & Artifacts + Async (MVP1) | In progress (70%) | [Phase 5](#phase-5-widgets--artifacts--async-mvp1) |
 
 ## UI Integration Analysis (MLP1 Phase 1)
 
@@ -221,29 +227,35 @@ Docs:
 - Implementation plan: [WIDGETS_MVP1_IMPLEMENTATION_PLAN.md](./WIDGETS_MVP1_IMPLEMENTATION_PLAN.md)
 - Convex components: `@convex-dev/workpool`, `@convex-dev/workflow`, `@convex-dev/expo-push-notifications`
 
-### Done (60%)
+### Done (75%)
 
 | Component | What's Shipped | Files |
 |-----------|----------------|-------|
 | **Artifact Schema** | `artifacts`, `artifactVersions`, `artifactMessages`, `artifactOps` tables | `convex/schema.ts` |
 | **Artifact CRUD** | create, updateContent, appendMessage, applyOp, getByKey, list | `convex/artifacts.ts` |
+| **Artifact Lifecycle** | `setStatus` mutation + transition enforcement + audit fields | `convex/artifacts.ts`, `convex/schema.ts` |
 | **Artifact Engine** | Domain ops → JSON Patch, revision test, optimistic concurrency | `packages/core/src/artifacts/engine.ts` |
+| **Artifact Iteration (AI)** | OpenRouter-backed iteration action + persisted message history | `convex/ai/artifactIteration.ts` |
+| **Compare Mode** | Split view / diff views (Web), stacked compare (Expo) | `packages/state/src/artifact.ts`, `apps/*/src/components/artifacts/` |
 | **Staleness** | Source tracking, `checkStaleness` query, external source handling | `convex/artifacts.ts` |
+| **Receipts Block (v0)** | Inline `artifactReceipt` editor node + refresh hook | `packages/editor/src/extensions/artifact-receipt.ts`, `apps/web/src/components/canvas/Canvas.tsx` |
 | **Collaboration Tools** | viewVersionHistory, deleteDocument, viewComments, addComment, searchUsers | `convex/revisions.ts`, `convex/comments.ts`, `convex/documents.ts`, `convex/users.ts` |
 | **Tool Executors** | Client-side executors wired to Convex | `apps/web/src/tools/executors/` |
-| **Artifact Renderers** | prose, table, diagram, timeline, chart, outline, entityCard (7 types) | `apps/web/src/components/artifacts/runtime/` |
+| **Artifact Renderers** | prose (+ dialogue/lore/code/map variants), table, diagram, timeline, chart, outline, entityCard (11 types) | `apps/web/src/components/artifacts/runtime/` |
 | **Artifact Sync** | Expo hydration from Convex | `apps/expo/src/hooks/useArtifactSync.ts` |
 | **Canvas Integration** | Insert artifact content, revision with artifactVersionId | `apps/web/src/components/canvas/Canvas.tsx` |
+| **Artifact Export** | Runtime PNG/SVG/JSON + Artifact Panel PDF export + batch JSON (batch PDF is text-first) | `apps/web/src/components/artifacts/ArtifactPanel.tsx`, `apps/web/src/services/export/artifacts/pdf.ts`, `apps/web/src/components/artifacts/runtime/` |
+| **Artifact References (v0)** | References/backlinks + graph view in Artifact Panel | `apps/web/src/components/artifacts/ArtifactReferences.tsx`, `apps/web/src/components/artifacts/ArtifactGraph.tsx` |
 
-### Missing (40%)
+### Missing (25%)
 
 | Component | What's Needed | Priority |
 |-----------|---------------|----------|
 | **Widget Execution Pipeline** | `widgetExecutions` table, `/ai/widgets` streaming, progress UI, preview modal, slash menu | P0 |
-| **Receipts Block** | Inline editor block showing artifact source, staleness badge, source picker | P0 |
 | **Async Infrastructure** | `notificationInbox` table, workpool for long jobs, in-app toasts + inbox | P0 |
-| **Server Tool Registration** | Register collaboration tools in `agentRuntime.ts` for AI agent access | P1 |
-| **Deep Linking** | `rhei://` URL routing, navigation from artifact links, copy link UI | P2 |
+| **Receipts Block (v1)** | Source picker + stable UX for receipts block | P1 |
+| **Deep Linking (Web)** | URL routing, navigation from artifact links, copy link UI | P2 |
+| **Batch PDF (rendered)** | Offscreen runtime render per artifact (SVG/PNG) + page-per-artifact PDF assembly | P2 |
 | **Platform Push** | Expo push, Web push (VAPID), Tauri OS notifications | P3 (post-MLP1) |
 
 ## Billing & Monetization (75%)

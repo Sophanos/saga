@@ -1,0 +1,1 @@
+export { RegistryEditorModal } from "./RegistryEditorModal";

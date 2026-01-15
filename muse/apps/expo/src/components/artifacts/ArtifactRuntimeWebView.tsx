@@ -292,10 +292,10 @@ export function ArtifactRuntimeWebView({
   const html = useMemo(() => {
     if (!envelope) return null;
     return buildArtifactHtml(envelope, {
-      bg: colors.bgElevated ?? colors.bgApp,
-      text: colors.text ?? "#f8fafc",
-      textMuted: colors.textMuted ?? "#94a3b8",
-      border: colors.border ?? "rgba(148, 163, 184, 0.2)",
+      bg: colors.bgElevated,
+      text: colors.text,
+      textMuted: colors.textMuted,
+      border: colors.border,
     });
   }, [colors, envelope]);
 

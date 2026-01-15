@@ -125,7 +125,9 @@ export type ModalState =
     }
   | { type: "templatePicker"; step: TemplatePickerStep; templateId?: string }
   | { type: "inviteMember" }
-  | { type: "profile" };
+  | { type: "profile" }
+  | { type: "entityProfile"; entityId: string }
+  | { type: "registryEditor" };
 
 // Recent items tracking
 export interface RecentItems {

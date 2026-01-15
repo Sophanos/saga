@@ -3,7 +3,6 @@
  * Craft-inspired inline banner for settings showing subscription status
  */
 
-import React from "react";
 import { Crown, ChevronRight, Clock } from "lucide-react";
 import { Button, cn } from "@mythos/ui";
 import { useBilling } from "../../hooks/useBilling";
@@ -24,7 +23,7 @@ export function UpgradeBanner({ className }: UpgradeBannerProps) {
   const { subscription } = useBilling();
   const openModal = useMythosStore((s) => s.openModal);
 
-  const tierInfo = TIER_LABELS[subscription.tier] || TIER_LABELS.free;
+  const tierInfo = TIER_LABELS[subscription.tier] || TIER_LABELS["free"];
   const isSubscribed = subscription.tier !== "free";
   const isTrial = subscription.status === "trialing";
 

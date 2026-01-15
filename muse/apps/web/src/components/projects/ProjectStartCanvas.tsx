@@ -1,14 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@mythos/ui";
-import type { ProjectTemplate } from "@mythos/core";
-import { BLANK_TEMPLATE } from "@mythos/core";
 import type { TemplateDraft, GenesisEntity } from "@mythos/agent-protocol";
 import { StartOptions } from "../modals/TemplatePickerModal/StartOptions";
 import { CreateProjectForm } from "../modals/TemplatePickerModal/CreateProjectForm";
 import { AITemplateBuilder } from "../modals/TemplatePickerModal/AITemplateBuilder";
 import { TemplateDraftPreview } from "../modals/TemplatePickerModal/TemplateDraftPreview";
-import { convertDraftToTemplate } from "../modals/TemplatePickerModal/utils/convertDraftToTemplate";
 import type { ProjectType } from "../modals/TemplatePickerModal/projectTypes";
 import {
   useRequestedProjectStartAction,
@@ -31,11 +28,10 @@ const STEP_TITLES: Record<Step, string> = {
 
 export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps) {
   const [step, setStep] = useState<Step>("start");
-  const [selectedTemplate, setSelectedTemplate] = useState<ProjectTemplate | null>(null);
-  const [creationMode, setCreationMode] = useState<"gardener" | "architect">("gardener");
+  const [projectType, setProjectType] = useState<ProjectType | null>(null);
   const [templateDraft, setTemplateDraft] = useState<TemplateDraft | null>(null);
   const [starterEntities, setStarterEntities] = useState<GenesisEntity[]>([]);
-  const [projectType, setProjectType] = useState<ProjectType | null>(null);
+  const [creationMode, setCreationMode] = useState<"gardener" | "architect">("gardener");
 
   const requestedAction = useRequestedProjectStartAction();
   const clearRequestedAction = useClearProjectStartAction();
@@ -48,23 +44,25 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
     } else if (step === "preview") {
       setStep("ai-builder");
     } else if (step === "create") {
-      if (selectedTemplate?.id?.startsWith("ai-")) {
+      if (templateDraft) {
         setStep("preview");
       } else {
         setStep("start");
       }
     }
-  }, [step, selectedTemplate]);
+  }, [step, templateDraft]);
 
   const handleStartBlank = useCallback(() => {
-    setSelectedTemplate(BLANK_TEMPLATE);
+    if (!projectType) return;
+    setTemplateDraft(null);
     setCreationMode("gardener");
     setStep("create");
-  }, []);
+  }, [projectType]);
 
   const handleStartAI = useCallback(() => {
+    if (!projectType) return;
     setStep("ai-builder");
-  }, []);
+  }, [projectType]);
 
   const handleSelectProjectType = useCallback((type: ProjectType) => {
     setProjectType(type);
@@ -81,8 +79,6 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
 
   const handleAcceptTemplate = useCallback(() => {
     if (!templateDraft) return;
-    const generated = convertDraftToTemplate(templateDraft);
-    setSelectedTemplate(generated);
     setCreationMode("architect");
     setStep("create");
   }, [templateDraft]);
@@ -177,9 +173,10 @@ export function ProjectStartCanvas({ onProjectCreated }: ProjectStartCanvasProps
               />
             )}
 
-            {step === "create" && selectedTemplate && (
+            {step === "create" && projectType && (
               <CreateProjectForm
-                template={selectedTemplate}
+                projectType={projectType}
+                templateDraft={templateDraft ?? undefined}
                 creationMode={creationMode}
                 onCreated={onProjectCreated}
                 onClose={handleBack}

@@ -8,7 +8,8 @@ import { colors, entityColors, statusColors, type ThemeColors } from './colors';
 import { spacing, sizing, radii, typography, icons, shadows } from './tokens';
 
 export function useTheme() {
-  const colorScheme = useColorScheme() ?? 'dark';
+  const rawScheme = useColorScheme();
+  const colorScheme: 'light' | 'dark' = rawScheme === 'light' ? 'light' : 'dark';
   const themeColors = colors[colorScheme];
 
   return {

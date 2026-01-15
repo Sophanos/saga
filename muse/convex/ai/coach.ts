@@ -15,6 +15,7 @@ import { WRITING_COACH_SYSTEM, GENRE_COACH_CONTEXTS } from "./prompts/coach";
 import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
 import { getModelForTaskSync, checkTaskAccess, type TierId } from "../lib/providers";
 import { assertAiAllowed } from "../lib/quotaEnforcement";
+import { resolveOpenRouterKey } from "../lib/openRouterKey";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_ANALYZE_TEXT_MAX_CHARS = 20000;
@@ -279,9 +280,10 @@ export const runCoach = internalAction({
     relationships: v.optional(v.array(v.any())),
     genre: v.optional(v.string()),
     tierId: v.optional(v.string()),
+    byokKey: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<CoachResult> => {
-    const { projectId, userId, documentContent, entities, relationships, genre } = args;
+    const { projectId, userId, documentContent, entities, relationships, genre, byokKey } = args;
     const tierId = (args.tierId as TierId) ?? "free";
     const startTime = Date.now();
 
@@ -289,11 +291,6 @@ export const runCoach = internalAction({
     const access = checkTaskAccess("coach", tierId);
     if (!access.allowed) {
       return getDefaultAnalysis();
-    }
-
-    const apiKey = process.env["OPENROUTER_API_KEY"];
-    if (!apiKey) {
-      throw new Error("OPENROUTER_API_KEY not configured");
     }
 
     const resolved = getModelForTaskSync("coach", tierId);
@@ -312,6 +309,19 @@ export const runCoach = internalAction({
     }
 
     const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre, canonDecisionsText);
+
+    const billingMode = await ctx.runQuery(
+      (internal as any).billingSettings.getBillingMode,
+      { userId }
+    );
+    const resolvedByokKey = byokKey?.trim();
+    if (billingMode === "byok" && !resolvedByokKey) {
+      throw new Error("OpenRouter API key required for BYOK mode");
+    }
+
+    const { apiKey } = resolveOpenRouterKey(
+      billingMode === "byok" ? resolvedByokKey : undefined
+    );
 
     const { maxOutputTokens } = await assertAiAllowed(ctx, {
       userId,
@@ -349,11 +359,6 @@ export const runCoach = internalAction({
     const content = data.choices[0]?.message?.content ?? "";
     const analysis = parseResponse(content);
 
-    const billingMode = await ctx.runQuery(
-      (internal as any).billingSettings.getBillingMode,
-      { userId }
-    );
-
     if (billingMode !== "byok") {
       await ctx.runMutation(internal.aiUsage.trackUsage, {
         userId,
@@ -389,9 +394,10 @@ export const runCoachToStream = internalAction({
     relationships: v.optional(v.array(v.any())),
     genre: v.optional(v.string()),
     tierId: v.optional(v.string()),
+    byokKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { streamId, projectId, userId, documentContent, entities, relationships, genre } = args;
+    const { streamId, projectId, userId, documentContent, entities, relationships, genre, byokKey } = args;
     const tierId = (args.tierId as TierId) ?? "free";
     const startTime = Date.now();
 
@@ -402,15 +408,6 @@ export const runCoachToStream = internalAction({
         await ctx.runMutation((internal as unknown as { "ai/streams": { fail: unknown } })["ai/streams"]["fail"] as typeof internal.aiUsage.trackUsage, {
           streamId,
           error: "Coach not available on current tier",
-        } as never);
-        return;
-      }
-
-      const apiKey = process.env["OPENROUTER_API_KEY"];
-      if (!apiKey) {
-        await ctx.runMutation((internal as unknown as { "ai/streams": { fail: unknown } })["ai/streams"]["fail"] as typeof internal.aiUsage.trackUsage, {
-          streamId,
-          error: "OPENROUTER_API_KEY not configured",
         } as never);
         return;
       }
@@ -431,6 +428,32 @@ export const runCoachToStream = internalAction({
       }
 
       const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre, canonDecisionsText);
+
+      const billingMode = await ctx.runQuery(
+        (internal as any).billingSettings.getBillingMode,
+        { userId }
+      );
+      const resolvedByokKey = byokKey?.trim();
+      if (billingMode === "byok" && !resolvedByokKey) {
+        await ctx.runMutation((internal as unknown as { "ai/streams": { fail: unknown } })["ai/streams"]["fail"] as typeof internal.aiUsage.trackUsage, {
+          streamId,
+          error: "OpenRouter API key required for BYOK mode",
+        } as never);
+        return;
+      }
+
+      let apiKey: string;
+      try {
+        ({ apiKey } = resolveOpenRouterKey(
+          billingMode === "byok" ? resolvedByokKey : undefined
+        ));
+      } catch (error) {
+        await ctx.runMutation((internal as unknown as { "ai/streams": { fail: unknown } })["ai/streams"]["fail"] as typeof internal.aiUsage.trackUsage, {
+          streamId,
+          error: error instanceof Error ? error.message : "OPENROUTER_API_KEY not configured",
+        } as never);
+        return;
+      }
 
       let maxOutputTokens = 4096;
       try {
@@ -494,10 +517,6 @@ export const runCoachToStream = internalAction({
         },
       } as never);
 
-      const billingMode = await ctx.runQuery(
-        (internal as any).billingSettings.getBillingMode,
-        { userId }
-      );
       if (billingMode !== "byok") {
         await ctx.runMutation(internal.aiUsage.trackUsage, {
           userId,

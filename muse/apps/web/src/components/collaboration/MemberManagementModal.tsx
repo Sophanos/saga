@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
-import { X, Settings, Trash2, Crown, AlertTriangle, CheckCircle, AlertCircle } from "lucide-react";
+import { X, Settings, Trash2, Crown, AlertTriangle } from "lucide-react";
 import {
   Button,
   Card,
@@ -34,13 +34,6 @@ interface MemberManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   onMembersChanged?: () => void;
-}
-
-type FeedbackType = "success" | "error" | null;
-
-interface Feedback {
-  type: FeedbackType;
-  message: string;
 }
 
 // ============================================================================

@@ -30,7 +30,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { SAGA_TOOLS, TOOL_MAP } from "./tools.js";
-import { PROJECT_REQUIRED_TOOLS, PROPOSAL_FIRST_TOOLS, IMMEDIATE_EXECUTION_TOOLS } from "./tools.js";
+import { PROJECT_REQUIRED_TOOLS, PROPOSAL_FIRST_TOOLS } from "./tools.js";
 import {
   RESOURCE_TEMPLATES,
   fetchResource,

@@ -13,6 +13,8 @@ import {
   type RelationshipFormData,
 } from "./RelationshipFormModal";
 import { InviteMemberModal } from "../collaboration/InviteMemberModal";
+import { RegistryEditorModal } from "../registry/RegistryEditorModal";
+import { EntityProfilePage } from "../entity/EntityProfilePage";
 import type { Entity, Relationship } from "@mythos/core";
 import { buildEntity, buildRelationship, getTypeSpecificUpdates } from "@mythos/core";
 import { toast } from "@mythos/ui";
@@ -240,6 +242,16 @@ export function ModalHost() {
 
     case "profile":
       return <SettingsModal isOpen={true} onClose={closeModal} initialSection="profile" />;
+
+    case "registryEditor":
+      return <RegistryEditorModal isOpen={true} onClose={closeModal} />;
+
+    case "entityProfile":
+      return (
+        <div className="fixed inset-0 z-50 bg-mythos-bg-primary">
+          <EntityProfilePage entityId={modal.entityId} onBack={closeModal} />
+        </div>
+      );
 
     default:
       return null;

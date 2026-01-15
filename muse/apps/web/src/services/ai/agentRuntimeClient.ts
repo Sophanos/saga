@@ -63,6 +63,16 @@ export interface SagaChatPayload {
   contextHints?: UnifiedContextHints;
   mode?: SagaMode;
   threadId?: string;
+  attachments?: Array<{
+    kind: "image";
+    assetId?: string;
+    storageId?: string;
+    url?: string;
+    mimeType?: string;
+    width?: number;
+    height?: number;
+    altText?: string;
+  }>;
 }
 
 // Platform config

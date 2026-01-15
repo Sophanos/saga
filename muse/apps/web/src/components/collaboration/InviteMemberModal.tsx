@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useConvex, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
-import { X, UserPlus, Mail, Trash2, Clock, Send, AlertCircle, CheckCircle } from "lucide-react";
+import { X, UserPlus, Mail, Trash2, Clock, Send } from "lucide-react";
 import {
   Button,
   Card,
@@ -35,13 +35,6 @@ interface InviteMemberModalProps {
 interface InviteFormData {
   email: string;
   role: InviteRole;
-}
-
-type FeedbackType = "success" | "error" | null;
-
-interface Feedback {
-  type: FeedbackType;
-  message: string;
 }
 
 // ============================================================================

@@ -8,8 +8,9 @@
  * - Version history
  */
 
-import { useState, useRef, useEffect, useMemo, type RefObject } from "react";
-import { Button, cn, ScrollArea } from "@mythos/ui";
+import { useState, useRef, useEffect, useMemo, useCallback, type RefObject } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { Button, cn, ScrollArea, toast } from "@mythos/ui";
 import { bg } from "@mythos/theme";
 import {
   useArtifactStore,
@@ -19,13 +20,26 @@ import {
   ARTIFACT_TYPE_ICONS,
   type Artifact,
   type ArtifactType,
+  type ArtifactOp,
+  type ArtifactSplitMode,
+  type ArtifactVersion,
 } from "@mythos/state";
 import { parseArtifactEnvelope } from "@mythos/core";
 import { ArtifactRuntime, type ArtifactRendererHandle } from "./runtime/ArtifactRuntime";
+import { ArtifactGraph } from "./ArtifactGraph";
+import { ArtifactReferences } from "./ArtifactReferences";
+import { ArtifactSplitView } from "./ArtifactSplitView";
 import { useMythosStore } from "../../stores";
+import { renderArtifactsPdf, decodeSvgDataUrlToSvg } from "../../services/export/artifacts/pdf";
+import { downloadBlob, createTextBlob } from "../../services/export/utils/download";
+import { sanitizeFileName } from "../../services/export/utils/sanitizeFileName";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import * as LucideIcons from "lucide-react";
 import {
   X,
+  Bookmark,
+  Share2,
   Copy,
   User,
   LayoutPanelLeft,
@@ -41,7 +55,11 @@ function ArtifactIcon({ type, className }: { type: ArtifactType; className?: str
     .split('-')
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join('');
-  const IconComponent = (LucideIcons as Record<string, React.ComponentType<{ className?: string }>>)[pascalName];
+  const iconMap = LucideIcons as unknown as Record<
+    string,
+    React.ComponentType<{ className?: string }>
+  >;
+  const IconComponent = iconMap[pascalName];
   if (!IconComponent) return null;
   return <IconComponent className={className ?? "w-4 h-4"} />;
 }
@@ -51,13 +69,28 @@ interface ArtifactPanelProps {
   flowMode?: boolean;
 }
 
+type ArtifactExportAction = "png" | "svg" | "pdf" | "json" | "batch_pdf" | "batch_json";
+type ArtifactPanelViewMode = "artifact" | "graph";
+
 export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProps) {
   const artifact = useActiveArtifact();
   const artifacts = useArtifacts();
-  const { removeArtifact, setActiveArtifact } = useArtifactStore();
+  const {
+    removeArtifact,
+    setActiveArtifact,
+    splitView,
+    enterSplitView,
+    exitSplitView,
+    setSplitView,
+  } = useArtifactStore();
   const currentDocument = useMythosStore((s) => s.document.currentDocument);
+  const projectId = useMythosStore((s) => s.project.currentProject?.id ?? null);
+  const applyOpRemote = useMutation((api as any).artifacts.applyOp);
+  const setStatusRemote = useMutation((api as any).artifacts.setStatus);
+  const iterateArtifact = useAction((api as any).ai.artifactIteration.iterateArtifact);
 
   const [iterationInput, setIterationInput] = useState("");
+  const [isIterating, setIsIterating] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
   const [showArtifactList, setShowArtifactList] = useState(false);
   const [inputExpanded, setInputExpanded] = useState(false);
@@ -65,6 +98,8 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
   const iterationInputRef = useRef<HTMLTextAreaElement>(null);
   const historyScrollRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<ArtifactRendererHandle | null>(null);
+  const [exportAction, setExportAction] = useState<ArtifactExportAction>("png");
+  const [viewMode, setViewMode] = useState<ArtifactPanelViewMode>("artifact");
 
   // Keep expanded if has content
   const isExpanded = inputExpanded || iterationInput.trim().length > 0;
@@ -116,13 +151,47 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [artifact]);
 
+  // Keep split view anchored to the active artifact.
+  useEffect(() => {
+    if (!artifact) return;
+    if (!splitView.active) return;
+
+    const leftId = artifact.id;
+    let rightId = splitView.rightId;
+
+    if (!rightId || rightId === leftId) {
+      rightId = artifacts.find((a) => a.id !== leftId)?.id ?? null;
+    }
+
+    if (!rightId) {
+      exitSplitView();
+      return;
+    }
+
+    if (splitView.leftId !== leftId || splitView.rightId !== rightId) {
+      setSplitView({ leftId, rightId });
+    }
+  }, [
+    artifact,
+    artifacts,
+    exitSplitView,
+    setSplitView,
+    splitView.active,
+    splitView.leftId,
+    splitView.rightId,
+  ]);
+
   // Handle iteration submit
-  const handleIterationSubmit = () => {
+  const handleIterationSubmit = async () => {
+    if (isIterating) return;
     if (!iterationInput.trim() || !artifact) return;
+
+    const trimmed = iterationInput.trim();
+    setIterationInput("");
 
     useArtifactStore.getState().addIterationMessage(artifact.id, {
       role: "user",
-      content: iterationInput.trim(),
+      content: trimmed,
       context: currentDocument
         ? {
             documentId: currentDocument.id,
@@ -132,17 +201,102 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
         : undefined,
     });
 
-    // TODO: Call AI to process iteration
-    // For now, just add a mock response
-    setTimeout(() => {
+    if (projectId) {
+      setIsIterating(true);
+      try {
+        const result = await iterateArtifact({
+          projectId: projectId as Id<"projects">,
+          artifactKey: artifact.id,
+          userMessage: trimmed,
+          editorContext: currentDocument
+            ? {
+                documentId: currentDocument.id as unknown as Id<"documents">,
+                documentTitle: currentDocument.title ?? "Untitled",
+              }
+            : undefined,
+        });
+
+        if (result?.assistantMessage) {
+          useArtifactStore.getState().addIterationMessage(artifact.id, {
+            role: "assistant",
+            content: result.assistantMessage,
+          });
+        }
+
+        if (result?.nextContent && typeof result.nextContent === "string") {
+          useArtifactStore.getState().updateArtifact(artifact.id, {
+            content: result.nextContent,
+            format: result.nextFormat,
+          });
+        }
+      } catch (error) {
+        console.warn("[ArtifactPanel] Failed to iterate artifact", error);
+        useArtifactStore.getState().addIterationMessage(artifact.id, {
+          role: "assistant",
+          content: "Failed to iterate artifact. Please try again.",
+        });
+      } finally {
+        setIsIterating(false);
+      }
+    } else {
       useArtifactStore.getState().addIterationMessage(artifact.id, {
         role: "assistant",
-        content: "I'll update the artifact based on your feedback...",
+        content: "Connect to a project to iterate this artifact.",
       });
-    }, 500);
-
-    setIterationInput("");
+    }
   };
+
+  const serverArtifact = useQuery(
+    (api as any).artifacts.getByKey,
+    artifact && projectId
+      ? { projectId: projectId as Id<"projects">, artifactKey: artifact.id }
+      : "skip"
+  ) as any;
+
+  useEffect(() => {
+    if (!artifact || !serverArtifact?.artifact) return;
+
+    const versions = Array.isArray(serverArtifact.versions)
+      ? [...serverArtifact.versions]
+          .slice()
+          .reverse()
+          .map((version: any, index: number): ArtifactVersion => ({
+            id: version._id,
+            content: version.content,
+            timestamp: version.createdAt,
+            trigger: index === 0 ? "creation" : "manual",
+          }))
+      : artifact.versions;
+
+    const messages = Array.isArray(serverArtifact.messages)
+      ? serverArtifact.messages.map((message: any) => ({
+          id: message._id,
+          role: message.role,
+          content: message.content,
+          timestamp: message.createdAt,
+          context: message.context,
+        }))
+      : artifact.iterationHistory;
+
+    const latestVersionId = versions[versions.length - 1]?.id ?? artifact.currentVersionId;
+
+    useArtifactStore.getState().upsertArtifact({
+      ...artifact,
+      title: serverArtifact.artifact.title,
+      content: serverArtifact.artifact.content,
+      format: (serverArtifact.artifact.format ?? artifact.format) as any,
+      status: serverArtifact.artifact.status ?? artifact.status,
+      createdAt: serverArtifact.artifact.createdAt,
+      updatedAt: serverArtifact.artifact.updatedAt,
+      createdBy: serverArtifact.artifact.createdBy,
+      sources: serverArtifact.artifact.sources,
+      executionContext: serverArtifact.artifact.executionContext,
+      staleness: serverArtifact.staleness?.status,
+      versions,
+      currentVersionId: latestVersionId,
+      iterationHistory: messages,
+    });
+  }, [artifact?.id, projectId, serverArtifact]);
 
   // Handle copy
   const handleCopy = async () => {
@@ -150,50 +304,249 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
     await navigator.clipboard.writeText(artifact.content);
   };
 
+  const handleSave = async (): Promise<void> => {
+    if (!artifact) return;
+    if (!projectId) return;
+
+    try {
+      await setStatusRemote({
+        projectId: projectId as any,
+        artifactKey: artifact.id,
+        status: "saved",
+      });
+      useArtifactStore.getState().updateArtifact(artifact.id, { status: "saved" });
+      toast.success("Saved artifact");
+    } catch (error) {
+      console.warn("[ArtifactPanel] Failed to save artifact", error);
+      toast.error("Failed to save artifact");
+    }
+  };
+
+  const handleToggleCompare = (): void => {
+    if (!artifact) return;
+    if (!splitView.active) {
+      const rightId = artifacts.find((a) => a.id !== artifact.id)?.id ?? null;
+      if (!rightId) return;
+      enterSplitView(artifact.id, rightId, "side-by-side");
+      return;
+    }
+    exitSplitView();
+  };
+
   // Handle insert (placeholder)
   const handleInsert = () => {
     if (!artifact) return;
     if (typeof window !== "undefined") {
+      const artifactKey = artifact.id;
+      const artifactId =
+        typeof serverArtifact?.artifact?._id === "string"
+          ? (serverArtifact.artifact._id as string)
+          : undefined;
+
+      const sources = Array.isArray(artifact.sources)
+        ? artifact.sources.map((source) => ({
+            type: source.type,
+            id: source.id,
+            title: source.title,
+          }))
+        : undefined;
+
       window.dispatchEvent(
         new CustomEvent("artifact:insert-content", {
           detail: {
             content: artifact.content,
             format: artifact.format,
             title: artifact.title,
-            artifactId: artifact.id,
+            artifactKey,
+            artifactId,
+            artifactVersionId: artifact.currentVersionId,
+            receipt: {
+              artifactKey,
+              artifactId,
+              title: artifact.title,
+              artifactType: artifact.type,
+              sources,
+              staleness: artifact.staleness ?? "fresh",
+              createdAt: artifact.createdAt,
+              updatedAt: artifact.updatedAt,
+              createdBy: artifact.createdBy,
+            },
           },
         })
       );
     }
   };
 
-  const handleExport = async () => {
-    if (!runtimeRef.current || !artifact) return;
-    const result = await runtimeRef.current.exportArtifact("png");
-    if (!result) return;
-    if (result.dataUrl) {
+  const handleExport = async (): Promise<void> => {
+    if (!artifact) return;
+
+    const safeTitle = sanitizeFileName(artifact.title || "artifact");
+    const subtitleParts: string[] = [artifact.type, artifact.format, `key:${artifact.id}`];
+    const subtitle = subtitleParts.join(" · ");
+
+    const downloadDataUrl = (dataUrl: string, fileName: string): void => {
       const link = document.createElement("a");
-      link.href = result.dataUrl;
-      link.download = `${artifact.title || "artifact"}.${result.format === "svg" ? "svg" : "png"}`;
+      link.href = dataUrl;
+      link.download = fileName;
       link.click();
+    };
+
+    if (exportAction === "batch_json") {
+      const payload = artifacts.map((a) => ({
+        artifactKey: a.id,
+        title: a.title,
+        type: a.type,
+        format: a.format,
+        content: a.content,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+        createdBy: a.createdBy,
+        sources: a.sources,
+        staleness: a.staleness,
+      }));
+      const blob = createTextBlob(JSON.stringify(payload, null, 2), "application/json");
+      downloadBlob(blob, "artifacts.json");
+      toast.success("Exported artifacts.json");
       return;
     }
-    if (result.json) {
-      const blob = new Blob([result.json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${artifact.title || "artifact"}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
+
+    if (exportAction === "batch_pdf") {
+      const pages = artifacts.map((a) => ({
+        title: a.title || a.id,
+        subtitle: `${a.type} · ${a.format} · key:${a.id}`,
+        text: a.content,
+      }));
+      const pdf = await renderArtifactsPdf({
+        title: "Artifacts",
+        pages,
+        fileName: "artifacts.pdf",
+      });
+      downloadBlob(pdf.blob, pdf.fileName);
+      toast.success("Exported artifacts.pdf");
+      return;
+    }
+
+    if (exportAction === "json") {
+      let jsonText: string;
+      if (artifact.format === "json") {
+        try {
+          jsonText = JSON.stringify(JSON.parse(artifact.content), null, 2);
+        } catch {
+          jsonText = artifact.content;
+        }
+      } else {
+        jsonText = JSON.stringify(
+          {
+            artifactKey: artifact.id,
+            title: artifact.title,
+            type: artifact.type,
+            format: artifact.format,
+            content: artifact.content,
+            createdAt: artifact.createdAt,
+            updatedAt: artifact.updatedAt,
+          },
+          null,
+          2
+        );
+      }
+
+      const blob = createTextBlob(jsonText, "application/json");
+      downloadBlob(blob, `${safeTitle}.json`);
+      toast.success(`Exported ${safeTitle}.json`);
+      return;
+    }
+
+    if (exportAction === "pdf") {
+      let svg: string | undefined;
+      let imageDataUrl: string | undefined;
+
+      if (runtimeRef.current) {
+        const svgResult = await runtimeRef.current.exportArtifact("svg");
+        if (svgResult?.format === "svg" && svgResult.dataUrl) {
+          svg = decodeSvgDataUrlToSvg(svgResult.dataUrl) ?? undefined;
+        }
+
+        if (!svg) {
+          const pngResult = await runtimeRef.current.exportArtifact("png");
+          if (pngResult?.dataUrl) {
+            imageDataUrl = pngResult.dataUrl;
+          }
+        }
+      }
+
+      const pdf = await renderArtifactsPdf({
+        title: artifact.title || "Artifact",
+        pages: [
+          {
+            title: artifact.title || "Artifact",
+            subtitle,
+            svg,
+            imageDataUrl,
+            text: !svg && !imageDataUrl ? artifact.content : undefined,
+          },
+        ],
+        fileName: `${safeTitle}.pdf`,
+      });
+      downloadBlob(pdf.blob, pdf.fileName);
+      toast.success(`Exported ${safeTitle}.pdf`);
+      return;
+    }
+
+    if (!runtimeRef.current) {
+      toast.error("Image export is only available for structured artifacts.");
+      return;
+    }
+
+    const requested = exportAction === "svg" ? "svg" : "png";
+    const result = await runtimeRef.current.exportArtifact(requested);
+    if (!result?.dataUrl) {
+      toast.error("Export failed.");
+      return;
+    }
+
+    const extension = result.format === "svg" ? "svg" : "png";
+    downloadDataUrl(result.dataUrl, `${safeTitle}.${extension}`);
+    toast.success(`Exported ${safeTitle}.${extension}`);
+  };
+
+  const applyOpToArtifact = async (artifactId: string, op: ArtifactOp): Promise<void> => {
+    if (!projectId) {
+      useArtifactStore.getState().applyArtifactOp(artifactId, op);
+      return;
+    }
+
+    try {
+      const result = await applyOpRemote({
+        projectId: projectId as any,
+        artifactKey: artifactId,
+        op,
+      });
+      const nextEnvelope = result?.nextEnvelope;
+      if (!nextEnvelope) {
+        useArtifactStore.getState().applyArtifactOp(artifactId, op);
+        return;
+      }
+
+      const nextContent = JSON.stringify(nextEnvelope, null, 2);
+      const current = useArtifactStore
+        .getState()
+        .artifacts.find((a) => a.id === artifactId);
+      const nextOpLog = current?.opLog ? [...current.opLog, result.logEntry] : [result.logEntry];
+
+      useArtifactStore.getState().updateArtifact(artifactId, {
+        content: nextContent,
+        opLog: nextOpLog,
+        validationErrors: [],
+      });
+    } catch (error) {
+      console.warn("[ArtifactPanel] Failed to persist artifact op", error);
+      useArtifactStore.getState().applyArtifactOp(artifactId, op);
     }
   };
 
-  // Handle save (placeholder)
-  const handleSave = () => {
+  const handleApplyOp = async (op: ArtifactOp): Promise<void> => {
     if (!artifact) return;
-    // TODO: Implement save to entity/canon
-    console.log("Save artifact:", artifact.id);
+    await applyOpToArtifact(artifact.id, op);
   };
 
   if (!artifact) {
@@ -210,15 +563,26 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
     );
   }
 
-  const hasRuntimeEnvelope = useMemo(() => {
-    if (!artifact || artifact.format !== "json") return false;
-    try {
-      parseArtifactEnvelope(JSON.parse(artifact.content));
-      return true;
-    } catch {
-      return false;
-    }
-  }, [artifact.content, artifact.format]);
+  const compareRight = splitView.active
+    ? artifacts.find((a) => a.id === splitView.rightId) ?? null
+    : null;
+
+  const handleOpenArtifact = useCallback(
+    (artifactId: string, elementId?: string | null): void => {
+      setActiveArtifact(artifactId);
+      setShowArtifactList(false);
+      setShowVersions(false);
+      setViewMode("artifact");
+
+      if (typeof window === "undefined") return;
+      if (elementId) {
+        window.location.hash = elementId.startsWith("#") ? elementId : `#${elementId}`;
+      } else {
+        window.location.hash = "";
+      }
+    },
+    [setActiveArtifact]
+  );
 
   return (
     <div className={cn("h-full flex flex-col bg-mythos-bg-primary", className)}>
@@ -233,6 +597,11 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
             {ARTIFACT_TYPE_LABELS[artifact.type].toLowerCase()}
             {artifacts.length > 1 && ` (${artifacts.length})`}
           </span>
+          {artifact.staleness && artifact.staleness !== "fresh" && (
+            <span className="text-[11px] px-1.5 py-0.5 rounded bg-mythos-bg-tertiary text-mythos-text-muted">
+              {artifact.staleness}
+            </span>
+          )}
           {artifact.versions.length > 1 && (
             <button onClick={() => setShowVersions(!showVersions)} className="text-xs text-mythos-text-muted/70">
               v{artifact.versions.length}
@@ -242,12 +611,62 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
 
         {/* Right: Copy + Close */}
         <div className="flex items-center gap-2">
-          {hasRuntimeEnvelope && (
+          <div className="flex items-center gap-1">
+            <select
+              value={exportAction}
+              onChange={(event) => setExportAction(event.target.value as ArtifactExportAction)}
+              className="bg-mythos-bg-secondary border border-mythos-border-default rounded-md px-2 py-1 text-[11px] text-mythos-text-muted"
+              aria-label="Export format"
+            >
+              <option value="png">PNG</option>
+              <option value="svg">SVG</option>
+              <option value="pdf">PDF</option>
+              <option value="json">JSON</option>
+              {artifacts.length > 1 && <option value="batch_pdf">Batch PDF</option>}
+              {artifacts.length > 1 && <option value="batch_json">Batch JSON</option>}
+            </select>
             <button onClick={handleExport} className="flex items-center gap-1 hover:opacity-70">
               <ArrowDownToLine className="w-3.5 h-3.5 text-mythos-text-muted" />
               <span className="text-xs text-mythos-text-muted">Export</span>
             </button>
+          </div>
+          {projectId && (
+            <button
+              onClick={handleSave}
+              disabled={artifact.status === "saved"}
+              className="flex items-center gap-1 hover:opacity-70 disabled:opacity-40"
+            >
+              <Bookmark className="w-3.5 h-3.5 text-mythos-text-muted" />
+              <span className="text-xs text-mythos-text-muted">
+                {artifact.status === "saved" ? "Saved" : "Save"}
+              </span>
+            </button>
           )}
+          {artifacts.length > 1 && (
+            <button onClick={handleToggleCompare} className="flex items-center gap-1 hover:opacity-70">
+              <GripVertical className="w-3.5 h-3.5 text-mythos-text-muted" />
+              <span className="text-xs text-mythos-text-muted">
+                {splitView.active ? "Done" : "Compare"}
+              </span>
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setShowArtifactList(false);
+              setShowVersions(false);
+              if (viewMode === "artifact") {
+                exitSplitView();
+              }
+              setViewMode(viewMode === "graph" ? "artifact" : "graph");
+            }}
+            className="flex items-center gap-1 hover:opacity-70"
+            data-testid="artifact-graph-toggle"
+          >
+            <Share2 className="w-3.5 h-3.5 text-mythos-text-muted" />
+            <span className="text-xs text-mythos-text-muted">
+              {viewMode === "graph" ? "Artifact" : "Graph"}
+            </span>
+          </button>
           <button onClick={handleCopy} className="flex items-center gap-1 hover:opacity-70">
             <Copy className="w-3.5 h-3.5 text-mythos-text-muted" />
             <span className="text-xs text-mythos-text-muted">Copy</span>
@@ -316,10 +735,71 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
         )}
       </div>
 
+      {splitView.active && (
+        <div className="flex-none px-3 pb-2">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-mythos-text-muted">Compare with</span>
+            <select
+              value={splitView.rightId ?? ""}
+              onChange={(event) => {
+                const next = event.target.value;
+                if (!next) return;
+                setSplitView({ rightId: next });
+              }}
+              className="bg-mythos-bg-primary border border-mythos-border-default rounded px-2 py-1 text-xs text-mythos-text-secondary"
+            >
+              {artifacts
+                .filter((a) => a.id !== artifact.id)
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.title}
+                  </option>
+                ))}
+            </select>
+
+            <select
+              value={splitView.mode}
+              onChange={(event) => {
+                setSplitView({ mode: event.target.value as ArtifactSplitMode });
+              }}
+              className="bg-mythos-bg-primary border border-mythos-border-default rounded px-2 py-1 text-xs text-mythos-text-secondary"
+            >
+              <option value="side-by-side">Side</option>
+              <option value="before-after">Before/After</option>
+              <option value="inline">Inline</option>
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <ScrollArea className="flex-1">
         <div className="p-4">
-          <ArtifactRenderer artifact={artifact} runtimeRef={runtimeRef} />
+          {viewMode === "graph" ? (
+            <ArtifactGraph
+              artifacts={artifacts}
+              activeArtifactId={artifact.id}
+              onOpenArtifact={handleOpenArtifact}
+            />
+          ) : splitView.active && compareRight ? (
+            <ArtifactSplitView
+              left={artifact}
+              right={compareRight}
+              mode={splitView.mode}
+              onApplyOp={(artifactId, op) => {
+                void applyOpToArtifact(artifactId, op);
+              }}
+            />
+          ) : (
+            <>
+              <ArtifactRenderer artifact={artifact} runtimeRef={runtimeRef} onApplyOp={handleApplyOp} />
+              <ArtifactReferences
+                artifact={artifact}
+                artifacts={artifacts}
+                onOpenArtifact={handleOpenArtifact}
+              />
+            </>
+          )}
         </div>
       </ScrollArea>
 
@@ -380,6 +860,7 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
                 <textarea
                   ref={iterationInputRef}
                   value={iterationInput}
+                  disabled={isIterating}
                   onChange={(e) => setIterationInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
@@ -406,10 +887,10 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleIterationSubmit(); }}
-                    disabled={!iterationInput.trim()}
+                    disabled={!iterationInput.trim() || isIterating}
                     className={cn(
                       "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold",
-                      iterationInput.trim() ? "bg-mythos-accent text-black" : "bg-white/5 text-mythos-text-muted"
+                      iterationInput.trim() && !isIterating ? "bg-mythos-accent text-black" : "bg-white/5 text-mythos-text-muted"
                     )}
                   >
                     ↑
@@ -437,9 +918,11 @@ export function ArtifactPanel({ className, flowMode = false }: ArtifactPanelProp
 function ArtifactRenderer({
   artifact,
   runtimeRef,
+  onApplyOp,
 }: {
   artifact: Artifact;
   runtimeRef: RefObject<ArtifactRendererHandle>;
+  onApplyOp: (op: ArtifactOp) => void;
 }) {
   const hasRuntimeEnvelope = useMemo(() => {
     if (artifact.format !== "json") return false;
@@ -452,7 +935,7 @@ function ArtifactRenderer({
   }, [artifact.content, artifact.format]);
 
   if (hasRuntimeEnvelope) {
-    return <ArtifactRuntime ref={runtimeRef} artifact={artifact} />;
+    return <ArtifactRuntime ref={runtimeRef} artifact={artifact} onApplyOp={onApplyOp} />;
   }
 
   switch (artifact.type) {

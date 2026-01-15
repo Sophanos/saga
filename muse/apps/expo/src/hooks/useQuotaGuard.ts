@@ -11,7 +11,7 @@ import {
   useCanUseAI as useCanUseAISelector,
   useUsagePercentage as useUsagePercentageSelector,
 } from "@mythos/state";
-import { expoStorage } from "@mythos/storage";
+import { nativeStorage } from "@mythos/storage";
 import {
   getOfferings,
   purchasePackage,
@@ -19,7 +19,7 @@ import {
 } from "@mythos/auth/revenuecat";
 
 // Create expo billing store
-const useBillingStore = createBillingStore(expoStorage);
+const useBillingStore = createBillingStore(nativeStorage);
 
 // Bound selectors
 const useSubscription = () =>

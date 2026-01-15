@@ -274,6 +274,14 @@ export default defineSchema({
       v.literal("applied"),
       v.literal("saved")
     ),
+    statusChangedAt: v.optional(v.number()),
+    statusBy: v.optional(v.string()),
+    statusContext: v.optional(
+      v.object({
+        appliedToDocumentId: v.optional(v.id("documents")),
+        savedToEntityId: v.optional(v.id("entities")),
+      })
+    ),
     title: v.string(),
     format: v.optional(
       v.union(v.literal("markdown"), v.literal("json"), v.literal("plain"))

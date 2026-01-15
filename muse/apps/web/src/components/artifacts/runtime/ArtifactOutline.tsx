@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { ArtifactEnvelopeByType } from "@mythos/core";
 import type { ArtifactOp } from "@mythos/state";
-import { toPng } from "html-to-image";
+import { toPng, toSvg } from "html-to-image";
 import type { ArtifactExportResult, ArtifactRendererHandle } from "./ArtifactRuntime";
 
 interface ArtifactOutlineProps {
@@ -88,6 +88,14 @@ function ArtifactOutlineComponent(
         return { format: "json", json: JSON.stringify(envelope, null, 2) };
       }
       if (!containerRef.current) return null;
+      if (format === "svg") {
+        try {
+          const dataUrl = await toSvg(containerRef.current);
+          return { format: "svg", dataUrl };
+        } catch (error) {
+          console.warn("[ArtifactOutline] SVG export failed, falling back to PNG", error);
+        }
+      }
       const dataUrl = await toPng(containerRef.current);
       return { format: "png", dataUrl };
     },

@@ -1,0 +1,1 @@
+export { EntityProfilePage } from "./EntityProfilePage";

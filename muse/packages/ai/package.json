@@ -16,6 +16,10 @@
       "types": "./src/hooks/index.ts",
       "default": "./src/hooks/index.ts"
     },
+    "./assets/*": {
+      "types": "./src/assets/*.ts",
+      "default": "./src/assets/*.ts"
+    },
     "./agents/*": {
       "types": "./src/agents/*.ts",
       "default": "./src/agents/*.ts"

@@ -261,7 +261,6 @@ export function createUsageHandler(options?: {
       const outputTokens = usage.outputTokens ?? 0;
       const costMicros = calculateCostMicros(model, inputTokens, outputTokens);
 
-      // @ts-expect-error - internal API reference for billingSettings
       const getBillingModeFn = internal.billingSettings?.getBillingMode;
       const billingMode: "managed" | "byok" = getBillingModeFn
         ? await (ctx.runQuery as any)(getBillingModeFn, { userId })

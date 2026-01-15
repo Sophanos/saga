@@ -2,6 +2,11 @@
  * Project Type Definitions for Template Builder
  *
  * Shared between web and mobile AI Template Builder implementations.
+ * Project-agnostic: supports story, product, engineering, design, comms, cinema.
+ *
+ * Templates are either:
+ * 1. AI-generated via TemplateDraft from @mythos/agent-protocol
+ * 2. Backend defaults from convex/lib/projectTemplates.ts
  */
 
 export type ProjectType = "story" | "product" | "engineering" | "design" | "comms" | "cinema";

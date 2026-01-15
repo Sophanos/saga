@@ -17,8 +17,9 @@ function ArtifactChartComponent(
   const chartRef = useRef<ECharts | null>(null);
 
   const option = useMemo(() => {
-    if (envelope.data.chartKind === "pacing") {
-      const points = envelope.data.pointOrder.map((id) => envelope.data.pointsById[id]);
+    const data = envelope.data;
+    if (data.chartKind === "pacing") {
+      const points = data.pointOrder.map((id) => data.pointsById[id]);
       return {
         xAxis: { type: "category", data: points.map((point) => point.label ?? point.pointId) },
         yAxis: { type: "value", min: 0, max: 1 },
@@ -32,16 +33,17 @@ function ArtifactChartComponent(
       };
     }
 
-    const nodes = envelope.data.nodeOrder.map((id) => envelope.data.nodesById[id]);
-    const links = envelope.data.linkOrder.map((id) => envelope.data.linksById[id]);
+    // data.chartKind === "influenceSankey"
+    const nodes = data.nodeOrder.map((id) => data.nodesById[id]);
+    const links = data.linkOrder.map((id) => data.linksById[id]);
     return {
       series: [
         {
           type: "sankey",
           data: nodes.map((node) => ({ name: node.label })),
           links: links.map((link) => ({
-            source: envelope.data.nodesById[link.sourceId]?.label ?? link.sourceId,
-            target: envelope.data.nodesById[link.targetId]?.label ?? link.targetId,
+            source: data.nodesById[link.sourceId]?.label ?? link.sourceId,
+            target: data.nodesById[link.targetId]?.label ?? link.targetId,
             value: link.value,
           })),
           emphasis: { focus: "adjacency" },
@@ -97,6 +99,16 @@ function ArtifactChartComponent(
         return { format: "json", json: JSON.stringify(envelope, null, 2) };
       }
       if (!chartRef.current) return null;
+      if (format === "svg") {
+        try {
+          const dataUrl = chartRef.current.getDataURL({ type: "svg" as any });
+          if (typeof dataUrl === "string") {
+            return { format: "svg", dataUrl };
+          }
+        } catch (error) {
+          console.warn("[ArtifactChart] SVG export failed, falling back to PNG", error);
+        }
+      }
       const dataUrl = chartRef.current.getDataURL({ type: "png", pixelRatio: 2 });
       return { format: "png", dataUrl };
     },

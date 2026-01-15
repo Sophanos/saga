@@ -160,6 +160,7 @@ const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
           <ul
             ref={listRef}
             role="listbox"
+            tabIndex={-1}
             aria-activedescendant={
               highlightedIndex >= 0
                 ? `select-option-${highlightedIndex}`
@@ -177,7 +178,8 @@ const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
                 id={`select-option-${index}`}
                 role="option"
                 aria-selected={option.value === value}
-                onClick={() => {
+                onPointerDown={(event) => {
+                  event.preventDefault();
                   onChange(option.value);
                   setIsOpen(false);
                 }}

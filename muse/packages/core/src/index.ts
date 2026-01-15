@@ -1,16 +1,12 @@
 // Core domain exports
 export * from "./entities";
 export * from "./schema";
-export * from "./story";
 export * from "./dynamics";
 export { ProjectGraph } from "./project-graph";
 export type { Conflict } from "./project-graph";
 
 // Analysis module
 export * from "./analysis";
-
-// Template system
-export * from "./templates";
 
 // Artifacts (RAS engine)
 export * from "./artifacts";

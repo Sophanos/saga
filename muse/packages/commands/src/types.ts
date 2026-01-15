@@ -2,7 +2,7 @@
  * Command palette types
  */
 
-export type CommandCategory = 'entity' | 'ai' | 'navigation' | 'general';
+export type CommandCategory = 'entity' | 'ai' | 'navigation' | 'general' | 'graph';
 
 export interface CommandContext {
   projectId: string | null;

@@ -86,14 +86,14 @@ The key innovation: **Artifacts have their own mini-chat for iteration**.
 | `outline` | ArtifactOutline | item move | Done |
 | `entityCard` | ArtifactEntityCard | read-only | Done |
 
-### Planned (fallback to prose/markdown)
+### Prose variants (rendered via ArtifactProse)
 
-| Type | Use Case | Fallback |
-|------|----------|----------|
-| `dialogue` | Character speech | prose with formatting |
-| `lore` | World rules, canon | prose with formatting |
-| `code` | Technical content | prose with code fence |
-| `map` | Locations, geography | diagram (Mermaid subgraph) |
+| Type | Use Case | Renderer | Status |
+|------|----------|----------|--------|
+| `dialogue` | Character speech | ArtifactProse (variant) | Done |
+| `lore` | World rules, canon | ArtifactProse (variant) | Done |
+| `code` | Technical content | ArtifactProse (variant) | Done |
+| `map` | Locations, geography | ArtifactProse (variant) | Done |
 
 ### Source Types (NOT renderers)
 
@@ -104,6 +104,19 @@ The key innovation: **Artifacts have their own mini-chat for iteration**.
 | `memory` | AI memory | Tracked via `updatedAt` |
 | `web` | Fetched web content | External (can't track) |
 | `github` | Fetched from GitHub | External (can't track) |
+
+---
+
+## Artifact Receipt Node (Editor)
+
+The editor supports an inline, block-level **receipt node** so artifacts can be embedded with provenance and navigation.
+
+- Node: `artifactReceipt` (TipTap node extension in `@mythos/editor`)
+- Purpose: show artifact title/type, source summary + staleness badge, and provide jump-to-artifact
+- Default insertion: web Canvas inserts `artifactReceipt` immediately after inserted artifact content
+- NodeView events:
+  - `artifact:open` `{ artifactKey }` → open Artifact Panel and focus that artifact
+  - `artifact:receipt:refresh` `{ artifactKey, artifactId? }` → refresh staleness and update receipt attrs in-place
 
 ---
 
@@ -391,9 +404,17 @@ Widgets are pre-built artifact generators:
 rhei://project/{projectId}/document/{docId}
 rhei://project/{projectId}/document/{docId}#block-{blockId}
 rhei://project/{projectId}/entity/{entityId}
-rhei://project/{projectId}/artifact/{artifactId}
+rhei://project/{projectId}/artifact/{artifactKey}
 rhei://help/{topic}
 ```
+
+### Access Control (P0)
+
+Deep links are **membership-gated** for P0 (no public share tokens yet). Before navigating, clients call:
+
+- `deepLinks.checkAccess({ projectId, targetType, targetId, requireRole })`
+  - `requireRole: "member"` for read-only targets
+  - `requireRole: "editor"` for mutating targets
 
 ### In-Content Links
 ```markdown
@@ -445,6 +466,12 @@ interface Artifact {
   content: string;
   format: "markdown" | "json" | "plain";
   status: "draft" | "manually_modified" | "applied" | "saved";
+  statusChangedAt?: number;
+  statusBy?: string;
+  statusContext?: {
+    appliedToDocumentId?: string;
+    savedToEntityId?: string;
+  };
   sources: ArtifactSource[];
   executionContext: {
     widgetId: string;
@@ -498,7 +525,7 @@ interface StageState {
   isOpen: boolean;
   mode: "single" | "split";
   artifacts: Artifact[];
-  activeArtifactId: string | null;
+  activeArtifactKey: string | null;
 
   // Actions
   open: (artifact: Artifact) => void;
@@ -507,12 +534,12 @@ interface StageState {
   close: () => void;
 
   // Iteration
-  sendIteration: (artifactId: string, message: string) => Promise<void>;
+  sendIteration: (artifactKey: string, message: string) => Promise<void>;
 
   // Apply
-  insertAtCursor: (artifactId: string) => void;
-  saveToEntity: (artifactId: string, entityId: string) => void;
-  pinToCanon: (artifactId: string) => void;
+  insertAtCursor: (artifactKey: string) => void;
+  saveToEntity: (artifactKey: string, entityId: string) => void;
+  pinToCanon: (artifactKey: string) => void;
 }
 ```
 
@@ -943,7 +970,7 @@ Status (implementation):
 | `/fetch` widget | Done | Widget registered (server + client); fetch uses web_extract. |
 | `/diagram` widget | Done | Widget registered (server + client) with mermaid prompt. |
 | Deep linking scheme (`rhei://...#block-{id}`) | Partial | Hash-based focus in renderers; routing TBD. |
-| Cross-artifact references | Partial | Schema fields added; UI/pipeline pending. |
+| Cross-artifact references | Done (web) / Partial (Expo) | Web Artifact Panel shows outgoing refs + backlinks and a graph view; element-level copy links in renderers still pending. |
 
 ### Phase 5: Missing Tools (status)
 
@@ -989,7 +1016,7 @@ Decision: Document-scoped artifacts with thread history retained for iteration p
 6. Harden RAS v0.1 (schema validation, ID rules, `{byId, order}` invariants).
 7. Artifact Engine v1 (domain ops -> JSON Patch, rev checks, optimistic concurrency).
 8. Flagship diagrams with React Flow (custom nodes/edges + editing).
-9. Uniform deep linking across all artifacts (`.../artifact/{id}#{elementId}`).
+9. Uniform deep linking across all artifacts (`.../artifact/{artifactKey}#{elementId}`).
 10. First-class export per renderer with deterministic layouts.
 11. Scale and specialize only when usage demands it.
 12. Refinements: conflict strategy, entity card schema, story-time, templates, cross-links, staleness, iteration history, CSP notes.
@@ -1072,7 +1099,7 @@ Decision: Document-scoped artifacts with thread history retained for iteration p
 **Dependencies:** Artifact Engine v1 (Domain Ops -> JSON Patch), React Flow Flagship Diagrams
 **Owner:** Codex
 **Acceptance Criteria:**
-- `.../artifact/{artifactId}#{elementId}` supported. (Partial: hash focus in runtime)
+- `rhei://project/{projectId}/artifact/{artifactKey}#{elementId}` supported. (Partial: hash focus in runtime)
 - Diagram, table, timeline, and chart focus handlers implemented. (Done in runtime)
 
 ## Ticket: Export as First-Class Renderer Mode
@@ -1080,7 +1107,7 @@ Decision: Document-scoped artifacts with thread history retained for iteration p
 **Dependencies:** Artifact Runtime v1 (RAS-first)
 **Owner:** Codex
 **Acceptance Criteria:**
-- Export hooks per renderer (Mermaid SVG, ECharts dataURL, Timeline/Diagram snapshot). (Partial: runtime PNG/JSON; Mermaid SVG pending)
+- Export hooks per renderer (PNG/SVG/JSON; SVG falls back to PNG when needed; PDF assembly on web). (Done in web runtime + panel)
 - Layout determinism stored in `data` (not runtime-only). (Partial: RAS data stores positions/order)
 
 ## Ticket: Refinements + Conflict Strategy

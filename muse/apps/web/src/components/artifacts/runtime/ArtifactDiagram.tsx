@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -9,14 +9,13 @@ import {
   type Edge,
   type Node,
   type NodeMouseHandler,
-  type NodeDragHandler,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { toPng } from "html-to-image";
+import { toPng, toSvg } from "html-to-image";
 import type { ArtifactEnvelopeByType, DiagramEdge, DiagramNode } from "@mythos/core";
 import type { ArtifactOp } from "@mythos/state";
-import { useMythosStore } from "../../stores";
+import { useMythosStore } from "../../../stores";
 import type { ArtifactRendererHandle, ArtifactExportResult } from "./ArtifactRuntime";
 
 interface ArtifactDiagramProps {
@@ -116,7 +115,7 @@ function ArtifactDiagramComponent(
 
   const handleNodeClick: NodeMouseHandler = (event, node) => {
     event.stopPropagation();
-    const data = node.data as DiagramNodeData;
+    const data = node.data as unknown as DiagramNodeData;
     if (data.entityId) {
       const entity = entities.get(data.entityId);
       if (entity) {
@@ -129,7 +128,7 @@ function ArtifactDiagramComponent(
     }
   };
 
-  const handleNodeDragStop: NodeDragHandler = (_event, node) => {
+  const handleNodeDragStop = (_event: React.MouseEvent, node: Node) => {
     onApplyOp({
       type: "diagram.node.move",
       nodeId: node.id,
@@ -151,24 +150,31 @@ function ArtifactDiagramComponent(
       return { format: "json", json: JSON.stringify(envelope, null, 2) };
     }
     if (!wrapperRef.current) return null;
+    if (format === "svg") {
+      try {
+        const dataUrl = await toSvg(wrapperRef.current);
+        return { format: "svg", dataUrl };
+      } catch (error) {
+        console.warn("[ArtifactDiagram] SVG export failed, falling back to PNG", error);
+      }
+    }
     const dataUrl = await toPng(wrapperRef.current);
     return { format: "png", dataUrl };
   };
 
-  const handleFocus = (elementId: string) => {
+  const handleFocus = useCallback((elementId: string) => {
     const focusNode = renderNodes.find((node) => node.id === elementId);
     if (focusNode) {
       flowInstanceRef.current?.fitView({ nodes: [focusNode], padding: 0.4, duration: 400 });
     }
-  };
+  }, [renderNodes]);
 
-  useEffect(() => {
-    if (!ref || typeof ref === "function") return;
-    ref.current = {
-      exportArtifact: handleExport,
-      focusElement: handleFocus,
-    };
-  }, [handleExport, handleFocus, ref]);
+  const handleExportCb = useCallback(handleExport, [envelope]);
+
+  useImperativeHandle(ref, () => ({
+    exportArtifact: handleExportCb,
+    focusElement: handleFocus,
+  }), [handleExportCb, handleFocus]);
 
   return (
     <div ref={wrapperRef} className="h-[360px] rounded-lg border border-mythos-border-default">

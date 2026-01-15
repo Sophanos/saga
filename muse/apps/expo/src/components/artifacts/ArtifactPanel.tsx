@@ -17,6 +17,7 @@ import {
   TextInput,
   StyleSheet,
 } from "react-native";
+import { useAction, useMutation, useQuery } from "convex/react";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -34,12 +35,16 @@ import {
   useArtifacts,
   ARTIFACT_TYPE_ICONS,
   ARTIFACT_TYPE_LABELS,
+  useProjectStore,
   type Artifact,
+  type ArtifactVersion,
   type ArtifactType,
 } from "@mythos/state";
-import { parseArtifactEnvelope } from "@mythos/core";
+import { parseArtifactEnvelope, type ArtifactEnvelopeByType } from "@mythos/core";
 import { ArtifactRuntimeWebView } from "./ArtifactRuntimeWebView";
 import { MermaidPreviewWebView } from "./MermaidPreviewWebView";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 interface ArtifactPanelProps {
   flowMode?: boolean;
@@ -52,16 +57,49 @@ function ArtifactIcon({ type, size = 16, color }: { type: ArtifactType; size?: n
 }
 
 export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const artifact = useActiveArtifact();
   const artifacts = useArtifacts();
-  const { setPanelMode, removeArtifact, setActiveArtifact } = useArtifactStore();
+  const {
+    removeArtifact,
+    setActiveArtifact,
+    splitView,
+    enterSplitView,
+    exitSplitView,
+    setSplitView,
+  } = useArtifactStore();
+  const projectId = useProjectStore((s) => s.currentProjectId);
+  const iterateArtifact = useAction((api as any).ai.artifactIteration.iterateArtifact);
+  const setStatusRemote = useMutation((api as any).artifacts.setStatus);
 
   const [showVersions, setShowVersions] = useState(false);
   const [showArtifactList, setShowArtifactList] = useState(false);
+  const [showCompareList, setShowCompareList] = useState(false);
+  const [showReceipts, setShowReceipts] = useState(false);
+  const [isIterating, setIsIterating] = useState(false);
   const [historyOverflows, setHistoryOverflows] = useState(false);
   const [scrubIndex, setScrubIndex] = useState(0);
   const historyScrollRef = useRef<ScrollView>(null);
+
+  const compareRight = splitView.active
+    ? artifacts.find((a) => a.id === splitView.rightId) ?? null
+    : null;
+
+  const handleToggleCompare = (): void => {
+    if (!artifact) return;
+    if (artifacts.length < 2) return;
+
+    if (!splitView.active) {
+      const rightId = artifacts.find((a) => a.id !== artifact.id)?.id ?? null;
+      if (!rightId) return;
+      enterSplitView(artifact.id, rightId, "before-after");
+      setShowCompareList(false);
+      return;
+    }
+
+    exitSplitView();
+    setShowCompareList(false);
+  };
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -80,22 +118,141 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
     }
   }, [artifact?.currentVersionId, artifact?.versions]);
 
+  useEffect(() => {
+    if (!artifact) return;
+    if (!splitView.active) return;
+
+    const leftId = artifact.id;
+    let rightId = splitView.rightId;
+
+    if (!rightId || rightId === leftId) {
+      rightId = artifacts.find((a) => a.id !== leftId)?.id ?? null;
+    }
+
+    if (!rightId) {
+      exitSplitView();
+      return;
+    }
+
+    if (splitView.leftId !== leftId || splitView.rightId !== rightId) {
+      setSplitView({ leftId, rightId });
+    }
+  }, [
+    artifact,
+    artifacts,
+    exitSplitView,
+    setSplitView,
+    splitView.active,
+    splitView.leftId,
+    splitView.rightId,
+  ]);
+
+  const serverArtifact = useQuery(
+    (api as any).artifacts.getByKey,
+    artifact && projectId
+      ? { projectId: projectId as Id<"projects">, artifactKey: artifact.id }
+      : "skip"
+  ) as any;
+
+  useEffect(() => {
+    if (!artifact || !serverArtifact?.artifact) return;
+
+    const versions = Array.isArray(serverArtifact.versions)
+      ? [...serverArtifact.versions]
+          .slice()
+          .reverse()
+          .map((version: any, index: number): ArtifactVersion => ({
+            id: version._id,
+            content: version.content,
+            timestamp: version.createdAt,
+            trigger: index === 0 ? "creation" : "manual",
+          }))
+      : artifact.versions;
+
+    const messages = Array.isArray(serverArtifact.messages)
+      ? serverArtifact.messages.map((message: any) => ({
+          id: message._id,
+          role: message.role,
+          content: message.content,
+          timestamp: message.createdAt,
+          context: message.context,
+        }))
+      : artifact.iterationHistory;
+
+    const latestVersionId = versions[versions.length - 1]?.id ?? artifact.currentVersionId;
+
+    const nextFormat =
+      serverArtifact.artifact.format === "json" ||
+      serverArtifact.artifact.format === "plain" ||
+      serverArtifact.artifact.format === "markdown"
+        ? serverArtifact.artifact.format
+        : artifact.format;
+
+    useArtifactStore.getState().upsertArtifact({
+      ...artifact,
+      title: serverArtifact.artifact.title,
+      content: serverArtifact.artifact.content,
+      format: nextFormat as any,
+      status: serverArtifact.artifact.status ?? artifact.status,
+      createdAt: serverArtifact.artifact.createdAt,
+      updatedAt: serverArtifact.artifact.updatedAt,
+      createdBy: serverArtifact.artifact.createdBy,
+      sources: serverArtifact.artifact.sources,
+      executionContext: serverArtifact.artifact.executionContext,
+      staleness: serverArtifact.staleness?.status,
+      versions,
+      currentVersionId: latestVersionId,
+      iterationHistory: messages,
+    });
+  }, [artifact?.id, projectId, serverArtifact]);
+
   // Handle iteration submit from pill
-  const handleIterationSubmit = (message: string) => {
+  const handleIterationSubmit = async (message: string) => {
     if (!message || !artifact) return;
+    if (isIterating) return;
 
     useArtifactStore.getState().addIterationMessage(artifact.id, {
       role: "user",
       content: message,
     });
 
-    // TODO: Call AI to process iteration
-    setTimeout(() => {
+    if (projectId) {
+      setIsIterating(true);
+      try {
+        const result = await iterateArtifact({
+          projectId: projectId as Id<"projects">,
+          artifactKey: artifact.id,
+          userMessage: message,
+        });
+
+        if (result?.assistantMessage) {
+          useArtifactStore.getState().addIterationMessage(artifact.id, {
+            role: "assistant",
+            content: result.assistantMessage,
+          });
+        }
+
+        if (result?.nextContent && typeof result.nextContent === "string") {
+          useArtifactStore.getState().updateArtifact(artifact.id, {
+            content: result.nextContent,
+            format: result.nextFormat,
+          });
+        }
+      } catch (error) {
+        console.warn("[ArtifactPanel] Failed to iterate artifact", error);
+        useArtifactStore.getState().addIterationMessage(artifact.id, {
+          role: "assistant",
+          content: "Failed to iterate artifact. Please try again.",
+        });
+      } finally {
+        setIsIterating(false);
+      }
+    } else {
       useArtifactStore.getState().addIterationMessage(artifact.id, {
         role: "assistant",
-        content: "I'll update the artifact based on your feedback...",
+        content: "Select a project to iterate this artifact.",
       });
-    }, 500);
+    }
   };
 
   // Handle copy
@@ -111,9 +268,20 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
   };
 
   // Handle save (placeholder)
-  const handleSave = () => {
+  const handleSave = async (): Promise<void> => {
     if (!artifact) return;
-    console.log("Save artifact:", artifact.id);
+    if (!projectId) return;
+
+    try {
+      await setStatusRemote({
+        projectId: projectId as any,
+        artifactKey: artifact.id,
+        status: "saved",
+      });
+      useArtifactStore.getState().updateArtifact(artifact.id, { status: "saved" });
+    } catch (error) {
+      console.warn("[ArtifactPanel] Failed to save artifact", error);
+    }
   };
 
   // Empty state
@@ -153,6 +321,13 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
             {ARTIFACT_TYPE_LABELS[artifact.type].toLowerCase()}
             {artifacts.length > 1 && ` (${artifacts.length})`}
           </Text>
+          {artifact.staleness && artifact.staleness !== "fresh" && (
+            <Pressable onPress={() => setShowReceipts(!showReceipts)}>
+              <Text style={[styles.versionBadge, { color: colors.textMuted }]}>
+                {artifact.staleness}
+              </Text>
+            </Pressable>
+          )}
           {artifact.versions.length > 1 && (
             <Pressable onPress={() => setShowVersions(!showVersions)}>
               <Text style={[styles.versionBadge, { color: colors.textMuted }]}>
@@ -173,6 +348,60 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
           >
             <Feather name="copy" size={14} color={colors.textMuted} />
             <Text style={[styles.copyText, { color: colors.textMuted }]}>Copy</Text>
+          </Pressable>
+          {projectId && (
+            <Pressable
+              onPress={artifact.status === "saved" ? undefined : handleSave}
+              style={({ pressed }) => [
+                styles.copyBtn,
+                { opacity: artifact.status === "saved" ? 0.4 : pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Feather name="bookmark" size={14} color={colors.textMuted} />
+              <Text style={[styles.copyText, { color: colors.textMuted }]}>
+                {artifact.status === "saved" ? "Saved" : "Save"}
+              </Text>
+            </Pressable>
+          )}
+          {artifacts.length > 1 && (
+            <Pressable
+              onPress={handleToggleCompare}
+              style={({ pressed }) => [
+                styles.copyBtn,
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Feather name="columns" size={14} color={colors.textMuted} />
+              <Text style={[styles.copyText, { color: colors.textMuted }]}>
+                {splitView.active ? "Done" : "Compare"}
+              </Text>
+            </Pressable>
+          )}
+          {splitView.active && compareRight && (
+            <Pressable
+              onPress={() => setShowCompareList(!showCompareList)}
+              style={({ pressed }) => [
+                styles.copyBtn,
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Text
+                style={[styles.copyText, { color: colors.textMuted, maxWidth: 110 }]}
+                numberOfLines={1}
+              >
+                {compareRight.title}
+              </Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => setShowReceipts(!showReceipts)}
+            style={({ pressed }) => [
+              styles.copyBtn,
+              { opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Feather name="file-text" size={14} color={colors.textMuted} />
+            <Text style={[styles.copyText, { color: colors.textMuted }]}>Receipts</Text>
           </Pressable>
           <Pressable
             onPress={() => removeArtifact(artifact.id)}
@@ -216,6 +445,67 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
           </Animated.View>
         )}
 
+        {/* Compare list dropdown */}
+        {splitView.active && showCompareList && (
+          <Animated.View
+            entering={FadeInDown.duration(150)}
+            exiting={FadeOutUp.duration(100)}
+            style={[styles.artifactList, { backgroundColor: colors.bgElevated }]}
+          >
+            {artifacts
+              .filter((a) => a.id !== artifact.id)
+              .map((a) => (
+                <Pressable
+                  key={a.id}
+                  onPress={() => {
+                    setSplitView({ rightId: a.id });
+                    setShowCompareList(false);
+                  }}
+                  style={[
+                    styles.artifactListItem,
+                    a.id === splitView.rightId && { backgroundColor: colors.accent + "33" },
+                  ]}
+                >
+                  <ArtifactIcon type={a.type} size={14} color={a.id === splitView.rightId ? colors.accent : colors.textMuted} />
+                  <Text
+                    style={[
+                      styles.artifactListItemText,
+                      { color: a.id === splitView.rightId ? colors.accent : colors.text },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {a.title}
+                  </Text>
+                </Pressable>
+              ))}
+          </Animated.View>
+        )}
+
+        {showReceipts && (
+          <Animated.View
+            entering={FadeInDown.duration(150)}
+            exiting={FadeOutUp.duration(100)}
+            style={[styles.artifactList, { backgroundColor: colors.bgElevated }]}
+          >
+            <Text style={[styles.artifactListItemText, { color: colors.textMuted, marginBottom: 6 }]}>
+              Sources
+            </Text>
+            {(artifact.sources ?? []).length === 0 ? (
+              <Text style={[styles.artifactListItemText, { color: colors.textMuted }]}>
+                No sources recorded.
+              </Text>
+            ) : (
+              (artifact.sources ?? []).map((source) => (
+                <View key={`${source.type}:${source.id}`} style={styles.artifactListItem}>
+                  <Text style={[styles.artifactListItemText, { color: colors.textMuted }]}>
+                    {source.type}: {source.title ?? source.id}
+                  </Text>
+                </View>
+              ))
+            )}
+          </Animated.View>
+        )}
+
         {/* Version history */}
         {showVersions && (
           <Animated.View
@@ -236,7 +526,7 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
                   }}
                   style={styles.versionScrubButton}
                 >
-                  <Text style={[styles.versionScrubText, { color: colors.textMuted }]}>{\"<\"}</Text>
+                  <Text style={[styles.versionScrubText, { color: colors.textMuted }]}>{"<"}</Text>
                 </Pressable>
                 <Text style={[styles.versionScrubText, { color: colors.textMuted }]}>
                   v{scrubIndex + 1} / {artifact.versions.length}
@@ -252,7 +542,7 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
                   }}
                   style={styles.versionScrubButton}
                 >
-                  <Text style={[styles.versionScrubText, { color: colors.textMuted }]}>{\">\"}</Text>
+                  <Text style={[styles.versionScrubText, { color: colors.textMuted }]}>{">"}</Text>
                 </Pressable>
               </View>
             )}
@@ -287,7 +577,17 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
 
       {/* Content */}
       <ScrollView style={styles.content} contentContainerStyle={styles.contentInner}>
-        <ArtifactRenderer artifact={artifact} colors={colors} />
+        {splitView.active && compareRight ? (
+          <View>
+            <Text style={[styles.compareLabel, { color: colors.textMuted }]}>Before</Text>
+            <ArtifactRenderer artifact={artifact} colors={colors} />
+            <View style={[styles.compareDivider, { borderBottomColor: colors.border }]} />
+            <Text style={[styles.compareLabel, { color: colors.textMuted }]}>After</Text>
+            <ArtifactRenderer artifact={compareRight} colors={colors} />
+          </View>
+        ) : (
+          <ArtifactRenderer artifact={artifact} colors={colors} />
+        )}
       </ScrollView>
 
       {/* Iteration Chat - hidden in flow mode */}
@@ -296,6 +596,7 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
           <ArtifactChatPillContainer
             onSubmit={handleIterationSubmit}
             placeholder="Refine artifact..."
+            disabled={isIterating}
           >
             {/* Iteration history - oldest at top with fade, newest at bottom */}
             {artifact.iterationHistory.length > 0 && (
@@ -356,6 +657,19 @@ export function ArtifactPanel({ flowMode = false }: ArtifactPanelProps) {
           >
             <Text style={[styles.actionButtonText, { color: colors.text }]}>Insert</Text>
           </Pressable>
+          {projectId && (
+            <Pressable
+              onPress={artifact.status === "saved" ? undefined : handleSave}
+              style={[
+                styles.actionButton,
+                { borderColor: colors.border, opacity: artifact.status === "saved" ? 0.4 : 1 },
+              ]}
+            >
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>
+                {artifact.status === "saved" ? "Saved" : "Save"}
+              </Text>
+            </Pressable>
+          )}
         </View>
       )}
     </Animated.View>
@@ -379,6 +693,31 @@ function ArtifactRenderer({
     }
   }, [artifact.content, artifact.format]);
 
+  const runtimeText = useMemo(() => {
+    if (!runtimeEnvelope) return null;
+
+    if (
+      runtimeEnvelope.type === "prose" ||
+      runtimeEnvelope.type === "dialogue" ||
+      runtimeEnvelope.type === "lore" ||
+      runtimeEnvelope.type === "code" ||
+      runtimeEnvelope.type === "map"
+    ) {
+      const data = (runtimeEnvelope as Extract<
+        ArtifactEnvelopeByType,
+        { type: "prose" | "dialogue" | "lore" | "code" | "map" }
+      >).data;
+
+      const blocks = data.blockOrder
+        .map((blockId) => data.blocksById[blockId])
+        .filter(Boolean);
+
+      return blocks.map((block) => block.markdown).join("\n\n");
+    }
+
+    return null;
+  }, [runtimeEnvelope]);
+
   const useWebViewRuntime =
     runtimeEnvelope &&
     (runtimeEnvelope.type === "table" ||
@@ -388,6 +727,14 @@ function ArtifactRenderer({
 
   if (useWebViewRuntime) {
     return <ArtifactRuntimeWebView artifact={artifact} />;
+  }
+
+  if (runtimeText != null) {
+    if (runtimeEnvelope?.type === "code") {
+      return <CodeRenderer content={runtimeText} colors={colors} />;
+    }
+
+    return <ProseRenderer content={runtimeText} colors={colors} />;
   }
 
   switch (artifact.type) {
@@ -847,6 +1194,16 @@ const styles = StyleSheet.create({
   },
   contentInner: {
     padding: spacing[4],
+  },
+  compareLabel: {
+    fontSize: typography.xs,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: spacing[2],
+  },
+  compareDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginVertical: spacing[4],
   },
   iterationSection: {
     paddingHorizontal: spacing[4],

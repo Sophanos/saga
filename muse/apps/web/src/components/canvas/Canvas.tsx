@@ -15,6 +15,7 @@ import {
   createSuggestionItems,
   SlashCommand,
   SceneList,
+  ArtifactReceiptExtension,
   defaultSlashCommandItems,
   filterSlashCommandItems,
   imageExtension,
@@ -28,6 +29,7 @@ import { ScrollArea, toast } from "@mythos/ui";
 import type { Entity, Document } from "@mythos/core";
 import { getCapabilitiesForSurface, isWidgetCapability } from "@mythos/capabilities";
 import { uploadProjectImage } from "@mythos/ai/assets/uploadImage";
+import { useArtifactStore } from "@mythos/state";
 import { useConvex, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -520,6 +522,7 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
           return ReactNodeViewRenderer(SceneListBlock);
         },
       }),
+      ArtifactReceiptExtension,
       Placeholder.configure({
         placeholder: currentDocument
           ? "Begin your story..."
@@ -871,6 +874,163 @@ function EditorCanvas({ autoAnalysis }: EditorCanvasProps) {
     setEditorInstance(editor);
     return () => setEditorInstance(null);
   }, [editor, setEditorInstance]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+
+    type InsertArtifactDetail = {
+      content?: string;
+      title?: string;
+      artifactKey?: string;
+      artifactId?: string;
+      artifactVersionId?: string;
+      receipt?: Record<string, unknown>;
+    };
+
+    const updateReceiptNodes = (artifactKey: string, updates: Record<string, unknown>) => {
+      const receiptType = editor.schema.nodes["artifactReceipt"];
+      if (!receiptType) return;
+
+      const tr = editor.state.tr;
+      let updated = false;
+
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type !== receiptType) return;
+        const attrs = node.attrs as Record<string, unknown>;
+        if (attrs["artifactKey"] !== artifactKey) return;
+        tr.setNodeMarkup(pos, undefined, { ...attrs, ...updates });
+        updated = true;
+      });
+
+      if (updated) {
+        editor.view.dispatch(tr);
+      }
+    };
+
+    const handleInsertArtifact = (event: Event) => {
+      const detail = (event as CustomEvent<InsertArtifactDetail>).detail;
+      if (!detail?.content) return;
+
+      let artifactKey: string | null = null;
+      if (typeof detail.artifactKey === "string") {
+        artifactKey = detail.artifactKey;
+      } else if (detail.receipt && typeof detail.receipt === "object") {
+        const receipt = detail.receipt as Record<string, unknown>;
+        if (typeof receipt["artifactKey"] === "string") {
+          artifactKey = receipt["artifactKey"] as string;
+        }
+      } else if (typeof detail.artifactId === "string" && detail.artifactId.startsWith("artifact-")) {
+        // Backward-compat: older payloads used artifactId for artifactKey.
+        artifactKey = detail.artifactId;
+      }
+
+      const chain = editor.chain().focus().insertContent(detail.content);
+      if (detail.receipt && typeof detail.receipt === "object") {
+        chain
+          .insertContent({ type: "artifactReceipt", attrs: detail.receipt })
+          .insertContent({ type: "paragraph" });
+      }
+      chain.run();
+
+      const documentId = currentDocument?.id ?? null;
+      if (!documentId) return;
+
+      const snapshotJson = JSON.stringify(editor.getJSON());
+      void convex
+        .mutation((api as any).revisions.createManualRevision, {
+          documentId,
+          snapshotJson,
+          reason: "artifact_apply",
+          toolName: "artifact_insert",
+          summary: detail.title ? `Applied artifact: ${detail.title}` : "Applied artifact",
+          metadata: {
+            artifactKey: artifactKey ?? undefined,
+            artifactId: typeof detail.artifactId === "string" ? detail.artifactId : undefined,
+            artifactVersionId: typeof detail.artifactVersionId === "string" ? detail.artifactVersionId : undefined,
+          },
+        })
+        .catch((error: unknown) => {
+          console.warn("[Canvas] Failed to record artifact apply revision", error);
+        });
+
+      if (!artifactKey) return;
+      const projectId = currentProject?.id ?? null;
+      if (!projectId) return;
+
+      void convex
+        .mutation((api as any).artifacts.setStatus, {
+          projectId,
+          artifactKey,
+          status: "applied",
+          context: { appliedToDocumentId: documentId },
+        })
+        .catch((error: unknown) => {
+          console.warn("[Canvas] Failed to mark artifact applied", error);
+        });
+    };
+
+    const handleOpenArtifact = (event: Event) => {
+      const detail = (event as CustomEvent<{ artifactKey?: string }>).detail;
+      const artifactKey = detail?.artifactKey;
+      if (!artifactKey) return;
+      useArtifactStore.getState().setPanelMode("side");
+      useArtifactStore.getState().setActiveArtifact(artifactKey);
+    };
+
+    const handleRefreshReceipt = async (event: Event) => {
+      const projectId = currentProject?.id ?? null;
+      if (!projectId) return;
+
+      const detail = (event as CustomEvent<{ artifactKey?: string; artifactId?: string }>).detail;
+      const artifactKey = detail?.artifactKey;
+      if (!artifactKey) return;
+
+      try {
+        let artifactId = detail?.artifactId ?? null;
+        if (!artifactId) {
+          const byKey = await convex.query((api as any).artifacts.getByKey, {
+            projectId: projectId as Id<"projects">,
+            artifactKey,
+            versionLimit: 1,
+            messageLimit: 1,
+          });
+          artifactId = typeof byKey?.artifact?._id === "string" ? byKey.artifact._id : null;
+        }
+
+        if (!artifactId) return;
+
+        const staleness = await convex.query((api as any).artifacts.checkStaleness, {
+          artifactId: artifactId as Id<"artifacts">,
+        });
+
+        const sources = Array.isArray(staleness?.sources)
+          ? staleness.sources.map((source: any) => ({
+              type: source.type,
+              id: source.id,
+              title: source.title,
+              status: source.status,
+            }))
+          : undefined;
+
+        updateReceiptNodes(artifactKey, {
+          artifactId,
+          staleness: staleness?.status,
+          sources,
+        });
+      } catch (error) {
+        console.warn("[Canvas] Failed to refresh artifact receipt", error);
+      }
+    };
+
+    window.addEventListener("artifact:insert-content", handleInsertArtifact as EventListener);
+    window.addEventListener("artifact:open", handleOpenArtifact as EventListener);
+    window.addEventListener("artifact:receipt:refresh", handleRefreshReceipt as EventListener);
+    return () => {
+      window.removeEventListener("artifact:insert-content", handleInsertArtifact as EventListener);
+      window.removeEventListener("artifact:open", handleOpenArtifact as EventListener);
+      window.removeEventListener("artifact:receipt:refresh", handleRefreshReceipt as EventListener);
+    };
+  }, [convex, currentDocument?.id, currentProject?.id, editor]);
 
   // Entity detection hook - called after editor is created so marks can be applied
   const {

@@ -1,6 +1,6 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
-import { WriterKit, SlashCommand } from '@mythos/editor';
+import { WriterKit, SlashCommand, ArtifactReceiptExtension } from '@mythos/editor';
 import { type AnyExtension, type Content } from '@tiptap/core';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useEditorMetricsStore } from '@mythos/state';
@@ -160,6 +160,7 @@ export function Editor({
     return [
       BlockIdExtension,
       WriterKit,
+      ArtifactReceiptExtension,
       Placeholder.configure({
         placeholder,
         emptyEditorClass: 'editor-empty',
@@ -569,6 +570,23 @@ export function Editor({
     window.addEventListener('editor:open-ai-palette', handleOpenAIPalette);
     return () => window.removeEventListener('editor:open-ai-palette', handleOpenAIPalette);
   }, [editor, openAIPalette]);
+
+  // Handle /image command - dispatch to parent for modal handling
+  useEffect(() => {
+    const handleInsertImage = (e: CustomEvent<{ insertPosition: number }>) => {
+      // Re-dispatch to native layer (WebView bridge or parent component)
+      if (_enableBridge && bridgeSendRef.current) {
+        bridgeSendRef.current({
+          type: 'insertImageRequested',
+          position: e.detail.insertPosition,
+        });
+      }
+      // For non-bridge usage, parent handles via window event
+    };
+
+    window.addEventListener('editor:insert-image', handleInsertImage as EventListener);
+    return () => window.removeEventListener('editor:insert-image', handleInsertImage as EventListener);
+  }, [_enableBridge]);
 
   const handleBubbleMenuAI = useCallback(
     (selectedText: string) => {

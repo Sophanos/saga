@@ -52,7 +52,8 @@ export interface StreamContext {
 export interface ChatMention {
   type: 'entity' | 'document';
   id: string;
-  label: string;
+  label?: string;
+  name?: string;
 }
 
 export interface SagaChatPayload {
@@ -62,6 +63,16 @@ export interface SagaChatPayload {
   contextHints?: UnifiedContextHints;
   mode?: SagaMode;
   threadId?: string;
+  attachments?: Array<{
+    kind: 'image';
+    assetId?: string;
+    storageId?: string;
+    url?: string;
+    mimeType?: string;
+    width?: number;
+    height?: number;
+    altText?: string;
+  }>;
 }
 
 export interface ToolCallResult {
@@ -298,7 +309,7 @@ async function processSSEStream(
   let pendingRead: ReturnType<typeof reader.read> | null = null;
 
   try {
-    while (true) {
+    while (!doneReceived) {
       const readPromise: ReturnType<typeof reader.read> = pendingRead ?? reader.read();
       pendingRead = readPromise;
 

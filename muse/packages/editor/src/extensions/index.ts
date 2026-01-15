@@ -20,6 +20,12 @@ export {
 export { SceneBlock, type SceneBlockOptions } from "./scene-block";
 export { SceneList, type SceneListOptions } from "./scene-list";
 export {
+  ArtifactReceiptExtension,
+  type ArtifactReceiptAttrs,
+  type ArtifactReceiptSource,
+  type ArtifactReceiptStaleness,
+} from "./artifact-receipt";
+export {
   SlashCommand,
   slashCommandPluginKey,
   defaultSlashCommandItems,

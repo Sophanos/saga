@@ -7,16 +7,6 @@
 
 import { subscribeAuthLifecycle } from "@mythos/auth";
 
-let _authClient: typeof import("./auth").authClient | null = null;
-
-async function getAuthClient() {
-  if (!_authClient) {
-    const authModule = await import("./auth");
-    _authClient = authModule.authClient;
-  }
-  return _authClient;
-}
-
 const TOKEN_TTL_MS = 4 * 60 * 1000;
 const NULL_TTL_MS = 15 * 1000;
 const MAX_RETRIES = 2;
@@ -54,14 +44,26 @@ function isTransientStatus(status: number): boolean {
 
 async function fetchTokenWithRetry(): Promise<string | null> {
   let lastError: unknown;
-  const authClient = await getAuthClient();
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const response = await authClient.$fetch("/api/auth/convex-token", {
+      const response = await fetch("/api/auth/convex-token", {
         method: "GET",
+        credentials: "include",
       });
-      const tokenData = response?.data as { token?: string } | undefined;
+
+      if (response.status === 401 || response.status === 403) {
+        debugLog("Auth error, returning null");
+        return null;
+      }
+
+      if (!response.ok) {
+        const err = new Error(`Token fetch failed (${response.status})`);
+        (err as { status?: number }).status = response.status;
+        throw err;
+      }
+
+      const tokenData = (await response.json().catch(() => null)) as { token?: string } | null;
       return tokenData?.token ?? null;
     } catch (error: unknown) {
       lastError = error;
@@ -83,8 +85,7 @@ async function fetchTokenWithRetry(): Promise<string | null> {
       if (
         error instanceof Error &&
         "status" in error &&
-        ((error as { status: number }).status === 401 ||
-          (error as { status: number }).status === 403)
+        ((error as { status: number }).status === 401 || (error as { status: number }).status === 403)
       ) {
         debugLog("Auth error, returning null");
         return null;

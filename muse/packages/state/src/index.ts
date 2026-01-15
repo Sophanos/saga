@@ -346,8 +346,9 @@ export {
 export type {
   Artifact,
   ArtifactType,
-  ArtifactState,
+  ArtifactStatus,
   ArtifactPanelMode,
+  ArtifactSplitMode,
   IterationMessage,
   ArtifactVersion,
 } from "./artifact";

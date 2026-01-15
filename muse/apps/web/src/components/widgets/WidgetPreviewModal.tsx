@@ -15,6 +15,8 @@ const ARTIFACT_TYPE_MAP: Record<string, string> = {
   "widget.create-brief": "brief",
   "widget.create-notes": "notes",
   "widget.create-release-notes": "release-notes",
+  "widget.fetch": "web",
+  "widget.diagram": "diagram",
 };
 
 function resolveArtifactType(widgetId: string | null): string {

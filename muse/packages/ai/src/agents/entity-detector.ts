@@ -388,7 +388,7 @@ export class EntityDetector {
    * Check if a character is a word boundary
    */
   private isWordBoundary(char: string): boolean {
-    return /[\s.,!?;:'"()\[\]{}<>\/\\-]/.test(char);
+    return /[\s.,!?;:'"()[\]{}<>/\\-]/.test(char);
   }
 }
 

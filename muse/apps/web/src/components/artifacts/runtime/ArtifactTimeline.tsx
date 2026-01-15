@@ -1,8 +1,9 @@
-import { forwardRef, useEffect, useMemo, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+// @ts-expect-error vis-data doesn't have types
 import { DataSet } from "vis-data";
 import { Timeline } from "vis-timeline/standalone";
 import "vis-timeline/styles/vis-timeline-graph2d.min.css";
-import { toPng } from "html-to-image";
+import { toPng, toSvg } from "html-to-image";
 import type { ArtifactEnvelopeByType, TimelineItem } from "@mythos/core";
 import type { ArtifactOp } from "@mythos/state";
 import type { ArtifactRendererHandle, ArtifactExportResult } from "./ArtifactRuntime";
@@ -81,26 +82,31 @@ function ArtifactTimelineComponent(
     timelineRef.current.focus(focusId, { animation: true });
   }, [focusId]);
 
-  const handleExport = async (format: "png" | "svg" | "json"): Promise<ArtifactExportResult | null> => {
+  const handleExport = useCallback(async (format: "png" | "svg" | "json"): Promise<ArtifactExportResult | null> => {
     if (format === "json") {
       return { format: "json", json: JSON.stringify(envelope, null, 2) };
     }
     if (!containerRef.current) return null;
+    if (format === "svg") {
+      try {
+        const dataUrl = await toSvg(containerRef.current);
+        return { format: "svg", dataUrl };
+      } catch (error) {
+        console.warn("[ArtifactTimeline] SVG export failed, falling back to PNG", error);
+      }
+    }
     const dataUrl = await toPng(containerRef.current);
     return { format: "png", dataUrl };
-  };
+  }, [envelope]);
 
-  const handleFocus = (elementId: string) => {
+  const handleFocus = useCallback((elementId: string) => {
     timelineRef.current?.focus(elementId, { animation: true });
-  };
+  }, []);
 
-  useEffect(() => {
-    if (!ref || typeof ref === "function") return;
-    ref.current = {
-      exportArtifact: handleExport,
-      focusElement: handleFocus,
-    };
-  }, [handleExport, handleFocus, ref]);
+  useImperativeHandle(ref, () => ({
+    exportArtifact: handleExport,
+    focusElement: handleFocus,
+  }), [handleExport, handleFocus]);
 
   return (
     <div className="h-[280px] rounded-lg border border-mythos-border-default bg-mythos-bg-secondary">

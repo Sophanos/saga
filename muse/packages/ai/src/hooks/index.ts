@@ -16,3 +16,17 @@ export {
   type UseTemplateBuilderAgentOptions,
   type UseTemplateBuilderAgentResult,
 } from './useTemplateBuilderAgent';
+
+export {
+  useSagaAgent,
+} from './useSagaAgent';
+
+export type {
+  ChatAttachment,
+  SagaAgentMessage,
+  SagaAgentPlatformAdapter,
+  SagaAgentStoreAdapter,
+  SagaAgentStreamOptions,
+  UseSagaAgentOptions,
+  UseSagaAgentResult,
+} from './types';

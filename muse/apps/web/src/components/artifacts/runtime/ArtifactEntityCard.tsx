@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
 import type { ArtifactEnvelopeByType } from "@mythos/core";
-import { toPng } from "html-to-image";
+import { toPng, toSvg } from "html-to-image";
 import type { ArtifactExportResult, ArtifactRendererHandle } from "./ArtifactRuntime";
 
 interface ArtifactEntityCardProps {
@@ -21,6 +21,14 @@ function ArtifactEntityCardComponent(
         return { format: "json", json: JSON.stringify(envelope, null, 2) };
       }
       if (!containerRef.current) return null;
+      if (format === "svg") {
+        try {
+          const dataUrl = await toSvg(containerRef.current);
+          return { format: "svg", dataUrl };
+        } catch (error) {
+          console.warn("[ArtifactEntityCard] SVG export failed, falling back to PNG", error);
+        }
+      }
       const dataUrl = await toPng(containerRef.current);
       return { format: "png", dataUrl };
     },

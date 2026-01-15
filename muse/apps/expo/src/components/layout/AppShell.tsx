@@ -11,14 +11,18 @@ import Animated, {
   FadeOut,
   SlideInLeft,
   SlideOutLeft,
+  SlideInRight,
+  SlideOutRight,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, radii, typography } from '@/design-system';
-import { useLayoutStore, useProjectStore, useFlowEnabled } from '@mythos/state';
+import { useLayoutStore, useProjectStore, useFlowEnabled, useArtifactPanelMode, useArtifactStore } from '@mythos/state';
 import { Sidebar } from './Sidebar';
 import { AIPanel, AIFloatingButton } from '@/components/ai';
+import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel';
 import { KnowledgePRsPanel } from '@/components/knowledge/KnowledgePRsPanel';
 import { FlowOverlay } from '@/components/flow';
+import { useArtifactSync } from '@/hooks/useArtifactSync';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -49,6 +53,10 @@ export function AppShell({ children }: AppShellProps) {
   } = useLayoutStore();
   const fallbackProjectId = useProjectStore((s) => s.currentProjectId);
   const flowEnabled = useFlowEnabled();
+  const artifactPanelMode = useArtifactPanelMode();
+  const { panelWidth: artifactPanelWidth, setPanelWidth: setArtifactPanelWidth, setPanelMode: setArtifactPanelMode } = useArtifactStore();
+
+  useArtifactSync();
 
   const [showTooltip, setShowTooltip] = useState(false);
   const [showSidebarOverlay, setShowSidebarOverlay] = useState(false);
@@ -64,7 +72,10 @@ export function AppShell({ children }: AppShellProps) {
   const showSidePanel = !flowEnabled && isDesktop && aiPanelMode === 'side';
   const showFloating = !flowEnabled && aiPanelMode === 'floating';
   const showFull = !flowEnabled && aiPanelMode === 'full';
-  const showFAB = !flowEnabled; // Hide FAB in flow mode
+  // Hide FAB when side panel is open (AI already visible)
+  const showFAB = !flowEnabled && aiPanelMode !== 'side';
+  // Hide artifact panel when AI side panel is open (to avoid clutter)
+  const showArtifactPanel = isDesktop && artifactPanelMode === 'side' && aiPanelMode !== 'side';
 
   const clearAllTimeouts = useCallback(() => {
     if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
@@ -241,6 +252,33 @@ export function AppShell({ children }: AppShellProps) {
         </>
       )}
 
+      {showArtifactPanel && (
+        <Animated.View
+          entering={SlideInRight.duration(250).springify().damping(22).stiffness(280)}
+          exiting={SlideOutRight.duration(180)}
+          style={[
+            styles.artifactPanelFloating,
+            {
+              width: artifactPanelWidth,
+              right: showSidePanel ? aiPanelWidth : 0,
+              backgroundColor: colors.bgApp,
+              shadowColor: isDark ? '#000' : '#666',
+            },
+          ]}
+        >
+          <ResizeHandle
+            side="left"
+            onResize={setArtifactPanelWidth}
+            currentWidth={artifactPanelWidth}
+            onMinimize={() => setArtifactPanelMode('hidden')}
+            panelType="artifact"
+          />
+          <View style={styles.artifactPanelInner}>
+            <ArtifactPanel flowMode={flowEnabled} />
+          </View>
+        </Animated.View>
+      )}
+
       {showSidePanel && (
         <View style={[styles.aiPanelContainer, { width: aiPanelWidth }]}>
           <ResizeHandle
@@ -267,7 +305,7 @@ interface ResizeHandleProps {
   onResize: (width: number) => void;
   currentWidth: number;
   onMinimize?: () => void;
-  panelType?: 'sidebar' | 'ai';
+  panelType?: 'sidebar' | 'ai' | 'artifact';
 }
 
 function ResizeHandle({ side, onResize, currentWidth, onMinimize, panelType = 'sidebar' }: ResizeHandleProps) {
@@ -326,7 +364,7 @@ function ResizeHandle({ side, onResize, currentWidth, onMinimize, panelType = 's
     ],
   }));
 
-  const shortcut = panelType === 'ai' ? '⌘J' : '⌘B';
+  const shortcut = panelType === 'ai' ? '⌘J' : panelType === 'artifact' ? '⌘.' : '⌘B';
 
   return (
     <GestureDetector gesture={Gesture.Race(tap, Gesture.Simultaneous(pan, hover))}>
@@ -462,6 +500,21 @@ const styles = StyleSheet.create({
   aiPanel: {
     flex: 1,
     borderLeftWidth: StyleSheet.hairlineWidth,
+  },
+  artifactPanelFloating: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    zIndex: 50,
+    // Shadow for floating effect
+    shadowOffset: { width: -8, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  artifactPanelInner: {
+    flex: 1,
   },
 
   resizeHandle: {

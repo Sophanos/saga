@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { useTheme, spacing, radii, typography } from '@/design-system';
 import { useProjectStore } from '@mythos/state';
 import { useProjectGraph } from '@/hooks/useProjectGraph';
@@ -13,6 +14,7 @@ import {
 } from '@mythos/core';
 import { ProjectGraphCanvas } from './ProjectGraphCanvas';
 import { ProjectGraphControls, type ProjectGraphTypeOption } from './ProjectGraphControls';
+import { RegistryEditorModal } from './RegistryEditorModal';
 
 export function ProjectGraphView(): JSX.Element {
   const { colors } = useTheme();
@@ -62,6 +64,8 @@ export function ProjectGraphView(): JSX.Element {
   }, []);
 
   const [layoutKey, setLayoutKey] = useState(0);
+  const [showRegistryModal, setShowRegistryModal] = useState(false);
+
   const handleResetLayout = useCallback((): void => {
     setLayoutKey((prev) => prev + 1);
   }, []);
@@ -70,23 +74,49 @@ export function ProjectGraphView(): JSX.Element {
     router.push('/editor');
   }, [router]);
 
+  const handleOpenRegistry = useCallback((): void => {
+    setShowRegistryModal(true);
+  }, []);
+
+  const handleCloseRegistry = useCallback((): void => {
+    setShowRegistryModal(false);
+  }, []);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bgApp }]} testID="project-graph-view">
-      <View style={[styles.header, { borderBottomColor: colors.border }]}> 
-        <Pressable
-          testID="project-graph-back-to-editor"
-          onPress={handleBackToEditor}
-          style={({ pressed, hovered }) => [
-            styles.backButton,
-            {
-              backgroundColor: pressed || hovered ? colors.bgHover : colors.bgSurface,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <Text style={[styles.backText, { color: colors.text }]}>Back to editor</Text>
-        </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Project Graph</Text>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <View style={styles.headerLeft}>
+          <Feather name="git-branch" size={18} color={colors.accent} />
+          <Text style={[styles.title, { color: colors.text }]}>Project Graph</Text>
+        </View>
+        <View style={styles.headerRight}>
+          <Pressable
+            testID="project-graph-registry"
+            onPress={handleOpenRegistry}
+            style={({ pressed, hovered }) => [
+              styles.headerButton,
+              {
+                backgroundColor: pressed || hovered ? colors.bgHover : 'transparent',
+              },
+            ]}
+          >
+            <Feather name="settings" size={14} color={colors.textMuted} />
+            <Text style={[styles.headerButtonText, { color: colors.textMuted }]}>Registry</Text>
+          </Pressable>
+          <Pressable
+            testID="project-graph-back-to-editor"
+            onPress={handleBackToEditor}
+            style={({ pressed, hovered }) => [
+              styles.headerButton,
+              {
+                backgroundColor: pressed || hovered ? colors.bgHover : 'transparent',
+              },
+            ]}
+          >
+            <Feather name="file-text" size={14} color={colors.textMuted} />
+            <Text style={[styles.headerButtonText, { color: colors.textMuted }]}>Editor</Text>
+          </Pressable>
+        </View>
       </View>
 
       {!projectId ? (
@@ -108,6 +138,8 @@ export function ProjectGraphView(): JSX.Element {
           </View>
         </ReactFlowProvider>
       )}
+
+      {showRegistryModal && <RegistryEditorModal onClose={handleCloseRegistry} />}
     </View>
   );
 }
@@ -117,26 +149,38 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    height: 56,
-    paddingHorizontal: spacing[4],
+    height: 48,
+    paddingHorizontal: spacing[3],
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[3],
+    justifyContent: 'space-between',
     borderBottomWidth: 1,
   },
-  backButton: {
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
-    borderRadius: radii.full,
-    borderWidth: 1,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
   },
-  backText: {
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+  },
+  headerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1.5],
+    paddingVertical: spacing[1.5],
+    paddingHorizontal: spacing[2.5],
+    borderRadius: radii.md,
+  },
+  headerButtonText: {
     fontSize: typography.xs,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   title: {
-    fontSize: typography.base,
-    fontWeight: '700',
+    fontSize: typography.sm,
+    fontWeight: '600',
   },
   canvas: {
     flex: 1,

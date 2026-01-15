@@ -34,6 +34,8 @@ export type EditorToNativeMessage =
   | { type: 'editorBlurred' }
   // AI requests
   | { type: 'aiRequest'; selectedText: string; prompt?: string; action?: string }
+  // Media insert requests
+  | { type: 'insertImageRequested'; position: number }
   // Errors
   | { type: 'error'; code: string; message: string };
 
@@ -46,6 +48,8 @@ export type NativeToEditorMessage =
   | { type: 'setTitle'; title: string }
   | { type: 'insertContent'; content: string; at?: number }
   | { type: 'replaceSelection'; content: string }
+  // Media operations
+  | { type: 'insertImage'; src: string; alt?: string; at?: number }
   // Suggestion operations
   | { type: 'addSuggestion'; suggestion: NewSuggestionPayload }
   | { type: 'acceptSuggestion'; id: string }
@@ -136,6 +140,7 @@ export interface EditorInstance {
     setContent: (content: string) => boolean;
     insertContent: (content: string) => boolean;
     insertContentAt: (pos: number, content: string) => boolean;
+    setImage: (options: { src: string; alt?: string }) => boolean;
     addSuggestion: (suggestion: Omit<Suggestion, 'createdAt' | 'agentId'>) => boolean;
     acceptSuggestion: (id: string) => boolean;
     rejectSuggestion: (id: string) => boolean;
@@ -391,6 +396,15 @@ function handleNativeMessage(
 
     case 'replaceSelection':
       editor.commands.insertContent(message.content);
+      break;
+
+    case 'insertImage':
+      if (message.at !== undefined) {
+        // Insert at specific position
+        editor.commands.insertContentAt(message.at, `<img src="${message.src}" alt="${message.alt ?? ''}" />`);
+      } else {
+        editor.commands.setImage({ src: message.src, alt: message.alt });
+      }
       break;
 
     case 'addSuggestion':

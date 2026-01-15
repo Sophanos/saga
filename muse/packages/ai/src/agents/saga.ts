@@ -733,7 +733,7 @@ export type AnalyzeContentArgs = z.infer<typeof analyzeContentParameters>;
 /**
  * Create entity tool parameter schema.
  */
-const createEntityParameters = z.object({
+export const createEntityParameters = z.object({
   type: EntityTypeSchema.describe("The type of entity to create"),
   name: z.string().describe("The name of the entity"),
   aliases: z.array(z.string()).optional().describe("Alternative names or nicknames"),
@@ -760,7 +760,7 @@ const createEntityParameters = z.object({
 
 export type CreateEntityArgs = z.infer<typeof createEntityParameters>;
 
-const updateEntityParameters = z.object({
+export const updateEntityParameters = z.object({
   entityName: z.string().describe("Entity name to find (LLM doesn't know IDs)"),
   entityType: EntityTypeSchema.optional().describe("Optional type for disambiguation"),
   updates: z
@@ -787,7 +787,7 @@ const updateEntityParameters = z.object({
 
 export type UpdateEntityArgs = z.infer<typeof updateEntityParameters>;
 
-const deleteEntityParameters = z.object({
+export const deleteEntityParameters = z.object({
   entityName: z.string().describe("Name of the entity to delete"),
   entityType: EntityTypeSchema.optional().describe("Optional type for disambiguation"),
   reason: z.string().optional().describe("Reason for deletion"),
@@ -795,7 +795,7 @@ const deleteEntityParameters = z.object({
 
 export type DeleteEntityArgs = z.infer<typeof deleteEntityParameters>;
 
-const createRelationshipParameters = z.object({
+export const createRelationshipParameters = z.object({
   sourceName: z.string().describe("Name of the source entity"),
   targetName: z.string().describe("Name of the target entity"),
   type: RelationTypeSchema.describe("Type of relationship"),
@@ -806,7 +806,7 @@ const createRelationshipParameters = z.object({
 
 export type CreateRelationshipArgs = z.infer<typeof createRelationshipParameters>;
 
-const updateRelationshipParameters = z.object({
+export const updateRelationshipParameters = z.object({
   sourceName: z.string().describe("Name of the source entity"),
   targetName: z.string().describe("Name of the target entity"),
   type: RelationTypeSchema.describe("Type of relationship"),
@@ -821,7 +821,7 @@ const updateRelationshipParameters = z.object({
 
 export type UpdateRelationshipArgs = z.infer<typeof updateRelationshipParameters>;
 
-const deleteRelationshipParameters = z.object({
+export const deleteRelationshipParameters = z.object({
   sourceName: z.string().describe("Name of the source entity"),
   targetName: z.string().describe("Name of the target entity"),
   type: RelationTypeSchema.describe("Type of relationship"),
@@ -899,7 +899,7 @@ const genesisWorldParameters = z.object({
 
 export type GenesisWorldArgs = z.infer<typeof genesisWorldParameters>;
 
-const detectEntitiesParameters = z.object({
+export const detectEntitiesParameters = z.object({
   scope: AnalysisScopeSchema.optional().describe("Scope of detection"),
   text: z.string().optional().describe("Text to analyze (optional)"),
   minConfidence: z.number().min(0).max(1).optional().describe("Minimum confidence threshold"),
@@ -909,7 +909,7 @@ const detectEntitiesParameters = z.object({
 
 export type DetectEntitiesArgs = z.infer<typeof detectEntitiesParameters>;
 
-const checkConsistencyParameters = z.object({
+export const checkConsistencyParameters = z.object({
   scope: AnalysisScopeSchema.optional().describe("Scope of consistency check"),
   text: z.string().optional().describe("Text to analyze (optional)"),
   focus: z.array(ConsistencyFocusSchema).optional().describe("Focus areas for the check"),
@@ -926,7 +926,7 @@ const generateTemplateParameters = z.object({
 
 export type GenerateTemplateArgs = z.infer<typeof generateTemplateParameters>;
 
-const clarityCheckParameters = z.object({
+export const clarityCheckParameters = z.object({
   scope: AnalysisScopeSchema.optional().describe("Scope of clarity check"),
   text: z.string().optional().describe("Text to analyze (optional)"),
   maxIssues: z.number().optional().describe("Maximum number of issues to return"),
@@ -934,7 +934,7 @@ const clarityCheckParameters = z.object({
 
 export type ClarityCheckArgs = z.infer<typeof clarityCheckParameters>;
 
-const checkLogicParameters = z.object({
+export const checkLogicParameters = z.object({
   scope: AnalysisScopeSchema.optional().describe("Scope of logic check"),
   text: z.string().optional().describe("Text to analyze (optional)"),
   focus: z.array(LogicFocusSchema).optional().describe("Focus areas for the check"),

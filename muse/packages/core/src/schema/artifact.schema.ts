@@ -2,6 +2,10 @@ import { z } from "zod";
 
 export const artifactTypeSchema = z.enum([
   "prose",
+  "dialogue",
+  "lore",
+  "code",
+  "map",
   "table",
   "diagram",
   "timeline",
@@ -269,6 +273,10 @@ export const baseArtifactEnvelopeSchema = z.object({
 
 export const artifactEnvelopeByTypeSchema = z.discriminatedUnion("type", [
   baseArtifactEnvelopeSchema.extend({ type: z.literal("prose"), data: proseDataSchema }),
+  baseArtifactEnvelopeSchema.extend({ type: z.literal("dialogue"), data: proseDataSchema }),
+  baseArtifactEnvelopeSchema.extend({ type: z.literal("lore"), data: proseDataSchema }),
+  baseArtifactEnvelopeSchema.extend({ type: z.literal("code"), data: proseDataSchema }),
+  baseArtifactEnvelopeSchema.extend({ type: z.literal("map"), data: proseDataSchema }),
   baseArtifactEnvelopeSchema.extend({ type: z.literal("table"), data: tableDataSchema }),
   baseArtifactEnvelopeSchema.extend({ type: z.literal("diagram"), data: diagramDataSchema }),
   baseArtifactEnvelopeSchema.extend({ type: z.literal("timeline"), data: timelineDataSchema }),
@@ -282,6 +290,24 @@ export const artifactEnvelopeSchema = baseArtifactEnvelopeSchema;
 export type ArtifactEnvelope = z.infer<typeof artifactEnvelopeSchema>;
 export type ArtifactEnvelopeByType = z.infer<typeof artifactEnvelopeByTypeSchema>;
 export type ArtifactType = z.infer<typeof artifactTypeSchema>;
+
+// Additional type exports for artifact renderers
+export type CellValue = z.infer<typeof cellValueSchema>;
+export type TableColumn = z.infer<typeof tableColumnSchema>;
+export type TableRow = z.infer<typeof tableRowSchema>;
+export type TableData = z.infer<typeof tableDataSchema>;
+export type DiagramNode = z.infer<typeof diagramNodeSchema>;
+export type DiagramEdge = z.infer<typeof diagramEdgeSchema>;
+export type DiagramData = z.infer<typeof diagramDataSchema>;
+export type TimelineGroup = z.infer<typeof timelineGroupSchema>;
+export type TimelineItem = z.infer<typeof timelineItemSchema>;
+export type TimelineData = z.infer<typeof timelineDataSchema>;
+export type PacingPoint = z.infer<typeof pacingPointSchema>;
+export type PacingChartData = z.infer<typeof pacingChartDataSchema>;
+export type SankeyNode = z.infer<typeof sankeyNodeSchema>;
+export type SankeyLink = z.infer<typeof sankeyLinkSchema>;
+export type InfluenceSankeyData = z.infer<typeof influenceSankeyDataSchema>;
+export type ChartData = z.infer<typeof chartDataSchema>;
 
 export function parseArtifactEnvelope(input: unknown): ArtifactEnvelopeByType {
   return artifactEnvelopeByTypeSchema.parse(input);

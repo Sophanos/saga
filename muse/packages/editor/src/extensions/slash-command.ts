@@ -232,15 +232,15 @@ export function filterSlashCommandItems(
 
   if (filtered.length > 0) return filtered;
 
-  return [
-    {
-      id: "ask-ai-fallback",
-      label: `Ask AI: \"${query}\"`,
-      description: "Send this prompt to AI",
-      icon: "Sparkles",
-      category: "AI",
-      keywords: [],
-      kind: "ai",
+      return [
+        {
+          id: "ask-ai-fallback",
+          label: `Ask AI: "${query}"`,
+          description: "Send this prompt to AI",
+          icon: "Sparkles",
+          category: "AI",
+          keywords: [],
+          kind: "ai",
       action: (editor) => {
         const { from, to } = editor.state.selection;
         const selectionText = editor.state.doc.textBetween(from, to, " ");

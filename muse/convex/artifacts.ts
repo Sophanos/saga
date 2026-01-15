@@ -9,6 +9,7 @@ import { applyJsonPatch, compileArtifactOp, type ArtifactOp } from "../packages/
 export type ArtifactStaleness = "fresh" | "stale" | "missing" | "external";
 
 type ArtifactFormat = "markdown" | "json" | "plain";
+export type ArtifactStatus = "draft" | "manually_modified" | "applied" | "saved";
 
 const artifactSourceValidator = v.object({
   type: v.union(
@@ -33,6 +34,32 @@ const executionContextValidator = v.object({
   startedAt: v.number(),
   completedAt: v.number(),
 });
+
+const artifactStatusValidator = v.union(
+  v.literal("draft"),
+  v.literal("manually_modified"),
+  v.literal("applied"),
+  v.literal("saved")
+);
+
+const artifactStatusContextValidator = v.object({
+  appliedToDocumentId: v.optional(v.id("documents")),
+  savedToEntityId: v.optional(v.id("entities")),
+});
+
+const ALLOWED_STATUS_TRANSITIONS: Record<ArtifactStatus, readonly ArtifactStatus[]> = {
+  draft: ["manually_modified", "applied", "saved"],
+  manually_modified: ["applied", "saved"],
+  applied: ["saved"],
+  saved: [],
+};
+
+function assertValidArtifactStatusTransition(from: ArtifactStatus, to: ArtifactStatus): void {
+  if (from === to) return;
+  const allowed = ALLOWED_STATUS_TRANSITIONS[from] ?? [];
+  if (allowed.includes(to)) return;
+  throw new Error(`Invalid artifact status transition: ${from} -> ${to}`);
+}
 
 function inferArtifactFormat(content: string): ArtifactFormat {
   const trimmed = content.trim();
@@ -116,6 +143,8 @@ export const createFromExecution = mutation({
       createdBy: userId,
       type,
       status: "draft",
+      statusChangedAt: now,
+      statusBy: userId,
       title,
       format,
       content: execution.output,
@@ -195,6 +224,8 @@ export const create = mutation({
       createdBy: userId,
       type: args.type,
       status: "draft",
+      statusChangedAt: now,
+      statusBy: userId,
       title: args.title,
       format: args.format,
       content: args.content,
@@ -230,11 +261,18 @@ export const updateContent = mutation({
     executionContext: v.optional(executionContextValidator),
   },
   handler: async (ctx, args) => {
-    await verifyProjectEditor(ctx, args.projectId);
+    const userId = await verifyProjectEditor(ctx, args.projectId);
 
     const artifact = await getArtifactByKey(ctx, args.projectId, args.artifactKey);
     if (!artifact) {
       throw new Error("Artifact not found");
+    }
+
+    if (artifact.status === "applied") {
+      throw new Error("Artifact already applied");
+    }
+    if (artifact.status === "saved") {
+      throw new Error("Artifact already saved");
     }
 
     const format = args.format ?? artifact.format ?? inferArtifactFormat(args.content);
@@ -251,15 +289,23 @@ export const updateContent = mutation({
     const sources = args.sources ?? artifact.sources;
     const executionContext = args.executionContext ?? artifact.executionContext;
 
-    await ctx.db.patch(artifact._id, {
-      title: artifact.title,
+    const patch: Record<string, unknown> = {
       content: args.content,
       format,
       sources,
       executionContext,
-      status: "manually_modified",
+      statusContext: {},
       updatedAt: now,
-    });
+    };
+
+    if (artifact.status === "draft") {
+      assertValidArtifactStatusTransition("draft", "manually_modified");
+      patch["status"] = "manually_modified";
+      patch["statusChangedAt"] = now;
+      patch["statusBy"] = userId;
+    }
+
+    await ctx.db.patch(artifact._id, patch);
 
     await ctx.db.insert("artifactVersions", {
       projectId: args.projectId,
@@ -277,6 +323,44 @@ export const updateContent = mutation({
   },
 });
 
+export const setStatus = mutation({
+  args: {
+    projectId: v.id("projects"),
+    artifactKey: v.string(),
+    status: artifactStatusValidator,
+    context: v.optional(artifactStatusContextValidator),
+  },
+  handler: async (ctx, args) => {
+    const userId = await verifyProjectEditor(ctx, args.projectId);
+
+    const artifact = await getArtifactByKey(ctx, args.projectId, args.artifactKey);
+    if (!artifact) {
+      throw new Error("Artifact not found");
+    }
+
+    const fromStatus = artifact.status as ArtifactStatus;
+    const toStatus = args.status as ArtifactStatus;
+    assertValidArtifactStatusTransition(fromStatus, toStatus);
+
+    const now = Date.now();
+    const patch: Record<string, unknown> = {
+      status: toStatus,
+      statusChangedAt: now,
+      statusBy: userId,
+      updatedAt: now,
+    };
+
+    if (toStatus === "applied" || toStatus === "saved") {
+      patch["statusContext"] = args.context ?? {};
+    } else {
+      patch["statusContext"] = {};
+    }
+
+    await ctx.db.patch(artifact._id, patch);
+    return { artifactKey: args.artifactKey, status: toStatus, statusChangedAt: now };
+  },
+});
+
 export const appendMessage = mutation({
   args: {
     projectId: v.id("projects"),
@@ -286,7 +370,7 @@ export const appendMessage = mutation({
     context: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    await verifyProjectAccess(ctx, args.projectId);
+    await verifyProjectEditor(ctx, args.projectId);
 
     const artifact = await getArtifactByKey(ctx, args.projectId, args.artifactKey);
     if (!artifact) {
@@ -324,6 +408,13 @@ export const applyOp = mutation({
       throw new Error("Artifact not found");
     }
 
+    if (artifact.status === "applied") {
+      throw new Error("Artifact already applied");
+    }
+    if (artifact.status === "saved") {
+      throw new Error("Artifact already saved");
+    }
+
     const envelope = parseArtifactEnvelope(JSON.parse(artifact.content));
     const patch = compileArtifactOp(envelope, args.op as ArtifactOp);
     const nextEnvelope = applyJsonPatch(envelope, patch.patch);
@@ -342,11 +433,21 @@ export const applyOp = mutation({
       createdBy: userId,
     });
 
-    await ctx.db.patch(artifact._id, {
+    const artifactPatch: Record<string, unknown> = {
       content: nextContent,
       format: "json",
+      statusContext: {},
       updatedAt: now,
-    });
+    };
+
+    if (artifact.status === "draft") {
+      assertValidArtifactStatusTransition("draft", "manually_modified");
+      artifactPatch["status"] = "manually_modified";
+      artifactPatch["statusChangedAt"] = now;
+      artifactPatch["statusBy"] = userId;
+    }
+
+    await ctx.db.patch(artifact._id, artifactPatch);
 
     return {
       nextEnvelope,
@@ -542,7 +643,7 @@ export const list = query({
   args: {
     projectId: v.id("projects"),
     type: v.optional(v.string()),
-    status: v.optional(v.union(v.literal("draft"), v.literal("manually_modified"))),
+    status: v.optional(artifactStatusValidator),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {

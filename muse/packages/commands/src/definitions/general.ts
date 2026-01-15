@@ -8,7 +8,7 @@ function dispatchEditorIntent(
   eventName: string,
   detail: { source: 'command_palette' }
 ): boolean {
-  const target = globalThis as {
+  const target = globalThis as unknown as {
     dispatchEvent?: (event: { type: string }) => boolean;
     CustomEvent?: new (
       type: string,
@@ -111,6 +111,20 @@ export const generalCommands: Command[] = [
     keywords: ['theme', 'dark', 'light', 'mode'],
     execute: () => {
       console.log('Toggle theme');
+    },
+  },
+  {
+    id: 'dev.artifact.demo',
+    label: 'Demo: Show Artifact Types',
+    description: 'Show sample artifacts for testing',
+    icon: 'layers',
+    category: 'general',
+    keywords: ['artifact', 'demo', 'test', 'dev'],
+    execute: () => {
+      // Dispatch custom event for artifact demo
+      if (typeof globalThis !== 'undefined' && typeof (globalThis as any).dispatchEvent === 'function') {
+        (globalThis as any).dispatchEvent(new CustomEvent('artifact:show-demo'));
+      }
     },
   },
 ];

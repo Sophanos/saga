@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo, useEffect, type KeyboardEvent, type DragEvent, type ClipboardEvent } from "react";
-import { Send, AtSign, X, FileText, Paperclip, Globe, ArrowUp } from "lucide-react";
+import { Send, AtSign, X, Paperclip, ArrowUp } from "lucide-react";
 import { Button, cn, ImagePicker, type ImagePickerResult, type ImagePickerAsset } from "@mythos/ui";
 import { bg, text, border, accent } from "@mythos/theme";
 import { useShallow } from "zustand/react/shallow";
@@ -10,6 +10,7 @@ import type { ChatAttachment } from "@mythos/ai/hooks";
 import { useMythosStore, type ChatMention } from "../../../stores";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { DropOverlay } from "../../shared/DropOverlay";
+import { ChatUsageIndicator } from "./ChatUsageIndicator";
 
 interface ChatInputProps {
   onSend: (message: string, mentions: ChatMention[], attachments?: ChatAttachment[]) => void;
@@ -404,14 +405,15 @@ export function ChatInput({
     setMentions((prev) => prev.filter((m) => m.id !== id));
   }, []);
 
-  // Trigger @ mention
-  const triggerMention = useCallback(() => {
+  // Trigger @ mention (exported for external use)
+  const _triggerMention = useCallback(() => {
     setInput((prev) => prev + "@");
     setShowMentions(true);
     setMentionQuery("");
     setSelectedIndex(0);
     inputRef.current?.focus();
   }, []);
+  void _triggerMention; // Reserved for future mention button
 
   const attachmentsPreview = attachments.length > 0 && (
     <div className="flex flex-wrap gap-2 mb-2">
@@ -492,13 +494,24 @@ export function ChatInput({
     />
   );
 
-  // Notion-style input variant
+  // Auto-resize textarea
+  const autoResize = useCallback(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+  }, []);
+
+  useEffect(() => {
+    autoResize();
+  }, [input, autoResize]);
+
+  // Notion-style input variant (Craft-inspired floating chat bar)
   if (variant === "notion") {
     return (
       <div
         ref={dropZoneRef}
-        className={cn("px-4 pb-4 pt-3 relative", className)}
-        style={{ background: bg.secondary }}
+        className={cn("relative", className)}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -506,151 +519,154 @@ export function ChatInput({
       >
         {fileInput}
         {dragOverlay}
-        {/* Active mentions */}
-        {mentions.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-2">
-            {mentions.map((m) => (
-              <span
-                key={m.id}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]"
-                style={{ background: accent.primaryBg, color: accent.primary }}
-              >
-                @{m.name}
-                <button
-                  onClick={() => removeMention(m.id)}
-                  className="hover:text-white transition-colors"
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
 
-        {attachmentsPreview}
-
-        {/* Input container with blue focus border */}
+        {/* Gradient fade above chat bar */}
         <div
-          className="rounded-xl overflow-hidden transition-all"
+          className="absolute bottom-full left-0 right-0 h-16 pointer-events-none"
           style={{
-            background: bg.primary,
-            border: isFocused ? `2px solid ${accent.primary}` : `2px solid ${border.default}`,
-            boxShadow: isFocused ? `0 0 0 3px ${accent.primaryGlow}` : undefined,
+            background: `linear-gradient(to bottom, transparent, ${bg.secondary})`,
           }}
-        >
-          {/* Top row: @ button + document context chip */}
-          <div className="px-3 pt-3 pb-2 flex items-center gap-2">
-            <button
-              onClick={triggerMention}
-              className="p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors"
-              title="Mention entity"
-            >
-              <AtSign className="w-4 h-4" style={{ color: text.secondary }} />
-            </button>
-            {documentTitle && (
-              <div
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md"
-                style={{ background: border.subtle }}
-              >
-                <FileText className="w-3.5 h-3.5" style={{ color: text.secondary }} />
-                <span className="text-[13px] truncate max-w-[180px]" style={{ color: text.primary }}>
-                  {documentTitle}
-                </span>
-              </div>
-            )}
-          </div>
+        />
 
-          {/* Text input */}
-          <div className="px-3 pb-2 relative">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
-              onPaste={handlePaste}
-              placeholder={placeholder}
-              disabled={isStreaming}
-              rows={1}
-              className={cn(
-                "w-full bg-transparent text-[14px]",
-                "focus:outline-none resize-none",
-                "disabled:opacity-50"
-              )}
-              style={{
-                minHeight: "24px",
-                color: text.primary,
-                caretColor: accent.primary,
-              }}
-              data-testid="chat-input"
-            />
-
-            {/* Mention dropdown */}
-            {showMentions && filteredCandidates.length > 0 && (
-              <div
-                className="absolute bottom-full left-0 right-0 mb-1 rounded-lg shadow-lg overflow-hidden z-10"
-                style={{ background: bg.tertiary, border: `1px solid ${border.default}` }}
-              >
-                {filteredCandidates.map((candidate, index) => (
-                  <button
-                    key={candidate.id}
-                    onClick={() => handleSelectMention(candidate)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[rgba(255,255,255,0.06)]"
-                    style={{
-                      background: index === selectedIndex ? border.subtle : undefined,
-                      color: index === selectedIndex ? text.primary : text.secondary,
-                    }}
-                  >
-                    <AtSign className="w-3.5 h-3.5" style={{ color: text.secondary }} />
-                    <span className="flex-1 truncate">{candidate.name}</span>
-                    <span className="text-[10px] capitalize" style={{ color: text.muted }}>
-                      {candidate.entityType ?? candidate.type}
-                    </span>
+        {/* Floating chat container */}
+        <div className="px-3 pb-2">
+          {/* Active mentions */}
+          {mentions.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-1.5 px-1">
+              {mentions.map((m) => (
+                <span
+                  key={m.id}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px]"
+                  style={{ background: accent.primaryBg, color: accent.primary }}
+                >
+                  @{m.name}
+                  <button onClick={() => removeMention(m.id)} className="hover:text-white transition-colors">
+                    <X className="w-2 h-2" />
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
+                </span>
+              ))}
+            </div>
+          )}
 
-          {/* Footer with options */}
-          <div className="px-3 pb-3 flex items-center justify-between">
-            <div className="flex items-center gap-3 relative">
+          {attachmentsPreview}
+
+          {/* Pill-shaped input container - thinner */}
+          <div
+            className="rounded-[18px] overflow-hidden transition-all shadow-md"
+            style={{
+              background: bg.tertiary,
+              border: isFocused ? `1.5px solid ${accent.primary}` : `1.5px solid transparent`,
+            }}
+          >
+            {/* Text input area - auto-expands */}
+            <div className="px-3 pt-2.5 pb-1.5 relative">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => {
+                  handleChange(e);
+                  autoResize();
+                }}
+                onKeyDown={handleKeyDown}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
+                onPaste={handlePaste}
+                placeholder={placeholder}
+                disabled={isStreaming}
+                rows={1}
+                className={cn(
+                  "w-full bg-transparent text-[13px] leading-normal",
+                  "focus:outline-none resize-none",
+                  "disabled:opacity-50"
+                )}
+                style={{
+                  minHeight: "20px",
+                  maxHeight: "200px",
+                  color: text.primary,
+                  caretColor: accent.primary,
+                }}
+                data-testid="chat-input"
+              />
+
+              {/* Mention dropdown */}
+              {showMentions && filteredCandidates.length > 0 && (
+                <div
+                  className="absolute bottom-full left-0 right-0 mb-2 rounded-xl shadow-xl overflow-hidden z-10"
+                  style={{ background: bg.secondary, border: `1px solid ${border.subtle}` }}
+                >
+                  {filteredCandidates.map((candidate, index) => (
+                    <button
+                      key={candidate.id}
+                      onClick={() => handleSelectMention(candidate)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors"
+                      style={{
+                        background: index === selectedIndex ? border.subtle : undefined,
+                        color: index === selectedIndex ? text.primary : text.secondary,
+                      }}
+                    >
+                      <AtSign className="w-3 h-3" style={{ color: text.muted }} />
+                      <span className="flex-1 truncate">{candidate.name}</span>
+                      <span className="text-[9px] capitalize" style={{ color: text.muted }}>
+                        {candidate.entityType ?? candidate.type}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Controls row - Craft style, compact */}
+            <div className="px-2 pb-2 flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1 relative">
+                {/* Add/attach button - subtle bg */}
+                <button
+                  onClick={() => setShowAttachPopover(!showAttachPopover)}
+                  disabled={isUploading || !projectId}
+                  className="w-7 h-7 rounded-md flex items-center justify-center transition-colors disabled:opacity-50 hover:bg-white/10"
+                  style={{ background: bg.hover }}
+                  title={projectId ? "Attach" : "Select a project first"}
+                >
+                  <span className="text-base" style={{ color: text.muted }}>+</span>
+                </button>
+                {attachPopover}
+
+                {/* Mode chip - subtle bg */}
+                <button
+                  className="h-7 px-2.5 rounded-md flex items-center gap-1 text-[11px] transition-colors hover:bg-white/10"
+                  style={{ background: bg.hover, color: text.secondary }}
+                >
+                  <span style={{ color: accent.primary }}>⚡</span>
+                  <span>Fast</span>
+                </button>
+
+                {/* Context action chip */}
+                {documentTitle && (
+                  <button
+                    className="h-7 px-2.5 rounded-md flex items-center gap-1 text-[11px] transition-colors hover:bg-white/10"
+                    style={{ background: bg.hover, color: text.secondary }}
+                  >
+                    <span style={{ color: text.muted }}>◇</span>
+                    <span className="truncate max-w-[120px]">{documentTitle}</span>
+                  </button>
+                )}
+
+                <ChatUsageIndicator draft={input} variant="notion" />
+              </div>
+
+              {/* Send button */}
               <button
-                onClick={() => setShowAttachPopover(!showAttachPopover)}
-                disabled={isUploading || !projectId}
-                className="p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors disabled:opacity-50"
-                title={projectId ? "Attach image" : "Select a project to attach images"}
+                onClick={handleSend}
+                disabled={!input.trim() || isStreaming}
+                className="w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0"
+                style={{
+                  background: input.trim() && !isStreaming ? accent.primary : bg.hover,
+                  color: input.trim() && !isStreaming ? "#1a1a1a" : text.muted,
+                }}
+                data-testid="chat-send"
               >
-                <Paperclip className="w-4 h-4" style={{ color: text.secondary }} />
-              </button>
-              {attachPopover}
-              <button
-                className="flex items-center gap-1.5 text-[13px] hover:text-[#E3E2E0] transition-colors"
-                style={{ color: text.secondary }}
-              >
-                <span>Auto</span>
-              </button>
-              <button
-                className="flex items-center gap-1.5 text-[13px] hover:text-[#E3E2E0] transition-colors"
-                style={{ color: text.secondary }}
-              >
-                <Globe className="w-3.5 h-3.5" />
-                <span>All Sources</span>
+                <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
               </button>
             </div>
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isStreaming}
-              className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
-              style={{
-                background: input.trim() && !isStreaming ? accent.primary : border.default,
-                color: input.trim() && !isStreaming ? "white" : text.muted,
-              }}
-              data-testid="chat-send"
-            >
-              <ArrowUp className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </div>
@@ -690,6 +706,10 @@ export function ChatInput({
       )}
 
       {attachmentsPreview}
+
+      <div className="flex justify-end mb-1">
+        <ChatUsageIndicator draft={input} />
+      </div>
 
       {/* Input area */}
       <div className="relative">

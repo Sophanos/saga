@@ -17,6 +17,7 @@ import { useRelationshipPersistence } from "./useRelationshipPersistence";
 import { useApiKey } from "./useApiKey";
 import { getTool, type ToolExecutionContext, type ToolExecutionResult } from "../tools";
 import type { Editor } from "@mythos/editor";
+import { useConvex } from "convex/react";
 
 /**
  * Result of a tool runtime operation.
@@ -58,6 +59,8 @@ export function useToolRuntime(): UseToolRuntimeResult {
 
   // Get API key for saga tools
   const { key: apiKey } = useApiKey();
+
+  const convex = useConvex();
 
   // Persistence hooks
   const {
@@ -110,6 +113,7 @@ export function useToolRuntime(): UseToolRuntimeResult {
 
     return {
       projectId,
+      convex,
       signal,
       entities,
       relationships,
@@ -213,6 +217,7 @@ export function useToolRuntime(): UseToolRuntimeResult {
     persistUpdateRelationship,
     deleteRelationship,
     updateToolInvocation,
+    convex,
   ]);
 
   /**

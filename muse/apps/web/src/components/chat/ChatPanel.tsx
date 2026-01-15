@@ -135,7 +135,7 @@ export function ChatPanel({
   const { guard: checkImageGenQuota } = useQuotaGuard("imageGen");
 
   // Usage warning at 80% threshold
-  const { showWarning: showUsageWarning, percentage: usagePercentage } = useUsageWarning(80);
+  const { showWarning: showUsageWarning } = useUsageWarning(80);
 
   // Build capability context
   const capabilityContext: CapabilityContext = useMemo(

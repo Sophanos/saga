@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import { FileText, Network, Plus } from "lucide-react";
+import { FileText, Network, Plus, Settings2 } from "lucide-react";
 import { Button } from "@mythos/ui";
 import { useMythosStore } from "../../stores";
 import { useProjectGraph } from "../../hooks/useProjectGraph";
@@ -94,6 +94,16 @@ export function ProjectGraphView() {
     openModal({ type: "entityForm", mode: "create" });
   }, [openModal]);
 
+  const handleOpenRegistry = useCallback(() => {
+    openModal({ type: "registryEditor" });
+  }, [openModal]);
+
+  // Reserved for entity profile feature
+  const _handleOpenEntityProfile = useCallback((entityId: string) => {
+    openModal({ type: "entityProfile", entityId });
+  }, [openModal]);
+  void _handleOpenEntityProfile;
+
   return (
     <div
       className="h-full flex flex-col bg-mythos-bg-primary relative"
@@ -117,6 +127,16 @@ export function ProjectGraphView() {
           >
             <Plus className="w-3.5 h-3.5" />
             New Entity
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleOpenRegistry}
+            className="gap-1.5 text-xs"
+            data-testid="project-graph-registry"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            Registry
           </Button>
           <Button
             variant="ghost"

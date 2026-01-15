@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useMemo, useState } from "react";
-import { parseArtifactEnvelope } from "@mythos/core";
-import type { Artifact } from "@mythos/state";
+import { parseArtifactEnvelope, type ArtifactEnvelopeByType } from "@mythos/core";
+import type { Artifact, ArtifactOp } from "@mythos/state";
 import { useArtifactStore } from "@mythos/state";
 import { ArtifactChart } from "./ArtifactChart";
 import { ArtifactDiagram } from "./ArtifactDiagram";
@@ -25,6 +25,22 @@ export interface ArtifactRendererHandle {
 
 export interface ArtifactRuntimeProps {
   artifact: Artifact;
+  onApplyOp?: (op: ArtifactOp) => void;
+}
+
+type ProseArtifactEnvelope = Extract<
+  ArtifactEnvelopeByType,
+  { type: "prose" | "dialogue" | "lore" | "code" | "map" }
+>;
+
+function isProseArtifactEnvelope(envelope: ArtifactEnvelopeByType): envelope is ProseArtifactEnvelope {
+  return (
+    envelope.type === "prose" ||
+    envelope.type === "dialogue" ||
+    envelope.type === "lore" ||
+    envelope.type === "code" ||
+    envelope.type === "map"
+  );
 }
 
 function useArtifactFocusId(): string | null {
@@ -46,10 +62,14 @@ function useArtifactFocusId(): string | null {
 }
 
 function ArtifactRuntimeComponent(
-  { artifact }: ArtifactRuntimeProps,
+  { artifact, onApplyOp }: ArtifactRuntimeProps,
   ref: React.Ref<ArtifactRendererHandle>
 ): JSX.Element | null {
   const applyArtifactOp = useArtifactStore((s) => s.applyArtifactOp);
+  const applyOp = useMemo(() => {
+    if (onApplyOp) return onApplyOp;
+    return (op: ArtifactOp) => applyArtifactOp(artifact.id, op);
+  }, [applyArtifactOp, artifact.id, onApplyOp]);
   const focusId = useArtifactFocusId();
 
   const envelope = useMemo(() => {
@@ -69,7 +89,7 @@ function ArtifactRuntimeComponent(
         ref={ref}
         envelope={envelope}
         focusId={focusId}
-        onApplyOp={(op) => applyArtifactOp(artifact.id, op)}
+        onApplyOp={applyOp}
       />
     );
   }
@@ -80,7 +100,7 @@ function ArtifactRuntimeComponent(
         ref={ref}
         envelope={envelope}
         focusId={focusId}
-        onApplyOp={(op) => applyArtifactOp(artifact.id, op)}
+        onApplyOp={applyOp}
       />
     );
   }
@@ -91,7 +111,7 @@ function ArtifactRuntimeComponent(
         ref={ref}
         envelope={envelope}
         focusId={focusId}
-        onApplyOp={(op) => applyArtifactOp(artifact.id, op)}
+        onApplyOp={applyOp}
       />
     );
   }
@@ -106,13 +126,13 @@ function ArtifactRuntimeComponent(
     );
   }
 
-  if (envelope.type === "prose") {
+  if (isProseArtifactEnvelope(envelope)) {
     return (
       <ArtifactProse
         ref={ref}
         envelope={envelope}
         focusId={focusId}
-        onApplyOp={(op) => applyArtifactOp(artifact.id, op)}
+        onApplyOp={applyOp}
       />
     );
   }
@@ -123,7 +143,7 @@ function ArtifactRuntimeComponent(
         ref={ref}
         envelope={envelope}
         focusId={focusId}
-        onApplyOp={(op) => applyArtifactOp(artifact.id, op)}
+        onApplyOp={applyOp}
       />
     );
   }

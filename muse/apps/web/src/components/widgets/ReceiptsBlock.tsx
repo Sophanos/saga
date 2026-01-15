@@ -6,7 +6,7 @@ import { api } from "../../../../../convex/_generated/api";
 import { useCurrentProject } from "../../stores";
 import { SourcePickerModal } from "./SourcePickerModal";
 
-type SourceStatus = "fresh" | "stale" | "missing";
+type SourceStatus = "fresh" | "stale" | "missing" | "external";
 
 interface ReceiptsBlockProps {
   manifest: ArtifactManifestDraft | null;
@@ -112,6 +112,11 @@ export function ReceiptsBlock({
               Source missing
             </span>
           )}
+          {stalenessStatus === "external" && (
+            <span className="text-[10px] uppercase tracking-wide text-mythos-text-muted">
+              External
+            </span>
+          )}
         </div>
         {canEdit && (
           <Button
@@ -158,6 +163,11 @@ export function ReceiptsBlock({
                       {sourceStatuses?.[buildSourceKey(source)] === "missing" && (
                         <span className="text-[10px] uppercase tracking-wide text-mythos-accent-red">
                           missing
+                        </span>
+                      )}
+                      {sourceStatuses?.[buildSourceKey(source)] === "external" && (
+                        <span className="text-[10px] uppercase tracking-wide text-mythos-text-muted">
+                          external
                         </span>
                       )}
                       {canEdit && (
