@@ -74,33 +74,36 @@ The key innovation: **Artifacts have their own mini-chat for iteration**.
 
 ## Artifact Types
 
-### Content Artifacts
+### Implemented (RAS-based renderers)
 
-| Type | Icon | Use Case | Iteration Examples |
-|------|------|----------|-------------------|
-| `prose` | 📝 | Narrative text, scenes | "Make it darker", "Add dialogue" |
-| `dialogue` | 💬 | Character speech | "More formal", "Add subtext" |
-| `entity` | 👤 | Character/location cards | "Add backstory", "Change age" |
-| `outline` | 📋 | Story structure | "Expand Act 2", "Add subplot" |
-| `lore` | 📜 | World rules, canon | "Add exceptions", "Clarify cost" |
+| Type | Renderer | Interactive Ops | Status |
+|------|----------|-----------------|--------|
+| `prose` | ArtifactProse | `prose.block.replace` | Done |
+| `table` | ArtifactTable | row reorder, cell edit, rows remove | Done |
+| `diagram` | ArtifactDiagram | node move/upsert, edge add/update | Done |
+| `timeline` | ArtifactTimeline | item upsert/update | Done |
+| `chart` | ArtifactChart | read-only (ECharts) | Done |
+| `outline` | ArtifactOutline | item move | Done |
+| `entityCard` | ArtifactEntityCard | read-only | Done |
 
-### Visual Artifacts
+### Planned (fallback to prose/markdown)
 
-| Type | Icon | Use Case | Iteration Examples |
-|------|------|----------|-------------------|
-| `diagram` | 📊 | Relationships, flows | "Add Varen", "Show betrayal" |
-| `timeline` | 📅 | Chronological events | "Add Year 12", "More detail on war" |
-| `table` | 📋 | Structured data | "Add column", "Sort by rank" |
-| `map` | 🗺️ | Locations, geography | "Add the castle", "Show borders" |
+| Type | Use Case | Fallback |
+|------|----------|----------|
+| `dialogue` | Character speech | prose with formatting |
+| `lore` | World rules, canon | prose with formatting |
+| `code` | Technical content | prose with code fence |
+| `map` | Locations, geography | diagram (Mermaid subgraph) |
 
-### Reference Artifacts
+### Source Types (NOT renderers)
 
-| Type | Icon | Use Case | Iteration Examples |
-|------|------|----------|-------------------|
-| `document` | 📄 | Opened doc for reference | — (read-only) |
-| `web` | 🌐 | Fetched web content | "Summarize this", "Extract key points" |
-| `code` | 💻 | Technical content | "Add types", "Simplify" |
-| `github` | 🐙 | Fetched from GitHub | "Explain this", "Adapt for my world" |
+| Source | Description | Staleness |
+|--------|-------------|-----------|
+| `document` | Project document | Tracked via `updatedAt` |
+| `entity` | Project entity | Tracked via `updatedAt` |
+| `memory` | AI memory | Tracked via `updatedAt` |
+| `web` | Fetched web content | External (can't track) |
+| `github` | Fetched from GitHub | External (can't track) |
 
 ---
 
@@ -370,13 +373,14 @@ Widgets are pre-built artifact generators:
 
 ### States
 
-| State | Description |
-|-------|-------------|
-| `draft` | Just created, not yet applied |
-| `iterating` | User is refining via chat |
-| `applied` | Inserted into document |
-| `saved` | Saved to entity/canon |
-| `stale` | Source content changed |
+| State | Description | Storage |
+|-------|-------------|---------|
+| `draft` | Just created, not yet applied | Stored |
+| `manually_modified` | User edited content directly | Stored |
+| `applied` | Inserted into document | Stored |
+| `saved` | Saved to entity/canon | Stored |
+| `stale` | Source content changed | Computed via `checkStaleness` |
+| `external` | Web/GitHub source (can't track) | Computed via `checkStaleness` |
 
 ---
 
@@ -435,37 +439,34 @@ hung between them.
 ```typescript
 interface Artifact {
   id: string;
+  artifactKey: string;
   type: ArtifactType;
   title: string;
   content: string;
-  format: "markdown" | "mermaid" | "json" | "plain";
-
-  // State
-  state: "draft" | "iterating" | "applied" | "saved" | "stale";
-
-  // Iteration
-  iterationHistory: IterationMessage[];
-  versions: ArtifactVersion[];
-
-  // Provenance
-  source: {
-    tool: string;
+  format: "markdown" | "json" | "plain";
+  status: "draft" | "manually_modified" | "applied" | "saved";
+  sources: ArtifactSource[];
+  executionContext: {
+    widgetId: string;
+    widgetVersion: string;
     model: string;
-    prompt: string;
-    timestamp: number;
+    inputs: Record<string, unknown>;
+    startedAt: number;
+    completedAt: number;
   };
-
-  // Context
   projectId: string;
-  documentId?: string;
-  entityIds?: string[];
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
 
-  // Actions taken
-  appliedTo?: {
-    documentId: string;
-    blockId: string;
-    timestamp: number;
-  };
+interface ArtifactSource {
+  type: "document" | "entity" | "memory" | "web" | "github";
+  id: string;
+  title?: string;
+  manual: boolean;
+  addedAt: number;
+  sourceUpdatedAt?: number;
 }
 
 type ArtifactType =
@@ -948,11 +949,11 @@ Status (implementation):
 
 | Item | Status | Notes |
 |------|--------|-------|
-| `viewVersionHistoryTool` | Partial | Protocol types + client executor; server wiring pending. |
-| `deleteDocumentTool` | Partial | Protocol types + client executor; server wiring pending. |
-| `searchUsersTool` | Partial | Protocol types + client executor; server wiring pending. |
-| `viewCommentsTool` | Partial | Protocol types + client executor; server wiring pending. |
-| `addCommentTool` | Partial | Protocol types + client executor; server wiring pending. |
+| `viewVersionHistoryTool` | Done | `convex/revisions.viewVersionHistory` + client executor. |
+| `deleteDocumentTool` | Done | `convex/documents.deleteDocument` (soft-delete) + client executor. |
+| `searchUsersTool` | Done | `convex/users.searchProjectUsers` + client executor. |
+| `viewCommentsTool` | Done | `convex/comments.listByDocument` + client executor. |
+| `addCommentTool` | Done | `convex/comments.add` + client executor. |
 
 ---
 
