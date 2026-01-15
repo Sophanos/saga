@@ -967,13 +967,24 @@ function ProseRenderer({ content }: { content: string }) {
 function DiagramRenderer({ content }: { content: string }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [mermaidTheme, setMermaidTheme] = useState<"dark" | "default">(() => {
+    if (typeof window === "undefined") return "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default";
+  });
   const renderId = useMemo(
     () => `artifact-mermaid-${Math.random().toString(36).slice(2, 9)}`,
     []
   );
-  const mermaidTheme = useMemo(() => {
-    if (typeof window === "undefined") return "dark";
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default";
+
+  // Listen for theme changes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (e: MediaQueryListEvent) => {
+      setMermaidTheme(e.matches ? "dark" : "default");
+    };
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
   useEffect(() => {

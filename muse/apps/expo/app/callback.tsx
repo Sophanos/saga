@@ -6,10 +6,10 @@
  */
 
 import { useEffect, useState } from "react";
-import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, useColorScheme } from "react-native";
+import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet } from "react-native";
 import { useRouter, useLocalSearchParams, usePathname } from "expo-router";
 import { useConvexAuth } from "convex/react";
-import { palette } from "@/design-system/colors";
+import { useTheme } from "@/design-system";
 
 const AUTH_TIMEOUT_MS = 15000;
 
@@ -22,8 +22,7 @@ function normalizeParam(value: string | string[] | undefined): string | undefine
 
 export default function CallbackScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const { colors, isDark } = useTheme();
   const { isLoading, isAuthenticated } = useConvexAuth();
   const params = useLocalSearchParams();
   const pathname = usePathname();
@@ -72,11 +71,11 @@ export default function CallbackScreen() {
   if (error || timedOut) {
     const message = errorDescription || error || "We could not complete your sign-in. Please try again.";
     return (
-      <View style={[styles.container, { backgroundColor: isDark ? palette.gray[950] : palette.white }]}>
-        <Text style={[styles.title, { color: isDark ? palette.white : palette.gray[900] }]}>Sign-in failed</Text>
-        <Text style={[styles.subtitle, { color: isDark ? palette.gray[400] : palette.gray[600] }]}>{message}</Text>
+      <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
+        <Text style={[styles.title, { color: colors.text }]}>Sign-in failed</Text>
+        <Text style={[styles.subtitle, { color: colors.textMuted }]}>{message}</Text>
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: palette.blue[500] }]}
+          style={[styles.button, { backgroundColor: colors.accent }]}
           onPress={() => router.replace("/(auth)/sign-in")}
         >
           <Text style={styles.buttonText}>Back to sign in</Text>
@@ -87,9 +86,9 @@ export default function CallbackScreen() {
 
   // Loading state
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? palette.gray[950] : palette.white }]}>
-      <ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
-      <Text style={[styles.subtitle, { color: isDark ? palette.gray[400] : palette.gray[600] }]}>
+    <View style={[styles.container, { backgroundColor: colors.bgApp }]}>
+      <ActivityIndicator size="large" color={colors.text} />
+      <Text style={[styles.subtitle, { color: colors.textMuted }]}>
         Finishing sign-in…
       </Text>
     </View>

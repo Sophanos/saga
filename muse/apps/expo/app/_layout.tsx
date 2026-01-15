@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useColorScheme, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -20,7 +20,7 @@ import { ConvexReactClient, useConvexAuth } from 'convex/react';
 import { ConvexAuthProvider, useAuthToken } from '@convex-dev/auth/react';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
-import { palette } from '@/design-system/colors';
+import { useTheme, palette } from '@/design-system';
 import { initAuth, initRevenueCat } from '@/lib/auth';
 import { initAnalytics } from '@/lib/analytics';
 import { initConsent } from '@/lib/consent';
@@ -28,6 +28,10 @@ import { initClarity } from '@/lib/clarity';
 import { registerAllCommands } from '@mythos/commands';
 import { useAuthStore } from '@mythos/auth';
 import { Toaster } from '@mythos/ui';
+import { WidgetProvider } from '@/components/widgets';
+
+// Register all commands at module load time (before any component renders)
+registerAllCommands();
 
 // Auth storage type
 type AuthStorage = {
@@ -135,8 +139,7 @@ function replaceURL(url: string): void {
 }
 
 export default function RootLayout(): JSX.Element {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { isDark } = useTheme();
   const [storage, setStorage] = useState<AuthStorage | null | undefined>(undefined);
   const [storageReady, setStorageReady] = useState(false);
 
@@ -152,7 +155,6 @@ export default function RootLayout(): JSX.Element {
   useEffect(() => {
     initAuth();
     initRevenueCat();
-    registerAllCommands();
 
     // Initialize consent first, then analytics/clarity based on consent
     initConsent().then(() => {
@@ -185,6 +187,7 @@ export default function RootLayout(): JSX.Element {
           {...(storage ? { storage } : {})}
           replaceURL={replaceURL}
         >
+          <WidgetProvider>
             <AuthSync />
             <RevenueCatSync />
             <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -215,7 +218,8 @@ export default function RootLayout(): JSX.Element {
                 }}
               />
             </Stack>
-          </ConvexAuthProvider>
+          </WidgetProvider>
+        </ConvexAuthProvider>
           {/* Toast notifications (web only - Sonner is DOM-based) */}
           {Platform.OS === 'web' && <Toaster />}
         </SafeAreaProvider>

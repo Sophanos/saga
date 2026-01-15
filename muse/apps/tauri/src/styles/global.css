@@ -1,7 +1,7 @@
 /* Global styles for Tauri app */
 
 :root {
-  /* Backgrounds - Notion dark theme */
+  /* Backgrounds - Notion dark theme (default) */
   --mythos-bg: #191919;
   --mythos-surface: #202020;
   --mythos-elevated: #252525;
@@ -26,6 +26,30 @@
   --mythos-entity-item: #fbbf24;
   --mythos-entity-magic: #22d3ee;
   --mythos-entity-faction: #f87171;
+}
+
+/* Light mode - responds to system preference */
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Backgrounds - Notion light theme */
+    --mythos-bg: #ffffff;
+    --mythos-surface: #f7f6f3;
+    --mythos-elevated: #ffffff;
+    --mythos-hover: #f1f1ef;
+    --mythos-active: #e8e8e6;
+
+    /* Borders */
+    --mythos-border: rgba(0, 0, 0, 0.08);
+    --mythos-border-subtle: rgba(0, 0, 0, 0.06);
+
+    /* Text */
+    --mythos-text: #37352f;
+    --mythos-text-secondary: #6b6b6b;
+    --mythos-text-muted: #9b9a97;
+
+    /* Accent */
+    --mythos-accent: #2383e2;
+  }
 }
 
 * {
@@ -68,7 +92,7 @@ body,
 .text-2xl { font-size: 1.5rem; line-height: 2rem; }
 .font-semibold { font-weight: 600; }
 
-/* Scrollbar styling */
+/* Scrollbar styling - black in dark mode, grey in light mode */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -79,10 +103,20 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--mythos-hover);
+  background: #000000;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--mythos-active);
+  background: #1a1a1a;
+}
+
+@media (prefers-color-scheme: light) {
+  ::-webkit-scrollbar-thumb {
+    background: #9b9a97;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #6b6b6b;
+  }
 }

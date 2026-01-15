@@ -9,14 +9,13 @@
  * - Unauthenticated → Redirect to sign-in
  */
 
-import { View, ActivityIndicator, useColorScheme } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import { Authenticated, Unauthenticated, AuthLoading } from 'convex/react';
-import { palette } from '@/design-system/colors';
+import { useTheme } from '@/design-system';
 
 function LoadingScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { colors, isDark } = useTheme();
 
   return (
     <View
@@ -24,10 +23,10 @@ function LoadingScreen() {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: isDark ? palette.gray[950] : palette.white,
+        backgroundColor: colors.bgApp,
       }}
     >
-      <ActivityIndicator size="large" color={isDark ? '#fff' : '#000'} />
+      <ActivityIndicator size="large" color={isDark ? colors.text : colors.text} />
     </View>
   );
 }

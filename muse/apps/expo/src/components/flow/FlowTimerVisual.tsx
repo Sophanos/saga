@@ -417,7 +417,7 @@ export function FlowTimerVisual({ height = 280 }: FlowTimerVisualProps) {
           style={[
             styles.thresholdPicker,
             {
-              backgroundColor: isDark ? colors.bgSurface : '#fff',
+              backgroundColor: colors.bgSurface,
               borderColor: colors.border,
             },
           ]}

@@ -8,6 +8,7 @@ import {
 } from '@xyflow/react';
 import { RELATIONSHIP_CATEGORY_COLORS, type RelationshipCategory } from '@mythos/core';
 import type { GraphRelationType } from '@mythos/core';
+import { useTheme } from '@/design-system';
 
 export interface RelationshipEdgeData {
   relationshipId: string;
@@ -32,6 +33,7 @@ function RelationshipEdgeComponent({
   selected,
   markerEnd,
 }: EdgeProps<RelationshipEdgeType>): JSX.Element {
+  const { colors, isDark } = useTheme();
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -43,8 +45,12 @@ function RelationshipEdgeComponent({
 
   const edgeData = data as RelationshipEdgeData | undefined;
   const category = edgeData?.category ?? 'social';
-  const color = RELATIONSHIP_CATEGORY_COLORS[category] ?? '#94a3b8';
+  const color = RELATIONSHIP_CATEGORY_COLORS[category] ?? colors.textMuted;
   const label = edgeData?.label ?? '';
+
+  // Edge label uses inverted colors for contrast
+  const labelBg = isDark ? colors.bgElevated : '#0f172a';
+  const labelText = isDark ? colors.text : '#fff';
 
   return (
     <>
@@ -57,8 +63,8 @@ function RelationshipEdgeComponent({
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
             padding: '2px 8px',
             borderRadius: 999,
-            backgroundColor: '#0f172a',
-            color: '#fff',
+            backgroundColor: labelBg,
+            color: labelText,
             fontSize: 10,
             fontWeight: 600,
             letterSpacing: 0.4,

@@ -17,7 +17,22 @@
     --mythos-accent-primary: #2383E2;
   }
 
-  /* Light mode */
+  /* Light mode - responds to system preference */
+  @media (prefers-color-scheme: light) {
+    :root {
+      --mythos-bg-primary: #FFFFFF;
+      --mythos-bg-secondary: #F7F6F3;
+      --mythos-bg-tertiary: #EFEEE9;
+      --mythos-text-primary: #37352F;
+      --mythos-text-secondary: #6B6B64;
+      --mythos-text-muted: #9B9A97;
+      --mythos-border-default: rgba(0,0,0,0.08);
+      --mythos-border-subtle: rgba(0,0,0,0.06);
+      --mythos-accent-primary: #2383E2;
+    }
+  }
+
+  /* Light mode - manual class override (for explicit toggle) */
   .light {
     --mythos-bg-primary: #FFFFFF;
     --mythos-bg-secondary: #F7F6F3;
@@ -99,23 +114,33 @@
   }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - black in dark mode, grey in light mode */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-mythos-bg-secondary;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
   @apply rounded-full;
-  background-color: rgba(107, 107, 100, 0.3);
+  background-color: #9b9a97;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(107, 107, 100, 0.5);
+  background-color: #6b6b6b;
+}
+
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb {
+    background-color: #000000;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #1a1a1a;
+  }
 }
 
 /* Selection */

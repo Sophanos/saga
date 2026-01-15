@@ -11,16 +11,15 @@
 
 import { useEffect } from 'react';
 import { Slot, useRouter } from 'expo-router';
-import { View, useColorScheme, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 import { useConvexAuth } from 'convex/react';
 import { AppShell } from '@/components/layout';
 import { CommandPalette } from '@/components/CommandPalette';
 import { useKeyboardShortcuts } from '@/hooks';
-import { palette } from '@/design-system/colors';
+import { useTheme } from '@/design-system';
 
 export default function AppLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { colors, isDark } = useTheme();
   const router = useRouter();
   const { isLoading, isAuthenticated } = useConvexAuth();
 
@@ -37,14 +36,14 @@ export default function AppLayout() {
   // Show loading while checking auth or redirecting
   if (isLoading || !isAuthenticated) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? palette.gray[950] : palette.white }}>
-        <ActivityIndicator size="large" color={isDark ? '#fff' : '#000'} />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgApp }}>
+        <ActivityIndicator size="large" color={colors.text} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: isDark ? palette.gray[950] : palette.white }}>
+    <View style={{ flex: 1, backgroundColor: colors.bgApp }}>
       <AppShell>
         <Slot />
       </AppShell>
