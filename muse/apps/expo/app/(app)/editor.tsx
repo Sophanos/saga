@@ -21,6 +21,7 @@ import {
   useFocusLevel,
   useDimOpacity,
   useTypewriterScrolling,
+  useArtifactStore,
 } from '@mythos/state';
 
 // Lazy load editor only on web
@@ -31,8 +32,16 @@ const LazyEditorShell = Platform.OS === 'web'
 export default function EditorScreen(): JSX.Element {
   const { colors } = useTheme();
   const router = useRouter();
-  const { aiPanelMode, sidebarCollapsed, openKnowledgePanel, pendingWriteContent, clearPendingWriteContent } =
+  const { aiPanelMode, aiPanelWidth, sidebarCollapsed, openKnowledgePanel, pendingWriteContent, clearPendingWriteContent } =
     useLayoutStore();
+  const { panelMode: artifactPanelMode, panelWidth: artifactPanelWidth } = useArtifactStore();
+
+  // Calculate scroll indicator right offset based on visible side panels
+  // Note: Artifact panel is hidden when AI panel is in 'side' mode (see AppShell.tsx line 78)
+  const showArtifactPanel = artifactPanelMode === 'side' && aiPanelMode !== 'side';
+  const scrollIndicatorRightOffset =
+    (aiPanelMode === 'side' ? aiPanelWidth : 0) +
+    (showArtifactPanel ? artifactPanelWidth : 0);
   const params = useLocalSearchParams<{ projectId?: string | string[]; documentId?: string | string[] }>();
   const user = useAuthStore((s) => s.user);
   const sessionToken = useAuthStore((s) => s.session?.token ?? undefined);
@@ -142,12 +151,16 @@ export default function EditorScreen(): JSX.Element {
             height: '100%',
             width: '100%',
             flex: 1,
-          }}>
+            // @ts-expect-error - web-only CSS properties
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }} className="editor-wrapper">
             <LazyEditorShell
               hideQuickActions={hideQuickActions}
               sidebarCollapsed={sidebarCollapsed}
               minimalMode={flowEnabled}
               flowSettings={flowSettings}
+              scrollIndicatorRightOffset={scrollIndicatorRightOffset}
               collaboration={
                 collaborationProjectId && activeDocumentId && collaborationUser
                   ? {
@@ -171,6 +184,24 @@ export default function EditorScreen(): JSX.Element {
               }}
             />
           </div>
+          {/* Hide all native scrollbars - editor uses custom scroll indicator */}
+          <style dangerouslySetInnerHTML={{ __html: `
+            .editor-wrapper,
+            .editor-wrapper * {
+              scrollbar-width: none !important;
+              -ms-overflow-style: none !important;
+            }
+            .editor-wrapper::-webkit-scrollbar,
+            .editor-wrapper *::-webkit-scrollbar,
+            .editor-shell::-webkit-scrollbar,
+            .editor-shell *::-webkit-scrollbar,
+            .editor-container::-webkit-scrollbar {
+              display: none !important;
+              width: 0 !important;
+              height: 0 !important;
+              background: transparent !important;
+            }
+          ` }} />
         </View>
       </Suspense>
     );

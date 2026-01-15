@@ -69,6 +69,8 @@ export interface EditorShellProps {
   minimalMode?: boolean;
   /** Flow mode settings - passed from host app to avoid store isolation issues */
   flowSettings?: FlowModeSettings;
+  /** Right offset for scroll indicator to account for side panels (AI panel, artifact panel) */
+  scrollIndicatorRightOffset?: number;
 }
 
 const CSS_TOKENS = `
@@ -186,6 +188,17 @@ const CSS_TOKENS = `
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Hide all native scrollbars - using custom scroll indicator */
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
 `;
 
 // Extract plain text from HTML for preview using DOM parser
@@ -259,6 +272,7 @@ export function EditorShell({
   onWriteContentApplied,
   minimalMode = false,
   flowSettings,
+  scrollIndicatorRightOffset = 0,
 }: EditorShellProps): JSX.Element {
   useEffect(() => {
     const styleId = 'editor-webview-tokens';
@@ -648,6 +662,7 @@ export function EditorShell({
             editable={!isLocked}
             showTitle={true}
             autoFocus
+            scrollIndicatorRightOffset={scrollIndicatorRightOffset}
           />
         ) : (
           <Editor
@@ -665,6 +680,7 @@ export function EditorShell({
             autoFocus
             syncContentFromProps={false}
             extraExtensions={flowExtensions}
+            scrollIndicatorRightOffset={scrollIndicatorRightOffset}
           />
         )}
 
@@ -677,6 +693,19 @@ export function EditorShell({
       </main>
 
       <style>{`
+        /* Hide all native scrollbars in editor shell - using custom indicator */
+        .editor-shell,
+        .editor-shell * {
+          scrollbar-width: none; /* Firefox */
+          -ms-overflow-style: none; /* IE/Edge */
+        }
+        .editor-shell::-webkit-scrollbar,
+        .editor-shell *::-webkit-scrollbar {
+          display: none;
+          width: 0;
+          height: 0;
+        }
+
         .editor-shell {
           display: flex;
           flex-direction: column;

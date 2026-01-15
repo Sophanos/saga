@@ -3,7 +3,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { WriterKit, SlashCommand, ArtifactReceiptExtension, EntityMark, EntityCardNode } from '@mythos/editor';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { type AnyExtension, type Content } from '@tiptap/core';
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo, type RefObject } from 'react';
 import { useEditorMetricsStore } from '@mythos/state';
 import { createSlashCommandSuggestion } from './suggestion';
 import { BubbleMenu } from './BubbleMenu';
@@ -83,6 +83,65 @@ interface EditorProps {
   currentUserId?: string;
   /** Disable syncing content from props (useful for collaboration) */
   syncContentFromProps?: boolean;
+  /** Right offset for scroll indicator to account for side panels */
+  scrollIndicatorRightOffset?: number;
+}
+
+/**
+ * Custom scroll indicator state and handler
+ */
+function useScrollIndicator() {
+  const [scrollState, setScrollState] = useState({
+    visible: false,
+    thumbTop: 0,
+    thumbHeight: 0,
+  });
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    const rect = target.getBoundingClientRect();
+
+    // Don't show if content doesn't overflow
+    if (scrollHeight <= clientHeight) {
+      setScrollState(prev => ({ ...prev, visible: false }));
+      return;
+    }
+
+    const scrollRatio = scrollTop / (scrollHeight - clientHeight);
+    const thumbHeight = Math.max(40, (clientHeight / scrollHeight) * clientHeight);
+    const maxThumbTop = clientHeight - thumbHeight;
+    const thumbTopInContainer = scrollRatio * maxThumbTop;
+    const thumbTop = rect.top + thumbTopInContainer;
+
+    setScrollState({
+      visible: true,
+      thumbTop,
+      thumbHeight,
+    });
+
+    // Clear existing timeout
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+    }
+
+    // Hide after 1.2 seconds of inactivity
+    hideTimeoutRef.current = setTimeout(() => {
+      setScrollState(prev => ({ ...prev, visible: false }));
+    }, 1200);
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  return { scrollState, handleScroll };
 }
 
 export function Editor({
@@ -111,6 +170,7 @@ export function Editor({
   remoteCursors,
   currentUserId,
   syncContentFromProps = true,
+  scrollIndicatorRightOffset = 0,
 }: EditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
@@ -136,6 +196,10 @@ export function Editor({
     selectionEndPos: 0,
     showJumpIndicator: false,
   });
+
+  // Custom scroll indicator with fade-out
+  const { scrollState, handleScroll } = useScrollIndicator();
+
 
   // Handlers for suggestion callbacks
   const handleSuggestionAccepted = useCallback((suggestion: Suggestion) => {
@@ -257,6 +321,12 @@ export function Editor({
     if (!editor) return;
 
     const target = e.target as HTMLElement;
+
+    // Ignore clicks inside entity cards (they have their own handlers)
+    if (target.closest('.entity-card-node-wrapper') || target.closest('.entity-card-inline')) {
+      return;
+    }
+
     const entityEl = target.closest('[data-entity-id]') as HTMLElement | null;
 
     if (!entityEl) {
@@ -269,6 +339,20 @@ export function Editor({
     const entityId = entityEl.getAttribute('data-entity-id');
     const entityType = (entityEl.getAttribute('data-entity-type') || 'character') as EntityType;
     const entityName = entityEl.textContent || 'Unknown';
+
+    // Check if a card for this entity already exists in the document
+    let existingCardFound = false;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'entityCard' && node.attrs['entityId'] === entityId) {
+        existingCardFound = true;
+        return false; // Stop traversal
+      }
+    });
+
+    // If card already exists, don't insert another
+    if (existingCardFound) {
+      return;
+    }
 
     // Insert entity card node inline after current line
     (editor.chain().focus() as any)
@@ -657,7 +741,7 @@ export function Editor({
 
   return (
     <div ref={containerRef} className={`editor-container ${fontFamilyClass} ${sizeClass} ${widthClass}`}>
-      <div className="editor-content-wrapper">
+      <div className="editor-content-wrapper" onScroll={handleScroll}>
         {showTitle && (
           <textarea
             ref={titleRef}
@@ -677,6 +761,17 @@ export function Editor({
           data-testid="editor-surface"
         />
       </div>
+
+      {/* Custom scroll indicator - positioned at viewport right edge, offset by side panels */}
+      <div
+        className={`scroll-indicator ${scrollState.visible ? 'scroll-indicator--visible' : ''}`}
+        style={{
+          top: scrollState.thumbTop,
+          height: scrollState.thumbHeight,
+          right: 4 + scrollIndicatorRightOffset,
+        }}
+      />
+
       {editor && <BubbleMenu editor={editor} onAskAI={handleBubbleMenuAI} />}
 
       {aiState.showJumpIndicator && (
@@ -733,31 +828,84 @@ export function Editor({
           flex: 1;
           display: flex;
           flex-direction: column;
-          overflow-y: auto;
-          padding: 80px 96px 120px;
+          overflow: hidden;
+          height: 100%;
         }
 
-        @media (max-width: 900px) {
-          .editor-container {
-            padding: 60px 48px 100px;
-          }
+        /* Custom scroll indicator - Notion style fade at viewport edge */
+        .scroll-indicator {
+          position: fixed;
+          /* right is set dynamically via inline style to account for side panels */
+          width: 6px;
+          border-radius: 3px;
+          /* Light mode: dark grey */
+          background: rgba(55, 53, 47, 0.3);
+          opacity: 0;
+          transition: opacity 0.2s ease-out, right 0.2s ease-out;
+          pointer-events: none;
+          z-index: 9999;
         }
 
-        @media (max-width: 600px) {
-          .editor-container {
-            padding: 40px 24px 80px;
+        .scroll-indicator--visible {
+          opacity: 1;
+        }
+
+        /* Dark mode: dark/black */
+        @media (prefers-color-scheme: dark) {
+          .scroll-indicator {
+            background: rgba(0, 0, 0, 0.5);
           }
         }
 
         .editor-content-wrapper {
           flex: 1;
-          max-width: 708px;
+          /* 708px content + 96px padding each side = 900px total */
+          max-width: 900px;
           width: 100%;
           margin: 0 auto;
+          /* Scroll container */
+          overflow-y: auto;
+          overflow-x: hidden;
+          /* Hide native scrollbar */
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+          box-sizing: border-box;
+          /* Padding for content */
+          padding: 80px 96px 120px;
+        }
+
+        .editor-content-wrapper::-webkit-scrollbar {
+          display: none;
+        }
+
+        @media (max-width: 900px) {
+          .editor-content-wrapper {
+            max-width: calc(708px + 96px);
+            padding: 60px 48px 100px;
+          }
+        }
+
+        @media (max-width: 600px) {
+          .editor-content-wrapper {
+            max-width: calc(708px + 48px);
+            padding: 40px 24px 80px;
+          }
         }
 
         .editor-width--full .editor-content-wrapper {
           max-width: 100%;
+        }
+
+        /* Ensure ProseMirror content respects container bounds */
+        .editor-content .ProseMirror {
+          overflow-x: hidden;
+          max-width: 100%;
+        }
+
+        /* Entity card node views must respect container */
+        .editor-content .ProseMirror .entity-card-node-wrapper {
+          max-width: 100%;
+          overflow: hidden;
         }
 
         /* Title Input - Notion style large editable title */
@@ -1026,47 +1174,81 @@ export function Editor({
           text-transform: none;
         }
 
-        /* Entity marks (from @mythos/editor) - clickable to show floating card */
+        /* Entity marks (from @mythos/editor) - clickable to show floating card
+         * Uses Notion semantic colors for consistency
+         * character=blue, location=green, item=orange, magic_system=purple
+         * faction=pink, event=red, concept=yellow
+         * See @mythos/theme/colors.ts for source of truth
+         */
         .editor-content .ProseMirror [data-entity-id] {
           cursor: pointer;
           transition: background var(--duration-fast, 100ms);
         }
 
         .editor-content .ProseMirror [data-entity-id]:hover {
-          background: var(--color-bg-hover);
+          filter: brightness(1.1);
         }
 
+        /* Character - Notion Blue */
         .editor-content .ProseMirror .entity-character {
-          background: rgba(34, 211, 238, 0.12);
-          border-bottom: 2px solid var(--color-cyan);
+          background: #1F282D;
+          border-bottom: 2px solid #447ACB;
           padding: 0 2px;
           border-radius: 2px;
         }
 
+        /* Location - Notion Green */
         .editor-content .ProseMirror .entity-location {
-          background: rgba(34, 197, 94, 0.12);
-          border-bottom: 2px solid var(--color-green);
+          background: #242B26;
+          border-bottom: 2px solid #4F9768;
           padding: 0 2px;
           border-radius: 2px;
         }
 
+        /* Item - Notion Orange */
         .editor-content .ProseMirror .entity-item {
-          background: rgba(245, 158, 11, 0.12);
-          border-bottom: 2px solid var(--color-amber);
+          background: #36291F;
+          border-bottom: 2px solid #CB7B37;
           padding: 0 2px;
           border-radius: 2px;
         }
 
+        /* Magic System - Notion Purple */
         .editor-content .ProseMirror .entity-magic_system {
-          background: rgba(139, 92, 246, 0.12);
-          border-bottom: 2px solid var(--color-purple);
+          background: #2A2430;
+          border-bottom: 2px solid #865DBB;
           padding: 0 2px;
           border-radius: 2px;
         }
 
+        /* Faction - Notion Pink */
         .editor-content .ProseMirror .entity-faction {
-          background: rgba(168, 85, 247, 0.12);
-          border-bottom: 2px solid var(--color-purple);
+          background: #2E2328;
+          border-bottom: 2px solid #BA4A78;
+          padding: 0 2px;
+          border-radius: 2px;
+        }
+
+        /* Event - Notion Red */
+        .editor-content .ProseMirror .entity-event {
+          background: #332523;
+          border-bottom: 2px solid #BE524B;
+          padding: 0 2px;
+          border-radius: 2px;
+        }
+
+        /* Concept - Notion Yellow */
+        .editor-content .ProseMirror .entity-concept {
+          background: #372E20;
+          border-bottom: 2px solid #C19138;
+          padding: 0 2px;
+          border-radius: 2px;
+        }
+
+        /* Default/fallback - Notion Gray */
+        .editor-content .ProseMirror [class^="entity-"]:not(.entity-character):not(.entity-location):not(.entity-item):not(.entity-magic_system):not(.entity-faction):not(.entity-event):not(.entity-concept) {
+          background: #252525;
+          border-bottom: 2px solid #9B9B9B;
           padding: 0 2px;
           border-radius: 2px;
         }
@@ -1107,23 +1289,25 @@ export function Editor({
           opacity: 0.6;
         }
 
-        /* AI entity detection - purple pulse (P2: entitySuggestions) */
+        /* AI entity detection - Notion purple pulse (P2: entitySuggestions)
+         * Uses Notion purple: text #865DBB = rgb(134, 93, 187)
+         */
         .editor-content .ProseMirror [data-ai-entity-detected] {
-          background-color: rgba(168, 85, 247, 0.08);
+          background-color: rgba(134, 93, 187, 0.12);
           border-radius: 2px;
-          box-shadow: inset 0 -1px 0 rgba(168, 85, 247, 0.3);
+          box-shadow: inset 0 -1px 0 rgba(134, 93, 187, 0.4);
           cursor: pointer;
-          animation: entity-detection-pulse 4s ease-in-out infinite;
+          animation: entity-detection-pulse 3s ease-in-out infinite;
         }
 
         .editor-content .ProseMirror [data-ai-entity-detected]:hover {
-          background-color: rgba(168, 85, 247, 0.15);
+          background-color: rgba(134, 93, 187, 0.2);
           animation: none;
         }
 
         @keyframes entity-detection-pulse {
-          0%, 100% { background-color: rgba(168, 85, 247, 0.06); }
-          50% { background-color: rgba(168, 85, 247, 0.12); }
+          0%, 100% { background-color: rgba(134, 93, 187, 0.08); }
+          50% { background-color: rgba(134, 93, 187, 0.16); }
         }
 
         /* Task lists - Notion style */
