@@ -3,18 +3,93 @@
  */
 
 import { v } from "convex/values";
-import { action, internalMutation, internalQuery, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { api, components, internal } from "./_generated/api";
-import { verifyDocumentAccess } from "./lib/auth";
+import type { Id } from "./_generated/dataModel";
+import { verifyDocumentAccess, verifyProjectEditor } from "./lib/auth";
 import { hashSnapshot } from "./lib/contentHash";
 import { getEditorSchema } from "./lib/editorSchema";
 import { ProsemirrorSync } from "@convex-dev/prosemirror-sync";
 import { EditorState } from "@tiptap/pm/state";
+import type { ViewVersionHistoryResult } from "../packages/agent-protocol/src/tools";
 
 const prosemirrorSync = new ProsemirrorSync(components.prosemirrorSync);
 const AUTO_REVISION_THROTTLE_MS = 60_000;
 const apiAny = api as any;
 const internalAny = internal as any;
+
+export const viewVersionHistory = query({
+  args: {
+    documentId: v.id("documents"),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<ViewVersionHistoryResult> => {
+    await verifyDocumentAccess(ctx, args.documentId);
+
+    const limit = args.limit ?? 25;
+    const cursorValue = args.cursor ? Number(args.cursor) : undefined;
+
+    const query = ctx.db
+      .query("documentRevisions")
+      .withIndex("by_document_createdAt", (q) =>
+        cursorValue
+          ? q.eq("documentId", args.documentId).lt("createdAt", cursorValue)
+          : q.eq("documentId", args.documentId)
+      )
+      .order("desc");
+
+    const revisions = await query.take(limit);
+    const nextCursor =
+      revisions.length === limit
+        ? String(revisions[revisions.length - 1]?.createdAt ?? "")
+        : undefined;
+
+    return {
+      versions: revisions.map((revision) => ({
+        versionId: revision._id,
+        createdAt: revision.createdAt,
+        createdBy: revision.actorName ?? revision.actorUserId ?? undefined,
+        summary: revision.summary ?? undefined,
+      })),
+      nextCursor,
+    };
+  },
+});
+
+export const createManualRevision = mutation({
+  args: {
+    documentId: v.id("documents"),
+    snapshotJson: v.string(),
+    reason: v.string(),
+    summary: v.optional(v.string()),
+    toolName: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    sourceRevisionId: v.optional(v.id("documentRevisions")),
+  },
+  handler: async (ctx, args): Promise<Id<"documentRevisions">> => {
+    const { userId, projectId } = await verifyDocumentAccess(ctx, args.documentId);
+    await verifyProjectEditor(ctx, projectId);
+
+    const contentHash = await hashSnapshot(args.snapshotJson);
+
+    const revisionId = await ctx.runMutation((internal as any).revisions.createRevisionInternal, {
+      projectId,
+      documentId: args.documentId,
+      snapshotJson: args.snapshotJson,
+      contentHash,
+      reason: args.reason,
+      actorType: "user",
+      actorUserId: userId,
+      toolName: args.toolName,
+      summary: args.summary,
+      sourceRevisionId: args.sourceRevisionId,
+      metadata: args.metadata,
+      force: true,
+    });
+    return revisionId as Id<"documentRevisions">;
+  },
+});
 
 export const listByDocument = query({
   args: {

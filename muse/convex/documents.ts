@@ -9,7 +9,8 @@ import { v } from "convex/values";
 import { query, mutation, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { verifyProjectAccess, verifyDocumentAccess } from "./lib/auth";
+import { verifyProjectAccess, verifyDocumentAccess, verifyProjectEditor } from "./lib/auth";
+import type { DeleteDocumentResult } from "../packages/agent-protocol/src/tools";
 
 // ============================================================
 // QUERIES
@@ -54,6 +55,8 @@ export const list = query({
         .collect();
     }
 
+    documents = documents.filter((doc) => doc.deletedAt == null);
+
     // Sort by orderIndex
     return documents.sort((a, b) => a.orderIndex - b.orderIndex);
   },
@@ -89,15 +92,17 @@ export const getTree = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
+    const activeDocuments = documents.filter((doc) => doc.deletedAt == null);
+
     // Build tree structure
-    const rootDocs = documents
+    const rootDocs = activeDocuments
       .filter((d) => !d.parentId)
       .sort((a, b) => a.orderIndex - b.orderIndex);
 
     const buildTree = (
       parent: (typeof documents)[0]
     ): (typeof documents)[0] & { children: typeof documents } => {
-      const children = documents
+      const children = activeDocuments
         .filter((d) => d.parentId === parent._id)
         .sort((a, b) => a.orderIndex - b.orderIndex)
         .map(buildTree);
@@ -234,6 +239,49 @@ export const update = mutation({
     }
 
     return id;
+  },
+});
+
+export const deleteDocument = mutation({
+  args: {
+    documentId: v.id("documents"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<DeleteDocumentResult> => {
+    const document = await ctx.db.get(args.documentId);
+    if (!document) {
+      throw new Error("Document not found");
+    }
+
+    const userId = await verifyProjectEditor(ctx, document.projectId);
+
+    const now = Date.now();
+
+    await ctx.db.patch(args.documentId, {
+      deletedAt: now,
+      deletedByUserId: userId,
+      updatedAt: now,
+    });
+
+    try {
+      await ctx.runMutation((internal as any).revisions.createRevisionInternal, {
+        projectId: document.projectId,
+        documentId: document._id,
+        snapshotJson: JSON.stringify(document.content ?? null),
+        reason: "delete",
+        actorType: "user",
+        actorUserId: userId,
+        actorName: undefined,
+        toolName: "delete_document",
+        summary: args.reason?.trim() ? `Deleted: ${args.reason.trim()}` : "Document deleted",
+        metadata: { deletedAt: now },
+        force: true,
+      });
+    } catch (error) {
+      console.warn("[documents.deleteDocument] Failed to write revision", error);
+    }
+
+    return { documentId: args.documentId, status: "deleted" };
   },
 });
 
