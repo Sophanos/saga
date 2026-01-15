@@ -2,46 +2,475 @@
 
 > Quick reference for the widget user experience. See WIDGETS.md for full spec.
 
-## Current Infrastructure
+## Core Concept: Widget = Thread
 
-### What Exists
+Every widget execution creates a **thread** (conversation). Widgets are not fire-and-forget; they're interactive and refinable.
 
-| Component | Location | Status |
-|-----------|----------|--------|
-| Command Palette UI | `apps/web/src/components/command-palette/` | ✅ Uses `cmdk`, filters, recents |
-| Slash Command Menu | `packages/editor-webview/src/components/SlashCommandMenu.tsx` | ✅ TipTap extension, grouped |
-| Capabilities Registry | `packages/capabilities/src/registry.ts` | ✅ Central registry, surfaces |
-| Command Registry | `apps/web/src/commands/` | ✅ Generates from capabilities |
-| State Store | `stores/commandPalette.ts` | ✅ isOpen, query, filter, recentIds |
-
-### Capability Kinds (existing)
-
-```typescript
-type CapabilityKind = "tool" | "chat_prompt" | "ui";
-type CapabilitySurface = "quick_actions" | "command_palette" | "chat";
-type CapabilityCategory = "analysis" | "generation" | "knowledge" | "navigation";
+```
+/summarize → creates thread → user can refine → agent learns preferences
 ```
 
-### What Widgets Add
+---
 
-```typescript
-// New capability kind
-type CapabilityKind = "tool" | "chat_prompt" | "ui" | "widget";
+## Architecture Overview
 
-// New surface for slash menu in editor
-type CapabilitySurface = "quick_actions" | "command_palette" | "chat" | "slash_menu";
+### Three Widget Architectures
 
-// Widget-specific fields
-interface WidgetCapability extends CapabilityBase {
-  kind: "widget";
-  widgetType: "inline" | "artifact";
-  prompt: StructuredPrompt;
-  defaultModel: string;
-  costWeight: number;
-  clarifyOnAmbiguity: boolean;
-  outputSchema?: ZodSchema;
-}
+| Architecture | Execution | Result Location | Thread Access |
+|--------------|-----------|-----------------|---------------|
+| **Inline Widget** | Sync | Stays in document as block | Click block → AI panel |
+| **Artifact Widget** | Sync/Async | Creates separate entity | Click card → Artifact panel |
+| **Async Widget** | Background | Bell inbox notification | Click notification → Panel |
+
+### Scope Model
+
+Each widget declares its scope (what context it can read) and result type.
+
+| Scope | Reads From | Example Widgets |
+|-------|------------|-----------------|
+| `document` | Current doc only | Summarize, Expand, Rewrite |
+| `project` | All project entities | Character Profile, Outline |
+| `workspace` | Cross-project | Sync from Notion, Compare Projects |
+| `external` | Outside APIs | Fetch URL, Watch GitHub |
+
+### Widget Capability Fields
+
+| Field | Description |
+|-------|-------------|
+| scope | document, project, workspace, external |
+| resultType | inline (stays in doc) or artifact (creates entity) |
+| async | Can run in background (optional) |
+| clarifyOnAmbiguity | Pause for disambiguation before executing |
+| requiresSelection | Needs text selected to run |
+| requiresProject | Needs active project context |
+| parameters | Optional inputs (tone, depth, etc.) |
+| canSpawnSubAgents | Whether widget can create sub-agents for complex tasks |
+
+---
+
+## Widget as Agent
+
+Widgets are agent executions. Complex widgets can spawn sub-agents.
+
+### Sub-Agent Pattern
+
 ```
+/create-spec invoked
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  MAIN WIDGET AGENT                                              │
+│  - Orchestrates the overall task                                │
+│  - Creates thread for user interaction                          │
+│  - Can spawn sub-agents for parallel/complex work               │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ├──────────────────┬──────────────────┐
+         ▼                  ▼                  ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  SUB-AGENT 1    │ │  SUB-AGENT 2    │ │  SUB-AGENT 3    │
+│  Research       │ │  Gather context │ │  Draft sections │
+│  entities       │ │  from project   │ │  in parallel    │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+         │                  │                  │
+         └──────────────────┴──────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  MAIN AGENT ASSEMBLES RESULTS                                   │
+│  - Combines sub-agent outputs                                   │
+│  - Formats final result                                         │
+│  - Presents to user in thread                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### When to Spawn Sub-Agents
+
+| Scenario | Sub-Agent Pattern |
+|----------|-------------------|
+| Multi-section artifact | Parallel agents per section |
+| Research + generate | Sequential: research agent → generate agent |
+| Multi-entity scope | Fan-out agents per entity |
+| Validation | Generate agent + lint agent |
+| Translation | Parallel agents per language |
+
+### Sub-Agent Visibility
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  AI Panel (thread view)                                         │
+├─────────────────────────────────────────────────────────────────┤
+│  Create Spec • Running...                                       │
+│  ───────────────────────────────────────                        │
+│  ✨ Creating specification...                                   │
+│                                                                 │
+│  ▼ Sub-tasks (3)                     ← expandable               │
+│    ├─ ✓ Research entities            2.1s                       │
+│    ├─ ✓ Gather project context       1.8s                       │
+│    └─ ⟳ Draft sections...            running                    │
+│                                                                 │
+│  [Show details] for tool calls per sub-agent                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Sub-Agent Thread Relationship
+
+| Model | Description |
+|-------|-------------|
+| **Single thread** | Sub-agents run silently, only main thread visible to user |
+| **Nested threads** | Each sub-agent has thread, user can drill in |
+| **Flattened** | All sub-agent work appears in main thread as collapsible sections |
+
+**Recommendation:** Single thread with expandable sub-task progress. User sees one conversation, can expand to see what sub-agents did.
+
+---
+
+## UI Architecture
+
+### 1. Tab Indicator (Current Document Status)
+
+Shows widget status for the **active document tab** only.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  < >  │ ● Untitled ⟳ │ + │              Open Graph    🔔  ⚙    │
+│                  ↑                                              │
+│             tab indicator                                       │
+│             (this doc only)                                     │
+└─────────────────────────────────────────────────────────────────┘
+
+States (subtle, no colored dots):
+  - Normal:    "Untitled"           (no indicator)
+  - Running:   "Untitled ⟳"         (spinner)
+  - Ready:     "Untitled •"         (dot, needs attention)
+  - Applied:   "Untitled"           (clears after view)
+```
+
+### 2. Activity Bell (All Scopes)
+
+Craft-inspired notification inbox for **all widget executions** across scopes.
+
+```
+Click 🔔 opens:
+┌──────────────────────────────────────┐
+│  Activity                        ╳   │
+├──────────────────────────────────────┤
+│  [Widgets 2]  [Reminders]            │  ← tabs (badge on relevant one)
+├──────────────────────────────────────┤
+│  RUNNING                             │  ← section groups, not per-item icons
+│  ○ Summarize                         │
+│    Gathering context...              │
+├──────────────────────────────────────┤
+│  NEEDS ATTENTION                     │
+│  ○ Character Profile                 │
+│    Ready to view              View   │
+├──────────────────────────────────────┤
+│  ○ Fetch failed                      │
+│    Could not reach URL       Retry   │
+├──────────────────────────────────────┤
+│  Show completed →                    │
+└──────────────────────────────────────┘
+```
+
+### 3. Inline Widget Block (In Document)
+
+```
+┌────────────────────────────────────────┐
+│ My document text here...               │
+│                                        │
+│ ┌────────────────────────────────────┐ │
+│ │ ✨ Summary                    ↻ ⋮  │ │  ← clickable block
+│ │ This chapter introduces the hero   │ │
+│ │ and establishes the conflict...    │ │
+│ └────────────────────────────────────┘ │
+│                                        │
+│ More document text...                  │
+└────────────────────────────────────────┘
+
+Click → Opens AI Panel with thread
+```
+
+### 4. Artifact Card (Link Block)
+
+```
+┌────────────────────────────────────────┐
+│ My document text here...               │
+│                                        │
+│ ┌────────────────────────────────────┐ │
+│ │ 📄 Character Profile: Hero    ↗    │ │  ← card with preview
+│ │ Created from selection • 2m ago    │ │
+│ └────────────────────────────────────┘ │
+│                                        │
+└────────────────────────────────────────┘
+
+Click → Opens Artifact Panel with content + thread
+```
+
+---
+
+## Widget + Thread Interaction
+
+### Click Opens Thread (AI Panel)
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ Document                              │  AI Panel                      │
+├───────────────────────────────────────┼────────────────────────────────┤
+│                                       │  Summary • Chapter 1           │
+│ My document text...                   │  ───────────────────────       │
+│                                       │  ✨ This chapter introduces    │
+│ ┌───────────────────────────────────┐ │     the hero and...            │
+│ │ ✨ Summary ←─────── clicked ──────┼─┤                                │
+│ │ This chapter introduces...        │ │  You: make it shorter          │
+│ └───────────────────────────────────┘ │                                │
+│                                       │  ✨ Hero intro + conflict.     │
+│ More text...                          │                                │
+│                                       │  [Type to refine...]           │
+└───────────────────────────────────────┴────────────────────────────────┘
+```
+
+### Live Execution (Steerable)
+
+User can intervene **while widget is running**:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  AI Panel                                                              │
+├────────────────────────────────────────────────────────────────────────┤
+│  Character Profile • Running...                                        │
+│  ───────────────────────────────────────                               │
+│  ✨ Creating profile for Marcus...                                     │
+│     Name: Marcus                                                       │
+│     Role: Protagonist                                                  │
+│     Personality: Stoic, determined...  ← streaming                     │
+│                                                                        │
+│  You: actually make him more flawed, he's an anti-hero                 │
+│       ↑ user interrupts mid-generation                                 │
+│                                                                        │
+│  ✨ Adjusting... Marcus is now morally grey...                         │
+│                                                                        │
+│  ────────────────────────────────────────────────────────────          │
+│  💡 Remember "prefer flawed characters" for this widget?  [Yes] [No]   │
+│                                       ↑ agent proposes learning        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Adjustment Flows
+
+### Flow: Live Intervention (During Execution)
+
+```
+Widget is streaming output
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  USER OPENS THREAD (clicks tab spinner or bell item)            │
+│  - Sees live streaming output                                   │
+│  - Input field is active                                        │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  USER TYPES ADJUSTMENT                                          │
+│  "make it shorter" / "focus on relationships" / "more formal"   │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  AGENT BEHAVIOR OPTIONS                                         │
+├─────────────────────────────────────────────────────────────────┤
+│  A. SOFT ADJUST  → Agent incorporates feedback into current     │
+│                    stream, doesn't restart                      │
+│                                                                 │
+│  B. HARD RESTART → Agent stops, restarts with new context       │
+│                    (for major direction changes)                │
+│                                                                 │
+│  C. QUEUE        → Agent finishes current chunk, then applies   │
+│                    (default for minor tweaks)                   │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  AGENT PROPOSES LEARNING                                        │
+│  "Should I remember this preference?"                           │
+│  [Yes - this widget] [Yes - all widgets] [No - just this time]  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Flow: Post-Completion Refinement
+
+```
+Widget has completed, result shown
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  USER CLICKS WIDGET BLOCK OR "VIEW" IN BELL                     │
+│  Thread opens in AI Panel                                       │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  THREAD VIEW                                                    │
+│  ┌───────────────────────────────────────────────┐              │
+│  │ ✨ [Original output]                          │              │
+│  │                                               │              │
+│  │ You: can you expand the backstory section?   │              │
+│  │                                               │              │
+│  │ ✨ [Refined output with expanded backstory]  │              │
+│  │                                               │              │
+│  │ You: perfect, but make the tone darker       │              │
+│  │                                               │              │
+│  │ ✨ [Further refined output]                  │              │
+│  └───────────────────────────────────────────────┘              │
+│                                                                 │
+│  [Apply latest] [Revert to original] [Keep iterating]           │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  APPLY UPDATES INLINE BLOCK OR ARTIFACT                         │
+│  - Inline: replaces content in document                         │
+│  - Artifact: updates artifact content                           │
+│  - Thread history preserved for future reference                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Flow: Comment-Based Learning
+
+User can leave comments on widget output that agent learns from:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  INLINE BLOCK WITH COMMENT                                      │
+│  ┌───────────────────────────────────────────────┐              │
+│  │ ✨ Summary                              ↻ ⋮   │              │
+│  │ This chapter introduces the hero and...       │              │
+│  │                                               │              │
+│  │ 💬 "too verbose, I prefer bullet points"     │ ← user comment│
+│  └───────────────────────────────────────────────┘              │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  AGENT NOTICES COMMENT PATTERN                                  │
+│  (after 2-3 similar comments on summaries)                      │
+│                                                                 │
+│  "I noticed you often prefer bullet points for summaries.       │
+│   Should I use that format by default?"                         │
+│                                                                 │
+│  [Yes, always] [Yes, for summaries] [No thanks]                 │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  WORKFLOW ADAPTATION                                            │
+│  - Agent updates widget preferences                             │
+│  - Future /summarize outputs use bullet format                  │
+│  - User can reset in settings                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Flow: Regenerate with Feedback
+
+```
+User is unhappy with result
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  QUICK ACTIONS ON WIDGET BLOCK                                  │
+│  ┌───────────────────────────────────────────────┐              │
+│  │ ✨ Summary                              ↻ ⋮   │              │
+│  │ [content]                                     │              │
+│  └───────────────────────────────────────────────┘              │
+│                                                                 │
+│  ↻ = Regenerate (same params)                                   │
+│  ⋮ = Menu: Regenerate with feedback, Edit prompt, Remove        │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼  (user clicks "Regenerate with feedback")
+┌─────────────────────────────────────────────────────────────────┐
+│  FEEDBACK INPUT                                                 │
+│  ┌───────────────────────────────────────────────┐              │
+│  │ What should be different?                     │              │
+│  │ ┌───────────────────────────────────────────┐ │              │
+│  │ │ shorter, focus on conflict not setting    │ │              │
+│  │ └───────────────────────────────────────────┘ │              │
+│  │                    [Cancel] [Regenerate]      │              │
+│  └───────────────────────────────────────────────┘              │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  NEW EXECUTION                                                  │
+│  - Same widget, same source content                             │
+│  - Feedback added to prompt                                     │
+│  - Previous output available as "don't repeat this"             │
+│  - Thread continues (user sees iteration history)               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Adjustment Triggers Summary
+
+| Trigger | When | Agent Response |
+|---------|------|----------------|
+| Live typing | During streaming | Soft adjust or restart |
+| Thread message | After completion | Refine and offer apply |
+| Comment on block | Async, passive | Pattern detection → propose learning |
+| Regenerate ↻ | Explicit action | Same params, fresh attempt |
+| Regenerate with feedback | Explicit action | New attempt with guidance |
+| Edit prompt | Power user | Opens widget prompt editor |
+
+---
+
+## Agent Learning (Prompt Evolution)
+
+Widgets learn from user interventions at three levels:
+
+```
+┌──────────────┬─────────────────────────────────────────────────────┐
+│    Level     │  What agent remembers                               │
+├──────────────┼─────────────────────────────────────────────────────┤
+│  This run    │  Context from this thread only                      │
+├──────────────┼─────────────────────────────────────────────────────┤
+│  This widget │  "For character profiles, user prefers X"           │
+├──────────────┼─────────────────────────────────────────────────────┤
+│  Global      │  "User's writing style is Y, always avoid Z"        │
+└──────────────┴─────────────────────────────────────────────────────┘
+```
+
+### Prompt Evolution Flow
+
+```
+User runs /character-profile
+        ↓
+Agent starts with base prompt + stored preferences
+        ↓
+User intervenes: "more flawed"
+        ↓
+Agent adjusts output
+        ↓
+Agent asks: "Remember this preference?"
+        ↓
+   [Yes]    → saves to widget preferences
+   [No]     → one-time adjustment
+   [Always] → saves to global preferences
+```
+
+### Widget Preferences
+
+| Field | Description |
+|-------|-------------|
+| widgetId | Which widget these preferences apply to |
+| basePrompt | Original widget prompt |
+| userPreferences | List of learned adjustments |
+| scope | "widget" (this widget only) or "global" (all widgets) |
+
+**Example learned preferences for character-profile:**
+- "User prefers flawed/complex characters"
+- "Include detailed backstory"
+- "Avoid generic heroic tropes"
 
 ---
 
@@ -53,75 +482,76 @@ interface WidgetCapability extends CapabilityBase {
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  1. SLASH COMMAND (/) — Editor focused                          │
-│     ├─ Existing: SlashCommandMenu.tsx                           │
-│     ├─ Add: Widget commands with "widget" kind                  │
-│     └─ Surfaces: ["slash_menu"]                                 │
+│     ├─ Result: Inline block in document                         │
+│     └─ Thread: Opens in AI panel on click                       │
 │                                                                  │
 │  2. COMMAND PALETTE (Cmd+K) — Global                            │
-│     ├─ Existing: CommandPalette.tsx with cmdk                   │
-│     ├─ Add: Widget commands + parameter hints                   │
-│     └─ Surfaces: ["command_palette"]                            │
+│     ├─ Result: Preview modal → user chooses destination         │
+│     └─ Thread: Opens in AI panel                                │
 │                                                                  │
-│  3. AI PANEL — No selection fallback                            │
-│     ├─ Existing: Console tabs (chat, linter, etc.)              │
-│     └─ "Ask AI" routes here when no text selected               │
+│  3. CHAT PANEL — Conversational                                 │
+│     ├─ Result: Stays in chat thread                             │
+│     └─ Thread: Is the chat itself                               │
+│                                                                  │
+│  4. BELL INBOX — Async completion                               │
+│     ├─ Result: Notification with action                         │
+│     └─ Thread: Opens panel on click                             │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Result Destination by Entry Point
+
+| Entry Point | Result | Thread Location |
+|-------------|--------|-----------------|
+| `/` in editor | Inline block | AI panel (click block) |
+| Cmd+K | Modal preview → Insert/Create | AI panel |
+| Chat | Message in thread | Chat thread itself |
+| Async (bell) | Notification → View | AI panel or Artifact panel |
+
 ---
 
-## Flow 1: Slash Command Menu (/)
-
-**Existing component:** `SlashCommandMenu.tsx`
+## Flow: Slash Command Menu (/)
 
 ```
 User types "/" in editor
          │
          ▼
-┌─────────────────────────────────────┐
-│ Recent                              │  ← Add recent widgets (per-project)
-│ ├─ /summarize                       │
-│ └─ /expand                          │
-├─────────────────────────────────────┤
-│ Widgets                             │  ← New category
-│ ├─ /summarize                       │
-│ ├─ /expand                          │
-│ ├─ /rewrite                         │
-│ ├─ /outline                         │
-│ └─ /generate name                   │
-├─────────────────────────────────────┤
-│ Create                              │  ← Artifact widgets
-│ ├─ /create spec                     │
-│ ├─ /create summary                  │
-│ ├─ /create brief                    │
-│ └─ /create notes                    │
-├─────────────────────────────────────┤
-│ Format                              │  ← Existing TipTap commands
-│ ├─ Heading 1                        │
-│ ├─ Bullet List                      │
-│ └─ ...                              │
-├─────────────────────────────────────┤
-│ Ask AI: "{query}"                   │  ← Fallback (fuzzy no-match)
-└─────────────────────────────────────┘
+┌─────────────────────────────────┐
+│ Recent                          │  ← per-project widget history
+│ ├─ /summarize                   │
+│ └─ /expand                      │
+├─────────────────────────────────┤
+│ Widgets                         │
+│ ├─ /summarize                   │
+│ ├─ /expand                      │
+│ ├─ /rewrite                     │
+│ ├─ /outline                     │
+│ └─ /generate name               │
+├─────────────────────────────────┤
+│ Create                          │  ← artifact widgets
+│ ├─ /create spec                 │
+│ ├─ /create summary              │
+│ ├─ /create brief                │
+│ └─ /create notes                │
+├─────────────────────────────────┤
+│ Format                          │  ← existing TipTap commands
+│ ├─ Heading 1                    │
+│ ├─ Bullet List                  │
+│ └─ ...                          │
+├─────────────────────────────────┤
+│ Ask AI: "{query}"               │  ← fallback when no match
+└─────────────────────────────────┘
 
-Interactions (already implemented):
+Interactions:
 - ↑↓ navigate, Enter select, Esc close
 - Typing filters list
 - Click selects
 ```
 
-**Changes needed:**
-1. Add "Recent" section with per-project widget history
-2. Add "Widgets" and "Create" categories
-3. Add "Ask AI" fallback when no matches
-4. Wire widget execution to new preview modal flow
-
 ---
 
-## Flow 2: Command Palette (Cmd+K)
-
-**Existing component:** `CommandPalette.tsx`
+## Flow: Command Palette (Cmd+K)
 
 ```
 User presses Cmd+K
@@ -130,17 +560,17 @@ User presses Cmd+K
 ┌─────────────────────────────────────────────────────┐
 │ 🔍 Search commands...                            ×  │
 ├─────────────────────────────────────────────────────┤
-│ [All] [Entity] [AI] [Widget] [Nav] [General]       │  ← Add Widget filter
+│ [All] [Entity] [AI] [Widget] [Nav] [General]       │
 ├─────────────────────────────────────────────────────┤
 │ Recent                                              │
 │ ├─ /create spec                              ⌘⇧S   │
 │ └─ /summarize                                      │
 ├─────────────────────────────────────────────────────┤
 │ Widgets                                             │
-│ ├─ Summarize         Condense selected text        │  ← Description on focus
+│ ├─ Summarize         Condense selected text        │
 │ ├─ Expand            Expand selected text          │
 │ ├─ Rewrite           Change tone/style             │
-│ │   └─ [formal] [casual] [concise] [custom]        │  ← Parameter hints
+│ │   └─ [formal] [casual] [concise] [custom]        │  ← parameter hints
 │ ├─ Outline           Create markdown outline       │
 │ └─ Generate Names    Suggest names                 │
 ├─────────────────────────────────────────────────────┤
@@ -148,371 +578,310 @@ User presses Cmd+K
 │ ├─ Create Spec       Generate specification        │
 │ ├─ Create Summary    Generate summary doc          │
 │ └─ Create Brief      Generate brief doc            │
-├─────────────────────────────────────────────────────┤
-│ AI Analysis          (existing)                    │
-│ ├─ Check Consistency                         ⌘⇧L   │
-│ ├─ Clarity Check                                   │
-│ └─ ...                                             │
 └─────────────────────────────────────────────────────┘
 
-Tab cycles through filters (existing)
+Tab cycles through filters
+"Requires selection" badge when applicable
 ```
-
-**Changes needed:**
-1. Add "Widget" filter category
-2. Add parameter hints for widgets like /rewrite
-3. Wire widget execution to preview modal flow
-4. Show "Requires selection" badge when applicable
 
 ---
 
-## Flow 3: Widget Execution
+## Flow: Widget Execution
 
 ```
-User selects command (either entry point)
+User invokes widget (any entry point)
          │
          ▼
-┌─────────────────────────────────────────────────────┐
-│  NEEDS CLARIFICATION?                               │
-│  (threshold-based disambiguation)                   │
-├─────────────────────────────────────────────────────┤
-│  High confidence → Proceed automatically            │
-│  Close match → Inline picker in progress tile       │
-│  Complex → Agent ask modal                          │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  CREATE EXECUTION + THREAD                                       │
+│  - Generate executionId                                          │
+│  - Create thread for this execution                              │
+│  - Register in activity inbox                                    │
+└─────────────────────────────────────────────────────────────────┘
          │
          ▼
-┌─────────────────────────────────────────────────────┐
-│  PROGRESS TILE                                      │
-│  ┌───────────────────────────────────────────────┐  │
-│  │ ● Gathering context                           │  │
-│  │   ▼ Show details                              │  │
-│  └───────────────────────────────────────────────┘  │
-│                                                     │
-│  Position:                                          │
-│  - Short runs: anchored near selection              │
-│  - Long runs: fixed bottom bar                      │
-│                                                     │
-│  Stages: Gathering → Generating → Formatting        │
-│  Expandable: tool calls, entity reads               │
-│  Cancel: graceful with warning                      │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  NEEDS CLARIFICATION?                                            │
+│  (threshold-based disambiguation)                                │
+├─────────────────────────────────────────────────────────────────┤
+│  High confidence     → Proceed automatically                     │
+│  Close match         → Inline picker in progress tile            │
+│  Ambiguous/complex   → Clarification modal                       │
+└─────────────────────────────────────────────────────────────────┘
          │
          ▼
-┌─────────────────────────────────────────────────────┐
-│  PREVIEW MODAL                                      │
-│  (new component, not existing)                      │
-│  ┌───────────────────────────────────────────────┐  │
-│  │ Insert Summary                              × │  │
-│  ├───────────────────────────────────────────────┤  │
-│  │ [Title field for artifacts]                   │  │
-│  ├───────────────────────────────────────────────┤  │
-│  │ Preview content...                            │  │
-│  │ [Show full preview] if truncated              │  │
-│  │                                               │  │
-│  │ ▶ Receipts (collapsed)                        │  │
-│  ├───────────────────────────────────────────────┤  │
-│  │              [Cancel]  [Insert/Create]        │  │
-│  └───────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  PROGRESS TILE                                                   │
+│  ┌───────────────────────────────────────────────┐               │
+│  │ ● Gathering context                           │               │
+│  │   ▼ Show details                              │               │
+│  └───────────────────────────────────────────────┘               │
+│                                                                  │
+│  Position:                                                       │
+│  - Short runs: anchored near selection                           │
+│  - Long runs: fixed bottom bar                                   │
+│                                                                  │
+│  Stages: Gathering → Generating → Formatting                     │
+│  Expandable: tool calls, entity reads                            │
+│  Cancel: graceful with warning                                   │
+│                                                                  │
+│  TAB INDICATOR: Show spinner on current doc tab                  │
+│  BELL: Add to "Running" section                                  │
+└─────────────────────────────────────────────────────────────────┘
          │
-         ├─── Inline widget ───→ Insert at selection
-         │                       Show "Applied" highlight
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PREVIEW MODAL                                                   │
+│  ┌───────────────────────────────────────────────┐               │
+│  │ Insert Summary                              × │               │
+│  ├───────────────────────────────────────────────┤               │
+│  │ [Title field for artifacts]                   │               │
+│  ├───────────────────────────────────────────────┤               │
+│  │ Preview content...                            │               │
+│  │ [Show full preview] if truncated              │               │
+│  │                                               │               │
+│  │ ▶ Receipts (collapsed)                        │               │
+│  ├───────────────────────────────────────────────┤               │
+│  │              [Cancel]  [Insert/Create]        │               │
+│  └───────────────────────────────────────────────┘               │
+│                                                                  │
+│  TAB: Show dot (needs attention)                                 │
+│  BELL: Move to "Needs Attention" with [View] action              │
+└─────────────────────────────────────────────────────────────────┘
          │
-         └─── Artifact widget ──→ Save to project
-                                  Navigate to artifact
+         ├─── Inline → Insert block in doc, show highlight
+         │
+         └─── Artifact → Create entity, insert card in doc
 ```
+
+---
+
+## Clarification Flow
+
+When widget needs disambiguation before executing:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  CLARIFICATION TRIGGERS                             │
+├─────────────────────────────────────────────────────┤
+│  - Multiple entity matches (which "Marcus"?)        │
+│  - Ambiguous scope (this scene or whole chapter?)   │
+│  - Missing required context                         │
+│  - Widget has clarifyOnAmbiguity: true              │
+└─────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│  INLINE CLARIFICATION (simple choices)              │
+│  ┌───────────────────────────────────────────────┐  │
+│  │ Which character?                              │  │
+│  │ ○ Marcus (protagonist)                        │  │
+│  │ ○ Marcus (villain's father)                   │  │
+│  │ ○ Both                                        │  │
+│  └───────────────────────────────────────────────┘  │
+│  Shows in progress tile, quick selection            │
+└─────────────────────────────────────────────────────┘
+         │
+         OR
+         ▼
+┌─────────────────────────────────────────────────────┐
+│  MODAL CLARIFICATION (complex/multiple questions)   │
+│  ┌───────────────────────────────────────────────┐  │
+│  │ Create Character Profile                    × │  │
+│  ├───────────────────────────────────────────────┤  │
+│  │ Which character?                              │  │
+│  │ [Marcus (protagonist) ▼]                      │  │
+│  │                                               │  │
+│  │ Include relationships?                        │  │
+│  │ ○ Yes  ● No                                   │  │
+│  │                                               │  │
+│  │ Depth:                                        │  │
+│  │ ○ Brief  ● Standard  ○ Detailed               │  │
+│  ├───────────────────────────────────────────────┤  │
+│  │              [Cancel]  [Continue]             │  │
+│  └───────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+         │
+         ▼
+      Resume execution with clarified context
+
+---
+
+## Data Model
+
+### Widget Execution
+
+| Field | Description |
+|-------|-------------|
+| id | Unique execution identifier |
+| widgetId | Which widget was run |
+| threadId | Conversation thread (always created) |
+| sourceType | Where invoked: editor, chat, command, async |
+| sourceId | Document/chat/project ID |
+| blockId | If inline block was created |
+| resultType | inline or artifact |
+| artifactId | If artifact was created |
+| content | Inline content (if applicable) |
+| scope | document, project, workspace, external |
+| status | running, ready, applied, failed, cancelled |
+| async | Whether running in background |
+| progress | Stage name + optional percentage |
+
+### Activity Inbox Item
+
+| Field | Description |
+|-------|-------------|
+| id | Item identifier |
+| executionId | Links to widget execution |
+| widgetId | Which widget |
+| label | Display name |
+| scope | Grouping: document, project, workspace, external |
+| documentId | For "This Document" section |
+| projectId | For "This Project" section |
+| status | running, ready, failed (determines section) |
+| statusText | "Gathering context...", "Ready to view" |
+| actions | Available actions: View, Retry, Cancel |
 
 ---
 
 ## Component Map
 
-### New Components Needed
+### New Components
 
 | Component | Purpose | Location |
 |-----------|---------|----------|
-| `WidgetPreviewModal` | Preview + confirm flow | `apps/web/src/components/widgets/` |
-| `WidgetProgressTile` | Execution progress UI | `apps/web/src/components/widgets/` |
-| `InlineApplyHighlight` | Applied text indicator | `packages/editor-webview/` |
-| `ReceiptsBlock` | Manifest display | `apps/web/src/components/widgets/` |
-| `SourcePicker` | Add sources modal | `apps/web/src/components/widgets/` |
+| `ActivityBell` | Bell icon + badge | Header |
+| `ActivityInbox` | Dropdown with grouped items | Header popover |
+| `TabIndicator` | Spinner/dot on tab | Tab bar |
+| `WidgetBlock` | Inline widget in editor | TipTap node |
+| `ArtifactCard` | Link card in editor | TipTap node |
+| `WidgetThread` | Thread UI in AI panel | AI panel |
 
 ### Modified Components
 
 | Component | Changes |
 |-----------|---------|
-| `SlashCommandMenu.tsx` | Add Recent, Widgets, Create categories; Ask AI fallback |
-| `CommandPalette.tsx` | Add Widget filter; parameter hints; wire to preview modal |
-| `capabilities/registry.ts` | Add widget capabilities with new kind |
-| `commandPalette.ts` store | Add widget-specific state (preview, execution) |
+| `TabBar` | Add indicator support per tab |
+| `AIPanel` | Support widget thread view |
+| `Header` | Add ActivityBell |
 
 ---
 
-## State Flow
+## State Stores
 
-```
-┌─────────────────────────────────────────────────────┐
-│  commandPalette store (existing)                    │
-├─────────────────────────────────────────────────────┤
-│  isOpen: boolean                                    │
-│  query: string                                      │
-│  filter: 'all' | 'entity' | 'ai' | 'widget' | ...  │  ← Add 'widget'
-│  recentCommandIds: string[]                         │
-│  expanded: boolean                                  │
-└─────────────────────────────────────────────────────┘
+### Activity Store
+- items: List of activity items
+- unreadCount: Badge number
+- isOpen: Dropdown visibility
+- Actions: addItem, updateStatus, markRead, removeItem
 
-┌─────────────────────────────────────────────────────┐
-│  widgetExecution store (new)                        │
-├─────────────────────────────────────────────────────┤
-│  status: 'idle' | 'gathering' | 'generating' |      │
-│          'preview' | 'applying' | 'error'           │
-│  currentWidget: WidgetCapability | null             │
-│  inputs: Record<string, unknown>                    │
-│  partialOutput: string | null      ← resume cache   │
-│  previewContent: string | null                      │
-│  executionLog: ExecutionStep[]                      │
-│  error: WidgetError | null                          │
-└─────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────┐
-│  artifact store (existing, extend)                  │
-├─────────────────────────────────────────────────────┤
-│  artifacts: Artifact[]                              │
-│  + createArtifact(content, manifest)                │
-│  + updateArtifactSources(id, sources[])             │
-│  + checkStaleness(id): 'fresh' | 'stale' | 'missing'│
-└─────────────────────────────────────────────────────┘
-```
+### Widget Execution Store (extend existing)
+- currentThreadId: Active thread
+- openThread(executionId): Opens thread in AI panel
+- proposePreference(text): Shows learning prompt
+- savePreference(text, scope): Saves to widget or global
 
 ---
 
-## Capability Registry Updates
+## Open Questions
 
-```typescript
-// packages/capabilities/src/registry.ts
+### Architecture
 
-// Add widget capabilities
-const WIDGET_CAPABILITIES: WidgetCapability[] = [
-  {
-    id: "widget.summarize",
-    kind: "widget",
-    label: "Summarize",
-    description: "Condense selected text",
-    icon: "FileText",
-    category: "generation",
-    surfaces: ["slash_menu", "command_palette"],
-    requiresSelection: true,
-    requiresProject: true,
-    widgetType: "inline",
-    costWeight: 1,
-    clarifyOnAmbiguity: false,
-    prompt: {
-      system: "You are a concise summarizer.",
-      user: "Summarize the following text:\n\n${selection}",
-      variables: [{ name: "selection", type: "selection", required: true }],
-    },
-    defaultModel: "openrouter/anthropic/claude-3-haiku",
-    order: 10,
-  },
-  {
-    id: "widget.expand",
-    kind: "widget",
-    label: "Expand",
-    description: "Expand selected text with more detail",
-    icon: "Maximize2",
-    category: "generation",
-    surfaces: ["slash_menu", "command_palette"],
-    requiresSelection: true,
-    requiresProject: true,
-    widgetType: "inline",
-    costWeight: 2,
-    clarifyOnAmbiguity: false,
-    prompt: { /* ... */ },
-    defaultModel: "openrouter/anthropic/claude-3-haiku",
-    order: 20,
-  },
-  {
-    id: "widget.rewrite",
-    kind: "widget",
-    label: "Rewrite",
-    description: "Change tone or style",
-    icon: "RefreshCw",
-    category: "generation",
-    surfaces: ["slash_menu", "command_palette"],
-    requiresSelection: true,
-    requiresProject: true,
-    widgetType: "inline",
-    costWeight: 2,
-    clarifyOnAmbiguity: false,
-    parameters: [
-      { name: "tone", type: "enum", options: ["formal", "casual", "concise", "expanded"], default: "formal" },
-    ],
-    prompt: { /* ... */ },
-    defaultModel: "openrouter/anthropic/claude-3-haiku",
-    order: 30,
-  },
-  // ... more inline widgets
+1. **Inline block persistence**: How do we store widget blocks in TipTap JSON?
+   - Option A: Custom node type with executionId reference
+   - Option B: Mark decoration with metadata
+   - Option C: Separate block table linked to positions
 
-  // Artifact widgets
-  {
-    id: "widget.create-spec",
-    kind: "widget",
-    label: "Create Spec",
-    description: "Generate specification document",
-    icon: "FileCode",
-    category: "generation",
-    surfaces: ["slash_menu", "command_palette"],
-    requiresProject: true,
-    widgetType: "artifact",
-    costWeight: 5,
-    clarifyOnAmbiguity: true,  // High-impact, pause for entity ambiguity
-    prompt: { /* ... */ },
-    defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
-    order: 100,
-  },
-  // ... more artifact widgets
-];
+2. **Thread storage**: Where do widget threads live?
+   - Option A: Same as chat threads (Convex `threads` table)
+   - Option B: Separate `widgetThreads` table
+   - Option C: Embedded in execution record
 
-export const CAPABILITIES: Capability[] = [
-  ...CAPABILITIES_BASE,
-  ...WIDGET_CAPABILITIES,  // Add widgets
-];
-```
+3. **Preference storage**: Where do learned preferences live?
+   - Option A: User settings document
+   - Option B: Per-widget preference records
+   - Option C: Agent memory system
+
+4. **Widget output versioning**: Do we need separate widget output versions, or is thread + doc versioning enough?
+
+   | Approach | Pros | Cons |
+   |----------|------|------|
+   | Thread only | Simple, history is conversation | Hard to diff outputs directly |
+   | Thread + explicit versions | Can compare v1/v2/v3 side-by-side | More storage, more UI |
+   | Rely on doc versioning | Reuse existing infra | Loses pre-apply iterations |
+
+   Related: System already has versioning on documents, artifacts, entities. Widget executions create threads which capture iteration history. Question is whether to add explicit "v1, v2, v3" snapshots for output comparison.
+
+### UX
+
+4. **Tab indicator granularity**: Show status for...
+   - Option A: Only widgets invoked from this document
+   - Option B: All widgets that affect this document
+   - Option C: All widgets in this project
+
+5. **Bell inbox grouping**: Primary grouping by...
+   - Option A: Scope (This Doc, This Project, Workspace, External)
+   - Option B: Status (Running, Ready, Failed)
+   - Option C: Time (Today, Yesterday, Older)
+
+6. **Intervention UX**: When user types during generation...
+   - Option A: Pause generation, show clarification UI
+   - Option B: Queue message, apply after current chunk
+   - Option C: Interrupt and restart with new context
+
+### Future
+
+7. **Notifications integration**: Bell inbox expands to include...
+   - Reminders (like Craft)
+   - Calendar events
+   - Task deadlines
+   - Collaboration mentions
+
+8. **Widget marketplace**: User-created widgets...
+   - Where stored?
+   - How shared?
+   - Versioning?
 
 ---
 
-## Integration Points
+## Implementation Phases
 
-### 1. SlashCommandMenu → Widget Execution
+### Phase 1: Foundation (Current)
+- [x] Widget execution store
+- [x] WidgetProgressTile
+- [x] WidgetPreviewModal
+- [x] Command palette integration
+- [ ] Basic inline block
 
-```typescript
-// packages/editor-webview/src/components/SlashCommandMenu.tsx
+### Phase 2: Activity System
+- [ ] ActivityBell component
+- [ ] ActivityInbox dropdown
+- [ ] TabIndicator component
+- [ ] Execution → Activity item flow
 
-// Current: command(item) calls TipTap command
-// New: if item.kind === "widget", dispatch to widget execution
+### Phase 3: Thread Integration
+- [ ] Widget thread UI in AI panel
+- [ ] Click block → open thread
+- [ ] Live intervention support
+- [ ] Thread persistence
 
-const handleSelect = (item: SlashCommandItem) => {
-  if (item.kind === "widget") {
-    // Post message to parent (web app)
-    window.parent.postMessage({
-      type: "WIDGET_INVOKE",
-      widgetId: item.id,
-      selection: editor.state.selection,
-    }, "*");
-  } else {
-    command(item);  // Existing TipTap command
-  }
-};
-```
+### Phase 4: Learning
+- [ ] Preference proposal UI
+- [ ] Preference storage
+- [ ] Prompt enhancement with preferences
+- [ ] Global vs widget-level preferences
 
-### 2. CommandPalette → Widget Execution
-
-```typescript
-// apps/web/src/commands/ai-commands.ts
-
-// Current: capabilityToCommand converts to navigation-only commands
-// New: widget capabilities execute via widgetExecution store
-
-function capabilityToCommand(capability: Capability): Command {
-  if (capability.kind === "widget") {
-    return {
-      id: capability.id,
-      label: capability.label,
-      // ...
-      execute: async (ctx) => {
-        const { startWidgetExecution } = useWidgetExecutionStore.getState();
-        startWidgetExecution(capability, {
-          selection: ctx.selectedText,
-          documentId: ctx.state.document.currentDocument?.id,
-        });
-      },
-    };
-  }
-  // ... existing logic
-}
-```
-
-### 3. Write Path (Inline Apply)
-
-```typescript
-// Existing: write_content operation in agent tools
-// Reuse for widget inline apply
-
-const applyInlineWidget = async (content: string, selection: Selection) => {
-  // Use existing editor command
-  editor.chain()
-    .focus()
-    .setTextSelection(selection)
-    .insertContent(content)
-    .run();
-
-  // Add execution marker (new)
-  addExecutionMarker(selection.from, selection.to + content.length, executionId);
-
-  // Show highlight (new)
-  showAppliedHighlight(selection.from, content.length);
-};
-```
+### Phase 5: Async
+- [ ] Background execution queue
+- [ ] Progress updates via SSE/WebSocket
+- [ ] Notification on completion
+- [ ] Retry/cancel for async jobs
 
 ---
 
-## User Journey Summary
+## References
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     WIDGET USER JOURNEY                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  1. INVOKE                                                       │
-│     "/" in editor  OR  Cmd+K globally                           │
-│     ↓                                                           │
-│  2. SELECT                                                       │
-│     Browse/search → pick widget → (optional params)             │
-│     ↓                                                           │
-│  3. EXECUTE                                                      │
-│     Progress tile shows stages                                  │
-│     ↓                                                           │
-│  4. PREVIEW                                                      │
-│     Modal with content, title (artifact), receipts              │
-│     ↓                                                           │
-│  5. CONFIRM                                                      │
-│     [Insert] for inline  OR  [Create] for artifact              │
-│     ↓                                                           │
-│  6. RESULT                                                       │
-│     Inline: highlight fades, marker persists                    │
-│     Artifact: saved to project, receipts attached               │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## MVP1 Implementation Order
-
-1. **Phase 0: Widget Foundation**
-   - Add `widget` kind to capabilities
-   - Add `slash_menu` surface
-   - Register MVP1 widgets in registry
-   - Wire SlashCommandMenu to new execution flow
-
-2. **Phase 1: Execution UI**
-   - `WidgetProgressTile` component
-   - `WidgetPreviewModal` component
-   - `widgetExecution` store
-
-3. **Phase 2: Inline Apply**
-   - Execution marker in editor
-   - Applied highlight with fade
-   - Revert action
-
-4. **Phase 3: Artifacts**
-   - Artifact schema in Convex
-   - Manifest structure
-   - `ReceiptsBlock` component
-   - Staleness detection
-
-5. **Phase 4: Polish**
-   - Recent widgets (per-project)
-   - "Ask AI" fallback
-   - Cmd+K parameter hints
-   - Error states
+- **Craft**: Activity bell with tabs (Activity/Reminders), section grouping
+- **Arc**: Tab indicators (favicon badges, loading states)
+- **Notion**: Inline AI blocks, slash command UX
+- **Linear**: Background job notifications

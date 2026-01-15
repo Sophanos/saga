@@ -1,6 +1,10 @@
 # Widgets & Artifacts
 
-> Last updated: 2026-01-11
+> Last updated: 2026-01-15
+
+**Related docs:**
+- `WIDGETS_UX_FLOW.md` - Detailed UX flows, adjustment patterns, Activity Bell/Inbox UI
+- `MLP1_ROADMAP.md` - Implementation status
 
 ## 1. Problem + Positioning
 
@@ -84,6 +88,38 @@ Output: published artifact with receipts, lineage, and staleness tracking.
 - Living Model: project graph + decisions + memories + relationships.
 - Entity: node in the project graph (character, feature, campaign, etc).
 - Execution Marker: hidden metadata in editor linking applied text to execution ID.
+- Widget Thread: conversation created for each widget execution; enables refinement and iteration.
+
+### Widget = Thread Model
+
+Every widget execution creates a **thread** (conversation). Widgets are not fire-and-forget; they're interactive and refinable.
+
+```
+/summarize → creates thread → user can refine → agent learns preferences
+```
+
+**Key behaviors:**
+- Click inline widget block → opens AI panel with thread
+- Click artifact card → opens artifact panel with thread
+- User can continue conversation to refine output
+- Thread history preserved for future reference
+- Agent can propose learning from user interventions
+
+See `WIDGETS_UX_FLOW.md` for detailed interaction flows.
+
+### Widget as Agent
+
+Widgets are agent executions. Complex widgets can spawn sub-agents for parallel or sequential work.
+
+**Sub-agent patterns:**
+- Multi-section artifact → parallel agents per section
+- Research + generate → sequential agents
+- Multi-entity scope → fan-out agents per entity
+- Validation → generate agent + lint agent
+
+**Visibility:** Single thread with expandable sub-task progress. User sees one conversation, can expand to see what sub-agents did.
+
+See `WIDGETS_UX_FLOW.md` for detailed sub-agent patterns and UI.
 
 ## 5. MVP1 Spec
 
@@ -641,6 +677,25 @@ Track full funnel with context signals:
 - Dashboard: who can edit the pinned dashboard in collaboration?
 - Is inbox a block or its own pinned artifact? (deferred past MVP1)
 - Goals block definition and data model (deferred past MVP1)
+
+### Widget output versioning
+
+Do we need separate widget output versions, or is thread + doc versioning enough?
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| Thread only | Simple, history is conversation | Hard to diff outputs directly |
+| Thread + explicit versions | Can compare v1/v2/v3 side-by-side | More storage, more UI |
+| Rely on doc versioning | Reuse existing infra | Loses pre-apply iterations |
+
+System already has versioning on documents, artifacts, entities. Widget executions create threads which capture iteration history. Question is whether to add explicit "v1, v2, v3" snapshots for direct output comparison.
+
+**Related decisions:**
+- Artifact versioning exists (line 1597 in Future section)
+- Widget version stored in manifest (executionContext.widgetVersion)
+- Thread captures refinement history naturally
+
+See `WIDGETS_UX_FLOW.md` for detailed versioning discussion.
 
 ## 7. Recipes
 
