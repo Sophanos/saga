@@ -24,6 +24,15 @@ import {
   useArtifactStore,
 } from '@mythos/state';
 
+// Custom event type for entity actions from editor
+interface EntityOpenGraphEvent extends CustomEvent {
+  detail: {
+    entityId: string;
+    entityName: string;
+    entityType: string;
+  };
+}
+
 // Lazy load editor only on web
 const LazyEditorShell = Platform.OS === 'web'
   ? lazy(() => import('@mythos/editor-webview').then(mod => ({ default: mod.EditorShell })))
@@ -33,7 +42,34 @@ export default function EditorScreen(): JSX.Element {
   const { colors } = useTheme();
   const { aiPanelMode, aiPanelWidth, sidebarCollapsed, openKnowledgePanel, pendingWriteContent, clearPendingWriteContent } =
     useLayoutStore();
-  const { panelMode: artifactPanelMode, panelWidth: artifactPanelWidth } = useArtifactStore();
+  const { panelMode: artifactPanelMode, panelWidth: artifactPanelWidth, setPanelMode, openEntity } = useArtifactStore();
+
+  // Listen for entity:open-graph events from editor
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const handleEntityOpenGraph = (event: Event) => {
+      const { detail } = event as EntityOpenGraphEvent;
+      console.log('[EditorScreen] Opening entity in Artifact Panel:', detail);
+
+      // If AI panel is in side mode, use floating mode for artifact panel
+      // Otherwise use side mode (artifact panel is hidden when AI panel is in side mode)
+      const targetMode = aiPanelMode === 'side' ? 'floating' : 'side';
+      setPanelMode(targetMode);
+
+      // Open entity with basic data (will be enhanced to fetch full entity)
+      openEntity(detail.entityId, detail.entityName, {
+        id: detail.entityId,
+        name: detail.entityName,
+        type: detail.entityType,
+      });
+    };
+
+    window.addEventListener('entity:open-graph', handleEntityOpenGraph);
+    return () => {
+      window.removeEventListener('entity:open-graph', handleEntityOpenGraph);
+    };
+  }, [setPanelMode, openEntity, aiPanelMode]);
 
   // Calculate scroll indicator right offset based on visible side panels
   // Note: Artifact panel is hidden when AI panel is in 'side' mode (see AppShell.tsx line 78)

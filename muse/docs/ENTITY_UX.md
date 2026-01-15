@@ -178,17 +178,29 @@ States: pending, accepted, rejected. Rejected suggestions don't reappear for sam
 
 ### EntityCard Layout
 
-Header: Icon, name, type, key fields as pills, actions
+Header: Icon, name, type badge, alias (if any), action buttons
 
 Tabs:
-- Overview: Fields + TipTap editor + assets
+- Overview: Notes + properties grid
 - Graph: Relationships centered on this entity
-- Mentions: Qdrant semantic search
-- History: Change log
+- Mentions: Document references with excerpts
+- History: Change log with user/AI indicators
 
-Iteration chat for natural language refinement.
+Iteration chat input at bottom for natural language refinement.
 
-Actions: Insert (into editor), Copy, Save
+Action Buttons (appear on hover):
+| Icon | Action |
+|------|--------|
+| Insert (expand arrows) | Insert @mention at cursor |
+| Copy | Copy @mention to clipboard |
+| Graph (network nodes) | Open entity-centric graph in Artifact Panel |
+| Pin (thumbtack) | Pin card - prevents auto-close when typing |
+| Close (X) | Remove card from document |
+
+Behaviors:
+- **Auto-collapse**: Card collapses when user types elsewhere (unless pinned)
+- **Toggle**: Re-clicking entity mention removes the card
+- **Pin**: Pinned cards stay expanded while user continues writing
 
 ---
 

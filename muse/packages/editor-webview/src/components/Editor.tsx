@@ -349,12 +349,16 @@ export function Editor({
       }
     });
 
-    // If card already exists, don't insert another
+    // Toggle behavior: if card exists, remove it; otherwise insert
     if (existingCardFound) {
+      // Remove the existing card (toggle off)
+      (editor.chain().focus() as any)
+        .removeEntityCard(entityId)
+        .run();
       return;
     }
 
-    // Insert entity card node inline after current line
+    // Insert entity card node inline after current line (toggle on)
     (editor.chain().focus() as any)
       .insertEntityCard({
         entityId: entityId || `entity_${Date.now()}`,
@@ -1245,8 +1249,8 @@ export function Editor({
           border-radius: 2px;
         }
 
-        /* Default/fallback - Notion Gray */
-        .editor-content .ProseMirror [class^="entity-"]:not(.entity-character):not(.entity-location):not(.entity-item):not(.entity-magic_system):not(.entity-faction):not(.entity-event):not(.entity-concept) {
+        /* Default/fallback - Notion Gray (exclude entity-card components) */
+        .editor-content .ProseMirror [class^="entity-"]:not(.entity-character):not(.entity-location):not(.entity-item):not(.entity-magic_system):not(.entity-faction):not(.entity-event):not(.entity-concept):not([class*="entity-card"]) {
           background: #252525;
           border-bottom: 2px solid #9B9B9B;
           padding: 0 2px;
