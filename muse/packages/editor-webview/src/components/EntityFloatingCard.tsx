@@ -9,6 +9,11 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  notion,
+  getNotionColorForEntity,
+  type NotionColorName,
+} from '@mythos/theme';
 
 // ============================================================================
 // Types
@@ -58,21 +63,17 @@ export interface EntityFloatingCardProps {
 type TabId = 'overview' | 'graph' | 'mentions';
 
 // ============================================================================
-// Entity Color Config (matches @mythos/theme/colors.ts)
+// Entity Color Helpers - Using centralized @mythos/theme
 // ============================================================================
 
-const ENTITY_COLORS: Record<EntityType, string> = {
-  character: '#22d3ee',
-  location: '#22c55e',
-  item: '#f59e0b',
-  magic_system: '#8b5cf6',
-  faction: '#a855f7',
-  event: '#f97316',
-  concept: '#64748b',
-};
+function getEntityColor(type: EntityType, override?: NotionColorName): string {
+  const colorName = getNotionColorForEntity(type, override);
+  return notion.dark[colorName].text;
+}
 
-function getEntityColor(type: EntityType): string {
-  return ENTITY_COLORS[type] ?? '#64748b';
+function getEntityBgColor(type: EntityType, override?: NotionColorName): string {
+  const colorName = getNotionColorForEntity(type, override);
+  return notion.dark[colorName].bg;
 }
 
 // ============================================================================

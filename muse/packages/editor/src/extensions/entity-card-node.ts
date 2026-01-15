@@ -37,7 +37,7 @@ export const EntityCardNode = Node.create<EntityCardNodeOptions>({
 
   atom: true,
 
-  draggable: true,
+  draggable: false,
 
   addOptions() {
     return {

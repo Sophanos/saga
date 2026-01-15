@@ -323,18 +323,31 @@ P3 - Widgets:
 
 ### Entity Colors (`packages/theme/src/colors.ts`)
 
-- character: `#22d3ee` (cyan)
-- location: `#22c55e` (green)
-- item: `#f59e0b` (amber)
-- magic_system: `#a855f7` (purple)
+Uses **Notion semantic colors** for consistency. Each color has text (underline) and background variants for light/dark mode.
+
+| Entity Type | Notion Color | Text (Dark) | Background (Dark) |
+|-------------|--------------|-------------|-------------------|
+| character | blue | `#447ACB` | `#1F282D` |
+| location | green | `#4F9768` | `#242B26` |
+| item | orange | `#CB7B37` | `#36291F` |
+| magic_system | purple | `#865DBB` | `#2A2430` |
+| faction | pink | `#BA4A78` | `#2E2328` |
+| event | red | `#BE524B` | `#332523` |
+| concept | yellow | `#C19138` | `#372E20` |
+| (default) | gray | `#9B9B9B` | `#252525` |
+
+Full palette in `colors.notion.light` and `colors.notion.dark` with all 10 Notion semantic colors: default, gray, brown, orange, yellow, green, blue, purple, pink, red.
 
 ### CSS Classes
 
-**Entity marks** (Editor.tsx, globals.css):
-- `.entity-character` - Cyan underline
-- `.entity-location` - Green underline
-- `.entity-item` - Amber underline
-- `.entity-magic_system` - Purple underline
+**Entity marks** (Editor.tsx, globals.css) - Notion colors with background + underline:
+- `.entity-character` - Blue (`#447ACB` underline, `#1F282D` bg)
+- `.entity-location` - Green (`#4F9768` underline, `#242B26` bg)
+- `.entity-item` - Orange (`#CB7B37` underline, `#36291F` bg)
+- `.entity-magic_system` - Purple (`#865DBB` underline, `#2A2430` bg)
+- `.entity-faction` - Pink (`#BA4A78` underline, `#2E2328` bg)
+- `.entity-event` - Red (`#BE524B` underline, `#332523` bg)
+- `.entity-concept` - Yellow (`#C19138` underline, `#372E20` bg)
 
 **AI provenance** (uses `data-ai-status` attribute from AIGeneratedMark):
 - `.ai-generated[data-ai-status="pending"]` - Pink (unreviewed)

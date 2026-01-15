@@ -11,6 +11,11 @@ import type {
   WriterEntityType,
   WriterRelationType,
 } from "./types";
+import {
+  notion,
+  entityToNotionColor,
+  type NotionColorName,
+} from "@mythos/theme";
 
 /**
  * Icon names that map to lucide-react icons.
@@ -70,16 +75,16 @@ export interface ProjectGraphRegistryDisplay {
 
 /**
  * Hex colors for entity types (for inline styles, canvas, etc.)
- * These are the canonical color values; Tailwind classes derive from these.
+ * Derived from Notion semantic colors in @mythos/theme (dark mode).
  */
 export const WRITER_ENTITY_HEX_COLORS: Record<WriterEntityType, string> = {
-  character: "#22d3ee", // cyan
-  location: "#22c55e",  // green
-  item: "#f59e0b",      // amber
-  magic_system: "#8b5cf6", // violet
-  faction: "#a855f7",   // purple
-  event: "#f97316",     // orange
-  concept: "#64748b",   // slate
+  character: notion.dark[entityToNotionColor['character']].text,
+  location: notion.dark[entityToNotionColor['location']].text,
+  item: notion.dark[entityToNotionColor['item']].text,
+  magic_system: notion.dark[entityToNotionColor['magic_system']].text,
+  faction: notion.dark[entityToNotionColor['faction']].text,
+  event: notion.dark[entityToNotionColor['event']].text,
+  concept: notion.dark[entityToNotionColor['concept']].text,
 };
 
 /**
@@ -169,7 +174,38 @@ export function getEntityIcon(type: GraphEntityType): EntityIconName {
  * @returns Hex color string (e.g., "#22d3ee")
  */
 export function getEntityHexColor(type: GraphEntityType): string {
-  return WRITER_ENTITY_HEX_COLORS[type as WriterEntityType] ?? "#64748b";
+  return WRITER_ENTITY_HEX_COLORS[type as WriterEntityType] ?? notion.dark.gray.text;
+}
+
+/**
+ * Get the Notion color name for an entity type
+ * Supports override for user-customized colors
+ * @param type - The entity type
+ * @param override - Optional Notion color override
+ * @returns Notion color name
+ */
+export function getEntityNotionColorName(
+  type: GraphEntityType,
+  override?: NotionColorName
+): NotionColorName {
+  return override ?? entityToNotionColor[type] ?? 'gray';
+}
+
+/**
+ * Get Notion color values for an entity type (text and bg)
+ * Supports theme and override for user-customized colors
+ * @param type - The entity type
+ * @param theme - 'light' or 'dark' (default: 'dark')
+ * @param override - Optional Notion color override
+ * @returns Object with text and bg hex colors
+ */
+export function getEntityNotionColors(
+  type: GraphEntityType,
+  theme: 'light' | 'dark' = 'dark',
+  override?: NotionColorName
+): { text: string; bg: string } {
+  const colorName = getEntityNotionColorName(type, override);
+  return notion[theme][colorName];
 }
 
 export function getGraphEntityLabel(

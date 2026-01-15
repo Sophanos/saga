@@ -1,154 +1,103 @@
 /**
- * EntityCardNodeView - Inline entity card rendered in document flow
+ * EntityCardNodeView - Inline entity card for TipTap
  *
- * This is a TipTap NodeView component that renders an entity card
- * inline in the editor, pushing content below it.
+ * Uses CSS variables for theme adaptation (light/dark).
+ * Entity colors use Notion semantic palette from @mythos/theme
  */
 
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
+import {
+  notion,
+  getNotionColorForEntity,
+  type NotionColorName,
+} from '@mythos/theme';
 import { MOCK_ENTITIES, type EntityData, type EntityType } from './EntityFloatingCard';
-
-// ============================================================================
-// Entity Colors
-// ============================================================================
-
-const ENTITY_COLORS: Record<EntityType, string> = {
-  character: '#22d3ee',
-  location: '#22c55e',
-  item: '#f59e0b',
-  magic_system: '#8b5cf6',
-  faction: '#a855f7',
-  event: '#f97316',
-  concept: '#64748b',
-};
-
-function getEntityColor(type: EntityType): string {
-  return ENTITY_COLORS[type] ?? '#64748b';
-}
 
 // ============================================================================
 // Icons
 // ============================================================================
 
-function IconUser({ color, size = 20 }: { color: string; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
+const IconUser = ({ color, size = 18 }: { color: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="8" r="4" />
+    <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+  </svg>
+);
 
-function IconMapPin({ color, size = 20 }: { color: string; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-      <circle cx="12" cy="10" r="3" />
-    </svg>
-  );
-}
+const IconMapPin = ({ color, size = 18 }: { color: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 21c-4-4-8-7.5-8-12a8 8 0 1 1 16 0c0 4.5-4 8-8 12z" />
+    <circle cx="12" cy="9" r="2.5" />
+  </svg>
+);
 
-function IconSword({ color, size = 20 }: { color: string; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
-      <line x1="13" y1="19" x2="19" y2="13" />
-      <line x1="16" y1="16" x2="20" y2="20" />
-      <line x1="19" y1="21" x2="21" y2="19" />
-    </svg>
-  );
-}
+const IconSword = ({ color, size = 18 }: { color: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m14.5 17.5-10-10V4h3.5l10 10" />
+    <path d="m13 19 6-6M16 16l4 4M19 21l2-2" />
+  </svg>
+);
 
-function IconZap({ color, size = 20 }: { color: string; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-  );
-}
+const IconZap = ({ color, size = 18 }: { color: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+  </svg>
+);
 
-function IconUsers({ color, size = 20 }: { color: string; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
+const IconUsers = ({ color, size = 18 }: { color: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="10" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
 
-function IconSparkles({ color, size = 20 }: { color: string; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-    </svg>
-  );
-}
+const IconSparkle = ({ color, size = 18 }: { color: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z" />
+  </svg>
+);
 
-function IconChevronDown({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
+const IconChevron = ({ direction, size = 14 }: { direction: 'down' | 'right'; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d={direction === 'down' ? 'm6 9 6 6 6-6' : 'm9 18 6-6-6-6'} />
+  </svg>
+);
 
-function IconChevronRight({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}
+const IconX = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 6 6 18M6 6l12 12" />
+  </svg>
+);
 
-function IconX({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
+const IconGraph = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="2" />
+    <circle cx="19" cy="5" r="1.5" />
+    <circle cx="5" cy="19" r="1.5" />
+    <circle cx="19" cy="19" r="1.5" />
+    <path d="m13.5 10.5 4-4M10.5 13.5l-4 4M13.5 13.5l4 4" />
+  </svg>
+);
 
-function IconNetwork({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <circle cx="19" cy="5" r="2" />
-      <circle cx="5" cy="19" r="2" />
-      <line x1="14.5" y1="9.5" x2="17.5" y2="6.5" />
-      <line x1="9.5" y1="14.5" x2="6.5" y2="17.5" />
-      <circle cx="19" cy="19" r="2" />
-      <line x1="14.5" y1="14.5" x2="17.5" y2="17.5" />
-    </svg>
-  );
-}
+const IconComment = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </svg>
+);
 
-function IconEdit({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
-function getEntityIcon(type: EntityType, color: string, size = 20) {
-  switch (type) {
-    case 'character':
-      return <IconUser color={color} size={size} />;
-    case 'location':
-      return <IconMapPin color={color} size={size} />;
-    case 'item':
-      return <IconSword color={color} size={size} />;
-    case 'magic_system':
-      return <IconZap color={color} size={size} />;
-    case 'faction':
-      return <IconUsers color={color} size={size} />;
-    default:
-      return <IconSparkles color={color} size={size} />;
-  }
+function getEntityIcon(type: string, color: string, size = 18) {
+  const icons: Record<string, JSX.Element> = {
+    character: <IconUser color={color} size={size} />,
+    location: <IconMapPin color={color} size={size} />,
+    item: <IconSword color={color} size={size} />,
+    magic_system: <IconZap color={color} size={size} />,
+    faction: <IconUsers color={color} size={size} />,
+    event: <IconSparkle color={color} size={size} />,
+    concept: <IconSparkle color={color} size={size} />,
+  };
+  return icons[type] ?? <IconSparkle color={color} size={size} />;
 }
 
 // ============================================================================
@@ -160,26 +109,29 @@ type TabId = 'overview' | 'graph' | 'mentions';
 export function EntityCardNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
   const { entityId, entityType, entityName, isExpanded } = node.attrs;
   const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [isHovered, setIsHovered] = useState(false);
 
-  const entityColor = getEntityColor(entityType as EntityType);
-
-  // Get full entity data from mock (in real app, fetch from Convex)
+  // Get entity data (mock for now, will come from Convex)
   const mockKey = Object.keys(MOCK_ENTITIES).find(
     k => MOCK_ENTITIES[k].name.toLowerCase().includes(entityName.toLowerCase().split(' ')[0])
   );
   const entity: EntityData = mockKey
     ? MOCK_ENTITIES[mockKey]
-    : {
-        id: entityId,
-        name: entityName,
-        type: entityType as EntityType,
-      };
+    : { id: entityId, name: entityName, type: entityType as EntityType };
+
+  // Get Notion color - entity can override with notionColor property
+  const notionColorName = getNotionColorForEntity(entityType, (entity as any).notionColor);
+  const notionColor = {
+    light: notion.light[notionColorName],
+    dark: notion.dark[notionColorName],
+  };
 
   const handleToggle = useCallback(() => {
     updateAttributes({ isExpanded: !isExpanded });
   }, [isExpanded, updateAttributes]);
 
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     deleteNode();
   }, [deleteNode]);
 
@@ -188,506 +140,509 @@ export function EntityCardNodeView({ node, deleteNode, updateAttributes }: NodeV
   const relationships = entity.relationships ?? [];
   const mentions = entity.mentions ?? [];
 
+  // Pass colors as CSS variables for theme support
+  const colorVars = {
+    '--ec-accent': notionColor.dark.text,
+    '--ec-accent-bg': notionColor.dark.bg,
+    '--ec-accent-light': notionColor.light.text,
+    '--ec-accent-bg-light': notionColor.light.bg,
+  } as React.CSSProperties;
+
   return (
-    <NodeViewWrapper className="entity-card-node-wrapper">
+    <NodeViewWrapper className="entity-card-wrapper">
       <div
-        className={`entity-card-inline ${isExpanded ? 'entity-card-inline--expanded' : ''}`}
-        style={{ ['--entity-color' as string]: entityColor }}
+        className={`entity-card ${isExpanded ? 'entity-card--expanded' : ''} ${isHovered ? 'entity-card--hovered' : ''}`}
+        style={colorVars}
         contentEditable={false}
+        draggable={false}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onMouseDown={(e) => e.preventDefault()}
       >
-        {/* Header - always visible */}
-        <div className="entity-card-inline__header" onClick={handleToggle}>
-          <div className="entity-card-inline__toggle">
-            {isExpanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+        {/* Header */}
+        <div className="entity-card__header" onClick={handleToggle}>
+          <div className="entity-card__toggle">
+            <IconChevron direction={isExpanded ? 'down' : 'right'} />
           </div>
 
-          <div className="entity-card-inline__avatar">
-            {getEntityIcon(entityType as EntityType, entityColor, 18)}
+          <div className="entity-card__avatar">
+            {getEntityIcon(entityType, `var(--ec-accent)`)}
           </div>
 
-          <div className="entity-card-inline__title">
-            <span className="entity-card-inline__name">{entity.name}</span>
-            <span className="entity-card-inline__type">{entityType.replace('_', ' ')}</span>
+          <div className="entity-card__title-group">
+            <span className="entity-card__name">{entity.name}</span>
+            <span className="entity-card__badge">{entityType.replace('_', ' ')}</span>
+            {entity.aliases && entity.aliases.length > 0 && (
+              <span className="entity-card__alias">aka {entity.aliases[0]}</span>
+            )}
           </div>
 
-          {entity.aliases && entity.aliases.length > 0 && (
-            <span className="entity-card-inline__alias">aka {entity.aliases[0]}</span>
-          )}
-
-          <div className="entity-card-inline__actions">
-            <button className="entity-card-inline__action-btn" onClick={(e) => { e.stopPropagation(); }} title="Open in Graph">
-              <IconNetwork size={14} />
+          <div className="entity-card__actions">
+            <button className="entity-card__action-btn" onClick={(e) => e.stopPropagation()} title="Open in Graph">
+              <IconGraph size={14} />
             </button>
-            <button className="entity-card-inline__action-btn" onClick={(e) => { e.stopPropagation(); }} title="Edit with AI">
-              <IconEdit size={14} />
+            <button className="entity-card__action-btn" onClick={(e) => e.stopPropagation()} title="Edit">
+              <IconComment size={14} />
             </button>
-            <button className="entity-card-inline__close-btn" onClick={(e) => { e.stopPropagation(); handleClose(); }} title="Remove">
+            <button className="entity-card__close-btn" onClick={handleClose} title="Remove">
               <IconX size={14} />
             </button>
           </div>
         </div>
 
-        {/* Expanded content */}
-        {isExpanded && (
-          <div className="entity-card-inline__body">
+        {/* Body - animated expand/collapse */}
+        <div className="entity-card__body">
+          <div className="entity-card__body-inner">
             {/* Tabs */}
-            <div className="entity-card-inline__tabs">
-              <button
-                className={`entity-card-tab ${activeTab === 'overview' ? 'entity-card-tab--active' : ''}`}
-                onClick={() => setActiveTab('overview')}
-              >
-                Overview
-              </button>
-              <button
-                className={`entity-card-tab ${activeTab === 'graph' ? 'entity-card-tab--active' : ''}`}
-                onClick={() => setActiveTab('graph')}
-              >
-                Graph {relationships.length > 0 && <span className="entity-card-tab__count">{relationships.length}</span>}
-              </button>
-              <button
-                className={`entity-card-tab ${activeTab === 'mentions' ? 'entity-card-tab--active' : ''}`}
-                onClick={() => setActiveTab('mentions')}
-              >
-                Mentions {mentions.length > 0 && <span className="entity-card-tab__count">{mentions.length}</span>}
-              </button>
+            <div className="entity-card__tabs">
+              {(['overview', 'graph', 'mentions'] as TabId[]).map((tab) => {
+                const count = tab === 'graph' ? relationships.length : tab === 'mentions' ? mentions.length : 0;
+                return (
+                  <button
+                    key={tab}
+                    className={`entity-card__tab ${activeTab === tab ? 'entity-card__tab--active' : ''}`}
+                    onClick={() => setActiveTab(tab)}
+                  >
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    {count > 0 && <span className="entity-card__tab-count">{count}</span>}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Tab Content */}
-            <div className="entity-card-inline__content">
+            {/* Content */}
+            <div className="entity-card__content">
               {activeTab === 'overview' && (
-                <div className="entity-card-overview">
-                  {entity.notes && (
-                    <div className="entity-card-section">
-                      <p className="entity-card-notes">{entity.notes}</p>
-                    </div>
-                  )}
-
+                <>
+                  {entity.notes && <p className="entity-card__notes">{entity.notes}</p>}
                   {propertyEntries.length > 0 && (
-                    <div className="entity-card-properties">
+                    <div className="entity-card__properties">
                       {propertyEntries.map(([key, value]) => (
-                        <div key={key} className="entity-card-property">
-                          <span className="entity-card-property__key">{key}</span>
-                          <span className="entity-card-property__value">{String(value)}</span>
+                        <div key={key} className="entity-card__property">
+                          <span className="entity-card__property-key">{key}</span>
+                          <span className="entity-card__property-value">{String(value)}</span>
                         </div>
                       ))}
                     </div>
                   )}
-
                   {!entity.notes && propertyEntries.length === 0 && (
-                    <div className="entity-card-empty">No details added yet</div>
+                    <div className="entity-card__empty">No details added yet</div>
                   )}
-                </div>
+                </>
               )}
 
               {activeTab === 'graph' && (
-                <div className="entity-card-graph">
+                <>
                   {relationships.length === 0 ? (
-                    <div className="entity-card-empty">No relationships yet</div>
+                    <div className="entity-card__empty">No relationships yet</div>
                   ) : (
-                    <div className="entity-card-relations">
+                    <div className="entity-card__relations">
                       {relationships.map((rel) => {
-                        const targetColor = getEntityColor(rel.targetType);
+                        const relColorName = getNotionColorForEntity(rel.targetType);
+                        const relColor = { light: notion.light[relColorName], dark: notion.dark[relColorName] };
                         return (
-                          <button key={rel.id} className="entity-card-relation">
-                            <div className="entity-card-relation__icon" style={{ ['--entity-color' as string]: targetColor }}>
-                              {getEntityIcon(rel.targetType, targetColor, 14)}
+                          <button
+                            key={rel.id}
+                            className="entity-card__relation"
+                            style={{ '--rel-accent': relColor.dark.text, '--rel-bg': relColor.dark.bg } as React.CSSProperties}
+                          >
+                            <div className="entity-card__relation-icon">
+                              {getEntityIcon(rel.targetType, relColor.dark.text, 14)}
                             </div>
-                            <div className="entity-card-relation__info">
-                              <span className="entity-card-relation__name">{rel.targetName}</span>
-                              <span className="entity-card-relation__type">{rel.relationshipType}</span>
+                            <div className="entity-card__relation-info">
+                              <span className="entity-card__relation-name">{rel.targetName}</span>
+                              <span className="entity-card__relation-type">{rel.relationshipType}</span>
                             </div>
                           </button>
                         );
                       })}
                     </div>
                   )}
-                </div>
+                </>
               )}
 
               {activeTab === 'mentions' && (
-                <div className="entity-card-mentions">
+                <>
                   {mentions.length === 0 ? (
-                    <div className="entity-card-empty">No mentions found</div>
+                    <div className="entity-card__empty">No mentions found</div>
                   ) : (
-                    mentions.map((mention) => (
-                      <button key={mention.id} className="entity-card-mention">
-                        <span className="entity-card-mention__title">{mention.documentTitle}</span>
-                        <p className="entity-card-mention__excerpt">{mention.excerpt}</p>
-                      </button>
-                    ))
+                    <div className="entity-card__mentions">
+                      {mentions.map((mention) => (
+                        <button key={mention.id} className="entity-card__mention">
+                          <span className="entity-card__mention-title">{mention.documentTitle}</span>
+                          <p className="entity-card__mention-excerpt">{mention.excerpt}</p>
+                        </button>
+                      ))}
+                    </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           </div>
-        )}
+        </div>
       </div>
 
-      <style>{entityCardInlineStyles}</style>
+      <style>{styles}</style>
     </NodeViewWrapper>
   );
 }
 
 // ============================================================================
-// Styles
+// Styles - Uses CSS variables for theme adaptation
 // ============================================================================
 
-const entityCardInlineStyles = `
-  .entity-card-node-wrapper {
+const styles = `
+  .entity-card-wrapper {
     margin: var(--space-3, 12px) 0;
     width: 100%;
-    max-width: 100%;
-    contain: layout inline-size;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
-  .entity-card-inline {
-    border-radius: var(--radius-lg, 8px);
-    border: 1px solid var(--color-border);
-    background: var(--color-bg-surface);
+  .entity-card {
+    /* Use editor's font */
+    font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+
+    /* Card surface - adapts to theme */
+    background: var(--color-bg-elevated, #1e1e1e);
+    border-radius: var(--radius-lg, 12px);
+
+    /* Visible border with entity accent color on hover */
+    border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+
+    /* Subtle shadow for depth */
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.2));
+
     overflow: hidden;
-    transition: border-color 0.15s, width 0.2s ease;
-    width: 100%;
-    max-width: 100%;
-    container-type: inline-size;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
-  .entity-card-inline:hover {
-    border-color: color-mix(in srgb, var(--entity-color) 40%, var(--color-border));
+  .entity-card--hovered {
+    border-color: color-mix(in srgb, var(--ec-accent) 50%, var(--color-border, transparent));
+    box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,0.3)), 0 0 0 1px color-mix(in srgb, var(--ec-accent) 20%, transparent);
   }
 
-  .entity-card-inline__header {
+  /* Header */
+  .entity-card__header {
     display: flex;
     align-items: center;
     gap: var(--space-2, 8px);
-    padding: var(--space-2-5, 10px) var(--space-3, 12px);
+    padding: var(--space-3, 12px) var(--space-4, 16px);
     cursor: pointer;
-    user-select: none;
-    min-width: 0;
+    transition: background 0.1s ease;
   }
 
-  .entity-card-inline__header:hover {
-    background: var(--color-bg-hover);
+  .entity-card__header:hover {
+    background: var(--color-bg-hover, rgba(255,255,255,0.03));
   }
 
-  .entity-card-inline__toggle {
-    color: var(--color-text-muted);
+  .entity-card__toggle {
+    color: var(--color-text-muted, rgba(255,255,255,0.4));
     display: flex;
     align-items: center;
-    justify-content: center;
-    transition: transform 0.15s;
     flex-shrink: 0;
   }
 
-  .entity-card-inline__avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-md, 6px);
-    background: color-mix(in srgb, var(--entity-color) 15%, transparent);
-    border: 1px solid color-mix(in srgb, var(--entity-color) 25%, transparent);
+  .entity-card__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md, 8px);
+    background: var(--ec-accent-bg);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   }
 
-  .entity-card-inline__title {
+  .entity-card__avatar svg {
+    color: var(--ec-accent);
+  }
+
+  .entity-card__title-group {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--space-2, 8px);
     flex: 1;
     min-width: 0;
     overflow: hidden;
   }
 
-  .entity-card-inline__name {
+  .entity-card__name {
     font-size: var(--text-sm, 14px);
-    font-weight: var(--font-medium, 500);
-    color: var(--color-text);
+    font-weight: var(--font-semibold, 600);
+    color: var(--color-text, rgba(255,255,255,0.9));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    flex-shrink: 1;
-    min-width: 0;
+    letter-spacing: -0.01em;
   }
 
-  .entity-card-inline__type {
+  .entity-card__badge {
     font-size: var(--text-xs, 11px);
-    padding: 2px 6px;
+    font-weight: var(--font-medium, 500);
+    padding: 3px 8px;
     border-radius: var(--radius-sm, 4px);
-    background: color-mix(in srgb, var(--entity-color) 15%, transparent);
-    color: var(--entity-color);
+    background: var(--ec-accent-bg);
+    color: var(--ec-accent);
     text-transform: capitalize;
+    letter-spacing: 0.01em;
     flex-shrink: 0;
   }
 
-  .entity-card-inline__alias {
-    font-size: var(--text-xs, 12px);
-    color: var(--color-text-muted);
+  .entity-card__alias {
+    font-size: var(--text-xs, 11px);
+    color: var(--color-text-muted, rgba(255,255,255,0.4));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    flex-shrink: 1;
-    min-width: 0;
+    font-style: italic;
   }
 
-  /* Hide alias on narrow widths */
-  @container (max-width: 400px) {
-    .entity-card-inline__alias {
-      display: none;
-    }
-  }
-
-  .entity-card-inline__actions {
+  .entity-card__actions {
     display: flex;
     gap: var(--space-1, 4px);
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity 0.15s ease;
     flex-shrink: 0;
   }
 
-  .entity-card-inline:hover .entity-card-inline__actions {
+  .entity-card--hovered .entity-card__actions {
     opacity: 1;
   }
 
-  .entity-card-inline__action-btn,
-  .entity-card-inline__close-btn {
-    width: 26px;
-    height: 26px;
+  .entity-card__action-btn,
+  .entity-card__close-btn {
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
     border: none;
-    background: none;
+    background: transparent;
     border-radius: var(--radius-sm, 4px);
     cursor: pointer;
-    color: var(--color-text-muted);
-    transition: background 0.1s, color 0.1s;
+    color: var(--color-text-muted, rgba(255,255,255,0.4));
+    transition: all 0.1s ease;
   }
 
-  .entity-card-inline__action-btn:hover {
-    background: var(--color-bg-active);
-    color: var(--color-text);
+  .entity-card__action-btn:hover {
+    background: var(--color-bg-hover, rgba(255,255,255,0.06));
+    color: var(--color-text, rgba(255,255,255,0.9));
   }
 
-  .entity-card-inline__close-btn:hover {
+  .entity-card__close-btn:hover {
     background: rgba(239, 68, 68, 0.15);
     color: #ef4444;
   }
 
-  /* Body */
-  .entity-card-inline__body {
-    border-top: 1px solid var(--color-border);
+  /* Body - animated */
+  .entity-card__body {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.25s ease;
+    border-top: 1px solid transparent;
+  }
+
+  .entity-card--expanded .entity-card__body {
+    grid-template-rows: 1fr;
+    border-top-color: var(--color-border, rgba(255,255,255,0.06));
+  }
+
+  .entity-card__body-inner {
+    overflow: hidden;
   }
 
   /* Tabs */
-  .entity-card-inline__tabs {
+  .entity-card__tabs {
     display: flex;
-    padding: 0 var(--space-3, 12px);
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-bg-elevated);
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    gap: var(--space-1, 4px);
+    padding: var(--space-2, 8px) var(--space-4, 16px);
+    background: var(--color-bg-surface, rgba(0,0,0,0.2));
   }
 
-  .entity-card-inline__tabs::-webkit-scrollbar {
-    display: none;
-  }
-
-  .entity-card-tab {
+  .entity-card__tab {
     display: flex;
     align-items: center;
     gap: var(--space-1, 4px);
     padding: var(--space-2, 8px) var(--space-3, 12px);
     border: none;
-    background: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
+    background: transparent;
+    border-radius: var(--radius-sm, 4px);
     cursor: pointer;
-    font-size: var(--text-xs, 12px);
-    font-family: var(--font-sans);
+    font-family: inherit;
+    font-size: var(--text-xs, 11px);
     font-weight: var(--font-medium, 500);
-    color: var(--color-text-muted);
-    transition: color 0.1s, border-color 0.1s;
+    color: var(--color-text-muted, rgba(255,255,255,0.4));
+    transition: all 0.1s ease;
     white-space: nowrap;
-    flex-shrink: 0;
   }
 
-  .entity-card-tab:hover {
-    color: var(--color-text-secondary);
+  .entity-card__tab:hover {
+    background: var(--color-bg-hover, rgba(255,255,255,0.04));
+    color: var(--color-text-secondary, rgba(255,255,255,0.6));
   }
 
-  .entity-card-tab--active {
-    color: var(--entity-color);
-    border-bottom-color: var(--entity-color);
+  .entity-card__tab--active {
+    background: var(--color-bg-hover, rgba(255,255,255,0.06));
+    color: var(--ec-accent);
   }
 
-  .entity-card-tab__count {
-    padding: 1px 5px;
-    border-radius: var(--radius-full, 9999px);
+  .entity-card__tab-count {
     font-size: 10px;
-    background: var(--color-bg-surface);
+    font-weight: var(--font-semibold, 600);
+    padding: 2px 6px;
+    border-radius: var(--radius-full, 99px);
+    background: var(--color-bg-active, rgba(255,255,255,0.06));
   }
 
-  .entity-card-tab--active .entity-card-tab__count {
-    background: color-mix(in srgb, var(--entity-color) 20%, transparent);
+  .entity-card__tab--active .entity-card__tab-count {
+    background: color-mix(in srgb, var(--ec-accent) 20%, transparent);
+    color: var(--ec-accent);
   }
 
   /* Content */
-  .entity-card-inline__content {
-    padding: var(--space-3, 12px);
-    max-height: 200px;
+  .entity-card__content {
+    padding: var(--space-4, 16px);
+    max-height: 240px;
     overflow-y: auto;
+    overflow-x: hidden;
   }
 
-  .entity-card-notes {
-    margin: 0;
+  .entity-card__notes {
+    margin: 0 0 var(--space-3, 12px);
     font-size: var(--text-sm, 13px);
-    color: var(--color-text-secondary);
-    line-height: 1.5;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
+    color: var(--color-text-secondary, rgba(255,255,255,0.7));
+    line-height: 1.6;
   }
 
-  .entity-card-section {
-    margin-bottom: var(--space-3, 12px);
-  }
-
-  .entity-card-properties {
+  .entity-card__properties {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: var(--space-2, 8px);
   }
 
-  @container (max-width: 300px) {
-    .entity-card-properties {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .entity-card-property {
+  .entity-card__property {
     display: flex;
     flex-direction: column;
-    padding: var(--space-2, 8px);
-    border-radius: var(--radius-md, 6px);
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    min-width: 0;
+    gap: 2px;
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    background: var(--color-bg-surface, rgba(255,255,255,0.02));
+    border-radius: var(--radius-sm, 4px);
   }
 
-  .entity-card-property__key {
+  .entity-card__property-key {
     font-size: 10px;
-    color: var(--color-text-muted);
-    text-transform: capitalize;
+    font-weight: var(--font-medium, 500);
+    color: var(--color-text-muted, rgba(255,255,255,0.35));
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
-  .entity-card-property__value {
+  .entity-card__property-value {
     font-size: var(--text-sm, 13px);
     font-weight: var(--font-medium, 500);
-    color: var(--color-text);
+    color: var(--color-text, rgba(255,255,255,0.9));
   }
 
-  .entity-card-empty {
+  .entity-card__empty {
     text-align: center;
-    padding: var(--space-4, 16px);
-    color: var(--color-text-muted);
+    padding: var(--space-6, 24px);
+    color: var(--color-text-muted, rgba(255,255,255,0.3));
     font-size: var(--text-sm, 13px);
+    font-style: italic;
   }
 
   /* Relations */
-  .entity-card-relations {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  .entity-card__relations {
+    display: flex;
+    flex-direction: column;
     gap: var(--space-2, 8px);
   }
 
-  @container (max-width: 350px) {
-    .entity-card-relations {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .entity-card-relation {
+  .entity-card__relation {
     display: flex;
     align-items: center;
     gap: var(--space-2, 8px);
     padding: var(--space-2, 8px);
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md, 6px);
+    background: var(--color-bg-surface, rgba(255,255,255,0.02));
+    border: none;
+    border-radius: var(--radius-sm, 4px);
     cursor: pointer;
     text-align: left;
-    transition: background 0.1s, border-color 0.1s;
+    font-family: inherit;
+    transition: background 0.1s ease;
   }
 
-  .entity-card-relation:hover {
-    background: var(--color-bg-hover);
-    border-color: color-mix(in srgb, var(--entity-color) 40%, transparent);
+  .entity-card__relation:hover {
+    background: var(--color-bg-hover, rgba(255,255,255,0.04));
   }
 
-  .entity-card-relation__icon {
-    width: 24px;
-    height: 24px;
+  .entity-card__relation-icon {
+    width: 26px;
+    height: 26px;
     border-radius: var(--radius-sm, 4px);
-    background: color-mix(in srgb, var(--entity-color) 15%, transparent);
+    background: var(--rel-bg);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   }
 
-  .entity-card-relation__info {
+  .entity-card__relation-info {
     display: flex;
     flex-direction: column;
+    gap: 1px;
+    min-width: 0;
   }
 
-  .entity-card-relation__name {
+  .entity-card__relation-name {
     font-size: var(--text-sm, 13px);
     font-weight: var(--font-medium, 500);
-    color: var(--color-text);
+    color: var(--color-text, rgba(255,255,255,0.9));
   }
 
-  .entity-card-relation__type {
+  .entity-card__relation-type {
     font-size: var(--text-xs, 11px);
-    color: var(--color-text-muted);
+    color: var(--color-text-muted, rgba(255,255,255,0.4));
   }
 
   /* Mentions */
-  .entity-card-mention {
+  .entity-card__mentions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+  }
+
+  .entity-card__mention {
     display: block;
     width: 100%;
-    padding: var(--space-2, 8px);
-    margin-bottom: var(--space-2, 8px);
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md, 6px);
+    padding: var(--space-3, 12px);
+    background: var(--color-bg-surface, rgba(255,255,255,0.02));
+    border: none;
+    border-radius: var(--radius-sm, 4px);
     cursor: pointer;
     text-align: left;
-    transition: background 0.1s, border-color 0.1s;
+    font-family: inherit;
+    transition: background 0.1s ease;
   }
 
-  .entity-card-mention:last-child {
-    margin-bottom: 0;
+  .entity-card__mention:hover {
+    background: var(--color-bg-hover, rgba(255,255,255,0.04));
   }
 
-  .entity-card-mention:hover {
-    background: var(--color-bg-hover);
-    border-color: color-mix(in srgb, var(--entity-color) 40%, transparent);
-  }
-
-  .entity-card-mention__title {
+  .entity-card__mention-title {
     display: block;
     font-size: var(--text-sm, 13px);
     font-weight: var(--font-medium, 500);
-    color: var(--color-text);
+    color: var(--color-text, rgba(255,255,255,0.9));
     margin-bottom: var(--space-1, 4px);
   }
 
-  .entity-card-mention__excerpt {
+  .entity-card__mention-excerpt {
     margin: 0;
     font-size: var(--text-xs, 12px);
-    color: var(--color-text-secondary);
-    line-height: 1.4;
+    color: var(--color-text-secondary, rgba(255,255,255,0.5));
+    line-height: 1.5;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
