@@ -608,6 +608,26 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 - Web entity/relationship diffs missing (Expo has them).
 - Canvas heading shortcuts (##, ###) missing from toolbar; add formatting buttons like Ulysses.
 
+## MLP2 Attention: Unified Multimodal Embeddings
+
+> **Current state (MLP1):** Two separate collections with incompatible vectors:
+> - `saga_vectors` (4096 dim, Qwen) - text only
+> - `saga_images` (512 dim, CLIP) - images only
+>
+> **MLP2 consideration:** Unified CLIP collection for true multimodal search (text + images together).
+> - Writers search "Aria" → returns entity cards AND portrait images
+> - Products/CTOs with text descriptions + photos in same results
+>
+> **What's needed:**
+> 1. **CLIP text embedding** - Done: `embedTextWithClip()` in `deepinfraImageEmbedding.ts`
+> 2. **Migrate RAG to CLIP** - Use CLIP for all content (512 dim, less expressive than Qwen 4096 but enables multimodal)
+> 3. **PDF ingestion pipeline** - CLIP doesn't handle PDFs directly:
+>    - Text-based PDFs → extract text → `embedTextWithClip()`
+>    - Scanned PDFs → OCR (Tesseract/Google Vision) → extract text → embed
+>    - Optional: render pages as images for visual layout search
+>
+> **Tradeoff:** CLIP 512-dim text is weaker than Qwen 4096-dim for pure semantic text search, but unified multimodal search is more valuable for creative tools where entities = text + images.
+
 ## MLP1 → MLP2 Bridge (Recommended Path)
 
 Finish MLP1, then bridge to MLP2 Proactivity via Coherence:
