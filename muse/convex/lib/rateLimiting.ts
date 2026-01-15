@@ -261,7 +261,7 @@ export function createUsageHandler(options?: {
       const outputTokens = usage.outputTokens ?? 0;
       const costMicros = calculateCostMicros(model, inputTokens, outputTokens);
 
-      const getBillingModeFn = internal.billingSettings?.getBillingMode;
+      const getBillingModeFn = (internal as any).billingSettings?.getBillingMode;
       const billingMode: "managed" | "byok" = getBillingModeFn
         ? await (ctx.runQuery as any)(getBillingModeFn, { userId })
         : "managed";

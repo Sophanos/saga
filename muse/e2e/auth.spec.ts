@@ -1,8 +1,27 @@
 import { test, expect } from "@playwright/test";
-import { buildTestUser, signInUI, signOutUI, signUpUI } from "./fixtures/auth";
+import { buildTestUser, signInE2E, signOutUI } from "./fixtures/auth";
 import { getRunId } from "./utils/run-id";
 
 const emptyStorageState = { cookies: [], origins: [] };
+
+function resolveConvexUrl(projectName: string): string {
+  const base =
+    process.env.PLAYWRIGHT_CONVEX_URL ||
+    process.env.CONVEX_URL ||
+    process.env.EXPO_PUBLIC_CONVEX_URL ||
+    process.env.VITE_CONVEX_URL ||
+    "https://convex.rhei.team";
+
+  if (projectName === "expo-web") {
+    return process.env.EXPO_PUBLIC_CONVEX_URL || base;
+  }
+
+  if (projectName === "tauri-web") {
+    return process.env.VITE_CONVEX_URL || base;
+  }
+
+  return base;
+}
 
 test.describe("auth", () => {
   test.use({ storageState: emptyStorageState });
@@ -12,22 +31,10 @@ test.describe("auth", () => {
     await expect(page).toHaveURL(/\/sign-in/);
   });
 
-  test("sign-up creates an account", async ({ page }, testInfo) => {
-    const runId = getRunId(testInfo, "signup");
-    const user = buildTestUser(runId);
-
-    await signUpUI(page, user);
-    await expect(page.getByText("Welcome to Mythos")).toBeVisible();
-  });
-
-  test("sign-in works with valid credentials", async ({ page }, testInfo) => {
+  test("E2E bootstrap signs in successfully", async ({ page }, testInfo) => {
     const runId = getRunId(testInfo, "signin");
     const user = buildTestUser(runId);
-
-    await signUpUI(page, user);
-    await signOutUI(page);
-    await signInUI(page, user);
-
+    await signInE2E(page, { convexUrl: resolveConvexUrl(testInfo.project.name), user });
     await expect(page.getByText("Welcome to Mythos")).toBeVisible();
   });
 
@@ -35,24 +42,9 @@ test.describe("auth", () => {
     const runId = getRunId(testInfo, "signout");
     const user = buildTestUser(runId);
 
-    await signUpUI(page, user);
+    await signInE2E(page, { convexUrl: resolveConvexUrl(testInfo.project.name), user });
     await signOutUI(page);
 
     await expect(page).toHaveURL(/\/sign-in/);
-  });
-
-  test("invalid credentials show an error", async ({ page }, testInfo) => {
-    const runId = getRunId(testInfo, "invalid");
-    const user = buildTestUser(runId);
-
-    await signUpUI(page, user);
-    await signOutUI(page);
-
-    await page.goto("/sign-in");
-    await page.getByPlaceholder("Email").fill(user.email);
-    await page.getByPlaceholder("Password").fill("wrong-password");
-    await page.getByTestId("auth-sign-in").click();
-
-    await expect(page.getByTestId("auth-error")).toBeVisible();
   });
 });

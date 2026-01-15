@@ -1,123 +1,123 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { ConvexHttpClient } from "convex/browser";
+import { anyApi } from "convex/server";
+import { expect, type Page, type BrowserContext } from "@playwright/test";
 
 export type TestUser = {
   email: string;
-  password: string;
   name?: string;
 };
-
-const DEFAULT_PASSWORD =
-  process.env.PLAYWRIGHT_E2E_PASSWORD ?? "E2ePass!123";
-
-function getEmailField(page: Page): Locator {
-  return page
-    .getByTestId("auth-email")
-    .or(page.getByLabel("Email"))
-    .or(page.getByPlaceholder("Email"))
-    .or(page.getByPlaceholder("Email address"))
-    .or(page.getByPlaceholder("you@example.com"));
-}
-
-function getPasswordField(page: Page): Locator {
-  return page
-    .getByTestId("auth-password")
-    .or(page.getByLabel("Password"))
-    .or(page.getByPlaceholder("Password"))
-    .or(page.getByPlaceholder("Enter your password"));
-}
-
-function getNameField(page: Page): Locator {
-  return page
-    .getByTestId("auth-name")
-    .or(page.getByPlaceholder("Name (optional)"))
-    .or(page.getByPlaceholder("Your name"));
-}
-
-function getConfirmPasswordField(page: Page): Locator {
-  return page
-    .getByTestId("auth-password-confirm")
-    .or(page.getByPlaceholder("Confirm Password"));
-}
-
-async function ensureAuthRoute(page: Page, paths: string[]): Promise<void> {
-  for (const path of paths) {
-    await page.goto(path, { waitUntil: "domcontentloaded" });
-    try {
-      await getEmailField(page).first().waitFor({ state: "visible", timeout: 8_000 });
-      return;
-    } catch {
-      // Try next path.
-    }
-  }
-}
 
 export function buildTestUser(runId: string, suffix?: string): TestUser {
   const safeRunId = runId.replace(/[^a-zA-Z0-9]/g, "");
   const tag = suffix ? `${safeRunId}-${suffix}` : safeRunId;
   return {
     email: `e2e+${tag}@example.com`,
-    password: DEFAULT_PASSWORD,
     name: "E2E User",
   };
 }
 
-async function waitForAuthToken(page: Page) {
-  await page.waitForFunction(() => {
-    const raw = window.localStorage.getItem("mythos-auth");
-    if (!raw) return false;
-    try {
-      const parsed = JSON.parse(raw);
-      const session = parsed?.state?.session;
-      const token =
-        session?.token ??
-        session?.sessionToken ??
-        session?.access_token ??
-        session?.accessToken ??
-        null;
-      if (token) return true;
-      if (parsed?.state?.isAuthenticated) return true;
-    } catch {
-      // fall through
-    }
-    const betterAuthCookie = window.localStorage.getItem("better-auth_cookie");
-    if (betterAuthCookie) return true;
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const key = window.localStorage.key(i);
-      if (key && key.startsWith("better-auth")) return true;
-    }
-    return false;
+const apiAny = anyApi as any;
+
+const E2E_SECRET =
+  process.env.PLAYWRIGHT_E2E_SECRET ||
+  process.env.E2E_TEST_SECRET ||
+  "";
+
+function requireE2ESecret(): string {
+  if (!E2E_SECRET) {
+    throw new Error("Missing E2E_TEST_SECRET for E2E auth bootstrap");
+  }
+  return E2E_SECRET;
+}
+
+function escapeNamespace(namespace: string): string {
+  return namespace.replace(/[^a-zA-Z0-9]/g, "");
+}
+
+function buildConvexAuthKeys(convexUrl: string): { jwtKey: string; refreshTokenKey: string } {
+  const ns = escapeNamespace(convexUrl);
+  return {
+    jwtKey: `__convexAuthJWT_${ns}`,
+    refreshTokenKey: `__convexAuthRefreshToken_${ns}`,
+  };
+}
+
+type E2EAuthStateParams = {
+  convexUrl: string;
+  email: string;
+  name?: string;
+  userId: string;
+  sessionId: string;
+  token: string;
+  refreshToken: string;
+};
+
+function buildMythosAuthStorageValue(params: E2EAuthStateParams): string {
+  const nowIso = new Date().toISOString();
+  return JSON.stringify({
+    state: {
+      user: {
+        id: params.userId,
+        email: params.email,
+        name: params.name,
+        emailVerified: true,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+      session: {
+        id: params.sessionId,
+        userId: params.userId,
+        token: params.token,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+      isAuthenticated: true,
+    },
+    version: 0,
   });
 }
 
-export async function signUpUI(page: Page, user: TestUser) {
-  await ensureAuthRoute(page, ["/sign-up", "/signup"]);
-  await expect(getEmailField(page)).toBeVisible({ timeout: 20_000 });
-  await getNameField(page).fill(user.name ?? "");
-  await getEmailField(page).fill(user.email);
-  await getPasswordField(page).fill(user.password);
-  const confirmField = getConfirmPasswordField(page);
-  if (await confirmField.count()) {
-    await confirmField.fill(user.password);
-  }
-  const signUpButton = page
-    .getByTestId("auth-sign-up")
-    .or(page.getByRole("button", { name: /create account/i }));
-  await signUpButton.click();
+export async function setAuthStateForE2E(context: BrowserContext, params: E2EAuthStateParams): Promise<void> {
+  const { jwtKey, refreshTokenKey } = buildConvexAuthKeys(params.convexUrl);
+  const mythosAuthValue = buildMythosAuthStorageValue(params);
 
-  await waitForAuthToken(page);
+  const page = await context.newPage();
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(
+    (payload) => {
+      window.localStorage.setItem(payload.jwtKey, payload.token);
+      window.localStorage.setItem(payload.refreshTokenKey, payload.refreshToken);
+      window.localStorage.setItem("mythos-auth", payload.mythosAuthValue);
+    },
+    { jwtKey, refreshTokenKey, token: params.token, refreshToken: params.refreshToken, mythosAuthValue }
+  );
+  await page.close();
 }
 
-export async function signInUI(page: Page, user: TestUser) {
-  await ensureAuthRoute(page, ["/sign-in", "/login"]);
-  await expect(getEmailField(page)).toBeVisible({ timeout: 20_000 });
-  await getEmailField(page).fill(user.email);
-  await getPasswordField(page).fill(user.password);
-  const signInButton = page
-    .getByTestId("auth-sign-in")
-    .or(page.getByRole("button", { name: /sign in/i }));
-  await signInButton.click();
+export async function getE2EAuthTokens(params: { convexUrl: string; user: TestUser }): Promise<{
+  userId: string;
+  sessionId: string;
+  token: string;
+  refreshToken: string;
+}> {
+  const client = new ConvexHttpClient(params.convexUrl);
+  return client.action(apiAny.e2e.signInForE2E, {
+    secret: requireE2ESecret(),
+    email: params.user.email,
+    name: params.user.name,
+  }) as Promise<{ userId: string; sessionId: string; token: string; refreshToken: string }>;
+}
 
-  await waitForAuthToken(page);
+export async function signInE2E(page: Page, params: { convexUrl: string; user: TestUser }): Promise<void> {
+  const tokens = await getE2EAuthTokens(params);
+  await setAuthStateForE2E(page.context(), {
+    convexUrl: params.convexUrl,
+    email: params.user.email,
+    name: params.user.name,
+    ...tokens,
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 }
 
 export async function signOutUI(page: Page) {

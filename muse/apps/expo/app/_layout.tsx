@@ -17,7 +17,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SystemUI from 'expo-system-ui';
 import { ConvexReactClient, useConvexAuth } from 'convex/react';
-import { ConvexAuthProvider } from '@convex-dev/auth/react';
+import { ConvexAuthProvider, useAuthToken } from '@convex-dev/auth/react';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { palette } from '@/design-system/colors';
@@ -42,11 +42,28 @@ const convex = new ConvexReactClient(convexUrl, {
   skipConvexDeploymentUrlCheck: true, // Self-hosted
 });
 
+function decodeJwtPayload(token: string): { sub?: string; exp?: number } | null {
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+
+  try {
+    if (typeof atob !== 'function') return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    const json = atob(padded);
+    return JSON.parse(json) as { sub?: string; exp?: number };
+  } catch {
+    return null;
+  }
+}
+
 // Auth sync component - syncs Convex Auth with Zustand store
 function AuthSync(): null {
   const { isLoading, isAuthenticated } = useConvexAuth();
+  const authToken = useAuthToken();
   const currentUser = useQuery(api.users.getCurrentUser, isAuthenticated ? {} : "skip");
   const setUser = useAuthStore((s) => s.setUser);
+  const setSession = useAuthStore((s) => s.setSession);
   const setLoading = useAuthStore((s) => s.setLoading);
   const reset = useAuthStore((s) => s.reset);
 
@@ -64,10 +81,26 @@ function AuthSync(): null {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+
+      if (authToken) {
+        const payload = decodeJwtPayload(authToken);
+        const subject = typeof payload?.sub === 'string' ? payload.sub : null;
+        const sessionId = subject?.split('|')[1] ?? authToken;
+        const expiresAt = typeof payload?.exp === 'number' ? new Date(payload.exp * 1000) : new Date(Date.now() + 60 * 60 * 1000);
+
+        setSession({
+          id: sessionId,
+          userId: currentUser._id,
+          token: authToken,
+          expiresAt,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
     } else {
       reset();
     }
-  }, [isLoading, isAuthenticated, currentUser, setUser, setLoading, reset]);
+  }, [isLoading, isAuthenticated, currentUser, authToken, setUser, setSession, setLoading, reset]);
 
   return null;
 }

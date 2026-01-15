@@ -1,5 +1,5 @@
 import { test, expect, type FrameLocator, type Locator, type Page } from "@playwright/test";
-import { buildTestUser, signUpUI } from "./fixtures/auth";
+import { buildTestUser, signInE2E } from "./fixtures/auth";
 import { getConvexHelpers } from "./fixtures/convex";
 import { getRunId } from "./utils/run-id";
 
@@ -62,10 +62,17 @@ test.describe("E2E-07 Real-Time Collaboration", () => {
     const runId = getRunId(testInfo, "collab");
     const userB = buildTestUser(runId, "collab-b");
 
-    const contextB = await browser.newContext();
+    const convexUrl =
+      process.env.VITE_CONVEX_URL ||
+      process.env.PLAYWRIGHT_CONVEX_URL ||
+      process.env.CONVEX_URL ||
+      "https://convex.rhei.team";
+    const baseURL = process.env.PLAYWRIGHT_TAURI_URL ?? "http://localhost:1420";
+
+    const contextB = await browser.newContext({ baseURL });
     const pageB = await contextB.newPage();
 
-    await signUpUI(pageB, userB);
+    await signInE2E(pageB, { convexUrl, user: userB });
 
     const convexA = await getConvexHelpers(page);
     const convexB = await getConvexHelpers(pageB);

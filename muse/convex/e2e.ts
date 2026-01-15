@@ -5,7 +5,7 @@
  */
 
 import { v } from "convex/values";
-import { action, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { retrieveRAGContext } from "./ai/rag";
 import { canAccessFeature, getUserTier } from "./lib/entitlements";
@@ -42,6 +42,94 @@ function assertE2EAccess(secret: string): void {
     throw new Error("Forbidden");
   }
 }
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export const upsertE2EUser = internalMutation({
+  args: {
+    secret: v.string(),
+    email: v.string(),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<string> => {
+    assertE2EAccess(args.secret);
+
+    const email = normalizeEmail(args.email);
+    if (!email) {
+      throw new Error("Email is required");
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", email))
+      .first();
+
+    if (existing) {
+      if (!existing.emailVerificationTime) {
+        await ctx.db.patch(existing._id, { emailVerificationTime: now });
+      }
+      return existing._id as string;
+    }
+
+    const userId = await ctx.db.insert("users", {
+      email,
+      name: args.name?.trim() || undefined,
+      emailVerificationTime: now,
+    });
+
+    return userId as string;
+  },
+});
+
+/**
+ * E2E-only sign-in helper.
+ *
+ * Magic-link auth is not automatable in Playwright without an email inbox.
+ * This action creates (or reuses) a user by email and issues a fresh JWT + refresh token.
+ */
+export const signInForE2E = action({
+  args: {
+    secret: v.string(),
+    email: v.string(),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertE2EAccess(args.secret);
+
+    const email = normalizeEmail(args.email);
+    if (!email) {
+      throw new Error("Email is required");
+    }
+
+    const userId = (await ctx.runMutation((internal as any).e2e.upsertE2EUser, {
+      secret: args.secret,
+      email,
+      name: args.name,
+    })) as string;
+
+    const sessionInfo = (await ctx.runMutation((internal as any).auth.store, {
+      args: {
+        type: "signIn",
+        userId: userId as any,
+        generateTokens: true,
+      },
+    })) as { userId: string; sessionId: string; tokens: { token: string; refreshToken: string } | null };
+
+    if (!sessionInfo?.tokens) {
+      throw new Error("Failed to issue auth tokens for E2E");
+    }
+
+    return {
+      userId: sessionInfo.userId,
+      sessionId: sessionInfo.sessionId,
+      token: sessionInfo.tokens.token,
+      refreshToken: sessionInfo.tokens.refreshToken,
+    };
+  },
+});
 
 function buildDetectionStats(entities: DetectionFixtureEntity[]): DetectionFixtureStats {
   const byType: Record<string, number> = {};

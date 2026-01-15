@@ -11,6 +11,7 @@
 import type * as account from "../account.js";
 import type * as activity from "../activity.js";
 import type * as ai_agentRuntime from "../ai/agentRuntime.js";
+import type * as ai_artifactIteration from "../ai/artifactIteration.js";
 import type * as ai_canon from "../ai/canon.js";
 import type * as ai_coach from "../ai/coach.js";
 import type * as ai_detect from "../ai/detect.js";
@@ -63,6 +64,7 @@ import type * as chatSessions from "../chatSessions.js";
 import type * as collaboration from "../collaboration.js";
 import type * as comments from "../comments.js";
 import type * as crons from "../crons.js";
+import type * as deepLinks from "../deepLinks.js";
 import type * as documents from "../documents.js";
 import type * as e2e from "../e2e.js";
 import type * as entities from "../entities.js";
@@ -136,6 +138,7 @@ declare const fullApi: ApiFromModules<{
   account: typeof account;
   activity: typeof activity;
   "ai/agentRuntime": typeof ai_agentRuntime;
+  "ai/artifactIteration": typeof ai_artifactIteration;
   "ai/canon": typeof ai_canon;
   "ai/coach": typeof ai_coach;
   "ai/detect": typeof ai_detect;
@@ -188,6 +191,7 @@ declare const fullApi: ApiFromModules<{
   collaboration: typeof collaboration;
   comments: typeof comments;
   crons: typeof crons;
+  deepLinks: typeof deepLinks;
   documents: typeof documents;
   e2e: typeof e2e;
   entities: typeof entities;

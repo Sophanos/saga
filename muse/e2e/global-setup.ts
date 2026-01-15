@@ -1,7 +1,7 @@
 import { chromium } from "@playwright/test";
 import path from "path";
 import { mkdir } from "fs/promises";
-import { buildTestUser, signInUI, signUpUI } from "./fixtures/auth";
+import { buildTestUser, getE2EAuthTokens, setAuthStateForE2E } from "./fixtures/auth";
 import { getRunId } from "./utils/run-id";
 
 const expoBaseURL = process.env.PLAYWRIGHT_EXPO_URL ?? "http://localhost:19006";
@@ -14,23 +14,20 @@ const tauriStorageState = path.join(authDir, "tauri-web.json");
 async function createStorageState(args: {
   baseURL: string;
   storagePath: string;
-  mode: "signup" | "signin";
-  user: { email: string; password: string; name?: string };
+  user: { email: string; name?: string };
+  convexUrl: string;
 }) {
   const browser = await chromium.launch();
   const context = await browser.newContext({ baseURL: args.baseURL });
-  const page = await context.newPage();
 
   try {
-    if (args.mode === "signup") {
-      try {
-        await signUpUI(page, args.user);
-      } catch (error) {
-        await signInUI(page, args.user);
-      }
-    } else {
-      await signInUI(page, args.user);
-    }
+    const authTokens = await getE2EAuthTokens({ convexUrl: args.convexUrl, user: args.user });
+    await setAuthStateForE2E(context, {
+      convexUrl: args.convexUrl,
+      email: args.user.email,
+      name: args.user.name,
+      ...authTokens,
+    });
 
     await context.storageState({ path: args.storagePath });
   } finally {
@@ -41,6 +38,12 @@ async function createStorageState(args: {
 export default async function globalSetup() {
   const runId = getRunId();
   const user = buildTestUser(runId, "seed");
+  const defaultConvexUrl =
+    process.env.PLAYWRIGHT_CONVEX_URL ||
+    process.env.CONVEX_URL ||
+    process.env.EXPO_PUBLIC_CONVEX_URL ||
+    process.env.VITE_CONVEX_URL ||
+    "https://convex.rhei.team";
 
   const targetEnv = process.env.PLAYWRIGHT_TARGETS;
   const targets = new Set(
@@ -55,8 +58,8 @@ export default async function globalSetup() {
     await createStorageState({
       baseURL: expoBaseURL,
       storagePath: expoStorageState,
-      mode: "signup",
       user,
+      convexUrl: process.env.EXPO_PUBLIC_CONVEX_URL || defaultConvexUrl,
     });
   }
 
@@ -64,8 +67,8 @@ export default async function globalSetup() {
     await createStorageState({
       baseURL: tauriBaseURL,
       storagePath: tauriStorageState,
-      mode: "signup",
       user,
+      convexUrl: process.env.VITE_CONVEX_URL || defaultConvexUrl,
     });
   }
 

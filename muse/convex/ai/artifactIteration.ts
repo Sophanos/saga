@@ -231,8 +231,9 @@ export const iterateArtifact = action({
       throw new Error("Unauthenticated");
     }
 
-    const apiAny = api as any;
-    const internalAny = internal as any;
+    // @ts-expect-error - Convex generated types are too deep
+    const apiAny: any = api;
+    const internalAny: any = internal;
 
     const isEditor = await (ctx.runQuery as any)(
       internalAny.collaboration.isProjectEditor,

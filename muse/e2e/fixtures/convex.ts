@@ -22,6 +22,7 @@ const CONVEX_URL =
   process.env.PLAYWRIGHT_CONVEX_URL ||
   process.env.CONVEX_URL ||
   process.env.EXPO_PUBLIC_CONVEX_URL ||
+  process.env.VITE_CONVEX_URL ||
   "https://convex.rhei.team";
 
 const E2E_SECRET =
@@ -31,18 +32,38 @@ const E2E_SECRET =
 
 export async function getAuthTokenFromStorage(page: Page): Promise<string> {
   const token = await page.evaluate(() => {
-    const raw = window.localStorage.getItem("mythos-auth");
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed?.state?.session?.token ?? null;
-    } catch {
-      return null;
+    const mythosRaw = window.localStorage.getItem("mythos-auth");
+    if (mythosRaw) {
+      try {
+        const parsed = JSON.parse(mythosRaw);
+        const session = parsed?.state?.session;
+        const fromSession =
+          session?.token ??
+          session?.sessionToken ??
+          session?.access_token ??
+          session?.accessToken ??
+          null;
+        if (typeof fromSession === "string" && fromSession.length > 0) {
+          return fromSession;
+        }
+      } catch {
+        // Ignore invalid storage.
+      }
     }
+
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      if (!key.startsWith("__convexAuthJWT_")) continue;
+      const value = window.localStorage.getItem(key);
+      if (value) return value;
+    }
+
+    return null;
   });
 
   if (!token) {
-    throw new Error("Missing auth token in mythos-auth storage");
+    throw new Error("Missing auth token in localStorage (mythos-auth or Convex Auth)");
   }
 
   return token;
@@ -73,28 +94,28 @@ export function getE2EConvexHelpers(): E2EConvexHelpers {
   };
 }
 
-function decodeJwtSubject(token: string): string {
+function decodeJwtUserId(token: string): string {
   const parts = token.split(".");
   if (parts.length < 2) {
     throw new Error("Invalid auth token format");
   }
-  const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
+  const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
   const subject = payload.sub ?? payload.userId ?? payload.subject;
   if (!subject || typeof subject !== "string") {
     throw new Error("Unable to resolve user id from auth token");
   }
-  return subject;
+  return subject.split("|")[0] ?? subject;
 }
 
 export async function getUserIdFromStorage(page: Page): Promise<string> {
   const token = await getAuthTokenFromStorage(page);
-  return decodeJwtSubject(token);
+  return decodeJwtUserId(token);
 }
 
 export async function getConvexHelpers(page: Page) {
   const client = await getConvexClient(page);
   const token = await getAuthTokenFromStorage(page);
-  const userId = decodeJwtSubject(token);
+  const userId = decodeJwtUserId(token);
 
   return {
     userId,
