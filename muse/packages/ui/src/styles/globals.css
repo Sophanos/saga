@@ -56,25 +56,44 @@
 }
 
 @layer utilities {
-  /* Entity highlight colors */
+  /* Entity highlight colors - Notion semantic palette
+     See @mythos/theme/colors.ts for source of truth */
   .entity-character {
     @apply text-mythos-entity-character underline decoration-dotted underline-offset-2;
-    text-decoration-color: rgba(34, 211, 238, 0.5);
+    text-decoration-color: rgba(68, 122, 203, 0.5);  /* Notion blue #447ACB */
   }
 
   .entity-location {
     @apply text-mythos-entity-location underline decoration-dotted underline-offset-2;
-    text-decoration-color: rgba(34, 197, 94, 0.5);
+    text-decoration-color: rgba(79, 151, 104, 0.5);  /* Notion green #4F9768 */
   }
 
   .entity-item {
     @apply text-mythos-entity-item underline decoration-dotted underline-offset-2;
-    text-decoration-color: rgba(245, 158, 11, 0.5);
+    text-decoration-color: rgba(203, 123, 55, 0.5);  /* Notion orange #CB7B37 */
   }
 
   .entity-magic {
     @apply text-mythos-entity-magic underline decoration-dotted underline-offset-2;
-    text-decoration-color: rgba(168, 85, 247, 0.5);
+    text-decoration-color: rgba(134, 93, 187, 0.5);  /* Notion purple #865DBB */
+  }
+
+  .entity-faction {
+    @apply underline decoration-dotted underline-offset-2;
+    color: #BA4A78;  /* Notion pink */
+    text-decoration-color: rgba(186, 74, 120, 0.5);
+  }
+
+  .entity-event {
+    @apply underline decoration-dotted underline-offset-2;
+    color: #BE524B;  /* Notion red */
+    text-decoration-color: rgba(190, 82, 75, 0.5);
+  }
+
+  .entity-concept {
+    @apply underline decoration-dotted underline-offset-2;
+    color: #C19138;  /* Notion yellow */
+    text-decoration-color: rgba(193, 145, 56, 0.5);
   }
 
   /* ASCII HUD styling */

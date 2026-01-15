@@ -2,6 +2,7 @@
  * Centralized color palette - light/dark mode support
  * Notion-inspired neutral dark grays
  */
+import { notion, entityToNotionColor, type NotionColorName } from '@mythos/theme';
 
 export const palette = {
   // Neutrals
@@ -68,6 +69,10 @@ export const colors = {
     accentHover: palette.blue[600],
     accentSubtle: 'rgba(46, 170, 220, 0.1)',
 
+    // Scrollbar - grey in light mode
+    scrollbar: '#9b9a97',
+    scrollbarHover: '#6b6b6b',
+
     // Sidebar specific
     sidebarBg: palette.gray[100],
     sidebarBorder: palette.gray[200],
@@ -101,6 +106,10 @@ export const colors = {
     accentHover: palette.blue[500],
     accentSubtle: 'rgba(82, 156, 202, 0.15)',
 
+    // Scrollbar - black in dark mode
+    scrollbar: '#000000',
+    scrollbarHover: '#1a1a1a',
+
     // Sidebar specific (darker than main content in Notion)
     sidebarBg: palette.gray[850],       // #202020
     sidebarBorder: '#2d2d2d',
@@ -112,16 +121,46 @@ export const colors = {
   },
 } as const;
 
-// Entity colors (same for both themes)
+/**
+ * Entity colors derived from Notion semantic colors (dark mode)
+ * Use getEntityColor() for theme-aware colors with override support
+ */
 export const entityColors = {
-  character: palette.purple[400],
-  location: palette.green[400],
-  item: palette.amber[400],
-  faction: palette.red[400],
-  magic: palette.cyan[400],
-  event: palette.orange[400],
-  concept: palette.blue[400],
+  character: notion.dark[entityToNotionColor['character']].text,
+  location: notion.dark[entityToNotionColor['location']].text,
+  item: notion.dark[entityToNotionColor['item']].text,
+  faction: notion.dark[entityToNotionColor['faction']].text,
+  magic: notion.dark[entityToNotionColor['magic_system']].text,
+  event: notion.dark[entityToNotionColor['event']].text,
+  concept: notion.dark[entityToNotionColor['concept']].text,
 } as const;
+
+/**
+ * Get entity color with theme and override support
+ */
+export function getEntityColor(
+  type: string,
+  theme: 'light' | 'dark' = 'dark',
+  override?: NotionColorName
+): string {
+  const colorName = override ?? entityToNotionColor[type] ?? 'gray';
+  return notion[theme][colorName].text;
+}
+
+/**
+ * Get entity background color with theme and override support
+ */
+export function getEntityBgColor(
+  type: string,
+  theme: 'light' | 'dark' = 'dark',
+  override?: NotionColorName
+): string {
+  const colorName = override ?? entityToNotionColor[type] ?? 'gray';
+  return notion[theme][colorName].bg;
+}
+
+// Re-export Notion color utilities for convenience
+export { notion, entityToNotionColor, type NotionColorName };
 
 // Status colors (same for both themes)
 export const statusColors = {

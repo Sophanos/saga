@@ -2,6 +2,7 @@
  * Centralized color palette - light/dark mode support
  * All colors in one place, nothing hardcoded elsewhere
  */
+import { notion, entityToNotionColor, type NotionColorName } from '@mythos/theme';
 
 export const palette = {
   // Neutrals
@@ -98,16 +99,46 @@ export const colors = {
   },
 } as const;
 
-// Entity colors (same for both themes)
+/**
+ * Entity colors derived from Notion semantic colors (dark mode)
+ * Use getEntityColor() for theme-aware colors with override support
+ */
 export const entityColors = {
-  character: palette.purple[400],
-  location: palette.green[400],
-  item: palette.amber[400],
-  faction: palette.red[400],
-  magic: palette.cyan[400],
-  event: palette.orange[400],
-  concept: palette.blue[400],
+  character: notion.dark[entityToNotionColor['character']].text,
+  location: notion.dark[entityToNotionColor['location']].text,
+  item: notion.dark[entityToNotionColor['item']].text,
+  faction: notion.dark[entityToNotionColor['faction']].text,
+  magic: notion.dark[entityToNotionColor['magic_system']].text,
+  event: notion.dark[entityToNotionColor['event']].text,
+  concept: notion.dark[entityToNotionColor['concept']].text,
 } as const;
+
+/**
+ * Get entity color with theme and override support
+ */
+export function getEntityColor(
+  type: string,
+  theme: 'light' | 'dark' = 'dark',
+  override?: NotionColorName
+): string {
+  const colorName = override ?? entityToNotionColor[type] ?? 'gray';
+  return notion[theme][colorName].text;
+}
+
+/**
+ * Get entity background color with theme and override support
+ */
+export function getEntityBgColor(
+  type: string,
+  theme: 'light' | 'dark' = 'dark',
+  override?: NotionColorName
+): string {
+  const colorName = override ?? entityToNotionColor[type] ?? 'gray';
+  return notion[theme][colorName].bg;
+}
+
+// Re-export Notion color utilities for convenience
+export { notion, entityToNotionColor, type NotionColorName };
 
 // Status colors (same for both themes)
 export const statusColors = {

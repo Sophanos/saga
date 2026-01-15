@@ -42,53 +42,98 @@
   content: "SCENE";
 }
 
-/* Entity highlights */
+/* =============================================================================
+   Entity highlights - Notion semantic colors
+   character=blue, location=green, item=orange, magic_system=purple
+   faction=pink, event=red, concept=yellow
+   See @mythos/theme/colors.ts for source of truth
+   ============================================================================= */
+
+/* Character - Notion Blue */
 .entity-character {
   @apply relative cursor-pointer;
-  text-decoration: underline;
-  text-decoration-color: rgba(34, 211, 238, 0.5);
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
+  background-color: #1F282D;
+  border-bottom: 2px solid #447ACB;
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 .entity-character:hover {
-  background-color: rgba(34, 211, 238, 0.1);
+  filter: brightness(1.1);
 }
 
+/* Location - Notion Green */
 .entity-location {
   @apply relative cursor-pointer;
-  text-decoration: underline;
-  text-decoration-color: rgba(34, 197, 94, 0.5);
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
+  background-color: #242B26;
+  border-bottom: 2px solid #4F9768;
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 .entity-location:hover {
-  background-color: rgba(34, 197, 94, 0.1);
+  filter: brightness(1.1);
 }
 
+/* Item - Notion Orange */
 .entity-item {
   @apply relative cursor-pointer;
-  text-decoration: underline;
-  text-decoration-color: rgba(245, 158, 11, 0.5);
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
+  background-color: #36291F;
+  border-bottom: 2px solid #CB7B37;
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 .entity-item:hover {
-  background-color: rgba(245, 158, 11, 0.1);
+  filter: brightness(1.1);
 }
 
+/* Magic System - Notion Purple */
 .entity-magic_system {
   @apply relative cursor-pointer;
-  text-decoration: underline;
-  text-decoration-color: rgba(168, 85, 247, 0.5);
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
+  background-color: #2A2430;
+  border-bottom: 2px solid #865DBB;
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 .entity-magic_system:hover {
-  background-color: rgba(168, 85, 247, 0.1);
+  filter: brightness(1.1);
+}
+
+/* Faction - Notion Pink */
+.entity-faction {
+  @apply relative cursor-pointer;
+  background-color: #2E2328;
+  border-bottom: 2px solid #BA4A78;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.entity-faction:hover {
+  filter: brightness(1.1);
+}
+
+/* Event - Notion Red */
+.entity-event {
+  @apply relative cursor-pointer;
+  background-color: #332523;
+  border-bottom: 2px solid #BE524B;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.entity-event:hover {
+  filter: brightness(1.1);
+}
+
+/* Concept - Notion Yellow */
+.entity-concept {
+  @apply relative cursor-pointer;
+  background-color: #372E20;
+  border-bottom: 2px solid #C19138;
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 /* =============================================================================
@@ -135,23 +180,32 @@
   opacity: 0.6;
 }
 
-/* Entity detection (purple pulse) - P2: entitySuggestions feature */
+/* Entity detection (Notion purple pulse) - P2: entitySuggestions feature
+ * Uses Notion purple: text #865DBB = rgb(134, 93, 187)
+ */
 [data-ai-entity-detected] {
-  background-color: rgba(168, 85, 247, 0.08);
+  background-color: rgba(134, 93, 187, 0.12);
   border-radius: 2px;
-  box-shadow: inset 0 -1px 0 rgba(168, 85, 247, 0.3);
+  box-shadow: inset 0 -1px 0 rgba(134, 93, 187, 0.4);
   cursor: pointer;
-  animation: entity-detection-pulse 4s ease-in-out infinite;
+  animation: entity-detection-pulse 3s ease-in-out infinite;
 }
 
 [data-ai-entity-detected]:hover {
-  background-color: rgba(168, 85, 247, 0.15);
+  background-color: rgba(134, 93, 187, 0.2);
   animation: none;
 }
 
 @keyframes entity-detection-pulse {
-  0%, 100% { background-color: rgba(168, 85, 247, 0.06); }
-  50% { background-color: rgba(168, 85, 247, 0.12); }
+
+  0%,
+  100% {
+    background-color: rgba(134, 93, 187, 0.08);
+  }
+
+  50% {
+    background-color: rgba(134, 93, 187, 0.16);
+  }
 }
 
 /* Widget execution markers */

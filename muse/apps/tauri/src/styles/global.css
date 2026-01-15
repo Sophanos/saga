@@ -20,12 +20,24 @@
   /* Accent */
   --mythos-accent: #529cca;
 
-  /* Entity colors */
-  --mythos-entity-character: #a78bfa;
-  --mythos-entity-location: #34d399;
-  --mythos-entity-item: #fbbf24;
-  --mythos-entity-magic: #22d3ee;
-  --mythos-entity-faction: #f87171;
+  /* Entity colors - from Notion semantic palette (dark mode)
+     See @mythos/theme/colors.ts for source of truth */
+  --mythos-entity-character: #447ACB;    /* Notion blue - character */
+  --mythos-entity-location: #4F9768;     /* Notion green - location */
+  --mythos-entity-item: #CB7B37;         /* Notion orange - item */
+  --mythos-entity-magic: #865DBB;        /* Notion purple - magic_system */
+  --mythos-entity-faction: #BA4A78;      /* Notion pink - faction */
+  --mythos-entity-event: #BE524B;        /* Notion red - event */
+  --mythos-entity-concept: #C19138;      /* Notion yellow - concept */
+
+  /* Entity background colors - Notion semantic (dark mode) */
+  --mythos-entity-character-bg: #1F282D;
+  --mythos-entity-location-bg: #242B26;
+  --mythos-entity-item-bg: #36291F;
+  --mythos-entity-magic-bg: #2A2430;
+  --mythos-entity-faction-bg: #2E2328;
+  --mythos-entity-event-bg: #332523;
+  --mythos-entity-concept-bg: #372E20;
 }
 
 /* Light mode - responds to system preference */
@@ -49,6 +61,24 @@
 
     /* Accent */
     --mythos-accent: #2383e2;
+
+    /* Entity colors - from Notion semantic palette (light mode) */
+    --mythos-entity-character: #487CA5;
+    --mythos-entity-location: #548164;
+    --mythos-entity-item: #CC782F;
+    --mythos-entity-magic: #8A67AB;
+    --mythos-entity-faction: #B35488;
+    --mythos-entity-event: #C4554D;
+    --mythos-entity-concept: #C29343;
+
+    /* Entity background colors - Notion semantic (light mode) */
+    --mythos-entity-character-bg: #E9F3F7;
+    --mythos-entity-location-bg: #EEF3ED;
+    --mythos-entity-item-bg: #F8ECDF;
+    --mythos-entity-magic-bg: #F6F3F8;
+    --mythos-entity-faction-bg: #F9F2F5;
+    --mythos-entity-event-bg: #FAECEC;
+    --mythos-entity-concept-bg: #FAF3DD;
   }
 }
 

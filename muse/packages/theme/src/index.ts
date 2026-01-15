@@ -31,9 +31,15 @@ export {
   border,
   accent,
   neutral,
+  notion,
   entity,
   entityExtended,
+  entityToNotionColor,
   relationship,
+  // Notion entity color utilities
+  getNotionColorForEntity,
+  getEntityNotionColors,
+  getEntityNotionColorsFull,
   type Colors,
   type BgColor,
   type TextColor,
@@ -42,6 +48,7 @@ export {
   type EntityColor,
   type EntityExtendedColor,
   type RelationshipColor,
+  type NotionColorName,
 } from "./colors";
 
 // Typography
