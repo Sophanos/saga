@@ -712,11 +712,25 @@ This revision improves the pacing by...
 | Deep linking to blocks | Medium | Medium | Partial (hash focus) |
 | Task/todo reading | Medium | Low | Done (`agentTodos`) |
 | `<Content>` output convention | Low | Low | Planned |
-| Comment reading | Low | Low | Done (`viewComments`) |
-| Comment writing | Low | Low | Done (`addComment`) |
-| Version history viewing | Medium | Low | Done (`viewVersionHistory`) |
-| Document deletion | Medium | Low | Done (`deleteDocument`) |
-| User search for @mentions | Medium | Low | Done (`searchUsers`) |
+| Comment reading | Low | Low | Done (`view_comments` - agent + backend) |
+| Comment writing | Low | Low | Done (`add_comment` - agent + backend, HITL) |
+| Version history viewing | Medium | Low | Done (`view_version_history` - agent + backend) |
+| Document deletion | Medium | Low | Done (`delete_document` - agent + backend, HITL/destructive) |
+| User search for @mentions | Medium | Low | Done (`search_users` - agent + backend) |
+| Thread summarization | Medium | Medium | Done (`summarizeThread` action + ChatUsageIndicator) |
+| Batch PDF export | Low | Medium | Done (offscreen rendering with `batchRenderArtifacts()`) |
+
+### A4. Missing UI for Collaboration Tools
+
+| Component | Priority | Effort | Notes |
+|-----------|----------|--------|-------|
+| `AddCommentApprovalCard` | P1 | 1-2 days | HITL approval in chat |
+| `DeleteDocumentApprovalCard` | P1 | 1-2 days | Destructive warning styling |
+| `VersionHistoryResultCard` | P1 | 2-3 days | Version list with diff preview |
+| `CommentsResultCard` | P1 | 1-2 days | Comment list with author/timestamp |
+| `UserSearchResultCard` | P1 | 1 day | @mention picker results |
+
+**Total UI effort:** ~1 week for collaboration tool cards
 
 ---
 
@@ -1084,8 +1098,8 @@ Can view full content (e.g., Slack messages, Gmail threads) and cite specific it
 | Persistent memory | No | Yes (Living Memory) |
 | Block-level links | No (page only) | Partial (`#block-{id}` hash focus) |
 | Coherence checking | No | Yes |
-| Context warnings | No | Yes (planned) |
-| Auto-summarization | No | Yes (planned) |
+| Context warnings | No | Yes (ChatUsageIndicator) |
+| Auto-summarization | No | Yes (`summarizeThread` action) |
 | Proactive suggestions | No (purely reactive) | Yes (background coherence) |
 | Token visibility | Total only (200k) | Real-time remaining |
 | Page truncation | 26k tokens (silent) | Smart chunking |

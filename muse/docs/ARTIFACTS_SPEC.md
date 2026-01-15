@@ -1018,9 +1018,19 @@ Status (implementation):
 |-----------|----------|-------|
 | `AddCommentApprovalCard` | P1 | HITL approval card in AI chat - show comment content, target document |
 | `DeleteDocumentApprovalCard` | P1 | HITL approval card with destructive warning - show document title, confirm action |
-| `VersionHistoryResultCard` | P1 | Display version list in chat - timestamp, author, diff preview, restore action |
-| `CommentsResultCard` | P1 | Display comments in chat - author avatar, timestamp, selection context |
-| `UserSearchResultCard` | P1 | Display user search results - name, email, avatar for @mention selection |
+| `VersionHistoryResultCard` | P2 | Display version list in chat - timestamp, author, diff preview |
+| `CommentsResultCard` | P2 | Display comments in chat - author avatar, timestamp, selection context |
+| `UserSearchResultCard` | P2 | Display user search results - name, email, avatar for @mention selection |
+
+### Phase 6: Batch Export + Context Management (status)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Batch PDF with offscreen rendering | Done | `batchRenderArtifacts()` utility in `services/export/artifacts/batchRender.tsx` |
+| Format picker (PNG/SVG/PDF/JSON/Batch) | Done | Dropdown in ArtifactPanel header |
+| Thread summarization action | Done | `convex/ai/summarizeThread.ts` with token estimation + warning levels |
+| ChatUsageIndicator with summarize | Done | "Summarize" button at >6k tokens; calls summarization action |
+| ArtifactReceiptExtension commands | Done | `updateArtifactReceipt()`, `removeArtifactReceipt()` commands |
 
 ---
 

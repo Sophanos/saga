@@ -2,7 +2,8 @@
   "extends": "../tooling/typescript/tsconfig.base.json",
   "compilerOptions": {
     "types": ["convex/server", "node", "vitest"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "jsx": "react-jsx"
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["_generated", "node_modules"]

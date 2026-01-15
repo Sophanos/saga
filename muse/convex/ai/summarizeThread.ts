@@ -10,11 +10,11 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { internal, components } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
 import { resolveOpenRouterKey, isByokRequest } from "../lib/openRouterKey";
 import { assertAiAllowed } from "../lib/quotaEnforcement";
 import { Agent } from "@convex-dev/agent";
 import { createOpenAI } from "@ai-sdk/openai";
+import { generateText } from "ai";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const SUMMARIZE_MODEL = "anthropic/claude-sonnet-4";
@@ -80,12 +80,19 @@ async function fetchThreadMessages(
   threadId: string,
   limit: number
 ): Promise<AgentMessage[]> {
-  // Query the Agent component's messages table directly
-  const messages = await ctx.runQuery(
-    components.agent.public.listThreadMessages,
-    { threadId, limit, order: "asc" }
+  const result = await ctx.runQuery(
+    components.agent.messages.listMessagesByThreadId,
+    {
+      threadId,
+      order: "asc" as const,
+      paginationOpts: { cursor: null, numItems: limit },
+    }
   );
-  return (messages?.page ?? []) as AgentMessage[];
+  return (result?.page ?? []).map((msg: any) => ({
+    _id: msg._id,
+    message: msg.message ?? { role: "user", content: "" },
+    _creationTime: msg._creationTime,
+  })) as AgentMessage[];
 }
 
 export const estimateThreadTokens = action({
@@ -115,7 +122,7 @@ export const shouldAutoSummarize = action({
   },
   handler: async (ctx, { threadId }): Promise<boolean> => {
     const { tokens } = await ctx.runAction(
-      internal.ai.summarizeThread.estimateThreadTokens,
+      (internal as any).ai.summarizeThread.estimateThreadTokens,
       { threadId }
     );
     return tokens >= AUTO_SUMMARIZE_THRESHOLD;
@@ -145,7 +152,7 @@ export const summarizeThread = action({
     if (!isByok) {
       await assertAiAllowed(ctx, {
         userId,
-        endpoint: "summarize",
+        endpoint: "chat",
         promptText: "",
       });
     }
@@ -189,20 +196,14 @@ export const summarizeThread = action({
     const userPrompt = `Please summarize the following conversation:\n\n${conversationText}`;
 
     // Call summarization model
-    const client = createOpenRouterClient(apiKey);
-    const response = await client.chat(SUMMARIZE_MODEL).doGenerate({
-      inputFormat: "messages",
-      mode: { type: "regular" },
-      prompt: [
-        { role: "system", content: SUMMARIZE_SYSTEM_PROMPT },
-        { role: "user", content: [{ type: "text", text: userPrompt }] },
-      ],
+    const client = createOpenRouterClient(apiKey.apiKey);
+    const response = await generateText({
+      model: client.chat(SUMMARIZE_MODEL),
+      system: SUMMARIZE_SYSTEM_PROMPT,
+      prompt: userPrompt,
     });
 
-    const summary = response.content
-      .filter((part) => part.type === "text")
-      .map((part) => (part as { type: "text"; text: string }).text)
-      .join("");
+    const summary = response.text;
 
     const summaryTokens = estimateTokens(summary);
     const tokensSaved = Math.max(0, originalTokens - summaryTokens);
@@ -262,7 +263,7 @@ export const getThreadUsageEstimate = action({
     warningLevel: "ok" | "warn" | "danger";
   }> => {
     const result = await ctx.runAction(
-      internal.ai.summarizeThread.estimateThreadTokens,
+      (internal as any).ai.summarizeThread.estimateThreadTokens,
       { threadId }
     );
 
