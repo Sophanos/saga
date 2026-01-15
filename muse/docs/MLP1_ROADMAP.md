@@ -37,8 +37,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Planning Tools + Sub-Agents | Done | 100 |
 | Supabase -> Convex Migration | Done | 100 |
 | Real-Time Collaboration | In progress | 80 |
-| Widgets & Artifacts (MVP1) | In progress | 60 |
-| Async Jobs + Notifications (MVP1.5) | Planned | 0 |
+| Widgets & Artifacts + Async (MVP1) | In progress ([details](#phase-5-widgets--artifacts--async-mvp1)) | 60 |
 | App Store Pricing + RevenueCat | In progress ([details](./PRICING_REVENUECAT_SETUP.md)) | 75 |
 | Overall MLP 1 | In progress | 97 |
 
@@ -137,11 +136,10 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 | Phase | Goal | Status | Link |
 |------|------|--------|------|
 | 1 | Project Graph UX (Expo Web + Tauri v2) | In progress | [Phase 1](#phase-1-project-graph-ux-plan) |
-| 1.5 | Async Jobs + Notifications | Planned | [Phase 1.5](#phase-15-async--notifications) |
 | 2 | Knowledge PRs review surface + hardening | In progress | [Phase 2](#phase-2-knowledge-prs-hardening) |
 | 3 | Integrations + Citations (MCP) | Planned | [Phase 3](#phase-3-integrations--citations) |
 | 4 | Clarity/Policy Coach | Complete | [Phase 4](#phase-4-claritypolicy-coach) |
-| 5 | Widgets & Artifacts (MVP1) | In progress | [Phase 5](#phase-5-widgets--artifacts-mvp1) |
+| 5 | Widgets & Artifacts + Async (MVP1) | In progress (60%) | [Phase 5](#phase-5-widgets--artifacts--async-mvp1) |
 
 ## UI Integration Analysis (MLP1 Phase 1)
 
@@ -181,23 +179,6 @@ Goal: editable Project Graph with registry-enforced validation and risk-aware ap
 - Expo Web + Tauri v2: bundle compatibility (ELK layout + ReactFlow), Tauri v2 shell points to Expo Web.
 - E2E testability: add stable `data-testid` coverage for modals, registry editor, approvals, create/delete.
 
-## Phase 1.5: Async + Notifications
-
-Goal: durable async work (long-running widget jobs + scheduled runs) with consistent notifications across **Expo**, **Web**, and **Tauri**.
-
-Docs:
-- `muse/docs/WIDGETS_MVP1_IMPLEMENTATION_PLAN.md` (Section 8)
-- Convex components: `@convex-dev/workpool`, `@convex-dev/workflow`, `@convex-dev/expo-push-notifications`
-
-Implementation milestones (ship “slowly”):
-1. In-app inbox (`notificationInbox`) + local toasts only (all platforms).
-2. Expo push notifications (use `@convex-dev/expo-push-notifications`).
-3. Web push (VAPID Web Push; optionally OneSignal/FCM).
-4. Tauri OS notifications driven by inbox subscription/polling.
-
-Integration points:
-- Artifact creation / regeneration completion → enqueue notification sender + write inbox row.
-- Workpool/Workflow status is queryable to power “job running / completed / failed” UI.
 
 ## Phase 2: Knowledge PRs Hardening
 
@@ -230,20 +211,40 @@ Goal: production-grade review surface where every PR is actionable, diffs are re
 - Coach mode selector (Writing / Clarity / Policy) with taxonomy-aware labels.
 - Issue UI: ambiguity/unverifiable/not-testable/policy-conflict categories while preserving the "issue + suggested fix" structure.
 
-## Phase 5: Widgets & Artifacts (MVP1)
+## Phase 5: Widgets & Artifacts + Async (MVP1)
 
-Goal: keyboard-first widget execution pipeline: **command → preview → confirm → inline insert or saved artifact**, with **receipts by default** and **no entity mutations**.
+Goal: keyboard-first widget execution pipeline: **command → preview → confirm → inline insert or saved artifact**, with **receipts by default**, **async notifications**, and **no entity mutations**.
 
 Docs:
-- Spec: `muse/docs/WIDGETS.md`, `muse/docs/WIDGETS_UX_FLOW.md`
-- Execution-ready plan: `muse/docs/WIDGETS_MVP1_IMPLEMENTATION_PLAN.md`
+- Artifact spec: [ARTIFACTS_SPEC.md](./ARTIFACTS_SPEC.md)
+- Widget spec: [WIDGETS.md](./WIDGETS.md), [WIDGETS_UX_FLOW.md](./WIDGETS_UX_FLOW.md)
+- Implementation plan: [WIDGETS_MVP1_IMPLEMENTATION_PLAN.md](./WIDGETS_MVP1_IMPLEMENTATION_PLAN.md)
+- Convex components: `@convex-dev/workpool`, `@convex-dev/workflow`, `@convex-dev/expo-push-notifications`
 
-Core deliverables:
-- Shared: add `widget` capability kind + `slash_menu` surface; add `agent-protocol` widget execution contract.
-- Backend: `widgetExecutions`, `artifacts`, `artifactVersions`; `runWidgetToStream` + confirm mutations; manual source tagging + staleness.
-- Web: `widget` filter in Cmd+K, per-project recents, progress tile, preview modal, receipts block + source picker.
-- Slash menu: recent widgets, Widgets/Create sections, “Ask AI: {query}” fallback.
-- Expo: artifact widgets first (create/list/view) + receipts; inline widgets follow once selection replacement is stable.
+### Done (60%)
+
+| Component | What's Shipped | Files |
+|-----------|----------------|-------|
+| **Artifact Schema** | `artifacts`, `artifactVersions`, `artifactMessages`, `artifactOps` tables | `convex/schema.ts` |
+| **Artifact CRUD** | create, updateContent, appendMessage, applyOp, getByKey, list | `convex/artifacts.ts` |
+| **Artifact Engine** | Domain ops → JSON Patch, revision test, optimistic concurrency | `packages/core/src/artifacts/engine.ts` |
+| **Staleness** | Source tracking, `checkStaleness` query, external source handling | `convex/artifacts.ts` |
+| **Collaboration Tools** | viewVersionHistory, deleteDocument, viewComments, addComment, searchUsers | `convex/revisions.ts`, `convex/comments.ts`, `convex/documents.ts`, `convex/users.ts` |
+| **Tool Executors** | Client-side executors wired to Convex | `apps/web/src/tools/executors/` |
+| **Artifact Renderers** | prose, table, diagram, timeline, chart, outline, entityCard (7 types) | `apps/web/src/components/artifacts/runtime/` |
+| **Artifact Sync** | Expo hydration from Convex | `apps/expo/src/hooks/useArtifactSync.ts` |
+| **Canvas Integration** | Insert artifact content, revision with artifactVersionId | `apps/web/src/components/canvas/Canvas.tsx` |
+
+### Missing (40%)
+
+| Component | What's Needed | Priority |
+|-----------|---------------|----------|
+| **Widget Execution Pipeline** | `widgetExecutions` table, `/ai/widgets` streaming, progress UI, preview modal, slash menu | P0 |
+| **Receipts Block** | Inline editor block showing artifact source, staleness badge, source picker | P0 |
+| **Async Infrastructure** | `notificationInbox` table, workpool for long jobs, in-app toasts + inbox | P0 |
+| **Server Tool Registration** | Register collaboration tools in `agentRuntime.ts` for AI agent access | P1 |
+| **Deep Linking** | `rhei://` URL routing, navigation from artifact links, copy link UI | P2 |
+| **Platform Push** | Expo push, Web push (VAPID), Tauri OS notifications | P3 (post-MLP1) |
 
 ## Billing & Monetization (75%)
 
