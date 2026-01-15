@@ -225,6 +225,7 @@
         "react-dom": "^18.3.1",
         "react-resizable-panels": "^2.1.7",
         "tippy.js": "^6.3.7",
+        "vis-data": "^7.1.9",
         "vis-timeline": "^7.7.2",
         "zustand": "^5.0.2",
       },
@@ -364,6 +365,7 @@
       "name": "@mythos/commands",
       "version": "0.1.0",
       "dependencies": {
+        "@mythos/capabilities": "workspace:*",
         "@mythos/core": "workspace:*",
         "@mythos/state": "workspace:*",
       },
@@ -418,6 +420,7 @@
       "name": "@mythos/core",
       "version": "0.0.1",
       "dependencies": {
+        "@mythos/theme": "workspace:*",
         "nanoid": "^5.0.9",
         "zod": "^3.24.1",
       },
@@ -473,6 +476,7 @@
         "@convex-dev/prosemirror-sync": "^0.2.0",
         "@floating-ui/react": "^0.26.28",
         "@mythos/state": "workspace:*",
+        "@mythos/theme": "workspace:*",
         "@tiptap/core": "^2.10.0",
         "@tiptap/extension-placeholder": "^2.10.0",
         "@tiptap/extension-unique-id": "^2.10.0",

@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mythos/capabilities": "workspace:*",
     "@mythos/state": "workspace:*",
     "@mythos/core": "workspace:*"
   },

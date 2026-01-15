@@ -27,3 +27,13 @@ export {
   type ApiTimeoutKey,
   type RetryConfigKey,
 } from './config';
+
+export {
+  sendWidgetRunStreaming,
+  WidgetApiError,
+  type WidgetApiErrorCode,
+  type WidgetStreamEvent,
+  type WidgetStreamEventType,
+  type WidgetStreamOptions,
+  type WidgetContextData,
+} from './widgetClient';

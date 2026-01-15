@@ -1,14 +1,19 @@
 import { BubbleMenu as TiptapBubbleMenu } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import { useState, useCallback } from 'react';
+import { notion, entityToNotionColor, type NotionColorName } from '@mythos/theme';
 
 type EntityType = 'character' | 'location' | 'item' | 'magic_system';
 
-const ENTITY_TYPES: { type: EntityType; label: string; icon: string; color: string }[] = [
-  { type: 'character', label: 'Character', icon: '👤', color: '#22d3ee' },
-  { type: 'location', label: 'Location', icon: '📍', color: '#22c55e' },
-  { type: 'item', label: 'Item', icon: '⚔️', color: '#f59e0b' },
-  { type: 'magic_system', label: 'Magic', icon: '✨', color: '#8b5cf6' },
+/**
+ * Entity types with Notion-style semantic colors from @mythos/theme
+ * Colors are derived from the centralized entityToNotionColor mapping
+ */
+const ENTITY_TYPES: { type: EntityType; label: string; icon: string; notionColor: NotionColorName }[] = [
+  { type: 'character', label: 'Character', icon: '👤', notionColor: entityToNotionColor['character'] || 'blue' },
+  { type: 'location', label: 'Location', icon: '📍', notionColor: entityToNotionColor['location'] || 'green' },
+  { type: 'item', label: 'Item', icon: '⚔️', notionColor: entityToNotionColor['item'] || 'orange' },
+  { type: 'magic_system', label: 'Magic', icon: '✨', notionColor: entityToNotionColor['magic_system'] || 'purple' },
 ];
 
 interface BubbleMenuProps {
@@ -16,27 +21,29 @@ interface BubbleMenuProps {
   onAskAI?: (selectedText: string) => void;
 }
 
+/**
+ * Build colors array from Notion palette (dark mode)
+ * Dynamically generated from @mythos/theme
+ */
+const NOTION_COLOR_NAMES: NotionColorName[] = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
+
 const COLORS = [
   { name: 'Default', value: '' },
-  { name: 'Gray', value: '#6b7280' },
-  { name: 'Red', value: '#ef4444' },
-  { name: 'Orange', value: '#f97316' },
-  { name: 'Yellow', value: '#eab308' },
-  { name: 'Green', value: '#22c55e' },
-  { name: 'Blue', value: '#3b82f6' },
-  { name: 'Purple', value: '#a855f7' },
-  { name: 'Pink', value: '#ec4899' },
+  ...NOTION_COLOR_NAMES.map(name => ({
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    value: notion.dark[name].text,
+  })),
 ];
 
+/**
+ * Notion-style highlight/background colors from @mythos/theme (dark mode)
+ */
 const HIGHLIGHTS = [
   { name: 'None', value: '' },
-  { name: 'Yellow', value: '#fef08a' },
-  { name: 'Green', value: '#bbf7d0' },
-  { name: 'Blue', value: '#bfdbfe' },
-  { name: 'Purple', value: '#e9d5ff' },
-  { name: 'Pink', value: '#fbcfe8' },
-  { name: 'Red', value: '#fecaca' },
-  { name: 'Orange', value: '#fed7aa' },
+  ...NOTION_COLOR_NAMES.map(name => ({
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    value: notion.dark[name].bg,
+  })),
 ];
 
 export function BubbleMenu({ editor, onAskAI }: BubbleMenuProps) {
@@ -220,7 +227,7 @@ export function BubbleMenu({ editor, onAskAI }: BubbleMenuProps) {
                   key={entityType.type}
                   className="bubble-menu-entity-option"
                   onClick={() => handleMarkAsEntity(entityType.type)}
-                  style={{ '--entity-color': entityType.color } as React.CSSProperties}
+                  style={{ '--entity-color': notion.dark[entityType.notionColor].text } as React.CSSProperties}
                 >
                   <span className="entity-option-icon">{entityType.icon}</span>
                   <span className="entity-option-label">{entityType.label}</span>

@@ -177,7 +177,11 @@ export function AppShell({ children }: AppShellProps) {
         </View>
       )}
 
-      <View style={styles.main}>
+      <View style={[
+        styles.main,
+        // Add right padding when artifact panel is floating over content
+        showArtifactPanel && { paddingRight: artifactPanelWidth },
+      ]}>
         <FlowOverlay>{children}</FlowOverlay>
       </View>
 
@@ -413,6 +417,7 @@ const styles = StyleSheet.create({
   },
   main: {
     flex: 1,
+    overflow: 'hidden',
   },
   knowledgeBackdrop: {
     flex: 1,

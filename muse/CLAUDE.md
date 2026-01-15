@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Mythos IDE: AI-powered creative writing environment. "Story as code" with entity tracking, Project Graph, and AI agents.
+Mythos IDE: AI-powered knowledge environment for creative and professional work. Entity tracking, Project Graph, AI agents, and governed automation. Supports writers, product teams, engineers, marketers, and researchers.
 
 ## Quick Commands (run from `muse/`)
 ```bash
@@ -27,9 +27,9 @@ bunx convex env set KEY value  # Set Convex env var
 ## Monorepo Layout
 ```
 apps/
-  expo/           # Universal app (web, iOS, macOS) - primary web client
-  tauri/          # macOS desktop shell - uses web/ components
-  web/            # React DOM component dev/testing for tauri (not a client)
+  expo/           # Primary client: Expo Web (website), iOS, iPad
+  tauri/          # macOS desktop shell (Tauri v2) - embeds web/ components
+  web/            # Component layer ONLY - serves tauri & expo, NOT a standalone app
 packages/
   state/          # Zustand stores (AI, workspace, layout, command palette)
   commands/       # Command registry + definitions
@@ -41,6 +41,9 @@ packages/
   prompts/        # AI prompts
 convex/           # Backend + AI modules
 ```
+
+## apps/web: Component Layer Only
+**NOT a standalone app.** Component library for tauri/expo. No pages, routes, or demo UI. Auth components are the exception (OAuth for Tauri).
 
 ## Expo App Structure (`apps/expo/`)
 ```
@@ -102,8 +105,10 @@ Never `git restore`, `git checkout --`, `git reset`, or any destructive git comm
 - Tools: `editorTools.ts`, `ragTools.ts`, `projectGraphTools.ts`
 
 ## Roadmap Snapshot (MLP1)
-- Priority: Web → macOS (Tauri) → iOS/iPad (Expo)
-- Flow Mode + writer tools are P1/P2 (AI silent unless invoked)
+- Priority: Expo Web (website) → macOS (Tauri v2) → iOS/iPad
+- apps/web = Component layer only (no pages/routes), consumed by Tauri
+- apps/expo = Primary client for web + mobile
+- Flow Mode + AI tools are P1/P2 (AI silent unless invoked)
 - Export/Import centralization into `@mythos/io` (P2)
 - Platform capability layer in `@mythos/platform` (no `.tauri.ts` sprawl)
 - Full details: `docs/MLP1_ROADMAP.md`
