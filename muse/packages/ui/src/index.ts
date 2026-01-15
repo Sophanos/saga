@@ -16,6 +16,7 @@ export { Select } from "./components/select";
 export { TextArea } from "./components/textarea";
 export { ImagePicker } from "./components/image-picker";
 export { Toaster, toast, toastConfig } from "./components/toaster";
+export { TOC } from "./components/toc";
 
 // Types
 export type { AvatarProps } from "./components/avatar";
@@ -28,6 +29,7 @@ export type {
   ImagePickerAsset,
   ImagePickerTab,
 } from "./components/image-picker";
+export type { TocItem, TocProps } from "./components/toc";
 
 // Utilities
 export { cn } from "./lib/utils";

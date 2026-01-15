@@ -43,6 +43,13 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 
 ## Recent Updates (condensed)
 
+**2026-01-15 (Artifact Tools Implementation)**
+- **Artifact tools**: 7 tools wired into agentRuntime.ts - `artifact_tool`, `artifact_stage`, `artifact_diagram`, `artifact_table`, `artifact_timeline`, `artifact_prose`, `artifact_link`.
+- **Server-executed model**: Agent calls → runtime executes → streams result to client → client handler applies UI effects.
+- **Client handler**: `useArtifactToolHandler` hook in Expo intercepts tool results and applies panel state changes.
+- **TOC component**: Reusable table of contents in `packages/ui/src/components/toc.tsx`.
+- **ToolCallResult export**: Added to `@mythos/ai/hooks` for type-safe tool handling.
+
 **2026-01-15 (Artifacts Phase 2-4 completion)**
 - **Expo native table**: `ArtifactTableNative.tsx` with gesture-based drag-to-reorder (uses reanimated + gesture-handler), row selection, inline cell editing.
 - **Op-persistence pipeline**: `handleApplyOp` in Expo ArtifactPanel with remote-then-local-fallback strategy.
@@ -365,7 +372,7 @@ Docs:
 
 ## AI Tools Overview
 
-### Active Tools (19 registered in agentRuntime.ts)
+### Active Tools (26 registered in agentRuntime.ts)
 
 | Category | Tool | Purpose | Approval |
 |----------|------|---------|----------|
@@ -389,6 +396,13 @@ Docs:
 | | `search_users` | Search project members for @mentions | Auto |
 | | `add_comment` | Add comment to document | User approval |
 | | `delete_document` | Soft-delete a document | User approval |
+| **Artifacts** | `artifact_tool` | Create/update/apply_op/remove artifacts | Auto |
+| | `artifact_stage` | Control panel (open/close/focus/compare) | Auto |
+| | `artifact_diagram` | Create/modify diagrams | Auto |
+| | `artifact_table` | Create/modify tables | Auto |
+| | `artifact_timeline` | Create/modify timelines | Auto |
+| | `artifact_prose` | Create/modify prose content | Auto |
+| | `artifact_link` | Generate deep links | Auto |
 
 ### Defined but Not Registered
 
@@ -425,10 +439,12 @@ Docs:
 
 - Tool definitions: `convex/ai/tools/*.ts`
 - Tool handlers: `convex/ai/tools.ts` (executeToolWithContext)
-- Agent runtime: `convex/ai/agentRuntime.ts` (tools object)
+- Agent runtime: `convex/ai/agentRuntime.ts` (tools object + TOOL_POLICY + executeAutoTool)
+- Artifact tools: `convex/ai/tools/artifactTools.ts` (7 tools + executeArtifactTool in agentRuntime)
 - Type definitions: `packages/agent-protocol/src/tools.ts`
 - Client executors: `apps/web/src/tools/executors/*.ts`
 - Client registry: `apps/web/src/tools/registry.ts`
+- Client tool handler: `apps/expo/src/hooks/useArtifactToolHandler.ts`
 
 ### Sub-Agents (native)
 

@@ -450,8 +450,20 @@ rhei://project/{projectId}/document/{docId}
 rhei://project/{projectId}/document/{docId}#block-{blockId}
 rhei://project/{projectId}/entity/{entityId}
 rhei://project/{projectId}/artifact/{artifactKey}
+rhei://project/{projectId}/artifact/{artifactKey}#section-{sectionId}
 rhei://help/{topic}
 ```
+
+### Missing: Link + AI Integration
+
+| Feature | Location | Status |
+|---------|----------|--------|
+| Copy Link (section) | Section menu (⋮) → "Copy link" | ❌ Missing |
+| AI link resolver | Agent tool to fetch artifact by `rhei://` URL | ❌ Missing |
+| @ mention autocomplete | Type `@` in AI input → artifact picker | ❌ Missing |
+| CMD+K artifact picker | Global shortcut → search artifacts/docs/entities | ❌ Missing |
+
+**Copy** (header) = snapshot content of active tab. **Copy Link** (section menu) = deep link URL.
 
 ### Access Control (P0)
 
@@ -938,11 +950,11 @@ Want me to adapt any of these for your Three Laws of Binding?
 | **P3** | `batchCreateTool` | Create multiple docs/entities at once | Efficiency |
 | **P3** | `structuredQueryTool` | SQL-like queries on entities | Power users |
 
-### Artifact-Specific Tools (NOT YET IMPLEMENTED)
+### Artifact-Specific Tools (IMPLEMENTED)
 
-These tools are defined in the spec but **not wired into agentRuntime.ts**. The UI renderers exist, but agents cannot create artifacts.
+These tools are wired into `agentRuntime.ts` and auto-execute. Server-executed model: agent calls → runtime executes → streams result to client → client handler applies UI effects.
 
-**Revised Design (January 2026):**
+**Design (January 2026):**
 - Artifacts support **mixed content** via sections (prose + diagram + table in one artifact)
 - **Tabs = branches**, not pins (branch, merge, rename, reorder)
 - Agent has **full context** of artifact panel (not minimal)
@@ -951,20 +963,19 @@ These tools are defined in the spec but **not wired into agentRuntime.ts**. The 
 
 | Tool | Description | Auto-execute | Status |
 |------|-------------|--------------|--------|
-| `artifactTool` | Create/update artifacts with sections (mixed content) | Yes | ❌ Planned |
-| `stageTool` | Control tabs: newTab, focusTab, mergeTabs, branchSection, close | Yes | ❌ Planned |
-| `linkTool` | Create deep links to artifacts, sections, entities | Yes | ❌ Planned |
-| `diagramTool` | Convenience: add diagram section to current artifact | Yes | ❌ Planned |
-| `tableTool` | Convenience: add table section to current artifact | Yes | ❌ Planned |
-| `timelineTool` | Convenience: add timeline section to current artifact | Yes | ❌ Planned |
-| `proseTool` | Convenience: add prose section to current artifact | Yes | ❌ Planned |
+| `artifact_tool` | Create/update/apply_op/remove artifacts | Yes | ✅ Done |
+| `artifact_stage` | Control panel: open/close, set_active, focus, compare, exit_compare | Yes | ✅ Done |
+| `artifact_link` | Generate deep links to projects/documents/entities/artifacts | Yes | ✅ Done |
+| `artifact_diagram` | Convenience: create diagrams, upsert/move nodes, add/update edges | Yes | ✅ Done |
+| `artifact_table` | Convenience: create tables, add/update/remove/reorder rows | Yes | ✅ Done |
+| `artifact_timeline` | Convenience: create timelines, upsert/update items | Yes | ✅ Done |
+| `artifact_prose` | Convenience: create prose/dialogue/lore/code, replace blocks | Yes | ✅ Done |
 
-**Implementation needed**:
-1. Create `convex/ai/tools/artifactTools.ts` with tool definitions
-2. Wire into `convex/ai/agentRuntime.ts`
-3. Update `packages/state/src/artifact.ts` to support sections and tabs
-4. Add `AgentArtifactContext` to agent context builder
-5. Create TOC component in `packages/ui/`
+**Implementation paths**:
+- Tool definitions: `convex/ai/tools/artifactTools.ts`
+- Runtime wiring: `convex/ai/agentRuntime.ts` (TOOL_POLICY + executeArtifactTool)
+- Client handler: `apps/expo/src/hooks/useArtifactToolHandler.ts`
+- TOC component: `packages/ui/src/components/toc.tsx`
 
 ---
 
@@ -1295,4 +1306,4 @@ Decision: Document-scoped artifacts with thread history retained for iteration p
 - Templates + cross-artifact links + staleness checks defined. (Partial: schema + staleness query)
 - Iteration history storage added. (Done in schema + state)
 
-*Last updated: January 15, 2026 (revised: Expo native table reorder, merge-safe sync, rhei:// deep links)*
+*Last updated: January 15, 2026 (revised: artifact tools implemented - artifact_tool, artifact_stage, artifact_link, artifact_diagram, artifact_table, artifact_timeline, artifact_prose)*

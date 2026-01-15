@@ -36,6 +36,15 @@ import {
   searchUsersTool,
   deleteDocumentTool,
 } from "./tools/collaborationTools";
+import {
+  artifactTool,
+  artifactStageTool,
+  artifactDiagramTool,
+  artifactTableTool,
+  artifactTimelineTool,
+  artifactProseTool,
+  artifactLinkTool,
+} from "./tools/artifactTools";
 import { getEmbeddingModelForTask } from "../lib/embeddings";
 import { ServerAgentEvents } from "../lib/analytics";
 import { createUsageHandler } from "../lib/rateLimiting";
@@ -281,6 +290,14 @@ function createSagaAgent(byokKey?: string, model?: string) {
       add_comment: addCommentTool,
       search_users: searchUsersTool,
       delete_document: deleteDocumentTool,
+      // Artifact tools
+      artifact_tool: artifactTool,
+      artifact_stage: artifactStageTool,
+      artifact_diagram: artifactDiagramTool,
+      artifact_table: artifactTableTool,
+      artifact_timeline: artifactTimelineTool,
+      artifact_prose: artifactProseTool,
+      artifact_link: artifactLinkTool,
     },
     maxSteps: 8,
   });
@@ -290,7 +307,7 @@ export function setSagaTestScript(steps: SagaTestStreamStep[]) {
   sagaTestScript = [...steps];
 }
 
-type ToolCategory = "rag" | "graph" | "web" | "hitl" | "analysis" | "project";
+type ToolCategory = "rag" | "graph" | "web" | "hitl" | "analysis" | "project" | "artifact";
 
 type ToolPolicy = {
   category: ToolCategory;
@@ -318,6 +335,14 @@ const TOOL_POLICY: Record<string, ToolPolicy> = {
   search_users: { category: "rag", autoExecute: true },
   add_comment: { category: "hitl", autoExecute: false },
   delete_document: { category: "hitl", autoExecute: false },
+  // Artifact tools - auto-execute, client handles UI effects
+  artifact_tool: { category: "artifact", autoExecute: true },
+  artifact_stage: { category: "artifact", autoExecute: true },
+  artifact_diagram: { category: "artifact", autoExecute: true },
+  artifact_table: { category: "artifact", autoExecute: true },
+  artifact_timeline: { category: "artifact", autoExecute: true },
+  artifact_prose: { category: "artifact", autoExecute: true },
+  artifact_link: { category: "artifact", autoExecute: true },
 };
 
 function getToolPolicy(toolName: string): ToolPolicy | undefined {
@@ -1512,7 +1537,321 @@ async function executeAutoTool(
   if (toolName === "spawn_task") {
     return executeSpawnTaskTool(ctx, args, projectId, userId);
   }
+  if (category === "artifact") {
+    return executeArtifactTool(ctx, toolName, args, projectId, userId);
+  }
   throw new Error(`Unknown auto-execute tool: ${toolName}`);
+}
+
+async function executeArtifactTool(
+  ctx: ActionCtx,
+  toolName: string,
+  args: Record<string, unknown>,
+  projectId: string,
+  userId: string
+): Promise<unknown> {
+  const now = Date.now();
+
+  // artifact_link - pure computation, no mutations
+  if (toolName === "artifact_link") {
+    const target = args["target"] as string;
+    const baseUrl = process.env.SITE_URL ?? "https://cascada.vision";
+    switch (target) {
+      case "project":
+        return { ok: true, url: `${baseUrl}/project/${args["projectId"]}` };
+      case "document":
+        return {
+          ok: true,
+          url: `${baseUrl}/project/${args["projectId"]}/doc/${args["documentId"]}${args["focusId"] ? `#${args["focusId"]}` : ""}`,
+        };
+      case "entity":
+        return { ok: true, url: `${baseUrl}/project/${args["projectId"]}/entity/${args["entityId"]}` };
+      case "artifact":
+        return {
+          ok: true,
+          url: `${baseUrl}/project/${args["projectId"]}/artifact/${args["artifactKey"]}${args["focusId"] ? `#${args["focusId"]}` : ""}`,
+        };
+      default:
+        return { ok: false, error: `Unknown link target: ${target}` };
+    }
+  }
+
+  // artifact_stage - UI commands, no server mutations
+  if (toolName === "artifact_stage") {
+    const action = args["action"] as string;
+    return { ok: true, action, ...args };
+  }
+
+  // artifact_tool - create/update/apply_op/remove
+  if (toolName === "artifact_tool") {
+    const action = args["action"] as string;
+
+    if (action === "create") {
+      const artifactKey = (args["artifactKey"] as string) ?? `artifact-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const title = args["title"] as string;
+      const type = args["type"] as string;
+      const format = (args["format"] as string) ?? "json";
+      const content = (args["content"] as string) ?? (args["envelope"] ? JSON.stringify(args["envelope"], null, 2) : "");
+
+      await ctx.runMutation((api as any).artifacts.create, {
+        projectId,
+        artifactKey,
+        type,
+        title,
+        content,
+        format,
+        executionContext: {
+          widgetId: "agent_artifact_tools",
+          widgetVersion: "v1",
+          model: "saga-agent",
+          inputs: args,
+          startedAt: now,
+          completedAt: Date.now(),
+        },
+      });
+
+      return {
+        ok: true,
+        artifactKey,
+        artifact: { artifactKey, title, type, format, status: "draft", updatedAt: now },
+        open: args["open"] ?? true,
+        setActive: args["setActive"] ?? true,
+        focusId: args["focusId"],
+      };
+    }
+
+    if (action === "update") {
+      const artifactKey = args["artifactKey"] as string;
+      const patch = args["patch"] as Record<string, unknown>;
+      if (patch["content"] || patch["format"]) {
+        await ctx.runMutation((api as any).artifacts.updateContent, {
+          projectId,
+          artifactKey,
+          content: patch["content"] as string | undefined,
+          format: patch["format"] as string | undefined,
+        });
+      }
+      return { ok: true, artifactKey, updatedAt: Date.now(), patchApplied: patch };
+    }
+
+    if (action === "apply_op") {
+      const artifactKey = args["artifactKey"] as string;
+      const op = args["op"];
+      const result = await ctx.runMutation((api as any).artifacts.applyOp, {
+        projectId,
+        artifactKey,
+        op,
+      });
+      return { ok: true, artifactKey, nextEnvelope: result };
+    }
+
+    if (action === "remove") {
+      return { ok: false, error: "Artifact removal not implemented" };
+    }
+
+    return { ok: false, error: `Unknown artifact_tool action: ${action}` };
+  }
+
+  // Convenience tools - delegate to artifact_tool internally
+  if (toolName === "artifact_diagram" || toolName === "artifact_table" || toolName === "artifact_timeline" || toolName === "artifact_prose") {
+    const action = args["action"] as string;
+
+    if (action === "create") {
+      const artifactKey = `artifact-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const title = args["title"] as string;
+      const type = toolName.replace("artifact_", "") as string;
+      const envelope = buildConvenienceEnvelope(toolName, args, artifactKey, now);
+
+      await ctx.runMutation((api as any).artifacts.create, {
+        projectId,
+        artifactKey,
+        type,
+        title,
+        content: JSON.stringify(envelope, null, 2),
+        format: "json",
+        executionContext: {
+          widgetId: "agent_artifact_tools",
+          widgetVersion: "v1",
+          model: "saga-agent",
+          inputs: args,
+          startedAt: now,
+          completedAt: Date.now(),
+        },
+      });
+
+      return {
+        ok: true,
+        artifactKey,
+        artifact: { artifactKey, title, type, format: "json", status: "draft", updatedAt: now },
+        open: true,
+        setActive: true,
+      };
+    }
+
+    // Non-create actions map to applyOp
+    const artifactKey = args["artifactKey"] as string;
+    const op = mapConvenienceActionToOp(toolName, action, args);
+    if (!op) {
+      return { ok: false, error: `Unknown ${toolName} action: ${action}` };
+    }
+
+    const result = await ctx.runMutation((api as any).artifacts.applyOp, {
+      projectId,
+      artifactKey,
+      op,
+    });
+    return { ok: true, artifactKey, nextEnvelope: result };
+  }
+
+  return { ok: false, error: `Unknown artifact tool: ${toolName}` };
+}
+
+function buildConvenienceEnvelope(
+  toolName: string,
+  args: Record<string, unknown>,
+  artifactId: string,
+  now: number
+): Record<string, unknown> {
+  const base = {
+    schemaVersion: "1.0",
+    artifactId,
+    createdAt: new Date(now).toISOString(),
+    updatedAt: new Date(now).toISOString(),
+  };
+
+  switch (toolName) {
+    case "artifact_diagram": {
+      const nodes = (args["nodes"] as Array<Record<string, unknown>>) ?? [];
+      const edges = (args["edges"] as Array<Record<string, unknown>>) ?? [];
+      return {
+        ...base,
+        type: "diagram",
+        data: {
+          nodes: nodes.map((n, i) => ({
+            nodeId: n["nodeId"] ?? `node-${i}`,
+            title: n["title"],
+            subtitle: n["subtitle"],
+            x: n["x"] ?? i * 150,
+            y: n["y"] ?? 100,
+            nodeKind: n["nodeKind"] ?? "entity",
+            entityId: n["entityId"],
+          })),
+          edges: edges.map((e, i) => ({
+            edgeId: e["edgeId"] ?? `edge-${i}`,
+            source: e["source"],
+            target: e["target"],
+            label: e["label"],
+            kind: e["kind"],
+          })),
+        },
+      };
+    }
+    case "artifact_table": {
+      const columns = (args["columns"] as Array<Record<string, unknown>>) ?? [];
+      const rows = (args["rows"] as Array<Record<string, unknown>>) ?? [];
+      return {
+        ...base,
+        type: "table",
+        data: {
+          columns: columns.map((c, i) => ({
+            columnId: c["columnId"] ?? `col-${i}`,
+            label: c["label"],
+            valueType: c["valueType"] ?? "text",
+            enumOptions: c["enumOptions"],
+          })),
+          rowOrder: rows.map((_, i) => `row-${i}`),
+          rows: Object.fromEntries(rows.map((r, i) => [`row-${i}`, { rowId: r["rowId"] ?? `row-${i}`, cells: r["cells"] ?? {} }])),
+        },
+      };
+    }
+    case "artifact_timeline": {
+      const groups = (args["groups"] as Array<Record<string, unknown>>) ?? [];
+      const items = (args["items"] as Array<Record<string, unknown>>) ?? [];
+      return {
+        ...base,
+        type: "timeline",
+        data: {
+          groups: groups.map((g, i) => ({
+            groupId: g["groupId"] ?? `group-${i}`,
+            label: g["label"],
+            kind: g["kind"],
+            entityId: g["entityId"],
+          })),
+          items: items.map((item, i) => ({
+            itemId: item["itemId"] ?? `item-${i}`,
+            start: item["start"],
+            end: item["end"],
+            content: item["content"],
+            groupId: item["groupId"],
+          })),
+        },
+      };
+    }
+    case "artifact_prose": {
+      const markdown = args["markdown"] as string;
+      const type = (args["type"] as string) ?? "prose";
+      return {
+        ...base,
+        type,
+        data: {
+          blockOrder: ["block-1"],
+          blocks: {
+            "block-1": { blockId: "block-1", content: markdown },
+          },
+        },
+      };
+    }
+    default:
+      return base;
+  }
+}
+
+function mapConvenienceActionToOp(
+  toolName: string,
+  action: string,
+  args: Record<string, unknown>
+): Record<string, unknown> | null {
+  switch (toolName) {
+    case "artifact_diagram":
+      switch (action) {
+        case "upsert_node":
+          return { type: "diagram.node.upsert", nodeId: args["nodeId"], title: args["title"], subtitle: args["subtitle"], nodeKind: args["nodeKind"], entityId: args["entityId"] };
+        case "move_node":
+          return { type: "diagram.node.move", nodeId: args["nodeId"], x: args["x"], y: args["y"] };
+        case "add_edge":
+          return { type: "diagram.edge.add", source: args["source"], target: args["target"], label: args["label"], kind: args["kind"] };
+        case "update_edge":
+          return { type: "diagram.edge.update", edgeId: args["edgeId"], label: args["label"], kind: args["kind"] };
+      }
+      break;
+    case "artifact_table":
+      switch (action) {
+        case "add_row":
+          return { type: "table.row.add", rowId: args["rowId"], cells: args["cells"], afterRowId: args["afterRowId"] };
+        case "update_cell":
+          return { type: "table.cell.update", rowId: args["rowId"], columnId: args["columnId"], value: args["value"] };
+        case "remove_rows":
+          return { type: "table.rows.remove", rowIds: args["rowIds"] };
+        case "reorder_rows":
+          return { type: "table.row.reorder", rowIds: args["rowIds"] };
+      }
+      break;
+    case "artifact_timeline":
+      switch (action) {
+        case "upsert_item":
+          return { type: "timeline.item.upsert", itemId: args["itemId"], start: args["start"], end: args["end"], content: args["content"], groupId: args["groupId"] };
+        case "update_item":
+          return { type: "timeline.item.update", itemId: args["itemId"], start: args["start"], end: args["end"], content: args["content"], groupId: args["groupId"] };
+      }
+      break;
+    case "artifact_prose":
+      switch (action) {
+        case "replace_block":
+          return { type: "prose.block.replace", blockId: args["blockId"], markdown: args["markdown"] };
+      }
+      break;
+  }
+  return null;
 }
 
 async function executeProjectGraphTool(

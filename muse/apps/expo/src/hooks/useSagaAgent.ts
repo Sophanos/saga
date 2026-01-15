@@ -20,6 +20,7 @@ import { sendSagaChatStreaming } from "@mythos/ai/client";
 import type { SagaMode } from "@mythos/agent-protocol";
 import { useAIStore, useProjectStore, type ChatMessage } from "@mythos/state";
 import { useApiKey } from "./useApiKey";
+import { useArtifactToolHandler } from "./useArtifactToolHandler";
 
 // Base URL for the Saga API
 const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://convex.rhei.team";
@@ -60,6 +61,9 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
   // Get auth token and API key
   const { key: apiKey } = useApiKey();
   const authToken = useAuthToken();
+
+  // Artifact tool handler for UI effects
+  const { handleTool: handleArtifactTool } = useArtifactToolHandler();
 
   // Store adapter - maps to useAIStore
   const storeAdapter = useMemo<SagaAgentStoreAdapter>(() => {
@@ -144,12 +148,19 @@ export function useSagaAgent(options?: UseSagaAgentOptions): UseSagaAgentResult 
     };
   }, [apiKey, authToken]);
 
-  // Create the sendSagaChatStreaming wrapper with baseUrl
+  // Create the sendSagaChatStreaming wrapper with baseUrl and artifact tool handling
   const sendSagaChatStreamingWithBaseUrl = useCallback(
     async (payload: Parameters<typeof sendSagaChatStreaming>[0], opts: Omit<Parameters<typeof sendSagaChatStreaming>[1], "baseUrl">) => {
-      return sendSagaChatStreaming(payload, { ...opts, baseUrl: CONVEX_URL });
+      return sendSagaChatStreaming(payload, {
+        ...opts,
+        baseUrl: CONVEX_URL,
+        onTool: (tool) => {
+          handleArtifactTool(tool);
+          opts.onTool?.(tool);
+        },
+      });
     },
-    []
+    [handleArtifactTool]
   );
 
   // Use the shared hook

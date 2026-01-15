@@ -49,6 +49,22 @@ export {
   deleteDocumentTool,
 } from "./collaborationTools";
 export {
+  artifactTool,
+  artifactStageTool,
+  artifactDiagramTool,
+  artifactTableTool,
+  artifactTimelineTool,
+  artifactProseTool,
+  artifactLinkTool,
+  type ArtifactToolArgs,
+  type ArtifactStageArgs,
+  type ArtifactDiagramArgs,
+  type ArtifactTableArgs,
+  type ArtifactTimelineArgs,
+  type ArtifactProseArgs,
+  type ArtifactLinkArgs,
+} from "./artifactTools";
+export {
   executeCreateEntity,
   executeUpdateEntity,
   executeCreateRelationship,

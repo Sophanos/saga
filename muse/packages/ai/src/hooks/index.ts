@@ -29,4 +29,6 @@ export type {
   SagaAgentStreamOptions,
   UseSagaAgentOptions,
   UseSagaAgentResult,
+  ToolCallResult,
+  ToolApprovalRequest,
 } from './types';
