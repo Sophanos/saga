@@ -2,6 +2,15 @@ import { BubbleMenu as TiptapBubbleMenu } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import { useState, useCallback } from 'react';
 
+type EntityType = 'character' | 'location' | 'item' | 'magic_system';
+
+const ENTITY_TYPES: { type: EntityType; label: string; icon: string; color: string }[] = [
+  { type: 'character', label: 'Character', icon: '👤', color: '#22d3ee' },
+  { type: 'location', label: 'Location', icon: '📍', color: '#22c55e' },
+  { type: 'item', label: 'Item', icon: '⚔️', color: '#f59e0b' },
+  { type: 'magic_system', label: 'Magic', icon: '✨', color: '#8b5cf6' },
+];
+
 interface BubbleMenuProps {
   editor: Editor | null;
   onAskAI?: (selectedText: string) => void;
@@ -33,6 +42,23 @@ const HIGHLIGHTS = [
 export function BubbleMenu({ editor, onAskAI }: BubbleMenuProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
+  const [showEntityPicker, setShowEntityPicker] = useState(false);
+
+  const handleMarkAsEntity = useCallback(
+    (entityType: EntityType) => {
+      if (!editor) return;
+      const { from, to } = editor.state.selection;
+      const text = editor.state.doc.textBetween(from, to, ' ');
+      const entityId = `entity_${text.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`;
+
+      (editor.chain().focus() as any)
+        .setEntityMark({ entityId, entityType })
+        .run();
+
+      setShowEntityPicker(false);
+    },
+    [editor]
+  );
 
   const handleAskAI = useCallback(() => {
     if (!editor) return;
@@ -170,6 +196,39 @@ export function BubbleMenu({ editor, onAskAI }: BubbleMenuProps) {
         >
           🔗
         </button>
+
+        <div className="bubble-menu-separator" />
+
+        {/* Entity Picker */}
+        <div className="bubble-menu-dropdown">
+          <button
+            className={`bubble-menu-btn bubble-menu-btn--entity ${editor.isActive('entity') ? 'active' : ''}`}
+            onClick={() => {
+              setShowEntityPicker(!showEntityPicker);
+              setShowColorPicker(false);
+              setShowHighlightPicker(false);
+            }}
+            title="Mark as Entity"
+          >
+            <span className="entity-btn-icon">◇</span>
+            <span className="bubble-menu-label">Entity</span>
+          </button>
+          {showEntityPicker && (
+            <div className="bubble-menu-entity-picker">
+              {ENTITY_TYPES.map((entityType) => (
+                <button
+                  key={entityType.type}
+                  className="bubble-menu-entity-option"
+                  onClick={() => handleMarkAsEntity(entityType.type)}
+                  style={{ '--entity-color': entityType.color } as React.CSSProperties}
+                >
+                  <span className="entity-option-icon">{entityType.icon}</span>
+                  <span className="entity-option-label">{entityType.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="bubble-menu-separator" />
 
@@ -338,6 +397,70 @@ export function BubbleMenu({ editor, onAskAI }: BubbleMenuProps) {
 
           .bubble-menu-color:hover {
             transform: scale(1.15);
+          }
+
+          /* Entity Button */
+          .bubble-menu-btn--entity {
+            gap: 4px;
+            background: linear-gradient(135deg, rgba(34, 211, 238, 0.15), rgba(139, 92, 246, 0.15));
+            border: 1px solid rgba(139, 92, 246, 0.3);
+          }
+
+          .bubble-menu-btn--entity:hover {
+            background: linear-gradient(135deg, rgba(34, 211, 238, 0.25), rgba(139, 92, 246, 0.25));
+          }
+
+          .bubble-menu-btn--entity.active {
+            background: linear-gradient(135deg, rgba(34, 211, 238, 0.3), rgba(139, 92, 246, 0.3));
+          }
+
+          .entity-btn-icon {
+            font-size: 12px;
+          }
+
+          /* Entity Picker Dropdown */
+          .bubble-menu-entity-picker {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 6px;
+            min-width: 140px;
+            background: var(--color-bg-elevated, #fff);
+            border: 1px solid var(--color-border, #e5e7eb);
+            border-radius: var(--radius-lg, 12px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 10;
+          }
+
+          .bubble-menu-entity-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border: none;
+            background: transparent;
+            border-radius: var(--radius-md, 8px);
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.1s;
+          }
+
+          .bubble-menu-entity-option:hover {
+            background: color-mix(in srgb, var(--entity-color) 15%, transparent);
+          }
+
+          .entity-option-icon {
+            font-size: 16px;
+          }
+
+          .entity-option-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--color-text, #111827);
           }
         `}</style>
       </div>

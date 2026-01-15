@@ -1,6 +1,7 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
-import { WriterKit, SlashCommand, ArtifactReceiptExtension } from '@mythos/editor';
+import { WriterKit, SlashCommand, ArtifactReceiptExtension, EntityMark, EntityCardNode } from '@mythos/editor';
+import { ReactNodeViewRenderer } from '@tiptap/react';
 import { type AnyExtension, type Content } from '@tiptap/core';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useEditorMetricsStore } from '@mythos/state';
@@ -9,6 +10,8 @@ import { BubbleMenu } from './BubbleMenu';
 import { AICommandPalette, type AIQuickAction, type SelectionVirtualElement } from './AICommandPalette';
 import { AIResponseBlock } from './AIResponseBlock';
 import { BatchApprovalBar } from './BatchApprovalBar';
+import { EntityFloatingCard, type EntityData, type EntityType, MOCK_ENTITIES } from './EntityFloatingCard';
+import { EntityCardNodeView } from './EntityCardNodeView';
 import { AIGeneratedMark } from '../extensions/ai-generated-mark';
 import { BlockIdExtension } from '../extensions/block-id';
 import { SuggestionPlugin, type Suggestion } from '../extensions/suggestion-plugin';
@@ -161,6 +164,12 @@ export function Editor({
       BlockIdExtension,
       WriterKit,
       ArtifactReceiptExtension,
+      EntityMark, // Entity mentions support
+      EntityCardNode.extend({
+        addNodeView() {
+          return ReactNodeViewRenderer(EntityCardNodeView);
+        },
+      }),
       Placeholder.configure({
         placeholder,
         emptyEditorClass: 'editor-empty',
@@ -243,6 +252,34 @@ export function Editor({
     updateMetrics({ wordCount });
   }, [editor, onEditorReady, updateMetrics]);
 
+  // Entity click handler - detects clicks on entity marks and inserts inline card
+  const handleEntityClick = useCallback((e: MouseEvent) => {
+    if (!editor) return;
+
+    const target = e.target as HTMLElement;
+    const entityEl = target.closest('[data-entity-id]') as HTMLElement | null;
+
+    if (!entityEl) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const entityId = entityEl.getAttribute('data-entity-id');
+    const entityType = (entityEl.getAttribute('data-entity-type') || 'character') as EntityType;
+    const entityName = entityEl.textContent || 'Unknown';
+
+    // Insert entity card node inline after current line
+    (editor.chain().focus() as any)
+      .insertEntityCard({
+        entityId: entityId || `entity_${Date.now()}`,
+        entityType,
+        entityName,
+      })
+      .run();
+  }, [editor]);
+
   // Bridge for WebView communication (Tauri/React Native)
   const { send: sendBridgeMessage } = useEditorBridge(
     _enableBridge ? (editor as unknown as EditorInstance) : null,
@@ -274,6 +311,17 @@ export function Editor({
       editor.off('blur', handleBlur);
     };
   }, [editor, onFocusChange, _enableBridge]);
+
+  // Listen for clicks on entity marks in the editor
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener('click', handleEntityClick);
+    return () => {
+      container.removeEventListener('click', handleEntityClick);
+    };
+  }, [handleEntityClick]);
 
   useEffect(() => {
     if (!editor || !remoteCursors) return;
@@ -677,6 +725,8 @@ export function Editor({
         onRejectAll={handleRejectAll}
       />
 
+      {/* Entity cards are now rendered inline via EntityCardNode */}
+
       <style>{`
         .editor-container {
           position: relative;
@@ -976,26 +1026,104 @@ export function Editor({
           text-transform: none;
         }
 
-        /* Entity marks (from @mythos/editor) */
+        /* Entity marks (from @mythos/editor) - clickable to show floating card */
+        .editor-content .ProseMirror [data-entity-id] {
+          cursor: pointer;
+          transition: background var(--duration-fast, 100ms);
+        }
+
+        .editor-content .ProseMirror [data-entity-id]:hover {
+          background: var(--color-bg-hover);
+        }
+
         .editor-content .ProseMirror .entity-character {
-          background: rgba(167, 139, 250, 0.15);
-          border-bottom: 2px solid var(--color-purple);
+          background: rgba(34, 211, 238, 0.12);
+          border-bottom: 2px solid var(--color-cyan);
           padding: 0 2px;
           border-radius: 2px;
         }
 
         .editor-content .ProseMirror .entity-location {
-          background: rgba(52, 211, 153, 0.15);
+          background: rgba(34, 197, 94, 0.12);
           border-bottom: 2px solid var(--color-green);
           padding: 0 2px;
           border-radius: 2px;
         }
 
         .editor-content .ProseMirror .entity-item {
-          background: rgba(251, 191, 36, 0.15);
+          background: rgba(245, 158, 11, 0.12);
           border-bottom: 2px solid var(--color-amber);
           padding: 0 2px;
           border-radius: 2px;
+        }
+
+        .editor-content .ProseMirror .entity-magic_system {
+          background: rgba(139, 92, 246, 0.12);
+          border-bottom: 2px solid var(--color-purple);
+          padding: 0 2px;
+          border-radius: 2px;
+        }
+
+        .editor-content .ProseMirror .entity-faction {
+          background: rgba(168, 85, 247, 0.12);
+          border-bottom: 2px solid var(--color-purple);
+          padding: 0 2px;
+          border-radius: 2px;
+        }
+
+        /* AI Provenance - uses data-ai-status attribute from AIGeneratedMark */
+        .editor-content .ProseMirror .ai-generated {
+          border-radius: 2px;
+          transition: background-color 0.2s ease, box-shadow 0.2s ease;
+          background-color: rgba(56, 189, 248, 0.10);
+          box-shadow: inset 0 -1px 0 rgba(56, 189, 248, 0.45);
+        }
+
+        .editor-content .ProseMirror .ai-generated:hover {
+          background-color: rgba(56, 189, 248, 0.16);
+        }
+
+        .editor-content .ProseMirror .ai-generated[data-ai-status="pending"] {
+          background-color: rgba(236, 72, 153, 0.08);
+          box-shadow: inset 0 -1px 0 rgba(236, 72, 153, 0.35);
+        }
+
+        .editor-content .ProseMirror .ai-generated[data-ai-status="pending"]:hover {
+          background-color: rgba(236, 72, 153, 0.14);
+        }
+
+        .editor-content .ProseMirror .ai-generated[data-ai-status="accepted"] {
+          background-color: rgba(35, 131, 226, 0.06);
+          box-shadow: inset 0 -1px 0 rgba(35, 131, 226, 0.25);
+        }
+
+        .editor-content .ProseMirror .ai-generated[data-ai-status="accepted"]:hover {
+          background-color: rgba(35, 131, 226, 0.10);
+        }
+
+        .editor-content .ProseMirror .ai-generated[data-ai-status="rejected"] {
+          background-color: rgba(100, 116, 139, 0.05);
+          box-shadow: inset 0 -1px 0 rgba(100, 116, 139, 0.2);
+          opacity: 0.6;
+        }
+
+        /* AI entity detection - purple pulse (P2: entitySuggestions) */
+        .editor-content .ProseMirror [data-ai-entity-detected] {
+          background-color: rgba(168, 85, 247, 0.08);
+          border-radius: 2px;
+          box-shadow: inset 0 -1px 0 rgba(168, 85, 247, 0.3);
+          cursor: pointer;
+          animation: entity-detection-pulse 4s ease-in-out infinite;
+        }
+
+        .editor-content .ProseMirror [data-ai-entity-detected]:hover {
+          background-color: rgba(168, 85, 247, 0.15);
+          animation: none;
+        }
+
+        @keyframes entity-detection-pulse {
+          0%, 100% { background-color: rgba(168, 85, 247, 0.06); }
+          50% { background-color: rgba(168, 85, 247, 0.12); }
         }
 
         /* Task lists - Notion style */

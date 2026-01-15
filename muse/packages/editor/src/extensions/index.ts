@@ -1,4 +1,9 @@
 export { EntityMark, type EntityMarkOptions } from "./entity-mark";
+export {
+  EntityCardNode,
+  type EntityCardNodeOptions,
+  type EntityCardNodeAttrs,
+} from "./entity-card-node";
 export { AIGeneratedMark, type AIGeneratedMarkOptions } from "./ai-generated-mark";
 export { ExecutionMarker, type ExecutionMarkerOptions } from "./execution-marker";
 export { AppliedHighlight } from "./applied-highlight";

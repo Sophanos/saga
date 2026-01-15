@@ -27,3 +27,13 @@ export {
 } from './AIResponseBlock';
 export { BatchApprovalBar } from './BatchApprovalBar';
 export { TabPreview } from './TabPreview';
+export {
+  EntityFloatingCard,
+  MOCK_ENTITIES,
+  type EntityData,
+  type EntityType,
+  type EntityFloatingCardProps,
+  type EntityRelationship,
+  type EntityMention,
+} from './EntityFloatingCard';
+export { EntityCardNodeView } from './EntityCardNodeView';
