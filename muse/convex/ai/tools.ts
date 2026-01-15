@@ -13,6 +13,8 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateEmbedding, isDeepInfraConfigured } from "../lib/embeddings";
 import { searchPoints, isQdrantConfigured, upsertPoints, type QdrantFilter } from "../lib/qdrant";
+import { embedTextWithClip, isDeepInfraImageEmbeddingConfigured } from "../lib/providers/deepinfraImageEmbedding";
+import { getModelForTaskSync } from "../lib/providers/taskConfig";
 import { fetchPinnedProjectMemories, formatMemoriesForPrompt, type DecisionCategory } from "./canon";
 import { CLARITY_CHECK_SYSTEM } from "./prompts/clarity";
 import { POLICY_CHECK_SYSTEM } from "./prompts/policy";
@@ -2229,8 +2231,8 @@ async function executeAnalyzeImageSearch(
     throw new Error("query is required for image search");
   }
 
-  if (!isDeepInfraConfigured()) {
-    throw new Error("Embedding service not configured");
+  if (!isDeepInfraImageEmbeddingConfigured()) {
+    throw new Error("CLIP embedding service not configured (DEEPINFRA_API_KEY required)");
   }
 
   if (!isQdrantConfigured()) {
@@ -2239,8 +2241,13 @@ async function executeAnalyzeImageSearch(
 
   const limit = Math.min(input.limit ?? 10, 50);
 
-  // Generate query embedding
-  const queryEmbedding = await generateEmbedding(input.query, { task: "embed_query" });
+  // Generate CLIP text embedding for cross-modal image search
+  // Uses the same model as image embeddings so vectors are in the same space
+  const clipModel = getModelForTaskSync("image_embed", "free");
+  const queryEmbedding = await embedTextWithClip({
+    model: clipModel.model,
+    text: input.query,
+  });
 
   // Build filter
   const filter: QdrantFilter = {
