@@ -33,6 +33,7 @@ interface ToolCallCardProps {
 
 const TOOL_LABELS: Record<string, string> = {
   ask_question: 'Asking question',
+  request_task_slug: 'Selecting task',
   open_panel: 'Opening panel',
   focus_entity: 'Focusing entity',
   show_graph: 'Showing relationships',
