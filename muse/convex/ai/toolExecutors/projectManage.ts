@@ -7,7 +7,8 @@ import { executeGenerateTemplate } from "./templateGenerator";
 export async function executeProjectManage(
   ctx: ActionCtx,
   input: unknown,
-  projectId: string
+  projectId: string,
+  userId: string
 ): Promise<ProjectManageResult> {
   if (!input || typeof input !== "object") {
     throw new Error("project_manage input is required");
@@ -48,11 +49,15 @@ export async function executeProjectManage(
     }
 
     // Always generate template structure
-    const templateResult = await executeGenerateTemplate({
-      storyDescription: description,
-      genreHints: genre ? [genre] : undefined,
-      complexity: detailLevel ? templateComplexity : undefined,
-    });
+    const templateResult = await executeGenerateTemplate(
+      ctx,
+      {
+        storyDescription: description,
+        genreHints: genre ? [genre] : undefined,
+        complexity: detailLevel ? templateComplexity : undefined,
+      },
+      userId
+    );
 
     // Structure-only: return template without running genesis
     if (!seed) {
@@ -69,6 +74,7 @@ export async function executeProjectManage(
     }
 
     const genesisResult = await ctx.runAction((internal as any)["ai/genesis"].runGenesis, {
+      userId,
       prompt: description,
       genre,
       entityCount,

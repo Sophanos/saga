@@ -12,7 +12,9 @@ import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import type { TierId } from "../lib/providers/types";
 import { parseArtifactEnvelope, type ArtifactEnvelopeByType } from "../../packages/core/src/schema/artifact.schema";
+import { resolveExecutionContext } from "./llmExecution";
 
 type ArtifactFormat = "markdown" | "json" | "plain";
 
@@ -30,8 +32,6 @@ type IterationModelResponse = {
   nextData?: unknown;
 };
 
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
 const MOCK_MODE = process.env["E2E_MOCK_AI"] === "true" || process.env["SAGA_TEST_MODE"] === "true";
 
 async function callOpenRouterJson<T>(params: {
@@ -40,11 +40,12 @@ async function callOpenRouterJson<T>(params: {
   user: string;
   maxTokens: number;
   temperature?: number;
+  apiKeyOverride?: string;
 }): Promise<T> {
-  const apiKey = process.env["OPENROUTER_API_KEY"];
+  const apiKey = params.apiKeyOverride ?? process.env["OPENROUTER_API_KEY"];
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
-  const response = await fetch(OPENROUTER_API_URL, {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -294,6 +295,7 @@ export const iterateArtifact = action({
     let assistantMessage: string;
     let nextContent: string;
     let nextFormat: ArtifactFormat = format;
+    let modelUsed = args.model ?? "artifact_iteration";
 
     if (MOCK_MODE) {
       const mock = buildMockResult({
@@ -306,7 +308,6 @@ export const iterateArtifact = action({
       nextContent = mock.nextContent;
       nextFormat = mock.nextFormat;
     } else {
-      const model = args.model ?? DEFAULT_MODEL;
       const system = buildSystemPrompt(format);
       const user = buildUserPrompt({
         artifact: {
@@ -322,12 +323,31 @@ export const iterateArtifact = action({
         editorContext,
       });
 
+      const tierId = (await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
+        userId: identity.subject,
+      })) as TierId;
+      const exec = await resolveExecutionContext(ctx, {
+        userId: identity.subject,
+        taskSlug: "artifact_iteration",
+        tierId,
+        promptText: `${system}\n\n${user}`,
+        endpoint: "chat",
+        requestedMaxOutputTokens: 2500,
+      });
+
+      if (exec.resolved.provider !== "openrouter") {
+        throw new Error(`Provider ${exec.resolved.provider} is not supported for artifact iteration`);
+      }
+
+      const resolvedModel = args.model ?? exec.resolved.model;
+      modelUsed = resolvedModel;
       const response = await callOpenRouterJson<IterationModelResponse>({
-        model,
+        model: resolvedModel,
         system,
         user,
-        maxTokens: 2500,
-        temperature: 0.3,
+        maxTokens: Math.min(exec.maxOutputTokens, 2500),
+        temperature: exec.temperature ?? 0.3,
+        apiKeyOverride: exec.apiKey,
       });
 
       if (!response || typeof response.assistantMessage !== "string") {
@@ -375,7 +395,7 @@ export const iterateArtifact = action({
       executionContext: {
         widgetId: "artifact_iteration",
         widgetVersion: "v1",
-        model: args.model ?? DEFAULT_MODEL,
+        model: modelUsed,
         inputs: {
           userMessage: trimmedMessage,
           editorContext,

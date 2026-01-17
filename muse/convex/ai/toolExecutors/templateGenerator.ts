@@ -9,6 +9,10 @@ import type {
   TemplateRelationshipKind,
   TemplateUIModule,
 } from "../../../packages/agent-protocol/src/tools";
+import { internal } from "../../_generated/api";
+import type { ActionCtx } from "../../_generated/server";
+import type { TierId } from "../../lib/providers/types";
+import { resolveExecutionContext, type ExecutionContext } from "../llmExecution";
 import {
   DOMAIN_BLUEPRINTS,
   ENTITY_CATEGORY_COLORS,
@@ -21,7 +25,7 @@ import {
   type DomainBlueprint,
   type DomainKey,
 } from "./generateTemplateBlueprints";
-import { DEFAULT_MODEL, OPENROUTER_API_URL } from "./openRouter";
+import { callOpenRouterJson } from "./openRouter";
 
 type NormalizedGenerateTemplateArgs = {
   prompt: string;
@@ -516,49 +520,32 @@ function sanitizeTemplateDraft(
 }
 
 async function requestGenerateTemplateResult(params: {
-  apiKey: string;
+  execution: ExecutionContext;
   systemPrompt: string;
   userPrompt: string;
-  responseFormat: Record<string, unknown>;
+  responseFormat: "json_schema" | "json_object";
+  jsonSchema?: Record<string, unknown>;
 }): Promise<GenerateTemplateResult> {
-  const { apiKey, systemPrompt, userPrompt, responseFormat } = params;
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://mythos.app",
-      "X-Title": "Saga AI",
-    },
-    body: JSON.stringify({
-      model: DEFAULT_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: responseFormat,
-      max_tokens: 4096,
-    }),
+  const { execution, systemPrompt, userPrompt, responseFormat, jsonSchema } = params;
+  const maxTokens = Math.min(execution.maxOutputTokens, 4096);
+
+  return callOpenRouterJson<GenerateTemplateResult>({
+    model: execution.resolved.model,
+    system: systemPrompt,
+    user: userPrompt,
+    maxTokens,
+    temperature: execution.temperature,
+    apiKeyOverride: execution.apiKey,
+    responseFormat,
+    jsonSchema,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("OpenRouter returned empty content");
-  }
-
-  return JSON.parse(content) as GenerateTemplateResult;
 }
 
-export async function executeGenerateTemplate(input: GenerateTemplateArgs): Promise<GenerateTemplateResult> {
-  const apiKey = process.env["OPENROUTER_API_KEY"];
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
-
+export async function executeGenerateTemplate(
+  ctx: ActionCtx,
+  input: GenerateTemplateArgs,
+  userId: string
+): Promise<GenerateTemplateResult> {
   const normalized = normalizeGenerateTemplateArgs(input);
   const domainKey = resolveDomainKey(normalized.baseTemplateId);
   const domain = DOMAIN_BLUEPRINTS[domainKey];
@@ -576,27 +563,40 @@ export async function executeGenerateTemplate(input: GenerateTemplateArgs): Prom
     domain,
     resolvedBaseTemplateId,
   });
+  const tierId = (await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
+    userId,
+  })) as TierId;
+  const exec = await resolveExecutionContext(ctx, {
+    userId,
+    taskSlug: "generation",
+    tierId,
+    promptText: `${systemPrompt}\n\n${userPrompt}`,
+    endpoint: "chat",
+    requestedMaxOutputTokens: 4096,
+  });
+
+  if (exec.resolved.provider !== "openrouter") {
+    throw new Error(`Provider ${exec.resolved.provider} is not supported for generate_template`);
+  }
 
   let rawResult: GenerateTemplateResult;
   try {
     rawResult = await requestGenerateTemplateResult({
-      apiKey,
+      execution: exec,
       systemPrompt,
       userPrompt,
-      responseFormat: {
-        type: "json_schema",
-        json_schema: {
-          name: "generate_template_result",
-          schema: GENERATE_TEMPLATE_RESULT_SCHEMA,
-        },
+      responseFormat: "json_schema",
+      jsonSchema: {
+        name: "generate_template_result",
+        schema: GENERATE_TEMPLATE_RESULT_SCHEMA,
       },
     });
   } catch (error) {
     rawResult = await requestGenerateTemplateResult({
-      apiKey,
+      execution: exec,
       systemPrompt,
       userPrompt,
-      responseFormat: { type: "json_object" },
+      responseFormat: "json_object",
     });
   }
 

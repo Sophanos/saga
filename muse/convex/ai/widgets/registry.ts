@@ -1,9 +1,12 @@
+import type { AITaskSlug } from "../../lib/providers/types";
+
 export interface ServerWidgetDef {
   id: string;
   version: string;
   widgetType: "inline" | "artifact";
   artifactType?: string;
   defaultModel: string;
+  taskSlug: AITaskSlug;
   costWeight: number;
   contextBudget: "adaptive" | number;
   clarifyOnAmbiguity: boolean;
@@ -19,6 +22,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     version: "1",
     widgetType: "inline",
     defaultModel: "openrouter/anthropic/claude-3-haiku",
+    taskSlug: "summarize",
     costWeight: 1,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -34,6 +38,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     version: "1",
     widgetType: "inline",
     defaultModel: "openrouter/anthropic/claude-3-haiku",
+    taskSlug: "generation",
     costWeight: 2,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -49,6 +54,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     version: "1",
     widgetType: "inline",
     defaultModel: "openrouter/anthropic/claude-3-haiku",
+    taskSlug: "generation",
     costWeight: 2,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -64,6 +70,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     version: "1",
     widgetType: "inline",
     defaultModel: "openrouter/anthropic/claude-3-haiku",
+    taskSlug: "generation",
     costWeight: 2,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -79,6 +86,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     version: "1",
     widgetType: "inline",
     defaultModel: "openrouter/anthropic/claude-3-haiku",
+    taskSlug: "name_generator",
     costWeight: 1,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -94,6 +102,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     version: "1",
     widgetType: "inline",
     defaultModel: "openrouter/anthropic/claude-3-haiku",
+    taskSlug: "chat",
     costWeight: 1,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -110,6 +119,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     widgetType: "artifact",
     artifactType: "spec",
     defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    taskSlug: "requirements_draft",
     costWeight: 5,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: true,
@@ -126,6 +136,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     widgetType: "artifact",
     artifactType: "summary",
     defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    taskSlug: "summarize",
     costWeight: 3,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -142,6 +153,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     widgetType: "artifact",
     artifactType: "brief",
     defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    taskSlug: "generation",
     costWeight: 4,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -158,6 +170,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     widgetType: "artifact",
     artifactType: "notes",
     defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    taskSlug: "summarize",
     costWeight: 3,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -174,6 +187,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     widgetType: "artifact",
     artifactType: "release-notes",
     defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    taskSlug: "generation",
     costWeight: 4,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -190,6 +204,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     widgetType: "artifact",
     artifactType: "web",
     defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    taskSlug: "summarize",
     costWeight: 2,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,
@@ -206,6 +221,7 @@ const WIDGET_DEFS: Record<string, ServerWidgetDef> = {
     widgetType: "artifact",
     artifactType: "diagram",
     defaultModel: "openrouter/anthropic/claude-3-5-sonnet",
+    taskSlug: "generation",
     costWeight: 3,
     contextBudget: "adaptive",
     clarifyOnAmbiguity: false,

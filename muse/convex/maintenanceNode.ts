@@ -2,7 +2,8 @@
 
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { deletePointsByFilter, isQdrantConfigured, type QdrantFilter } from "./lib/qdrant";
+import { isQdrantConfigured, type QdrantFilter } from "./lib/qdrant";
+import { deletePointsByFilterForWrite } from "./lib/qdrantCollections";
 
 /**
  * Process pending vector delete jobs.
@@ -36,7 +37,8 @@ export const processVectorDeleteJobs = internalAction({
 
       try {
         const filter = job.filter as QdrantFilter;
-        await deletePointsByFilter(filter);
+        const kind = job.targetType === "image" ? "image" : "text";
+        await deletePointsByFilterForWrite(filter, kind);
 
         await ctx.runMutation(internal.maintenance.markVectorJobCompleted, {
           jobId: job._id,

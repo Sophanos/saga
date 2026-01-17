@@ -84,10 +84,10 @@ export const execute = internalAction({
       }
 
       case "project_manage":
-        return executeProjectManage(ctx, input, projectId);
+        return executeProjectManage(ctx, input, projectId, userId);
 
       case "generate_template":
-        return executeGenerateTemplate(input);
+        return executeGenerateTemplate(ctx, input, userId);
 
       case "clarity_check": {
         const result = await executeAnalyzeContent(
@@ -128,7 +128,7 @@ export const execute = internalAction({
       }
 
       case "name_generator":
-        return executeNameGenerator(input);
+        return executeNameGenerator(ctx, input, userId);
 
       case "commit_decision":
         return executeCommitDecision(ctx, input, projectId, userId, source ?? undefined);
@@ -190,7 +190,7 @@ export const execute = internalAction({
       }
 
       case "generate_content":
-        return executeGenerateContent(input, projectId);
+        return executeGenerateContent(ctx, input, projectId, userId);
 
       case "analyze_image":
         return executeAnalyzeImage(ctx, input as AnalyzeImageArgs, projectId, userId);

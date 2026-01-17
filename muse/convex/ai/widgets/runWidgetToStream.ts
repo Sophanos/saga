@@ -2,19 +2,11 @@ import { v } from "convex/values";
 import { internalAction, type ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
+import type { TierId } from "../../lib/providers/types";
 import { getServerWidgetDef } from "./registry";
+import { resolveExecutionContext } from "../llmExecution";
+import { callOpenRouterText } from "../toolExecutors/openRouter";
 import { webExtractTool } from "../tools/webSearchTools";
-
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-
-interface OpenRouterResponse {
-  choices: Array<{ message?: { content?: string } }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
-}
 
 export const runWidgetToStream = internalAction({
   args: {
@@ -187,16 +179,6 @@ export const runWidgetToStream = internalAction({
       }
     }
 
-    const apiKey = process.env["OPENROUTER_API_KEY"];
-    if (!apiKey) {
-      await ctx.runMutation((internal as any).widgetExecutions.patchInternal, {
-        executionId,
-        patch: { status: "error", error: "OPENROUTER_API_KEY not configured" },
-      });
-      await failStream(ctx, args.streamId, "OPENROUTER_API_KEY not configured");
-      return;
-    }
-
     const promptVars = buildPromptVars({
       selection: args.selectionText,
       document: document?.contentText ?? "",
@@ -207,39 +189,44 @@ export const runWidgetToStream = internalAction({
     const systemPrompt = renderPrompt(widget.prompt.system, promptVars);
     const userPrompt = renderPrompt(widget.prompt.user, promptVars);
 
-    await appendStreamChunk(ctx, args.streamId, {
-      type: "context",
-      content: "",
-      data: { stage: "generating" },
-    });
-
     try {
-      const response = await fetch(OPENROUTER_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "HTTP-Referer": process.env["OPENROUTER_SITE_URL"] ?? "https://mythos.app",
-          "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
-        },
-        body: JSON.stringify({
-          model: widget.defaultModel,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: 0.4,
-          max_tokens: 4096,
-        }),
+      const tierId = (await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
+        userId: args.userId,
+      })) as TierId;
+      const exec = await resolveExecutionContext(ctx, {
+        userId: args.userId,
+        taskSlug: widget.taskSlug,
+        tierId,
+        promptText: `${systemPrompt}\n\n${userPrompt}`,
+        endpoint: "chat",
+        requestedMaxOutputTokens: 4096,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+      if (exec.resolved.provider !== "openrouter") {
+        throw new Error(`Provider ${exec.resolved.provider} is not supported for widgets`);
       }
 
-      const data = (await response.json()) as OpenRouterResponse;
-      const content = data.choices[0]?.message?.content ?? "";
+      const resolvedModel = exec.resolved.model;
+
+      await ctx.runMutation((internal as any).widgetExecutions.patchInternal, {
+        executionId,
+        patch: { model: resolvedModel },
+      });
+
+      await appendStreamChunk(ctx, args.streamId, {
+        type: "context",
+        content: "",
+        data: { stage: "generating" },
+      });
+
+      const content = await callOpenRouterText({
+        model: resolvedModel,
+        system: systemPrompt,
+        user: userPrompt,
+        maxTokens: Math.min(exec.maxOutputTokens, 4096),
+        temperature: exec.temperature ?? 0.4,
+        apiKeyOverride: exec.apiKey,
+      });
 
       await appendStreamChunk(ctx, args.streamId, {
         type: "context",
@@ -257,6 +244,7 @@ export const runWidgetToStream = internalAction({
         patch: {
           status: "preview",
           output: content,
+          model: resolvedModel,
           completedAt: Date.now(),
         },
       });
@@ -272,7 +260,7 @@ export const runWidgetToStream = internalAction({
             executionContext: {
               widgetId: widget.id,
               widgetVersion: widget.version,
-              model: widget.defaultModel,
+              model: resolvedModel,
               inputs: {
                 documentId: args.documentId,
                 selectionText: args.selectionText,

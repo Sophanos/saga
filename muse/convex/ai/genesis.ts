@@ -9,18 +9,14 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import type { TierId } from "../lib/providers/types";
+import { resolveExecutionContext } from "./llmExecution";
 import {
   GENESIS_SYSTEM_PROMPT,
   buildGenesisUserPrompt,
   type GenesisPromptInput,
 } from "./prompts/genesis";
-
-// ============================================================
-// Constants
-// ============================================================
-
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
+import { callOpenRouterJson } from "./toolExecutors/openRouter";
 
 // ============================================================
 // Types
@@ -281,6 +277,7 @@ function toLegacyFormat(result: GenesisResult, genre: string): LegacyGenesisResu
  */
 export const runGenesis = internalAction({
   args: {
+    userId: v.string(),
     prompt: v.string(),
     genre: v.optional(v.string()),
     entityCount: v.optional(v.number()),
@@ -288,14 +285,9 @@ export const runGenesis = internalAction({
       v.union(v.literal("minimal"), v.literal("standard"), v.literal("detailed"))
     ),
     includeOutline: v.optional(v.boolean()),
+    skipQuota: v.optional(v.boolean()),
   },
-  handler: async (_ctx, args): Promise<GenesisResult> => {
-    const apiKey = process.env["OPENROUTER_API_KEY"];
-    if (!apiKey) {
-      console.error("[genesis] OPENROUTER_API_KEY not configured");
-      return getDefaultGenesisResult();
-    }
-
+  handler: async (ctx, args): Promise<GenesisResult> => {
     const promptInput: GenesisPromptInput = {
       prompt: args.prompt,
       genre: args.genre ?? "fantasy",
@@ -313,40 +305,37 @@ export const runGenesis = internalAction({
     });
 
     try {
-      const response = await fetch(OPENROUTER_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "HTTP-Referer": "https://mythos.app",
-          "X-Title": "Saga AI",
-        },
-        body: JSON.stringify({
-          model: DEFAULT_MODEL,
-          messages: [
-            { role: "system", content: GENESIS_SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
-          ],
-          response_format: { type: "json_object" },
-          max_tokens: 8192,
-        }),
+      const tierId = (await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
+        userId: args.userId,
+      })) as TierId;
+      const exec = await resolveExecutionContext(ctx, {
+        userId: args.userId,
+        taskSlug: "world_generate",
+        tierId,
+        promptText: userPrompt,
+        endpoint: "genesis",
+        requestedMaxOutputTokens: 8192,
+        skipQuota: args.skipQuota,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[genesis] OpenRouter error: ${response.status} - ${errorText}`);
-        return getDefaultGenesisResult();
+      if (exec.resolved.provider !== "openrouter") {
+        throw new Error(`Provider ${exec.resolved.provider} is not supported for genesis`);
       }
 
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content;
-
-      if (!content) {
-        console.error("[genesis] No response content from AI");
-        return getDefaultGenesisResult();
-      }
-
-      const parsed = JSON.parse(content);
+      const parsed = await callOpenRouterJson<{
+        entities?: unknown[];
+        worldSummary?: string;
+        suggestedTitle?: string;
+        outline?: unknown[];
+      }>({
+        model: exec.resolved.model,
+        system: GENESIS_SYSTEM_PROMPT,
+        user: userPrompt,
+        maxTokens: Math.min(exec.maxOutputTokens, 8192),
+        temperature: exec.temperature,
+        apiKeyOverride: exec.apiKey,
+        responseFormat: exec.responseFormat,
+      });
 
       const result: GenesisResult = {
         entities: validateEntities(parsed.entities),
@@ -374,6 +363,7 @@ export const runGenesis = internalAction({
  */
 export const runGenesisLegacy = internalAction({
   args: {
+    userId: v.string(),
     prompt: v.string(),
     genre: v.optional(v.string()),
     entityCount: v.optional(v.number()),
@@ -383,6 +373,7 @@ export const runGenesisLegacy = internalAction({
   },
   handler: async (ctx, args): Promise<LegacyGenesisResult> => {
     const result = await ctx.runAction((internal as any)["ai/genesis"].runGenesis, {
+      userId: args.userId,
       prompt: args.prompt,
       genre: args.genre,
       entityCount: args.entityCount,

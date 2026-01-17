@@ -59,6 +59,11 @@ ufw allow from YOUR_IP to any port 6334
 
 ## 2. Create Unified Collection
 
+Notes:
+- Unified routing + vector names are centralized in `muse/convex/lib/qdrantCollections.ts`.
+- Text/image writes use named vectors in the unified collection (`text_qwen`, `image_clip`).
+- If `QDRANT_DUAL_WRITE=true`, ensure legacy collections define the same named vectors.
+
 ### Via REST API
 
 ```bash

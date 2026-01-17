@@ -38,15 +38,15 @@ import { generateEmbeddings, isDeepInfraConfigured } from "./lib/embeddings";
 import { canonicalizeName } from "./lib/canonicalize";
 import {
   countPoints,
-  deletePoints,
-  deletePointsByFilter,
   isQdrantConfigured,
   upsertPoints,
   type QdrantFilter,
 } from "./lib/qdrant";
 import {
+  deletePointsByFilterForWrite,
+  deletePointsForWrite,
   getReadQdrantConfig,
-  getUnifiedCollectionName,
+  upsertPointsForWrite,
   QDRANT_TEXT_VECTOR,
 } from "./lib/qdrantCollections";
 import {
@@ -1308,11 +1308,13 @@ http.route({
       }
 
       const result = await ctx.runAction((internal as any)["ai/genesis"].runGenesis, {
+        userId: auth.userId,
         prompt,
         genre,
         entityCount: preferences?.entityCount,
         detailLevel: preferences?.detailLevel,
         includeOutline: preferences?.includeOutline,
+        skipQuota: true,
       });
 
       return new Response(JSON.stringify(result), {
@@ -1866,10 +1868,9 @@ http.route({
         };
 
         const deleteKind = filter?.type === "image" ? "image" : "text";
-        const deleteConfig = getReadQdrantConfig(deleteKind);
 
         if (Array.isArray(pointIds) && pointIds.length > 0) {
-          await deletePoints(pointIds, deleteConfig);
+          await deletePointsForWrite(pointIds, deleteKind);
           return new Response(JSON.stringify({ deleted: pointIds.length }), {
             status: 200,
             headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
@@ -1896,7 +1897,7 @@ http.route({
             qdrantFilter.must!.push({ key: "asset_id", match: { value: filter.assetId } });
           }
 
-          await deletePointsByFilter(qdrantFilter, deleteConfig);
+          await deletePointsByFilterForWrite(qdrantFilter, deleteKind);
           return new Response(JSON.stringify({ deleted: 0 }), {
             status: 200,
             headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
@@ -1952,20 +1953,19 @@ http.route({
           });
         }
 
-        const targetConfig = qdrant.collection
-          ? { collection: qdrant.collection }
-          : getReadQdrantConfig("text");
-        const vectorName = typeof qdrant.vectorName === "string" ? qdrant.vectorName : undefined;
-        const useNamedVector = vectorName ? true : targetConfig.collection === getUnifiedCollectionName();
-        const vectorKey = vectorName ?? QDRANT_TEXT_VECTOR;
+        const vectorKey = typeof qdrant.vectorName === "string" ? qdrant.vectorName : QDRANT_TEXT_VECTOR;
 
         const points = embedResult.embeddings.map((vector, index) => ({
           id: qdrant.points![index]!.id,
-          vector: useNamedVector ? { [vectorKey]: vector } : vector,
+          vector: { [vectorKey]: vector },
           payload: qdrant.points![index]!.payload,
         }));
 
-        await upsertPoints(points, targetConfig);
+        if (qdrant.collection) {
+          await upsertPoints(points, { collection: qdrant.collection });
+        } else {
+          await upsertPointsForWrite(points, "text");
+        }
         qdrantUpserted = true;
       }
 

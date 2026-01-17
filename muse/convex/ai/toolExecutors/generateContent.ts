@@ -1,4 +1,8 @@
-import { DEFAULT_MODEL, OPENROUTER_API_URL } from "./openRouter";
+import { internal } from "../../_generated/api";
+import type { ActionCtx } from "../../_generated/server";
+import type { TierId } from "../../lib/providers/types";
+import { resolveExecutionContext } from "../llmExecution";
+import { callOpenRouterJson } from "./openRouter";
 
 interface GenerateContentInput {
   entityId: string;
@@ -30,12 +34,11 @@ Respond with JSON containing:
 - wordCount: Approximate word count`;
 
 export async function executeGenerateContent(
+  ctx: ActionCtx,
   input: GenerateContentInput,
-  _projectId: string
+  _projectId: string,
+  userId: string
 ): Promise<GenerateContentResult> {
-  const apiKey = process.env["OPENROUTER_API_KEY"];
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
-
   const length = input.length ?? "medium";
   const wordTargets = { short: 100, medium: 250, long: 500 };
   const targetWords = wordTargets[length];
@@ -47,38 +50,31 @@ ${input.context ? `\nContext: ${input.context}` : ""}
 
 Generate ${input.contentType} content now.`;
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://mythos.app",
-      "X-Title": "Saga AI",
-    },
-    body: JSON.stringify({
-      model: DEFAULT_MODEL,
-      messages: [
-        { role: "system", content: GENERATE_CONTENT_SYSTEM },
-        { role: "user", content: userContent },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 2048,
-    }),
+  const tierId = (await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
+    userId,
+  })) as TierId;
+  const exec = await resolveExecutionContext(ctx, {
+    userId,
+    taskSlug: "generation",
+    tierId,
+    promptText: userContent,
+    endpoint: "chat",
+    requestedMaxOutputTokens: 2048,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
+  if (exec.resolved.provider !== "openrouter") {
+    throw new Error(`Provider ${exec.resolved.provider} is not supported for generate_content`);
   }
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error("No content generated");
-  }
-
-  const parsed = JSON.parse(content);
+  const parsed = await callOpenRouterJson<{ content?: string; wordCount?: number }>({
+    model: exec.resolved.model,
+    system: GENERATE_CONTENT_SYSTEM,
+    user: userContent,
+    maxTokens: Math.min(exec.maxOutputTokens, 2048),
+    temperature: exec.temperature,
+    apiKeyOverride: exec.apiKey,
+    responseFormat: "json_object",
+  });
 
   return {
     content: parsed.content || "",

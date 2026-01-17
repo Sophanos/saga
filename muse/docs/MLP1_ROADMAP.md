@@ -114,7 +114,7 @@ Positioning: Agents execute. Rhei remembers.
 - Frontend: `TodoListCard` (progress bar + checklist), `SpawnTaskCard` (expandable output).
 - Image pipeline: shared `ImagePicker` component (upload/URL/assets tabs), client-side validation (5MB, PNG/JPG/GIF/WebP).
 - Editor `/image` command: inserts `ImagePlaceholder` block; click opens `ImageInsertModal`.
-- Image embeddings: CLIP via DeepInfra → Qdrant `saga_images` collection (512-dim vectors).
+- Image embeddings: CLIP via DeepInfra → Qdrant `saga_unified` (`image_clip`, 512-dim vectors).
 - Chat attachments: drag-drop, paste, URL embed with server-side validation in `http.ts`.
 - Protocol: `TodoItem` with status, `SubAgentType`, `WriteTodosArgs/Result`, `SpawnTaskArgs/Result`.
 - Schema: `agentTodos` table with status field; `getByThread`/`getByProject` queries.
@@ -490,12 +490,14 @@ Flow: `spawn_task` → `createSubAgent(spec)` → tool loop (4 iterations) → r
 
 Storage flow:
 ```
-Upload → Convex _storage → projectAssets table → Qdrant saga_images (CLIP 512-dim)
+Upload → Convex _storage → projectAssets table → Qdrant saga_unified (image_clip 512-dim)
 ```
 
 Env vars:
-- `QDRANT_IMAGE_COLLECTION=saga_images`
-- `QDRANT_IMAGE_VECTOR_NAME=image`
+- `QDRANT_COLLECTION_UNIFIED=saga_unified`
+- `QDRANT_READ_FROM_UNIFIED=true`
+- `QDRANT_DUAL_WRITE=false`
+- `QDRANT_IMAGE_COLLECTION=saga_images` (legacy)
 
 ## Platform Strategy
 
@@ -627,26 +629,20 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 - Template icon/color defaults incomplete for non-writer templates.
 - Web entity/relationship diffs missing (Expo has them).
 - Canvas heading shortcuts (##, ###) missing from toolbar; add formatting buttons like Ulysses.
+- LLM tool routing now uses `llmTaskConfigs`; keep new tools + widgets on the same execution path.
 
 ## MLP2 Attention: Unified Multimodal Embeddings
 
-> **Current state (MLP1):** Two separate collections with incompatible vectors:
-> - `saga_vectors` (4096 dim, Qwen) - text only
-> - `saga_images` (512 dim, CLIP) - images only
+> **Current state (MLP1):** Unified collection + named vectors are wired in code:
+> - `saga_unified` with `text_qwen` (4096), `image_clip` (512), optional `sparse_bm25`
+> - Read routing + dual-write toggles live in `muse/convex/lib/qdrantCollections.ts`
 >
-> **MLP2 consideration:** Unified CLIP collection for true multimodal search (text + images together).
-> - Writers search "Aria" → returns entity cards AND portrait images
-> - Products/CTOs with text descriptions + photos in same results
+> **Remaining ops (to finish cutover):**
+> 1. Create `saga_unified` in Qdrant (named vectors + payload indexes).
+> 2. Dual-write + backfill legacy content into unified.
+> 3. Flip `QDRANT_READ_FROM_UNIFIED=true`, then deprecate legacy collections.
 >
-> **What's needed:**
-> 1. **CLIP text embedding** - Done: `embedTextWithClip()` in `deepinfraImageEmbedding.ts`
-> 2. **Migrate RAG to CLIP** - Use CLIP for all content (512 dim, less expressive than Qwen 4096 but enables multimodal)
-> 3. **PDF ingestion pipeline** - CLIP doesn't handle PDFs directly:
->    - Text-based PDFs → extract text → `embedTextWithClip()`
->    - Scanned PDFs → OCR (Tesseract/Google Vision) → extract text → embed
->    - Optional: render pages as images for visual layout search
->
-> **Tradeoff:** CLIP 512-dim text is weaker than Qwen 4096-dim for pure semantic text search, but unified multimodal search is more valuable for creative tools where entities = text + images.
+> **MLP2 consideration:** If we want true CLIP-only multimodal retrieval (text + images), migrate text embeddings to CLIP or dual-embed text into `image_clip` for cross-modal search.
 
 ## MLP1 → MLP2 Bridge (Recommended Path)
 

@@ -1,21 +1,26 @@
-import { DEFAULT_MODEL, OPENROUTER_API_URL } from "./openRouter";
+import { internal } from "../../_generated/api";
+import type { ActionCtx } from "../../_generated/server";
+import type { TierId } from "../../lib/providers/types";
+import { resolveExecutionContext } from "../llmExecution";
+import { callOpenRouterJson } from "./openRouter";
 
-export async function executeNameGenerator(input: {
-  entityType: string;
-  genre?: string;
-  culture?: string;
-  count?: number;
-  tone?: string;
-}): Promise<{
+export async function executeNameGenerator(
+  ctx: ActionCtx,
+  input: {
+    entityType: string;
+    genre?: string;
+    culture?: string;
+    count?: number;
+    tone?: string;
+  },
+  userId: string
+): Promise<{
   names: Array<{
     name: string;
     meaning?: string;
     origin?: string;
   }>;
 }> {
-  const apiKey = process.env["OPENROUTER_API_KEY"];
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
-
   const count = input.count || 10;
   const genre = input.genre || "fantasy";
   const culture = input.culture || "varied";
@@ -32,30 +37,31 @@ For each name, optionally provide meaning and origin.
 
 Respond with JSON containing a "names" array.`;
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://mythos.app",
-      "X-Title": "Saga AI",
-    },
-    body: JSON.stringify({
-      model: DEFAULT_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Generate ${count} names for a ${input.entityType}` },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 2048,
-    }),
+  const tierId = (await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
+    userId,
+  })) as TierId;
+  const exec = await resolveExecutionContext(ctx, {
+    userId,
+    taskSlug: "name_generator",
+    tierId,
+    promptText: systemPrompt,
+    endpoint: "chat",
+    requestedMaxOutputTokens: 2048,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
+  if (exec.resolved.provider !== "openrouter") {
+    throw new Error(`Provider ${exec.resolved.provider} is not supported for name_generator`);
   }
 
-  const data = await response.json();
-  return JSON.parse(data.choices?.[0]?.message?.content || '{"names":[]}');
+  const parsed = await callOpenRouterJson<{ names?: Array<{ name: string; meaning?: string; origin?: string }> }>({
+    model: exec.resolved.model,
+    system: systemPrompt,
+    user: `Generate ${count} names for a ${input.entityType}`,
+    maxTokens: Math.min(exec.maxOutputTokens, 2048),
+    temperature: exec.temperature,
+    apiKeyOverride: exec.apiKey,
+    responseFormat: exec.responseFormat,
+  });
+
+  return { names: Array.isArray(parsed.names) ? parsed.names : [] };
 }

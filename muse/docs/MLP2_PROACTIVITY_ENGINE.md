@@ -243,6 +243,10 @@ We now use a single Qdrant collection with **named vectors** (text + image + spa
 - `image_clip` (512, cosine)
 - `sparse_bm25` (optional)
 
+**Routing notes:**
+- Read/write routing is centralized in `muse/convex/lib/qdrantCollections.ts`.
+- Named-vector helpers live in `muse/convex/lib/qdrant.ts` for point retrieval/search.
+
 **Migration switches:**
 - `QDRANT_COLLECTION_UNIFIED`
 - `QDRANT_READ_FROM_UNIFIED`
