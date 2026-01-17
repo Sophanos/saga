@@ -218,6 +218,7 @@ interface ArtifactStore {
   // Current artifact
   artifacts: Artifact[];
   activeArtifactId: string | null;
+  recentArtifactIds: string[];
   setActiveArtifact: (id: string | null) => void;
 
   // CRUD
@@ -246,6 +247,12 @@ interface ArtifactStore {
   setSyncStatus: (artifactId: string, status: ArtifactSyncStatus, error?: string) => void;
   mergeServerArtifacts: (serverArtifacts: Artifact[]) => void;
   setFocusId: (artifactId: string, focusId: string | null) => void;
+
+  // Tab operations
+  duplicateArtifact: (id: string) => string;
+  mergeTabs: (sourceId: string, targetId: string) => void;
+  branchFromArtifact: (id: string, newTitle?: string) => string;
+  reorderArtifacts: (fromIndex: number, toIndex: number) => void;
 
   // Quick actions
   showArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt' | 'versions' | 'currentVersionId' | 'iterationHistory' | 'status' | 'opLog' | 'validationErrors'>) => void;
@@ -292,6 +299,7 @@ const initialState = {
   },
   artifacts: [] as Artifact[],
   activeArtifactId: null as string | null,
+  recentArtifactIds: [] as string[],
   iterationInput: '',
   iterationPillExpanded: false,
   iterationHistoryVisible: true,
@@ -343,7 +351,16 @@ export const useArtifactStore = create<ArtifactStore>()(
       setIterationHistoryVisible: (visible) => set({ iterationHistoryVisible: visible }),
 
       // Active
-      setActiveArtifact: (id) => set({ activeArtifactId: id }),
+      setActiveArtifact: (id) => {
+        if (!id) {
+          set({ activeArtifactId: null });
+          return;
+        }
+        const { recentArtifactIds } = get();
+        const MAX_RECENT = 10;
+        const updated = [id, ...recentArtifactIds.filter((rid) => rid !== id)].slice(0, MAX_RECENT);
+        set({ activeArtifactId: id, recentArtifactIds: updated });
+      },
 
       // CRUD
       addArtifact: (artifact) => {
@@ -680,6 +697,95 @@ export const useArtifactStore = create<ArtifactStore>()(
             [artifactId]: focusId,
           },
         }));
+      },
+
+      // Tab operations
+      duplicateArtifact: (id) => {
+        const source = get().artifacts.find((a) => a.id === id);
+        if (!source) return '';
+        const newId = generateId();
+        const now = Date.now();
+        const versionId = `v-${now}`;
+        const duplicate: Artifact = {
+          ...source,
+          id: newId,
+          title: `${source.title} (copy)`,
+          versions: [{ id: versionId, content: source.content, timestamp: now, trigger: 'creation' }],
+          currentVersionId: versionId,
+          iterationHistory: [],
+          createdAt: now,
+          updatedAt: now,
+          opLog: [],
+          sync: undefined,
+        };
+        set((s) => ({
+          artifacts: [...s.artifacts, duplicate],
+          activeArtifactId: newId,
+        }));
+        return newId;
+      },
+
+      mergeTabs: (sourceId, targetId) => {
+        const source = get().artifacts.find((a) => a.id === sourceId);
+        const target = get().artifacts.find((a) => a.id === targetId);
+        if (!source || !target) return;
+
+        const mergedContent = `${target.content}\n\n---\n\n${source.content}`;
+        const now = Date.now();
+        const versionId = `v-${now}`;
+
+        set((s) => ({
+          artifacts: s.artifacts
+            .map((a) =>
+              a.id === targetId
+                ? {
+                    ...a,
+                    content: mergedContent,
+                    versions: [...a.versions, { id: versionId, content: mergedContent, timestamp: now, trigger: 'manual' as const }],
+                    currentVersionId: versionId,
+                    updatedAt: now,
+                    sync: { ...a.sync, status: 'dirty' as ArtifactSyncStatus },
+                  }
+                : a
+            )
+            .filter((a) => a.id !== sourceId),
+          activeArtifactId: targetId,
+        }));
+      },
+
+      branchFromArtifact: (id, newTitle) => {
+        const source = get().artifacts.find((a) => a.id === id);
+        if (!source) return '';
+        const newId = generateId();
+        const now = Date.now();
+        const versionId = `v-${now}`;
+        const branch: Artifact = {
+          ...source,
+          id: newId,
+          title: newTitle ?? `${source.title} (branch)`,
+          versions: [{ id: versionId, content: source.content, timestamp: now, trigger: 'creation' }],
+          currentVersionId: versionId,
+          iterationHistory: [],
+          createdAt: now,
+          updatedAt: now,
+          opLog: [],
+          sync: undefined,
+        };
+        set((s) => ({
+          artifacts: [...s.artifacts, branch],
+          activeArtifactId: newId,
+        }));
+        return newId;
+      },
+
+      reorderArtifacts: (fromIndex, toIndex) => {
+        set((s) => {
+          const artifacts = [...s.artifacts];
+          const [moved] = artifacts.splice(fromIndex, 1);
+          if (!moved) return s;
+          artifacts.splice(toIndex, 0, moved);
+          return { artifacts };
+        });
       },
 
       // Quick actions

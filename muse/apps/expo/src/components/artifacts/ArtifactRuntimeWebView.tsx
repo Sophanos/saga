@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useCallback } from "react";
+import { Platform, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { useTheme } from "@/design-system";
 import { parseArtifactEnvelope } from "@mythos/core";
@@ -99,6 +100,8 @@ function buildArtifactHtml(
       function postMessage(payload) {
         if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
           window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+        } else if (window.parent !== window) {
+          window.parent.postMessage({ source: "artifact-runtime", ...payload }, "*");
         }
       }
 
@@ -265,6 +268,13 @@ function buildArtifactHtml(
         postMessage({ type: "export", format: "json", payload: JSON.stringify(artifact, null, 2) });
       };
 
+      // Listen for messages from parent (for iframe on web)
+      window.addEventListener("message", (event) => {
+        if (event.data && event.data.type === "focus" && event.data.elementId) {
+          focusElement(event.data.elementId);
+        }
+      });
+
       render();
       postMessage({ type: "ready" });
     </script>
@@ -279,6 +289,7 @@ export function ArtifactRuntimeWebView({
 }: ArtifactRuntimeWebViewProps) {
   const { colors } = useTheme();
   const webviewRef = useRef<WebView>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const envelope = useMemo(() => {
     if (artifact.format !== "json") return null;
@@ -299,15 +310,52 @@ export function ArtifactRuntimeWebView({
     });
   }, [colors, envelope]);
 
+  // Handle messages from iframe on web
+  const handleMessage = useCallback(
+    (event: MessageEvent) => {
+      if (event.data?.source !== "artifact-runtime") return;
+      if (event.data.type === "select" && event.data.elementId && onSelectElement) {
+        onSelectElement(event.data.elementId);
+      }
+    },
+    [onSelectElement]
+  );
+
   useEffect(() => {
-    if (!focusId || !webviewRef.current) return;
+    if (Platform.OS !== "web") return;
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [handleMessage]);
+
+  // Handle focus for native WebView
+  useEffect(() => {
+    if (Platform.OS === "web" || !focusId || !webviewRef.current) return;
     webviewRef.current.injectJavaScript(
       `window.__artifactRuntimeFocus && window.__artifactRuntimeFocus(${JSON.stringify(focusId)}); true;`
     );
   }, [focusId]);
 
+  // Handle focus for web iframe
+  useEffect(() => {
+    if (Platform.OS !== "web" || !focusId || !iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage({ type: "focus", elementId: focusId }, "*");
+  }, [focusId]);
+
   if (!envelope || !html) {
     return null;
+  }
+
+  if (Platform.OS === "web") {
+    return (
+      <View style={{ height: 320 }}>
+        <iframe
+          ref={iframeRef}
+          srcDoc={html}
+          style={{ width: "100%", height: "100%", border: "none" }}
+          sandbox="allow-scripts allow-same-origin"
+        />
+      </View>
+    );
   }
 
   return (

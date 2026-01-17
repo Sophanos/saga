@@ -45,6 +45,8 @@ import { parseArtifactEnvelope, type ArtifactEnvelopeByType } from "@mythos/core
 import { ArtifactRuntimeWebView } from "./ArtifactRuntimeWebView";
 import { ArtifactTableNative } from "./runtime/ArtifactTableNative";
 import { MermaidPreviewWebView } from "./MermaidPreviewWebView";
+import { ArtifactTabBar } from "./ArtifactTabBar";
+import { ArtifactQuickPicker, QuickPickerTrigger } from "./ArtifactQuickPicker";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 
@@ -114,9 +116,8 @@ export function ArtifactPanel({ flowMode = false, focusId }: ArtifactPanelProps)
   );
 
   const [showVersions, setShowVersions] = useState(false);
-  const [showArtifactList, setShowArtifactList] = useState(false);
   const [showCompareList, setShowCompareList] = useState(false);
-  const [showReceipts, setShowReceipts] = useState(false);
+  const [showQuickPicker, setShowQuickPicker] = useState(false);
   const [isIterating, setIsIterating] = useState(false);
   const [historyOverflows, setHistoryOverflows] = useState(false);
   const [scrubIndex, setScrubIndex] = useState(0);
@@ -351,23 +352,15 @@ export function ArtifactPanel({ flowMode = false, focusId }: ArtifactPanelProps)
       layout={Layout.springify().damping(20)}
       style={[styles.container, { backgroundColor: colors.bgApp }]}
     >
-      {/* Minimal header - like Claude artifacts */}
+      {/* Header with tab bar */}
       <View style={styles.header}>
-        {/* Left: type label + title (clickable for multi-artifact) */}
-        <Pressable
-          onPress={artifacts.length > 1 ? () => setShowArtifactList(!showArtifactList) : undefined}
-          style={styles.headerLeft}
-        >
-          <Text style={[styles.typeLabel, { color: colors.textMuted }]}>
-            {ARTIFACT_TYPE_LABELS[artifact.type].toLowerCase()}
-            {artifacts.length > 1 && ` (${artifacts.length})`}
-          </Text>
+        {/* Left: Tab bar */}
+        <View style={styles.headerLeft}>
+          <ArtifactTabBar />
           {artifact.staleness && artifact.staleness !== "fresh" && (
-            <Pressable onPress={() => setShowReceipts(!showReceipts)}>
-              <Text style={[styles.versionBadge, { color: colors.textMuted }]}>
-                {artifact.staleness}
-              </Text>
-            </Pressable>
+            <Text style={[styles.versionBadge, { color: colors.textMuted }]}>
+              {artifact.staleness}
+            </Text>
           )}
           {artifact.versions.length > 1 && (
             <Pressable onPress={() => setShowVersions(!showVersions)}>
@@ -376,10 +369,19 @@ export function ArtifactPanel({ flowMode = false, focusId }: ArtifactPanelProps)
               </Text>
             </Pressable>
           )}
-        </Pressable>
+        </View>
 
-        {/* Right: Copy + Close */}
+        {/* Right: Search + Copy + Close */}
         <View style={styles.headerRight}>
+          {/* Quick picker */}
+          <View style={styles.quickPickerContainer}>
+            <QuickPickerTrigger onPress={() => setShowQuickPicker(true)} />
+            <ArtifactQuickPicker
+              visible={showQuickPicker}
+              onClose={() => setShowQuickPicker(false)}
+            />
+          </View>
+
           <Pressable
             onPress={handleCopy}
             style={({ pressed }) => [
@@ -435,56 +437,12 @@ export function ArtifactPanel({ flowMode = false, focusId }: ArtifactPanelProps)
             </Pressable>
           )}
           <Pressable
-            onPress={() => setShowReceipts(!showReceipts)}
-            style={({ pressed }) => [
-              styles.copyBtn,
-              { opacity: pressed ? 0.7 : 1 },
-            ]}
-          >
-            <Feather name="file-text" size={14} color={colors.textMuted} />
-            <Text style={[styles.copyText, { color: colors.textMuted }]}>Receipts</Text>
-          </Pressable>
-          <Pressable
             onPress={() => removeArtifact(artifact.id)}
             style={styles.closeBtn}
           >
             <Feather name="x" size={16} color={colors.textMuted} />
           </Pressable>
         </View>
-
-        {/* Artifact list dropdown */}
-        {showArtifactList && (
-          <Animated.View
-            entering={FadeInDown.duration(150)}
-            exiting={FadeOutUp.duration(100)}
-            style={[styles.artifactList, { backgroundColor: colors.bgElevated }]}
-          >
-            {artifacts.map((a) => (
-              <Pressable
-                key={a.id}
-                onPress={() => {
-                  setActiveArtifact(a.id);
-                  setShowArtifactList(false);
-                }}
-                style={[
-                  styles.artifactListItem,
-                  a.id === artifact.id && { backgroundColor: colors.accent + "33" },
-                ]}
-              >
-                <ArtifactIcon type={a.type} size={14} color={a.id === artifact.id ? colors.accent : colors.textMuted} />
-                <Text
-                  style={[
-                    styles.artifactListItemText,
-                    { color: a.id === artifact.id ? colors.accent : colors.text },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {a.title}
-                </Text>
-              </Pressable>
-            ))}
-          </Animated.View>
-        )}
 
         {/* Compare list dropdown */}
         {splitView.active && showCompareList && (
@@ -519,31 +477,6 @@ export function ArtifactPanel({ flowMode = false, focusId }: ArtifactPanelProps)
                   </Text>
                 </Pressable>
               ))}
-          </Animated.View>
-        )}
-
-        {showReceipts && (
-          <Animated.View
-            entering={FadeInDown.duration(150)}
-            exiting={FadeOutUp.duration(100)}
-            style={[styles.artifactList, { backgroundColor: colors.bgElevated }]}
-          >
-            <Text style={[styles.artifactListItemText, { color: colors.textMuted, marginBottom: 6 }]}>
-              Sources
-            </Text>
-            {(artifact.sources ?? []).length === 0 ? (
-              <Text style={[styles.artifactListItemText, { color: colors.textMuted }]}>
-                No sources recorded.
-              </Text>
-            ) : (
-              (artifact.sources ?? []).map((source) => (
-                <View key={`${source.type}:${source.id}`} style={styles.artifactListItem}>
-                  <Text style={[styles.artifactListItemText, { color: colors.textMuted }]}>
-                    {source.type}: {source.title ?? source.id}
-                  </Text>
-                </View>
-              ))
-            )}
           </Animated.View>
         )}
 
@@ -1144,11 +1077,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2.5],
+    zIndex: 10,
   },
   headerLeft: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
+    overflow: "hidden",
   },
   typeLabel: {
     fontSize: typography.xs,
@@ -1161,6 +1097,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
+    flexShrink: 0,
+  },
+  quickPickerContainer: {
+    position: "relative",
   },
   copyBtn: {
     flexDirection: "row",
@@ -1247,6 +1187,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    zIndex: 1,
   },
   contentInner: {
     padding: spacing[4],

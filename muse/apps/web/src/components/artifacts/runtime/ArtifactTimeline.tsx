@@ -1,5 +1,4 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
-// @ts-expect-error vis-data doesn't have types
 import { DataSet } from "vis-data";
 import { Timeline } from "vis-timeline/standalone";
 import "vis-timeline/styles/vis-timeline-graph2d.min.css";
@@ -54,8 +53,9 @@ function ArtifactTimelineComponent(
     });
     timelineRef.current = timeline;
 
-    dataset.on("update", (_event: string, properties: { items: string[] }) => {
-      for (const itemId of properties.items ?? []) {
+    dataset.on("update", (_event, properties) => {
+      const itemIds = properties?.items ?? [];
+      for (const itemId of itemIds) {
         const updated = dataset.get(itemId) as { id: string; content: string; start: string; end?: string; group?: string } | null;
         if (!updated) continue;
         onApplyOp({
