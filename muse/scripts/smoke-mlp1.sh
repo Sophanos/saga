@@ -58,13 +58,50 @@ const adminSubject = process.env.CONVEX_ADMIN_SUBJECT ?? "admin|smoke";
 
 const { ConvexHttpClient } = await import("convex/browser");
 const { anyApi } = await import("convex/server");
+const { convexToJson, jsonToConvex } = await import("convex/values");
 
-const client = new ConvexHttpClient(convexUrl);
+let client = null;
+let adminAuthHeader = "";
+
+function encodeAdminIdentity(subject) {
+  const raw = JSON.stringify({ subject });
+  const encoded = Buffer.from(raw, "utf8").toString("base64");
+  return encoded.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function adminRequest(path, args, kind) {
+  const body =
+    kind === "mutation"
+      ? { path, format: "convex_encoded_json", args: [convexToJson(args)] }
+      : { path, format: "convex_encoded_json", args: convexToJson(args) };
+
+  const response = await fetch(`${convexUrl}/api/${kind}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Convex-Client": "smoke-mlp1",
+      Authorization: `Convex ${adminAuthHeader}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok && response.status !== 400) {
+    throw new Error(await response.text());
+  }
+
+  const json = await response.json();
+  if (json.status === "success") {
+    return jsonToConvex(json.value);
+  }
+  throw new Error(json.errorMessage ?? "Convex admin request failed");
+}
+
 if (token) {
+  client = new ConvexHttpClient(convexUrl);
   client.setAuth(token);
   console.log("[convex] auth=token");
 } else if (adminKey) {
-  client.setAdminAuth(adminKey, { subject: adminSubject });
+  adminAuthHeader = `${adminKey}:${encodeAdminIdentity(adminSubject)}`;
   console.log(`[convex] auth=admin subject=${adminSubject}`);
 } else {
   console.log("[convex] missing auth (set CONVEX_AUTH_TOKEN or CONVEX_SELF_HOSTED_ADMIN_KEY)");
@@ -76,28 +113,44 @@ let createdProject = false;
 
 if (!projectId) {
   const name = `Smoke Test ${new Date().toISOString()}`;
-  projectId = await client.mutation(anyApi.projects.create, {
-    name,
-    description: "MLP1 smoke test",
-  });
+  if (client) {
+    projectId = await client.mutation(anyApi.projects.create, {
+      name,
+      description: "MLP1 smoke test",
+    });
+  } else {
+    projectId = await adminRequest("projects.create", {
+      name,
+      description: "MLP1 smoke test",
+    }, "mutation");
+  }
   createdProject = true;
 }
 
 console.log(`[convex] projectId=${projectId}`);
 
 if (process.env.CREATE_MEMORY === "1") {
-  const memoryId = await client.mutation(anyApi.memories.create, {
+  const memoryArgs = {
     projectId,
     text: "smoke test memory",
     type: "note",
     confidence: 0.5,
     source: "user",
-  });
-  const results = await client.query(anyApi.memories.search, {
-    projectId,
-    searchQuery: "smoke",
-    limit: 5,
-  });
+  };
+  const memoryId = client
+    ? await client.mutation(anyApi.memories.create, memoryArgs)
+    : await adminRequest("memories.create", memoryArgs, "mutation");
+  const results = client
+    ? await client.query(anyApi.memories.search, {
+        projectId,
+        searchQuery: "smoke",
+        limit: 5,
+      })
+    : await adminRequest(
+        "memories.search",
+        { projectId, searchQuery: "smoke", limit: 5 },
+        "query"
+      );
   console.log(`[memory] created=${memoryId} searchCount=${results.length}`);
 } else {
   console.log("[memory] skip (set CREATE_MEMORY=1 to create + search)");
@@ -135,7 +188,11 @@ if (process.env.RUN_AGENT === "1") {
 }
 
 if (createdProject && process.env.KEEP_PROJECT !== "1") {
-  await client.mutation(anyApi.projects.remove, { id: projectId });
+  if (client) {
+    await client.mutation(anyApi.projects.remove, { id: projectId });
+  } else {
+    await adminRequest("projects.remove", { id: projectId }, "mutation");
+  }
   console.log(`[convex] cleaned_project=${projectId}`);
 } else if (createdProject) {
   console.log(`[convex] kept_project=${projectId}`);
