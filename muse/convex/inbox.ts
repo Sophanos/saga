@@ -5,6 +5,7 @@
  * - Pulse: Ambient signals from pulseSignals table
  * - Changes: Knowledge PRs from knowledgeSuggestions table
  * - Activity: Widget executions from widgetExecutions table
+ * - Analysis: Background analysis jobs from analysisJobs table
  * - Artifacts: Stale artifacts from artifacts table
  *
  * The Inbox shows "what needs attention now" — not history.
@@ -18,7 +19,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 // Types
 // =============================================================================
 
-export type InboxItemType = "pulse" | "change" | "activity" | "artifact";
+export type InboxItemType = "pulse" | "change" | "activity" | "analysis" | "artifact";
 
 export interface InboxPulseItem {
   type: "pulse";
@@ -31,6 +32,22 @@ export interface InboxPulseItem {
   targetDocumentId?: string;
   targetEntityId?: string;
   status: string;
+  read: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface InboxAnalysisItem {
+  type: "analysis";
+  id: string;
+  kind: string;
+  title: string;
+  status: string;
+  statusText: string;
+  documentId?: string;
+  documentName?: string;
+  resultSummary?: string;
+  error?: string;
   read: boolean;
   createdAt: number;
   updatedAt: number;
@@ -88,7 +105,8 @@ export type InboxItem =
   | InboxPulseItem
   | InboxChangeItem
   | InboxActivityItem
-  | InboxArtifactItem;
+  | InboxArtifactItem
+  | InboxAnalysisItem;
 
 // =============================================================================
 // Queries
@@ -110,6 +128,7 @@ export const getInboxData = query({
         pulse: { items: [], unreadCount: 0 },
         changes: { items: [], pendingCount: 0 },
         activity: { items: [], runningCount: 0, needsAttentionCount: 0 },
+        analysis: { items: [], runningCount: 0, needsAttentionCount: 0 },
         artifacts: { items: [], staleCount: 0 },
         totalUnread: 0,
       };
@@ -197,6 +216,44 @@ export const getInboxData = query({
       updatedAt: e.completedAt ?? e.startedAt,
     }));
 
+    // Fetch analysis jobs (recent)
+    const analysisSampleSize = Math.min(limit * 3, 200);
+    const analysisJobs = await ctx.db
+      .query("analysisJobs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", projectId))
+      .take(analysisSampleSize);
+    analysisJobs.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    const recentAnalysisJobs = analysisJobs.slice(0, limit);
+
+    // Get document names for analysis jobs
+    const analysisDocIds = recentAnalysisJobs
+      .filter((j) => j.documentId)
+      .map((j) => j.documentId!);
+    const analysisDocs = await Promise.all(
+      analysisDocIds.map((id) => ctx.db.get(id))
+    );
+    const analysisDocNameMap = new Map(
+      analysisDocs.filter(Boolean).map((d) => [d!._id, d!.title])
+    );
+
+    const analysisItems: InboxAnalysisItem[] = recentAnalysisJobs.map((j) => ({
+      type: "analysis" as const,
+      id: j._id,
+      kind: j.kind,
+      title: formatAnalysisKind(j.kind),
+      status: mapAnalysisStatus(j.status),
+      statusText: j.status,
+      documentId: j.documentId,
+      documentName: j.documentId
+        ? analysisDocNameMap.get(j.documentId)
+        : undefined,
+      resultSummary: j.resultSummary,
+      error: j.lastError,
+      read: j.status === "succeeded" || j.status === "failed",
+      createdAt: j.createdAt,
+      updatedAt: j.updatedAt,
+    }));
+
     // Fetch artifacts (check for staleness)
     const artifacts = await ctx.db
       .query("artifacts")
@@ -239,6 +296,12 @@ export const getInboxData = query({
     const activityNeedsAttention = activityItems.filter(
       (i) => i.status === "ready" || i.status === "failed"
     ).length;
+    const analysisRunning = analysisItems.filter(
+      (i) => i.status === "running"
+    ).length;
+    const analysisNeedsAttention = analysisItems.filter(
+      (i) => i.status === "ready" || i.status === "failed"
+    ).length;
     const artifactsStale = artifactItems.filter((i) => i.isStale).length;
 
     return {
@@ -255,12 +318,21 @@ export const getInboxData = query({
         runningCount: activityRunning,
         needsAttentionCount: activityNeedsAttention,
       },
+      analysis: {
+        items: analysisItems,
+        runningCount: analysisRunning,
+        needsAttentionCount: analysisNeedsAttention,
+      },
       artifacts: {
         items: artifactItems,
         staleCount: artifactsStale,
       },
       totalUnread:
-        pulseUnread + changesPending + activityNeedsAttention + artifactsStale,
+        pulseUnread +
+        changesPending +
+        activityNeedsAttention +
+        analysisNeedsAttention +
+        artifactsStale,
     };
   },
 });
@@ -279,6 +351,7 @@ export const getInboxCounts = query({
         pulse: 0,
         changes: 0,
         activity: 0,
+        analysis: 0,
         artifacts: 0,
         total: 0,
         hasRunning: false,
@@ -311,12 +384,28 @@ export const getInboxCounts = query({
     const needsAttention = executions.filter(
       (e) => e.status === "preview" || e.status === "error"
     ).length;
-    const hasRunning = executions.some(
+    const hasWidgetRunning = executions.some(
       (e) =>
         e.status === "gathering" ||
         e.status === "generating" ||
         e.status === "formatting"
     );
+
+    // Count analysis jobs needing attention
+    const analysisJobs = await ctx.db
+      .query("analysisJobs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", projectId))
+      .order("desc")
+      .take(50);
+
+    const analysisNeedsAttention = analysisJobs.filter(
+      (j) => j.status === "failed"
+    ).length;
+    const hasAnalysisRunning = analysisJobs.some(
+      (j) => j.status === "pending" || j.status === "processing"
+    );
+
+    const hasRunning = hasWidgetRunning || hasAnalysisRunning;
 
     // Count stale artifacts (simplified check)
     const artifacts = await ctx.db
@@ -337,8 +426,14 @@ export const getInboxCounts = query({
       pulse: pulseSignals.length,
       changes: suggestions.length,
       activity: needsAttention,
+      analysis: analysisNeedsAttention,
       artifacts: staleCount,
-      total: pulseSignals.length + suggestions.length + needsAttention + staleCount,
+      total:
+        pulseSignals.length +
+        suggestions.length +
+        needsAttention +
+        analysisNeedsAttention +
+        staleCount,
       hasRunning,
     };
   },
@@ -354,7 +449,7 @@ function formatChangeTitle(
   proposedPatch: unknown
 ): string {
   const patch = proposedPatch as Record<string, unknown> | undefined;
-  const name = patch?.name ?? patch?.text ?? "";
+  const name = patch?.["name"] ?? patch?.["text"] ?? "";
 
   switch (operation) {
     case "create_entity":
@@ -401,6 +496,50 @@ function mapWidgetStatus(
     case "preview":
       return "ready";
     case "error":
+      return "failed";
+    default:
+      return "running";
+  }
+}
+
+function formatAnalysisKind(kind: string): string {
+  // Convert analysis kind to human-readable label
+  switch (kind) {
+    case "entity_extraction":
+      return "Entity Extraction";
+    case "style_analysis":
+      return "Style Analysis";
+    case "consistency_check":
+      return "Consistency Check";
+    case "embedding_generation":
+      return "Embedding Generation";
+    case "detect_entities":
+      return "Entity Detection";
+    case "coherence_lint":
+      return "Coherence Lint";
+    case "clarity_check":
+      return "Clarity Check";
+    case "policy_check":
+      return "Policy Check";
+    case "digest_document":
+      return "Document Digest";
+    default:
+      return kind
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+}
+
+function mapAnalysisStatus(
+  status: string
+): "running" | "ready" | "applied" | "failed" {
+  switch (status) {
+    case "succeeded":
+      return "ready";
+    case "pending":
+    case "processing":
+      return "running";
+    case "failed":
       return "failed";
     default:
       return "running";

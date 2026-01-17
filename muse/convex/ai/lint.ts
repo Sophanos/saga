@@ -201,6 +201,7 @@ export const runLint = internalAction({
       endpoint: "lint",
       promptText: userPrompt,
       requestedMaxOutputTokens: 4096,
+      billingModeUsed: "managed",
     });
 
     const response = await fetch(OPENROUTER_API_URL, {

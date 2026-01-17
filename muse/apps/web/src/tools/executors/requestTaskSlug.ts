@@ -8,6 +8,7 @@ import type { RequestTaskSlugArgs, RequestTaskSlugResult } from "@mythos/agent-p
 import type { ToolDefinition, ToolExecutionResult } from "../types";
 
 function summarizeRequest(args: RequestTaskSlugArgs): string {
+  if (args.reason && args.reason.trim()) return args.reason.trim();
   if (args.title && args.title.trim()) return args.title.trim();
   return "Select task slug";
 }

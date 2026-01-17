@@ -207,6 +207,7 @@ export const learnStyle = internalAction({
       endpoint: "style",
       promptText: userPrompt,
       requestedMaxOutputTokens: 1024,
+      billingModeUsed: "managed",
     });
 
     const response = await fetch(OPENROUTER_API_URL, {

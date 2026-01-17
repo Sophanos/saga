@@ -65,11 +65,13 @@ export const resolveTaskRouting = internalQuery({
       .first();
 
     const byokEnabled = billingRecord?.billingMode === "byok";
+    const hasByokKey = args.hasByokKey === true;
     const preferredModel = byokEnabled ? billingRecord?.preferredModel : undefined;
     const modality = config.modality ?? getModalityForTask(normalized);
 
     const applyByokOverride =
       byokEnabled &&
+      hasByokKey &&
       config.directProvider === "openrouter" &&
       (modality === "text" || modality === "world") &&
       typeof preferredModel === "string" &&

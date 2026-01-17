@@ -10,6 +10,7 @@ import { query, mutation, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { verifyProjectAccess, verifyDocumentAccess, verifyProjectEditor } from "./lib/auth";
+import { hashText } from "./lib/contentHash";
 import type { DeleteDocumentResult } from "../packages/agent-protocol/src/tools";
 
 // ============================================================
@@ -209,7 +210,7 @@ export const update = mutation({
     const { id, contentText, ...updates } = args;
 
     // Verify user has access via document's project
-    await verifyDocumentAccess(ctx, id);
+    const { userId } = await verifyDocumentAccess(ctx, id);
 
     // Filter out undefined values
     const cleanUpdates: Record<string, unknown> = Object.fromEntries(
@@ -236,6 +237,27 @@ export const update = mutation({
         targetType: "document",
         targetId: document._id,
       });
+
+      if (contentText !== undefined) {
+        const contentHash = await hashText(contentText);
+        const debounceMs = 3000;
+
+        await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueAnalysisJob, {
+          projectId: document.projectId,
+          userId,
+          documentId: document._id,
+          kind: "detect_entities",
+          payload: { source: "document_update" },
+          contentHash,
+          debounceMs,
+        });
+
+        await ctx.scheduler.runAfter(
+          debounceMs,
+          (internal as any)["ai/analysis/processAnalysisJobs"].processAnalysisJobs,
+          { batchSize: 10 }
+        );
+      }
     }
 
     return id;

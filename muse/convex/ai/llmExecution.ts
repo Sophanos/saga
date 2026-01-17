@@ -74,6 +74,7 @@ export async function resolveExecutionContext(
       promptText: args.promptText,
       contextTokens: args.contextTokens,
       requestedMaxOutputTokens: args.requestedMaxOutputTokens,
+      billingModeUsed: "managed",
     });
     quotaMaxOutputTokens = quota.maxOutputTokens;
   }

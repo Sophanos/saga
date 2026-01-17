@@ -1,9 +1,11 @@
 import { internal } from "../../_generated/api";
 import type { ActionCtx } from "../../_generated/server";
 import type { AnalyzeContentArgs, AnalyzeContentResult } from "../../../packages/agent-protocol/src/tools";
+import type { ResponseFormat, TierId } from "../../lib/providers/types";
+import { resolveExecutionContext, type ExecutionContext } from "../llmExecution";
 import { executeCheckLogic, type CheckLogicInput } from "./checkLogic";
 import { executeClarityCheck } from "./clarityCheck";
-import { callOpenRouterJson, DEFAULT_MODEL } from "./openRouter";
+import { callOpenRouterJson } from "./openRouter";
 import { executePolicyCheck } from "./policyCheck";
 
 const DEFAULT_ANALYZE_TEXT_MAX_CHARS = 20000;
@@ -24,6 +26,27 @@ function truncateAnalyzeText(text: string): { text: string; truncated: boolean }
   return { text: text.slice(0, ANALYZE_TEXT_MAX_CHARS), truncated: true };
 }
 
+type OpenRouterExecution = {
+  model: string;
+  apiKey?: string;
+  responseFormat: ResponseFormat;
+  maxTokens: number;
+  temperature?: number;
+};
+
+function resolveOpenRouterExecution(exec: ExecutionContext): OpenRouterExecution {
+  if (exec.resolved.provider !== "openrouter") {
+    throw new Error(`Provider ${exec.resolved.provider} is not supported for analyze_content`);
+  }
+  return {
+    model: exec.resolved.model,
+    apiKey: exec.apiKey,
+    responseFormat: exec.responseFormat,
+    maxTokens: exec.maxOutputTokens,
+    temperature: exec.temperature,
+  };
+}
+
 async function executeCheckConsistency(input: {
   text: string;
   focus?: string[];
@@ -33,6 +56,7 @@ async function executeCheckConsistency(input: {
     type: string;
     properties?: Record<string, unknown>;
   }>;
+  execution: OpenRouterExecution;
 }): Promise<{
   issues: Array<{
     type: string;
@@ -74,10 +98,13 @@ For each issue found, provide:
 Respond with JSON containing an "issues" array.`;
 
   const parsed = await callOpenRouterJson<{ issues?: Array<Record<string, unknown>> }>({
-    model: DEFAULT_MODEL,
+    model: input.execution.model,
     system: systemPrompt,
     user: `Check this text for consistency issues:\n\n${input.text}`,
-    maxTokens: 4096,
+    maxTokens: Math.min(input.execution.maxTokens, 4096),
+    temperature: input.execution.temperature,
+    apiKeyOverride: input.execution.apiKey,
+    responseFormat: input.execution.responseFormat,
   });
 
   const rawIssues = Array.isArray(parsed.issues) ? parsed.issues : [];
@@ -117,6 +144,15 @@ export async function executeAnalyzeContent(
     });
   }
   const text = truncatedInput.text;
+  let tierId: TierId | null = null;
+
+  const resolveTierId = async (): Promise<TierId> => {
+    if (tierId) return tierId;
+    tierId = (await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
+      userId,
+    })) as TierId;
+    return tierId;
+  };
 
   switch (input.mode) {
     case "entities": {
@@ -140,9 +176,20 @@ export async function executeAnalyzeContent(
       };
     }
     case "consistency": {
+      const execution = resolveOpenRouterExecution(
+        await resolveExecutionContext(ctx, {
+          userId,
+          taskSlug: "lint",
+          tierId: await resolveTierId(),
+          promptText: text,
+          endpoint: "lint",
+          requestedMaxOutputTokens: 4096,
+        })
+      );
       const result = await executeCheckConsistency({
         text,
         focus: input.options?.focus,
+        execution,
       });
       const issues = result.issues ?? [];
       const normalized = issues.map((issue, index) => ({
@@ -162,13 +209,24 @@ export async function executeAnalyzeContent(
       };
     }
     case "logic": {
+      const execution = resolveOpenRouterExecution(
+        await resolveExecutionContext(ctx, {
+          userId,
+          taskSlug: "lint",
+          tierId: await resolveTierId(),
+          promptText: text,
+          endpoint: "lint",
+          requestedMaxOutputTokens: 4096,
+        })
+      );
       const result = await executeCheckLogic(
         {
           text,
           focus: input.options?.focus as CheckLogicInput["focus"],
           strictness: input.options?.strictness as CheckLogicInput["strictness"],
         },
-        projectId
+        projectId,
+        execution
       );
       const issues = result.issues ?? [];
       const normalized = issues.map((issue, index) => ({
@@ -188,9 +246,20 @@ export async function executeAnalyzeContent(
       };
     }
     case "clarity": {
+      const execution = resolveOpenRouterExecution(
+        await resolveExecutionContext(ctx, {
+          userId,
+          taskSlug: "clarity_check",
+          tierId: await resolveTierId(),
+          promptText: text,
+          endpoint: "lint",
+          requestedMaxOutputTokens: 4096,
+        })
+      );
       const result = await executeClarityCheck(
         { text, maxIssues: input.options?.maxIssues },
-        projectId
+        projectId,
+        execution
       );
       const issues = result.issues ?? [];
       const normalized = issues.map((issue, index) => ({
@@ -209,9 +278,20 @@ export async function executeAnalyzeContent(
       };
     }
     case "policy": {
+      const execution = resolveOpenRouterExecution(
+        await resolveExecutionContext(ctx, {
+          userId,
+          taskSlug: "policy_check",
+          tierId: await resolveTierId(),
+          promptText: text,
+          endpoint: "lint",
+          requestedMaxOutputTokens: 4096,
+        })
+      );
       const result = await executePolicyCheck(
         { text, maxIssues: input.options?.maxIssues },
-        projectId
+        projectId,
+        execution
       );
       const issues = result.issues ?? [];
       const normalized = issues.map((issue, index) => ({

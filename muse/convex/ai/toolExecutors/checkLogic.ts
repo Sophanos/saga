@@ -1,4 +1,5 @@
-import { DEFAULT_MODEL, OPENROUTER_API_URL } from "./openRouter";
+import type { ResponseFormat } from "../../lib/providers/types";
+import { callOpenRouterJson } from "./openRouter";
 
 export interface CheckLogicInput {
   text: string;
@@ -44,6 +45,14 @@ interface CheckLogicResult {
   summary?: string;
 }
 
+type OpenRouterExecution = {
+  model: string;
+  apiKey?: string;
+  responseFormat: ResponseFormat;
+  maxTokens: number;
+  temperature?: number;
+};
+
 const CHECK_LOGIC_SYSTEM = `You are a story logic validator. Check text for logical consistency against established rules and world state.
 
 Analyze for:
@@ -64,11 +73,9 @@ Respond with JSON containing an "issues" array and optional "summary".`;
 
 export async function executeCheckLogic(
   input: CheckLogicInput,
-  _projectId: string
+  _projectId: string,
+  execution: OpenRouterExecution
 ): Promise<CheckLogicResult> {
-  const apiKey = process.env["OPENROUTER_API_KEY"];
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
-
   const strictness = input.strictness ?? "balanced";
   const focusAreas = input.focus?.length
     ? `Focus on: ${input.focus.join(", ")}`
@@ -104,38 +111,15 @@ export async function executeCheckLogic(
 
   const userContent = `${focusAreas}\nStrictness: ${strictness}${contextBlock}\n\n## Text to Analyze:\n${input.text}`;
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://mythos.app",
-      "X-Title": "Saga AI",
-    },
-    body: JSON.stringify({
-      model: DEFAULT_MODEL,
-      messages: [
-        { role: "system", content: CHECK_LOGIC_SYSTEM },
-        { role: "user", content: userContent },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 4096,
-    }),
+  const parsed = await callOpenRouterJson<{ issues?: unknown[]; summary?: string }>({
+    model: execution.model,
+    system: CHECK_LOGIC_SYSTEM,
+    user: userContent,
+    maxTokens: Math.min(execution.maxTokens, 4096),
+    temperature: execution.temperature,
+    apiKeyOverride: execution.apiKey,
+    responseFormat: execution.responseFormat,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    return { issues: [], summary: "Unable to analyze text." };
-  }
-
-  const parsed = JSON.parse(content);
   const issues = (parsed.issues || []).map((issue: Record<string, unknown>, idx: number) => ({
     id: `logic-${Date.now()}-${idx}`,
     type: issue["type"] as LogicIssue["type"],

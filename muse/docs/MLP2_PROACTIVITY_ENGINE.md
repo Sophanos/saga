@@ -6,6 +6,16 @@ MLP2 adds **proactivity without interruptions**: Muse runs background analysis a
 
 ---
 
+## Repo status (Phase 1.5 groundwork)
+
+- `analysisJobs` outbox table exists with scheduling + dedupe fields.
+- `ai/analysisJobs.ts` implements enqueue/claim/finalize/failure/backoff + stale requeue/cleanup.
+- `ai/analysis/processAnalysisJobs.ts` runner with bounded concurrency + cron backstop.
+- Document updates enqueue `detect_entities` jobs and schedule the runner.
+- Handlers emit `pulseSignals` for entity detection, lint, clarity, and policy checks.
+
+---
+
 ## Sequencing note (planning)
 
 - MLP1 is validated on Expo web only (no Tauri).
@@ -43,7 +53,7 @@ Use these as explicit research spikes to validate demand, UX, and operational co
 
 - **Impact PRs:** validate whether “downstream PRs from a single change” feels magical or noisy; test on real projects.
 - **Policy/invariant watchlists:** confirm that teams can author useful constraints without heavy setup; evaluate false-positive rate.
-- **Citations everywhere:** test if provenance links change review behavior and trust; measure how often users click into sources.
+- **Citations everywhere:** test if trace links change review behavior and trust; measure how often users click into sources.
 - **Permission-scoped Pulse/PRs:** validate team needs for scoped visibility and approval; ensure it does not slow review.
 - **Tracked-changes exports:** validate external workflow fit (editors, legal, compliance) and acceptable DOCX fidelity.
 
@@ -52,7 +62,7 @@ Use these as explicit research spikes to validate demand, UX, and operational co
 ## Proactivity modes (per project + per user)
 
 1. **Off**: no background analysis; only manual tools.
-2. **Silent** (default for writers / Flow Mode): background jobs run, results go to Pulse/Inbox only.
+2. **Silent** (default for writers / Flow Mode): background jobs run, results go to Inbox only (Pulse section).
 3. **Assistive**: lightweight inline affordances (badges/counters), still no popups.
 4. **Active** (opt-in): prompts the user when critical issues are found (never writes without approval).
 
@@ -66,7 +76,7 @@ Implementation note: these modes are UI policy; the backend always produces the 
 
 - Writer types for a while → on idle/save, Muse runs background checks.
 - Pulse counter increments quietly (no popups).
-- When the writer exits Flow Mode (or opens Pulse / Cmd+K), they see:
+- When the writer exits Flow Mode (or opens Inbox via bell / Cmd+K), they see:
   - “New entities detected (3)”
   - “Possible canon contradiction (1)”
   - “Clarity issues (5)”
@@ -142,25 +152,37 @@ These reuse the existing `knowledgeSuggestions` pattern and approval gating:
 
 Existing cron infrastructure: `muse/convex/crons.ts`
 
-### Pipeline pattern (outbox + workers)
+### Pipeline pattern (unified analysis outbox + workers)
 
-Reuse the “outbox” approach already used for embeddings:
-- `embeddingJobs` outbox: `muse/convex/schema.ts`, worker: `muse/convex/ai/embeddings.ts`
+Unify embeddings + detection + coherence into a single **analysis outbox**. One runner, multiple job kinds, shared scheduling, backoff, and quotas.
 
-Add a parallel outbox for proactivity:
-- `proactivityJobs` (new, MLP2): `projectId`, `documentId?`, `jobType`, `status`, `attempts`, `payload`, `scheduledFor`, `createdAt`, `updatedAt`
+**Outbox table (MLP2):** `analysisJobs` in `muse/convex/schema.ts`
+- common fields: `projectId`, `documentId?`, `kind`, `status`, `attempts`, `payload`, `scheduledFor`, `contentHash`, `createdAt`, `updatedAt`
+- indexes: by `status + scheduledFor`, by `projectId + kind`
 
-Workers (job types)
-- `digest_document`: create/update a compact document digest
-- `extract_nodes_edges`: propose nodes/edges (dedupe + disambiguation)
-- `lint_drift`: run lint and emit contradiction signals
-- `clarity_policy_check`: run clarity_check and emit issues
-- `decision_candidates`: propose decisions/policies to pin (never auto-pin without explicit user action)
+**Runner:** `muse/convex/analysis/processAnalysisJobs.ts`
+- selects queued jobs (by runAfter), marks running, dispatches to handlers with bounded concurrency
+- retries with exponential backoff; emits Pulse signals on persistent error
+
+**Job kinds (core set)**
+- `embed_document` (text embeddings)
+- `embed_image` (CLIP image embeddings)
+- `detect_entities` (entity extraction + mentions)
+- `coherence_lint` (canon + contradiction lints)
+- optional: `digest_document`, `clarity_policy_check`, `decision_candidates`
+
+**Task-driven model routing**
+All handlers resolve models through `llmTaskConfigs` (not hard-coded):
+- Config source: `muse/convex/schema.ts` → `llmTaskConfigs`
+- Resolver: `muse/convex/lib/providers/taskConfig.ts`
+- Runtime: `muse/convex/ai/modelRouting.ts` + `muse/convex/ai/llmExecution.ts`
+
+This keeps model swaps safe and centralized, and allows BYOK override for text tasks (OpenRouter).
 
 ### Data products (tables)
 
 Add two lightweight tables:
-- `proactiveSignals` (new): signals for Pulse (severity, kind, summary, links to doc/project, optional `suggestionId`)
+- `pulseSignals` (new): signals for Pulse (severity, kind, summary, links to doc/project, optional `suggestionId`)
 - `digestSnapshots` (optional): persisted summaries (document/project), used to keep AI context small
 
 Keep using:
@@ -168,6 +190,40 @@ Keep using:
 - `activityLog`: audit trail (`muse/convex/schema.ts`)
 - `projectTypeRegistry`: type + risk gates (`muse/convex/projectTypeRegistry.ts`, `muse/convex/lib/typeRegistry.ts`)
 - Qdrant pinned memories as canon/policy: (`muse/convex/ai/tools.ts`, `muse/convex/ai/canon.ts`)
+
+---
+
+## Proactive done right: three Ambient patterns that won’t break flow
+
+### Pattern 1: Post-Flow Pulse Card (MLP1.5)
+
+Trigger on **Flow exit** / idle end (not cron).
+
+Shows:
+- what changed (new entities, updated entities, contradictions, new media)
+- 1–3 suggested actions (all behind Knowledge PRs)
+- snooze/ignore/accept (no interruptions, no guilt)
+
+This is the ambient reveal surface the Artifact Panel should become.
+
+### Pattern 2: Canon + Contradiction Lints (high leverage, low UI)
+
+Add a lightweight `canonClaims` table and run a lint pass:
+> “Document says X; canon says Y; here are both spans.”
+
+Output becomes a Knowledge PR:
+- update canon
+- mark as intentional divergence
+
+This is meaning integrity, not “AI help.”
+
+### Pattern 3: Cross-modal grounding (CLIP + text)
+
+Make images first-class in the graph:
+- auto-suggest entity links for uploaded images
+- generate a “Media board” artifact grouped by semantic clusters
+
+This turns “Notice: Image + Text embeddings” into experiential UI.
 
 ---
 
@@ -204,7 +260,7 @@ Pragmatic bridge (quick win): reuse `captures` as an “ingest inbox” and trea
 - Proactivity produces:
   - **Signal**: “Source changed: X; model may be stale”
   - **Draft PR**: “Update node property Y” / “Pin policy decision Z” / “Update doc excerpt”
-- User reviews in Pulse/Inbox and merges as needed.
+- User reviews in Inbox (Changes section) and merges as needed.
 
 This preserves the USP: changes are discoverable, reviewable, and cited.
 
@@ -233,7 +289,7 @@ If you want teams, Pulse/PRs must be permission-scoped by default:
 - **Citations respect scope**: a citation to restricted evidence is either hidden or requires explicit access (never leak excerpt text).
 
 Implementation direction (MLP2):
-- Add `visibilityScope` to `knowledgeSuggestions` + `proactiveSignals` and validate with the same access helpers used for docs/projects.
+- Add `visibilityScope` to `knowledgeSuggestions` + `pulseSignals` and validate with the same access helpers used for docs/projects.
 
 ---
 
@@ -241,7 +297,7 @@ Implementation direction (MLP2):
 
 These upgrades increase "proactive feel" without breaking Flow Mode or requiring deep connectors:
 
-- **Pulse counter + inbox**: one quiet indicator + a single review surface (no popups).
+- **Inbox with bell badge**: one quiet indicator + a single review surface (no popups).
 - **Idle-on-save jobs**: schedule proactivity runs after saves (2–5s debounce), using `ctx.scheduler.runAfter` + a cron backstop (`muse/convex/crons.ts`).
 - **Big paste ingestion pipeline**: show progress stages; output signals + PR drafts only.
 - **Ingest inbox bridge**: reuse `captures` (`muse/convex/schema.ts`) as a staging area for external deltas (manual, MCP, or webhook-fed).
@@ -259,7 +315,7 @@ The **Coherence System** ([COHERENCE_SPEC.md](./COHERENCE_SPEC.md)) provides per
 | 1 | Widgets MVP1 | [WIDGETS.md](./WIDGETS.md) — pipeline + receipts |
 | 2 | Phase 1.5 async jobs | Workpool + notifications inbox |
 | 3 | Session vectors + Flow Mode checks | <50ms entity/voice/overuse checks |
-| 4 | Pulse panel + underlines | Silent signals, expand on exit |
+| 4 | Inbox (Pulse section) + underlines | Silent signals, expand on exit |
 
 ### Coherence check types (writer-first)
 
@@ -270,16 +326,22 @@ The **Coherence System** ([COHERENCE_SPEC.md](./COHERENCE_SPEC.md)) provides per
 | Overuse | "'however' × 4 in 2 paragraphs" | On pause (~2s) |
 | Timeline violation | "Character died in Ch 3 but speaks in Ch 5" | Entity timeline cross-ref |
 
-### Pulse integration
+### Inbox integration
 
-Coherence signals flow into Pulse as read-only items:
+Coherence signals flow into Inbox (Pulse section) as read-only items:
 
 ```
-Pulse inbox
-├── Coherence signals (entity/voice/overuse/timeline)
-├── Knowledge PR drafts (from proactivity jobs)
-├── Spec drift signals (MLP2+)
-└── External change signals (MCP/connectors)
+Inbox (All view)
+├── Pulse section
+│   ├── Coherence signals (entity/voice/overuse/timeline)
+│   ├── Spec drift signals (MLP2+)
+│   └── External change signals (MCP/connectors)
+├── Changes section
+│   └── Knowledge PR drafts (from proactivity jobs)
+├── Activity section
+│   └── Background job completions
+└── Artifacts section
+    └── Stale artifact warnings
 ```
 
 ### Persona expansion (post-writer)

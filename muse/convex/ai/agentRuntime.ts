@@ -49,7 +49,7 @@ import { getEmbeddingModelForTask } from "../lib/embeddings";
 import { ServerAgentEvents } from "../lib/analytics";
 import { createUsageHandler } from "../lib/rateLimiting";
 import { getLanguageModelForRequest } from "../lib/providers/registry";
-import type { AITaskSlug, TierId } from "../lib/providers/types";
+import { isValidTask, type AITaskSlug, type TierId } from "../lib/providers/types";
 import { resolveExecutionContext } from "./llmExecution";
 import {
   hasIdentityChange,
@@ -57,6 +57,11 @@ import {
   needsToolApproval,
 } from "../lib/approvalConfig";
 import type { ProjectTypeRegistryResolved, RiskLevel } from "../lib/typeRegistry";
+import {
+  DEFAULT_SPAWN_TASK_SLUG,
+  INTERACTIVE_TASK_ALLOWLIST,
+  SPAWN_TASK_ALLOWLIST,
+} from "./taskSlugPolicy";
 
 const AI_PRESENCE_ROOM_PREFIXES = {
   project: "project",
@@ -234,6 +239,109 @@ function resolveSagaTaskSlug(mode?: string): AITaskSlug {
     default:
       return "chat";
   }
+}
+
+type TaskSlugSelection = {
+  taskSlug: AITaskSlug;
+  warning?: string;
+};
+
+function normalizeRequestedTaskSlug(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+async function canAccessTaskSlug(
+  ctx: ActionCtx,
+  params: { userId: string; taskSlug: AITaskSlug; hasByokKey: boolean }
+): Promise<boolean> {
+  const tierId = await resolveUserTierId(ctx, params.userId);
+  try {
+    await ctx.runQuery((internal as any)["ai/modelRouting"].resolveTaskRouting, {
+      userId: params.userId,
+      taskSlug: params.taskSlug,
+      tierId,
+      hasByokKey: params.hasByokKey,
+    });
+    return true;
+  } catch (error) {
+    console.warn("[agentRuntime] Task slug not accessible:", error);
+    return false;
+  }
+}
+
+async function resolveInteractiveTaskSlug(
+  ctx: ActionCtx,
+  params: { userId: string; requested?: string; hasByokKey: boolean }
+): Promise<TaskSlugSelection> {
+  const fallback: AITaskSlug = "chat";
+  const requested = params.requested;
+
+  if (!requested || !isValidTask(requested)) {
+    return { taskSlug: fallback, warning: "Invalid task slug selection." };
+  }
+
+  const candidate = requested as AITaskSlug;
+  if (!INTERACTIVE_TASK_ALLOWLIST.includes(candidate)) {
+    return { taskSlug: fallback, warning: "Task slug not allowed in interactive mode." };
+  }
+
+  const allowed = await canAccessTaskSlug(ctx, {
+    userId: params.userId,
+    taskSlug: candidate,
+    hasByokKey: params.hasByokKey,
+  });
+  if (!allowed) {
+    return { taskSlug: fallback, warning: "Task slug not available on current tier." };
+  }
+
+  return { taskSlug: candidate };
+}
+
+async function resolveSpawnTaskSlug(
+  ctx: ActionCtx,
+  params: { userId: string; agent: SpawnedAgentType; requested?: string; hasByokKey: boolean }
+): Promise<TaskSlugSelection> {
+  const defaultSlug = DEFAULT_SPAWN_TASK_SLUG[params.agent] ?? "thinking";
+  const allowlist = SPAWN_TASK_ALLOWLIST[params.agent] ?? [];
+
+  let candidate = defaultSlug;
+  let warning: string | undefined;
+  const requested = params.requested;
+  if (requested) {
+    if (!isValidTask(requested)) {
+      warning = "Invalid task slug selection.";
+    } else {
+      const requestedSlug = requested as AITaskSlug;
+      if (allowlist.includes(requestedSlug)) {
+        candidate = requestedSlug;
+      } else {
+        warning = "Task slug not allowed for this agent type.";
+      }
+    }
+  }
+
+  let allowed = await canAccessTaskSlug(ctx, {
+    userId: params.userId,
+    taskSlug: candidate,
+    hasByokKey: params.hasByokKey,
+  });
+
+  if (!allowed && candidate !== defaultSlug) {
+    candidate = defaultSlug;
+    allowed = await canAccessTaskSlug(ctx, {
+      userId: params.userId,
+      taskSlug: candidate,
+      hasByokKey: params.hasByokKey,
+    });
+  }
+
+  if (!allowed) {
+    throw new Error("Selected task slug is not available on the current tier.");
+  }
+
+  return { taskSlug: candidate, warning };
 }
 
 async function resolveLanguageModelForTask(
@@ -1273,7 +1381,8 @@ async function executeAnalyzeImageTool(
   ctx: ActionCtx,
   args: Record<string, unknown>,
   projectId: string,
-  userId: string
+  userId: string,
+  byokKey?: string
 ): Promise<unknown> {
   const imageSource = typeof args["imageSource"] === "string" ? (args["imageSource"] as string) : "";
   if (!imageSource) {
@@ -1291,6 +1400,7 @@ async function executeAnalyzeImageTool(
     userId,
     imageUrl,
     analysisPrompt,
+    byokKey,
   });
 
   const suggestedEntityType =
@@ -1472,13 +1582,21 @@ async function executeSpawnTaskTool(
       : 6;
   const requireCitations = Boolean(args["requireCitations"]);
 
-  const requestedTaskSlug = typeof args["taskSlug"] === "string" ? (args["taskSlug"] as string) : undefined;
-  const taskSlug = (requestedTaskSlug ?? (agent === "writing" ? "generation" : "thinking")) as AITaskSlug;
+  const requestedTaskSlug = normalizeRequestedTaskSlug(args["taskSlug"]);
+  const resolvedTask = await resolveSpawnTaskSlug(ctx, {
+    userId,
+    agent,
+    requested: requestedTaskSlug,
+    hasByokKey: Boolean(byokKey && byokKey.length > 0),
+  });
+  if (resolvedTask.warning) {
+    console.warn("[agentRuntime] spawn_task task slug fallback:", resolvedTask.warning);
+  }
 
   const { languageModel } = await resolveLanguageModelForTask(ctx, {
     userId,
     promptText: instructions,
-    taskSlug,
+    taskSlug: resolvedTask.taskSlug,
     byokKey,
     skipQuota: TEST_MODE,
   });
@@ -1582,7 +1700,7 @@ async function executeAutoTool(
     });
   }
   if (toolName === "analyze_image") {
-    return executeAnalyzeImageTool(ctx, args, projectId, userId);
+    return executeAnalyzeImageTool(ctx, args, projectId, userId, byokKey);
   }
   if (toolName === "write_todos") {
     return executeWriteTodosTool(ctx, args, projectId, userId, threadId);
@@ -2679,11 +2797,28 @@ export const applyToolResultAndResumeToStream = internalAction({
         setSagaTestScript(script.steps as SagaTestStreamStep[]);
       }
 
-      const taskSlug = resolveSagaTaskSlug(undefined);
+      const hasByokKey = Boolean(byokKey && byokKey.length > 0);
+      const requestedTaskSlug =
+        toolName === "request_task_slug"
+          ? normalizeRequestedTaskSlug((result as Record<string, unknown>)?.["taskSlug"])
+          : undefined;
+      const taskSlugSelection =
+        toolName === "request_task_slug"
+          ? await resolveInteractiveTaskSlug(ctx, {
+              userId,
+              requested: requestedTaskSlug,
+              hasByokKey,
+            })
+          : { taskSlug: resolveSagaTaskSlug(undefined) };
+
+      if (taskSlugSelection.warning) {
+        console.warn("[agentRuntime] request_task_slug fallback:", taskSlugSelection.warning);
+      }
+
       const { languageModel, model: resolvedModel } = await resolveLanguageModelForTask(ctx, {
         userId,
         promptText: toolName,
-        taskSlug,
+        taskSlug: taskSlugSelection.taskSlug,
         byokKey,
         skipQuota: testMode || isTemplateBuilder,
       });

@@ -1629,6 +1629,7 @@ http.route({
         userId: auth.userId,
         imageUrl,
         analysisPrompt,
+        skipQuota: true,
       });
 
       const suggestedEntityType =
@@ -2406,7 +2407,12 @@ async function enforceAiQuota(params: {
   const { ctx, origin, userId, endpoint, promptText } = params;
 
   try {
-    await assertAiAllowed(ctx, { userId, endpoint, promptText });
+    await assertAiAllowed(ctx, {
+      userId,
+      endpoint,
+      promptText,
+      billingModeUsed: "managed",
+    });
     return null;
   } catch (error) {
     return new Response(

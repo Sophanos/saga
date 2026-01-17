@@ -189,6 +189,26 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
   const label = getToolLabel(tool.toolName);
   const summary = renderToolSummary(tool.toolName, tool.args);
   const taskSlugArgs = isRequestTaskSlug ? (tool.args as RequestTaskSlugArgs) : undefined;
+  const taskSlugReason = taskSlugArgs?.reason ?? taskSlugArgs?.description;
+  const preferredTaskSlugs = taskSlugArgs?.prefer ?? [];
+  const allowlistedTaskSlugs =
+    preferredTaskSlugs.length > 0 ? preferredTaskSlugs : taskSlugArgs?.allowlist ?? [];
+  const recommendedTaskSlugs = taskSlugArgs?.recommended ?? [];
+  const taskSlugOptions = (() => {
+    const seen = new Set<string>();
+    const options: Array<{ taskSlug: string; label: string; description?: string }> = [];
+    for (const option of recommendedTaskSlugs) {
+      if (seen.has(option.taskSlug)) continue;
+      seen.add(option.taskSlug);
+      options.push(option);
+    }
+    for (const taskSlug of allowlistedTaskSlugs) {
+      if (seen.has(taskSlug)) continue;
+      seen.add(taskSlug);
+      options.push({ taskSlug, label: taskSlug });
+    }
+    return options;
+  })();
   const needsApproval = tool.needsApproval ?? approvalType !== undefined;
   const approvalBadgeLabel = getApprovalBadgeLabel(approvalType);
 
@@ -737,11 +757,18 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
 
       {isProposed && isRequestTaskSlug && (
         <div className="mt-2 space-y-2" data-testid="tool-approval-request">
-          {taskSlugArgs?.description && (
-            <p className="text-xs text-mythos-text-muted">{taskSlugArgs.description}</p>
+          {taskSlugReason && (
+            <p className="text-xs text-mythos-text-muted">{taskSlugReason}</p>
+          )}
+          {taskSlugArgs?.modality && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-mythos-bg-tertiary text-mythos-text-muted">
+                {taskSlugArgs.modality === "image" ? "Image" : "Text"} modality
+              </span>
+            </div>
           )}
           <div className="flex flex-wrap gap-2">
-            {(taskSlugArgs?.recommended ?? []).map((option) => (
+            {taskSlugOptions.map((option) => (
               <Button
                 key={option.taskSlug}
                 size="sm"
@@ -749,6 +776,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
                 onClick={() => handleSubmitTaskSlug(option.taskSlug)}
                 disabled={isSubmitting}
                 className="h-7 text-xs"
+                title={option.description}
               >
                 {option.label}
               </Button>

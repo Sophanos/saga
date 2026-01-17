@@ -27,6 +27,7 @@ export async function assertAiAllowed(
     promptText: string;
     contextTokens?: number;
     requestedMaxOutputTokens?: number;
+    billingModeUsed?: "managed" | "byok";
   }
 ): Promise<{ maxOutputTokens: number }> {
   const tier = await resolveUserTier(ctx, args.userId);
@@ -42,8 +43,8 @@ export async function assertAiAllowed(
     contextTokens: args.contextTokens ?? 0,
   });
 
-  const billingMode = await getBillingMode(ctx, args.userId);
-  if (billingMode === "byok") {
+  const billingModeUsed = args.billingModeUsed ?? "managed";
+  if (billingModeUsed === "byok") {
     return { maxOutputTokens: args.requestedMaxOutputTokens ?? 4096 };
   }
 
@@ -120,26 +121,6 @@ async function resolveFeatureAccess(
     (internal as any)["lib/entitlements"].canAccessFeatureInternal,
     { userId, feature }
   );
-}
-
-async function getBillingMode(
-  ctx: QueryCtx | MutationCtx | ActionCtx,
-  userId: string
-): Promise<"managed" | "byok"> {
-  if ("db" in ctx) {
-    const record = await (ctx as QueryCtx | MutationCtx).db
-      .query("userBillingSettings")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .first();
-    return record?.billingMode === "byok" ? "byok" : "managed";
-  }
-
-  const record = await (ctx as ActionCtx).runQuery(
-    internal.billingSettings.getBillingMode,
-    { userId }
-  );
-
-  return record === "byok" ? "byok" : "managed";
 }
 
 async function getTierConfig(

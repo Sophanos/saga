@@ -74,8 +74,8 @@ export function useInboxData({ projectId, enabled = true }: UseInboxDataOptions)
     }));
     setChangeItems(changeItems);
 
-    // Transform and set activity items
-    const activityItems: InboxActivityItem[] = inboxData.activity.items.map((item) => ({
+    // Transform widget executions to activity items
+    const widgetActivityItems: InboxActivityItem[] = inboxData.activity.items.map((item) => ({
       id: item.id,
       type: "activity" as const,
       executionId: item.executionId,
@@ -90,6 +90,28 @@ export function useInboxData({ projectId, enabled = true }: UseInboxDataOptions)
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }));
+
+    // Transform analysis jobs to activity items (merged into activity section)
+    const analysisActivityItems: InboxActivityItem[] = (inboxData.analysis?.items ?? []).map((item) => ({
+      id: `analysis-${item.id}`,
+      type: "activity" as const,
+      executionId: item.id,
+      widgetId: `analysis:${item.kind}`, // Prefix to distinguish from widgets
+      title: item.title,
+      statusText: item.statusText,
+      documentId: item.documentId,
+      documentName: item.documentName,
+      projectId: projectId!,
+      status: item.status as InboxActivityItem["status"],
+      read: item.read,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    }));
+
+    // Combine and sort by updatedAt
+    const activityItems = [...widgetActivityItems, ...analysisActivityItems].sort(
+      (a, b) => b.updatedAt - a.updatedAt
+    );
     setActivityItems(activityItems);
 
     // Transform and set artifact items
@@ -110,16 +132,19 @@ export function useInboxData({ projectId, enabled = true }: UseInboxDataOptions)
     setArtifactItems(artifactItems);
   }, [inboxData, projectId, setPulseItems, setChangeItems, setActivityItems, setArtifactItems]);
 
+  const analysisRunning = inboxData?.analysis?.runningCount ?? 0;
+  const analysisNeedsAttention = inboxData?.analysis?.needsAttentionCount ?? 0;
+
   return {
     isLoading: inboxData === undefined,
     counts: inboxData
       ? {
           pulse: inboxData.pulse.unreadCount,
           changes: inboxData.changes.pendingCount,
-          activity: inboxData.activity.needsAttentionCount,
+          activity: inboxData.activity.needsAttentionCount + analysisNeedsAttention,
           artifacts: inboxData.artifacts.staleCount,
           total: inboxData.totalUnread,
-          hasRunning: inboxData.activity.runningCount > 0,
+          hasRunning: inboxData.activity.runningCount > 0 || analysisRunning > 0,
         }
       : {
           pulse: 0,
@@ -141,12 +166,24 @@ export function useInboxCounts(projectId: Id<"projects"> | null) {
     projectId ? { projectId } : "skip"
   );
 
-  return counts ?? {
-    pulse: 0,
-    changes: 0,
-    activity: 0,
-    artifacts: 0,
-    total: 0,
-    hasRunning: false,
+  if (!counts) {
+    return {
+      pulse: 0,
+      changes: 0,
+      activity: 0,
+      artifacts: 0,
+      total: 0,
+      hasRunning: false,
+    };
+  }
+
+  // Merge analysis count into activity
+  return {
+    pulse: counts.pulse,
+    changes: counts.changes,
+    activity: counts.activity + (counts.analysis ?? 0),
+    artifacts: counts.artifacts,
+    total: counts.total,
+    hasRunning: counts.hasRunning,
   };
 }

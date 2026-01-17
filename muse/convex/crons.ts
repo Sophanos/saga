@@ -49,6 +49,29 @@ crons.interval(
 );
 
 // ============================================================
+// Analysis Job Processing
+// Runs every 30s to process analysis outbox
+// ============================================================
+
+crons.interval(
+  "process-analysis-jobs",
+  { seconds: 30 },
+  (internal as any)["ai/analysis/processAnalysisJobs"].processAnalysisJobs
+);
+
+crons.interval(
+  "requeue-stale-analysis-jobs",
+  { minutes: 5 },
+  (internal as any)["ai/analysisJobs"].requeueStaleProcessingJobs
+);
+
+crons.daily(
+  "cleanup-analysis-jobs",
+  { hourUTC: 1, minuteUTC: 0 },
+  (internal as any)["ai/analysisJobs"].cleanupAnalysisJobs
+);
+
+// ============================================================
 // Embedding Sync
 // Runs every 30s to process embedding outbox
 // ============================================================

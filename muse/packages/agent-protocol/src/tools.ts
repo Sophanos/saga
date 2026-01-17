@@ -1041,6 +1041,15 @@ export interface SpawnTaskResult {
 }
 
 export interface RequestTaskSlugArgs {
+  /** Optional reason shown in UI. */
+  reason?: string;
+  /** Optional allowlist of task slugs (AITaskSlug). */
+  allowlist?: string[];
+  /** Optional preferred order for task slugs (AITaskSlug). */
+  prefer?: string[];
+  /** Optional modality hint. */
+  modality?: "text" | "image";
+  /** Legacy fields (deprecated) */
   title?: string;
   description?: string;
   recommended?: Array<{ taskSlug: string; label: string; description?: string }>;

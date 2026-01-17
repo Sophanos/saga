@@ -17,6 +17,7 @@ import {
   type TierId,
 } from "../lib/providers";
 import { assertAiAllowed } from "../lib/quotaEnforcement";
+import { resolveExecutionContext } from "./llmExecution";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEEPINFRA_INFERENCE_URL = "https://api.deepinfra.com/v1/inference";
@@ -349,6 +350,7 @@ export const generateImageAction = internalAction({
           endpoint: "image_generate",
           promptText: promptForUsage,
           requestedMaxOutputTokens: 4096,
+          billingModeUsed: "managed",
         });
 
         const { width, height } = resolveAspectRatioSize(args.aspectRatio);
@@ -465,15 +467,12 @@ export const analyzeImageAction = internalAction({
     userId: v.string(),
     imageUrl: v.string(),
     analysisPrompt: v.optional(v.string()),
+    byokKey: v.optional(v.string()),
+    skipQuota: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { projectId, userId, imageUrl, analysisPrompt } = args;
+    const { projectId, userId, imageUrl, analysisPrompt, byokKey, skipQuota } = args;
     const startTime = Date.now();
-
-    const apiKey = process.env["OPENROUTER_API_KEY"];
-    if (!apiKey) {
-      throw new Error("OPENROUTER_API_KEY not configured");
-    }
 
     const defaultPrompt = `Analyze this image and provide:
 1. A detailed description
@@ -486,12 +485,28 @@ Return as JSON: { description, characters, mood, setting, style }`;
 
     const prompt = analysisPrompt ?? defaultPrompt;
 
-    const { maxOutputTokens } = await assertAiAllowed(ctx, {
+    const tierId = (await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
       userId,
-      endpoint: "image_generate",
+    })) as TierId;
+    const exec = await resolveExecutionContext(ctx, {
+      userId,
+      taskSlug: "image_analyze",
+      tierId,
+      byokKey,
       promptText: prompt,
+      endpoint: "image_generate",
       requestedMaxOutputTokens: 2048,
+      skipQuota,
     });
+
+    if (exec.resolved.provider !== "openrouter") {
+      throw new Error(`Provider ${exec.resolved.provider} is not supported for image analysis`);
+    }
+
+    const apiKey = exec.apiKey ?? process.env["OPENROUTER_API_KEY"];
+    if (!apiKey) {
+      throw new Error("OPENROUTER_API_KEY not configured");
+    }
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
@@ -502,7 +517,7 @@ Return as JSON: { description, characters, mood, setting, style }`;
         "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash",
+        model: exec.resolved.model,
         messages: [
           {
             role: "user",
@@ -512,8 +527,8 @@ Return as JSON: { description, characters, mood, setting, style }`;
             ],
           },
         ],
-        temperature: 0.3,
-        max_tokens: maxOutputTokens,
+        temperature: exec.temperature ?? 0.3,
+        max_tokens: exec.maxOutputTokens,
       }),
     });
 
@@ -525,20 +540,16 @@ Return as JSON: { description, characters, mood, setting, style }`;
     const data = (await response.json()) as OpenRouterImageResponse;
     const content = data.choices[0]?.message?.content ?? "";
 
-    const billingMode = await ctx.runQuery(
-      (internal as any).billingSettings.getBillingMode,
-      { userId }
-    );
-    if (billingMode !== "byok") {
+    if (exec.billingModeUsed !== "byok") {
       await ctx.runMutation(internal.aiUsage.trackUsage, {
         userId,
         projectId,
         endpoint: "image-analyze",
-        model: "google/gemini-2.0-flash",
+        model: exec.resolved.model,
         promptTokens: data.usage?.prompt_tokens ?? 0,
         completionTokens: data.usage?.completion_tokens ?? 0,
         totalTokens: data.usage?.total_tokens ?? 0,
-        billingMode,
+        billingMode: exec.billingModeUsed,
         latencyMs: Date.now() - startTime,
         success: true,
       });

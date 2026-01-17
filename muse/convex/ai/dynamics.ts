@@ -236,6 +236,7 @@ export const extractDynamics = internalAction({
       endpoint: "dynamics",
       promptText: userPrompt,
       requestedMaxOutputTokens: 4096,
+      billingModeUsed: "managed",
     });
 
     const response = await fetch(OPENROUTER_API_URL, {

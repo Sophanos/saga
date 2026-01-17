@@ -32,8 +32,6 @@ export async function executeAnalyzeImage(
           userId,
           imageUrl: input.imageSource,
           analysisPrompt: input.analysisPrompt,
-          entityTypeHint: input.entityTypeHint,
-          extractionFocus: input.extractionFocus,
         }
       );
       return {
