@@ -59,6 +59,7 @@ interface KnowledgeSuggestion {
   approvalType: string;
   danger?: string;
   riskLevel?: KnowledgeRiskLevel;
+  preview?: unknown;
   streamId?: string;
   threadId?: string;
   promptMessageId?: string;

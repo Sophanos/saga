@@ -38,6 +38,7 @@ interface WidgetExecutionState {
   partialOutput: string;
   title: string;
   manifestDraft: ArtifactManifestDraft | null;
+  clientExecutionId: string | null;
   executionId: string | null;
   error: string | null;
   abortController: AbortController | null;
@@ -71,6 +72,7 @@ const initialState: WidgetExecutionState = {
   partialOutput: "",
   title: "",
   manifestDraft: null,
+  clientExecutionId: null,
   executionId: null,
   error: null,
   abortController: null,
@@ -85,7 +87,7 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
       const { widgetId, widgetType, widgetLabel, projectId, documentId, selectionRange, selectionText, parameters } = params;
 
       // Generate execution ID for activity tracking
-      const executionId = `widget-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const clientExecutionId = `widget-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
       set((state) => {
         state.status = "gathering";
@@ -101,14 +103,15 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
         state.partialOutput = "";
         state.title = "";
         state.manifestDraft = null;
-        state.executionId = executionId;
+        state.clientExecutionId = clientExecutionId;
+        state.executionId = null;
         state.error = null;
         state.abortController = controller;
       });
 
       // Sync to activity on start
       syncToActivity({
-        executionId,
+        executionId: clientExecutionId,
         widgetId,
         label: widgetLabel,
         status: "gathering",
@@ -137,9 +140,9 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
               });
               // Sync status change to activity
               const state = get();
-              if (state.executionId && state.currentWidgetId && state.projectId) {
+              if (state.clientExecutionId && state.currentWidgetId && state.projectId) {
                 syncToActivity({
-                  executionId: state.executionId,
+                  executionId: state.clientExecutionId,
                   widgetId: state.currentWidgetId,
                   label: state.widgetLabel ?? "Widget",
                   status: stage as WidgetExecutionStatus,
@@ -156,7 +159,7 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
               manifestDraft?: ArtifactManifestDraft | null;
             } | undefined;
 
-            if (result) {
+              if (result) {
               set((state) => {
                 state.status = "preview";
                 state.executionId = result.executionId ?? state.executionId;
@@ -167,9 +170,9 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
               });
               // Sync preview status to activity
               const state = get();
-              if (state.executionId && state.currentWidgetId && state.projectId) {
+              if (state.clientExecutionId && state.currentWidgetId && state.projectId) {
                 syncToActivity({
-                  executionId: state.executionId,
+                  executionId: state.clientExecutionId,
                   widgetId: state.currentWidgetId,
                   label: state.widgetLabel ?? "Widget",
                   status: "preview",
@@ -200,9 +203,9 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
             });
             // Sync error to activity
             const state = get();
-            if (state.executionId && state.currentWidgetId && state.projectId) {
+            if (state.clientExecutionId && state.currentWidgetId && state.projectId) {
               syncToActivity({
-                executionId: state.executionId,
+                executionId: state.clientExecutionId,
                 widgetId: state.currentWidgetId,
                 label: state.widgetLabel ?? "Widget",
                 status: "error",
@@ -267,7 +270,7 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
 
       // Sync applied/done status to activity
       syncToActivity({
-        executionId,
+        executionId: get().clientExecutionId ?? executionId,
         widgetId: currentWidgetId,
         label: widgetLabel ?? "Widget",
         status: "done",

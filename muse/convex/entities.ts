@@ -156,7 +156,7 @@ export const getByCanonical = query({
     canonicalName: v.string(),
   },
   handler: async (ctx, args) => {
-    const { userId } = await verifyProjectAccess(ctx, args.projectId);
+    await verifyProjectAccess(ctx, args.projectId);
 
     const canonicalName = canonicalizeName(args.canonicalName);
 
@@ -226,7 +226,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     // Verify user has access to this project
-    await verifyProjectAccess(ctx, args.projectId);
+    const { userId } = await verifyProjectAccess(ctx, args.projectId);
 
     const registry = await getResolvedRegistryForProject(ctx, args.projectId);
     const def = getEntityTypeDef(registry, args.type);

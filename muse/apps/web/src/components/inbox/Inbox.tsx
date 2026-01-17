@@ -14,6 +14,7 @@ import { MoreHorizontal, Check, Trash2, X } from "lucide-react";
 import { cn, ScrollArea } from "@mythos/ui";
 import { useAction } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import {
   useInboxStore,
   useInboxTab,
@@ -120,7 +121,10 @@ export function Inbox({
       if (isApplying) return;
       setIsApplying(true);
       try {
-        await applyDecisions({ suggestionIds: [suggestionId], decision });
+        await applyDecisions({
+          suggestionIds: [suggestionId as Id<"knowledgeSuggestions">],
+          decision,
+        });
       } finally {
         setIsApplying(false);
       }

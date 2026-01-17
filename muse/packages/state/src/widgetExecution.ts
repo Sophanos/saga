@@ -39,6 +39,7 @@ export interface WidgetExecutionState {
   partialOutput: string;
   title: string;
   manifestDraft: ArtifactManifestDraft | null;
+  clientExecutionId: string | null;
   executionId: string | null;
   error: string | null;
   abortController: AbortController | null;
@@ -127,7 +128,7 @@ function mapStatusToInbox(status: WidgetExecutionStatus): InboxActivityStatus {
 }
 
 function syncActivityAndInbox(params: {
-  executionId: string;
+  clientExecutionId: string;
   widgetId: string;
   label: string;
   status: WidgetExecutionStatus;
@@ -135,9 +136,17 @@ function syncActivityAndInbox(params: {
   documentName?: string | null;
   projectId: string;
 }): void {
-  useActivityStore.getState().syncFromWidgetExecution(params);
+  useActivityStore.getState().syncFromWidgetExecution({
+    executionId: params.clientExecutionId,
+    widgetId: params.widgetId,
+    label: params.label,
+    status: params.status,
+    documentId: params.documentId,
+    documentName: params.documentName,
+    projectId: params.projectId,
+  });
   useInboxStore.getState().syncActivityFromWidgetExecution({
-    executionId: params.executionId,
+    executionId: params.clientExecutionId,
     widgetId: params.widgetId,
     label: params.label,
     status: mapStatusToInbox(params.status),
@@ -164,6 +173,7 @@ const initialState: WidgetExecutionState = {
   partialOutput: '',
   title: '',
   manifestDraft: null,
+  clientExecutionId: null,
   executionId: null,
   error: null,
   abortController: null,
@@ -190,7 +200,7 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
         parameters,
       } = params;
 
-      const executionId = `widget-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const clientExecutionId = `widget-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
       set((state) => {
         state.status = 'gathering';
@@ -204,13 +214,14 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
         state.partialOutput = '';
         state.title = '';
         state.manifestDraft = null;
-        state.executionId = executionId;
+        state.clientExecutionId = clientExecutionId;
+        state.executionId = null;
         state.error = null;
         state.abortController = controller;
       });
 
       syncActivityAndInbox({
-        executionId,
+        clientExecutionId,
         widgetId,
         label: widgetLabel,
         status: 'gathering',
@@ -238,9 +249,9 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
                 state.status = stage;
               });
               const state = get();
-              if (state.executionId && state.currentWidgetId && state.projectId) {
+              if (state.clientExecutionId && state.currentWidgetId && state.projectId) {
                 syncActivityAndInbox({
-                  executionId: state.executionId,
+                  clientExecutionId: state.clientExecutionId,
                   widgetId: state.currentWidgetId,
                   label: state.widgetLabel ?? 'Widget',
                   status: stage,
@@ -254,16 +265,16 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
             if (result) {
               set((state) => {
                 state.status = 'preview';
-                state.executionId = state.executionId ?? result.executionId ?? state.executionId;
+                state.executionId = result.executionId ?? state.executionId;
                 state.widgetType = result.widgetType ?? state.widgetType;
                 state.previewContent = state.partialOutput || state.previewContent;
                 state.title = result.titleSuggestion ?? state.title;
                 state.manifestDraft = result.manifestDraft ?? state.manifestDraft;
               });
               const state = get();
-              if (state.executionId && state.currentWidgetId && state.projectId) {
+              if (state.clientExecutionId && state.currentWidgetId && state.projectId) {
                 syncActivityAndInbox({
-                  executionId: state.executionId,
+                  clientExecutionId: state.clientExecutionId,
                   widgetId: state.currentWidgetId,
                   label: state.widgetLabel ?? 'Widget',
                   status: 'preview',
@@ -286,9 +297,9 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
                 state.previewContent = partialOutput;
               });
               const state = get();
-              if (state.executionId && state.currentWidgetId && state.projectId) {
+              if (state.clientExecutionId && state.currentWidgetId && state.projectId) {
                 syncActivityAndInbox({
-                  executionId: state.executionId,
+                  clientExecutionId: state.clientExecutionId,
                   widgetId: state.currentWidgetId,
                   label: state.widgetLabel ?? 'Widget',
                   status: 'preview',
@@ -304,9 +315,9 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
               state.error = error.message;
             });
             const state = get();
-            if (state.executionId && state.currentWidgetId && state.projectId) {
+            if (state.clientExecutionId && state.currentWidgetId && state.projectId) {
               syncActivityAndInbox({
-                executionId: state.executionId,
+                clientExecutionId: state.clientExecutionId,
                 widgetId: state.currentWidgetId,
                 label: state.widgetLabel ?? 'Widget',
                 status: 'error',
@@ -330,9 +341,9 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
         state.error = error;
       });
       const state = get();
-      if (state.executionId && state.currentWidgetId && state.projectId) {
+      if (state.clientExecutionId && state.currentWidgetId && state.projectId) {
         syncActivityAndInbox({
-          executionId: state.executionId,
+          clientExecutionId: state.clientExecutionId,
           widgetId: state.currentWidgetId,
           label: state.widgetLabel ?? 'Widget',
           status: 'error',
@@ -344,9 +355,9 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
 
     markApplied: () => {
       const state = get();
-      if (state.executionId && state.currentWidgetId && state.projectId) {
+      if (state.clientExecutionId && state.currentWidgetId && state.projectId) {
         syncActivityAndInbox({
-          executionId: state.executionId,
+          clientExecutionId: state.clientExecutionId,
           widgetId: state.currentWidgetId,
           label: state.widgetLabel ?? 'Widget',
           status: 'done',

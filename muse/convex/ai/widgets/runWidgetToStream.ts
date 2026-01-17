@@ -74,7 +74,7 @@ export const runWidgetToStream = internalAction({
     await appendStreamChunk(ctx, args.streamId, {
       type: "context",
       content: "",
-      data: { stage: "gathering" },
+      data: { stage: "gathering", result: { executionId } },
     });
 
     if (widget.id === "widget.fetch") {

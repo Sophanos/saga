@@ -338,10 +338,10 @@ export const runGenesis = internalAction({
       });
 
       const result: GenesisResult = {
-        entities: validateEntities(parsed.entities),
+        entities: validateEntities(parsed.entities ?? []),
         worldSummary: String(parsed.worldSummary || "A newly generated story world."),
         suggestedTitle: parsed.suggestedTitle ? String(parsed.suggestedTitle) : undefined,
-        outline: validateOutline(parsed.outline),
+        outline: validateOutline(parsed.outline ?? []),
       };
 
       console.log("[genesis] Generated world", {
