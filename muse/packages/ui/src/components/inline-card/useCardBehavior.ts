@@ -4,7 +4,7 @@
  * Handles: auto-collapse, pin state, expand/collapse, hover
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type MutableRefObject } from "react";
 
 export interface UseCardBehaviorOptions {
   /** Initial expanded state */
@@ -29,7 +29,7 @@ export interface UseCardBehaviorReturn {
   unpin: () => void;
   collapse: () => void;
   expand: () => void;
-  cardRef: React.RefObject<HTMLDivElement>;
+  cardRef: MutableRefObject<HTMLDivElement | null>;
 }
 
 export function useCardBehavior(

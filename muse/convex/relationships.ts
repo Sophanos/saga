@@ -55,6 +55,19 @@ export const list = query({
 });
 
 /**
+ * Get a single relationship by ID
+ */
+export const get = query({
+  args: {
+    id: v.id("relationships"),
+  },
+  handler: async (ctx, args) => {
+    await verifyRelationshipAccess(ctx, args.id);
+    return await ctx.db.get(args.id);
+  },
+});
+
+/**
  * Get relationships for a specific entity
  */
 export const getForEntity = query({

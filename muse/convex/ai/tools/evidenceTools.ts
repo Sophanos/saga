@@ -59,7 +59,7 @@ const linkDeleteSchema = z.object({
   linkId: z.string(),
 });
 
-const evidenceOpSchema = z.discriminatedUnion("type", [
+const evidenceOpSchema = z.union([
   regionCreateRectSchema,
   regionCreatePolygonSchema,
   regionDeleteSchema,

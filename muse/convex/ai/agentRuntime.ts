@@ -122,10 +122,12 @@ function resolveSuggestionTargetId(
 
   if (toolName === "evidence_mutation") {
     const ops = getEvidenceOps(args);
-    const op = ops[0];
-    const opType = typeof op?.["type"] === "string" ? (op["type"] as string) : undefined;
-    const targetId = typeof op?.["targetId"] === "string" ? (op["targetId"] as string) : undefined;
-    if (opType === "link.create" && targetId) return targetId;
+    // Scan all ops for link.create to find targetId (common flow: region.create followed by link.create)
+    for (const op of ops) {
+      const opType = typeof op?.["type"] === "string" ? (op["type"] as string) : undefined;
+      const targetId = typeof op?.["targetId"] === "string" ? (op["targetId"] as string) : undefined;
+      if (opType === "link.create" && targetId) return targetId;
+    }
   }
 
   return undefined;
@@ -675,14 +677,22 @@ function resolveEvidenceSuggestion(
   args: Record<string, unknown>
 ): { targetType: KnowledgeSuggestionTargetType; operation: string } | null {
   const ops = getEvidenceOps(args);
+  if (ops.length === 0) return null;
+
+  // Prioritize link.create for routing - scan all ops (common flow: region.create followed by link.create)
+  for (const op of ops) {
+    const opType = typeof op?.["type"] === "string" ? (op["type"] as string) : undefined;
+    if (opType === "link.create") {
+      const targetType = resolveEvidenceTargetType(op["targetType"]);
+      return { targetType, operation: "evidence.link.create" };
+    }
+  }
+
+  // Fall back to first op for other operation types
   const op = ops[0];
   const opType = typeof op?.["type"] === "string" ? (op["type"] as string) : undefined;
   if (!opType) return null;
 
-  if (opType === "link.create") {
-    const targetType = resolveEvidenceTargetType(op["targetType"]);
-    return { targetType, operation: "evidence.link.create" };
-  }
   if (opType === "link.delete") {
     return { targetType: "document", operation: "evidence.link.delete" };
   }
@@ -1271,23 +1281,34 @@ async function resolveEvidenceTargetLabel(
   targetType: KnowledgeSuggestionTargetType,
   targetId: string
 ): Promise<string | undefined> {
+  const runQuery = ctx.runQuery as (query: unknown, args: unknown) => Promise<unknown>;
+  // @ts-ignore - Convex API types are too deep in this file.
+  const apiAny: any = api;
   if (targetType === "document") {
-    const doc = await ctx.db.get(targetId as Id<"documents">);
+    const doc = (await runQuery(apiAny.documents.get, {
+      id: targetId as Id<"documents">,
+    })) as Doc<"documents"> | null;
     if (!doc || doc.projectId !== projectId) return undefined;
     return doc.title ?? "Untitled document";
   }
   if (targetType === "entity") {
-    const entity = await ctx.db.get(targetId as Id<"entities">);
+    const entity = (await runQuery(apiAny.entities.get, {
+      id: targetId as Id<"entities">,
+    })) as Doc<"entities"> | null;
     if (!entity || entity.projectId !== projectId) return undefined;
     return entity.name;
   }
   if (targetType === "relationship") {
-    const rel = await ctx.db.get(targetId as Id<"relationships">);
+    const rel = (await runQuery(apiAny.relationships.get, {
+      id: targetId as Id<"relationships">,
+    })) as Doc<"relationships"> | null;
     if (!rel || rel.projectId !== projectId) return undefined;
     return rel.type ?? "Relationship";
   }
   if (targetType === "memory") {
-    const memory = await ctx.db.get(targetId as Id<"memories">);
+    const memory = (await runQuery(apiAny.memories.get, {
+      id: targetId as Id<"memories">,
+    })) as Doc<"memories"> | null;
     if (!memory || memory.projectId !== projectId) return undefined;
     return memory.text?.slice(0, 80);
   }
@@ -1304,13 +1325,18 @@ async function buildEvidenceApprovalPreview(
 
   const preview: EvidenceApprovalPreview = { kind: "evidence", regions: [], links: [] };
   const assetId = typeof ops[0]?.["assetId"] === "string" ? (ops[0]["assetId"] as string) : undefined;
+  const runQuery = ctx.runQuery as (query: unknown, args: unknown) => Promise<unknown>;
+  const apiAny: any = api;
+  const internalAny: any = internal;
 
   if (assetId) {
-    const asset = await ctx.db.get(assetId as Id<"projectAssets">);
+    const asset = (await runQuery(internalAny.projectAssets.getInternal, {
+      id: assetId as Id<"projectAssets">,
+    })) as Doc<"projectAssets"> | null;
     if (asset && asset.projectId === projectId) {
       preview.assetId = assetId;
       if (asset.storageId) {
-        const url = (await ctx.runQuery(api.projectAssets.getUrl, {
+        const url = (await runQuery(apiAny.projectAssets.getUrl, {
           storageId: asset.storageId,
         })) as string | null;
         preview.imageUrl = url ?? null;
@@ -1501,7 +1527,6 @@ async function executeRagTool(
   args: Record<string, unknown>,
   projectId: string
 ): Promise<unknown> {
-  // @ts-expect-error - Convex generated types are too deep
   const apiAny: any = api;
   switch (toolName) {
     case "search_context":

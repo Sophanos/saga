@@ -105,11 +105,12 @@ export function AssetEvidenceViewer({
   className,
   onCreateRegion,
 }: AssetEvidenceViewerProps): JSX.Element {
-  const bundle = useQuery(api.evidence.getAssetEvidenceBundle, {
+  const apiAny: any = api;
+  const bundle = useQuery(apiAny.evidence.getAssetEvidenceBundle, {
     projectId,
     assetId,
   }) as EvidenceBundle | undefined;
-  const createRegion = useMutation(api.evidence.createRegion);
+  const createRegion = useMutation(apiAny.evidence.createRegion);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);

@@ -21,7 +21,8 @@ export function EvidenceLinkPicker({
 }: EvidenceLinkPickerProps): JSX.Element {
   const entities = useMythosStore((s) => Array.from(s.world.entities.values()));
   const documents = useMythosStore((s) => s.document.documents);
-  const createEvidenceLink = useMutation(api.evidence.createEvidenceLink);
+  const apiAny: any = api;
+  const createEvidenceLink = useMutation(apiAny.evidence.createEvidenceLink);
 
   const [targetType, setTargetType] = useState<"entity" | "document">("entity");
   const [targetId, setTargetId] = useState<string>("");

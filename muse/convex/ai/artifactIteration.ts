@@ -233,7 +233,6 @@ export const iterateArtifact = action({
     }
 
     const apiAny: any = api;
-    // @ts-expect-error Convex internal API type is too deep for TS in this file.
     const internalAny: any = internal;
 
     const isEditor = await (ctx.runQuery as any)(

@@ -299,18 +299,6 @@
         "posthog-js",
       ],
     },
-    "packages/api-client": {
-      "name": "@mythos/api-client",
-      "version": "0.1.0",
-      "dependencies": {
-        "@mythos/core": "workspace:*",
-        "zod": "^3.24.1",
-      },
-      "devDependencies": {
-        "@mythos/typescript-config": "workspace:*",
-        "typescript": "^5.7.2",
-      },
-    },
     "packages/auth": {
       "name": "@mythos/auth",
       "version": "0.0.1",
@@ -1203,8 +1191,6 @@
     "@mythos/ai": ["@mythos/ai@workspace:packages/ai"],
 
     "@mythos/analytics": ["@mythos/analytics@workspace:packages/analytics"],
-
-    "@mythos/api-client": ["@mythos/api-client@workspace:packages/api-client"],
 
     "@mythos/auth": ["@mythos/auth@workspace:packages/auth"],
 

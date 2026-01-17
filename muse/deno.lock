@@ -139,14 +139,6 @@
           ]
         }
       },
-      "packages/api-client": {
-        "packageJson": {
-          "dependencies": [
-            "npm:typescript@^5.7.2",
-            "npm:zod@^3.24.1"
-          ]
-        }
-      },
       "packages/capabilities": {
         "packageJson": {
           "dependencies": [

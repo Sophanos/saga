@@ -33,6 +33,7 @@ const assetTypeValidator = v.union(
 
 const IMAGE_EVIDENCE_JOB_KIND = "image_evidence_suggestions";
 const IMAGE_EVIDENCE_JOB_DEBOUNCE_MS = 15000;
+const internalAny: any = internal;
 
 function shouldEmbedAsset(mimeType: string): boolean {
   return mimeType.startsWith("image/");
@@ -102,7 +103,7 @@ async function softDeleteEvidenceForAssets(
   assetIds: Id<"projectAssets">[]
 ): Promise<void> {
   if (assetIds.length === 0) return;
-  await ctx.runMutation(internal.evidence.softDeleteEvidenceForAssetsInternal, { assetIds });
+  await ctx.runMutation(internalAny.evidence.softDeleteEvidenceForAssetsInternal, { assetIds });
 }
 
 async function restoreEvidenceForAssets(
@@ -110,7 +111,7 @@ async function restoreEvidenceForAssets(
   assetIds: Id<"projectAssets">[]
 ): Promise<void> {
   if (assetIds.length === 0) return;
-  await ctx.runMutation(internal.evidence.restoreEvidenceForAssetsInternal, { assetIds });
+  await ctx.runMutation(internalAny.evidence.restoreEvidenceForAssetsInternal, { assetIds });
 }
 
 async function deleteEvidenceForAssets(
@@ -118,7 +119,7 @@ async function deleteEvidenceForAssets(
   assetIds: Id<"projectAssets">[]
 ): Promise<void> {
   if (assetIds.length === 0) return;
-  await ctx.runMutation(internal.evidence.deleteEvidenceForAssetsInternal, { assetIds });
+  await ctx.runMutation(internalAny.evidence.deleteEvidenceForAssetsInternal, { assetIds });
 }
 
 // ============================================================
