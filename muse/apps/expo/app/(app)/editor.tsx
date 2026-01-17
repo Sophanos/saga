@@ -17,6 +17,7 @@ import {
   useCurrentProject,
   useDocuments,
   useProjectStore,
+  useEditorSelectionStore,
   useFlowEnabled,
   useFocusLevel,
   useDimOpacity,
@@ -85,6 +86,8 @@ export default function EditorScreen(): JSX.Element {
   const documents = useDocuments();
   const currentDocumentId = useProjectStore((s) => s.currentDocumentId);
   const setCurrentProjectId = useProjectStore((s) => s.setCurrentProjectId);
+  const setEditorSelection = useEditorSelectionStore((s) => s.setSelection);
+  const clearEditorSelection = useEditorSelectionStore((s) => s.clearSelection);
   const pendingApplied = useRef(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -134,6 +137,17 @@ export default function EditorScreen(): JSX.Element {
   const hideQuickActions = aiPanelMode === 'side' || aiPanelMode === 'floating';
   const collaborationProjectId = queryProjectId ?? project?.id ?? null;
 
+  const handleSelectionChange = useCallback(
+    (selection: { from: number; to: number; text: string } | null, documentId: string | null) => {
+      if (!selection) {
+        clearEditorSelection();
+        return;
+      }
+      setEditorSelection(selection, documentId);
+    },
+    [clearEditorSelection, setEditorSelection]
+  );
+
   // Handle pending write_content application result
   const handleWriteContentApplied = useCallback(
     async (result: { applied: boolean; documentId?: string; snapshotJson?: string; summary?: string; error?: string }) => {
@@ -163,6 +177,10 @@ export default function EditorScreen(): JSX.Element {
     [clearPendingWriteContent, pendingWriteContent, resolveWriteContentFromEditor]
   );
 
+  useEffect(() => {
+    clearEditorSelection();
+  }, [activeDocumentId, clearEditorSelection]);
+
   // Web-only: render TipTap editor
   if (Platform.OS === 'web' && LazyEditorShell) {
     return (
@@ -186,6 +204,7 @@ export default function EditorScreen(): JSX.Element {
               flowSettings={flowSettings}
               scrollIndicatorRightOffset={scrollIndicatorRightOffset}
               widgetStatusMap={widgetStatusMap}
+              onSelectionChange={handleSelectionChange}
               collaboration={
                 collaborationProjectId && activeDocumentId && collaborationUser
                   ? {

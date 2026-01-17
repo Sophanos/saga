@@ -56,11 +56,18 @@ Positioning: Agents execute. Rhei remembers.
 | Planning Tools + Sub-Agents | Done | 100 |
 | Supabase -> Convex Migration | Done | 100 |
 | Real-Time Collaboration | In progress | 80 |
-| Widgets & Artifacts + Async (MVP1) | In progress ([details](#phase-5-widgets--artifacts--async-mvp1)) | 90 |
+| Widgets & Artifacts + Async (MVP1) | In progress ([details](#phase-5-widgets--artifacts--async-mvp1)) | 95 |
 | App Store Pricing + RevenueCat | In progress ([details](./PRICING_REVENUECAT_SETUP.md)) | 75 |
 | Overall MLP 1 | In progress | 97 |
 
 ## Recent Updates (condensed)
+
+**2026-01-17 (Images as Evidence)**
+- Evidence schema: `assetRegions` + `evidenceLinks` tables with portable selectors (xywh / SVG).
+- Evidence API: Convex `evidence.ts` CRUD + bundles for region/link review and UI previews.
+- PR routing: `evidence_mutation` tool creates Knowledge PRs; approvals apply evidence ops.
+- Inbox wiring: Approve/Reject in Inbox changes now routes to Knowledge PRs.
+- Background: `image_evidence_suggestions` analysis job can propose evidence links on upload.
 
 **2026-01-15 (Artifact Tools Implementation)**
 - **Artifact tools**: 7 tools wired into agentRuntime.ts - `artifact_tool`, `artifact_stage`, `artifact_diagram`, `artifact_table`, `artifact_timeline`, `artifact_prose`, `artifact_link`.
@@ -184,7 +191,7 @@ Positioning: Agents execute. Rhei remembers.
 | 2 | Knowledge PRs review surface + hardening | In progress | [Phase 2](#phase-2-knowledge-prs-hardening) |
 | 3 | Integrations + Citations (MCP) | Planned | [Phase 3](#phase-3-integrations--citations) |
 | 4 | Clarity/Policy Coach | Complete | [Phase 4](#phase-4-claritypolicy-coach) |
-| 5 | Widgets & Artifacts + Async (MVP1) | In progress (90%) | [Phase 5](#phase-5-widgets--artifacts--async-mvp1) |
+| 5 | Widgets & Artifacts + Async (MVP1) | In progress (95%) | [Phase 5](#phase-5-widgets--artifacts--async-mvp1) |
 
 ## UI Integration Analysis (MLP1 Phase 1)
 
@@ -287,14 +294,16 @@ Docs:
 | **Artifact Export** | Runtime PNG/SVG/JSON + Artifact Panel PDF export + batch JSON (batch PDF is text-first) | `apps/web/src/components/artifacts/ArtifactPanel.tsx`, `apps/web/src/services/export/artifacts/pdf.ts`, `apps/web/src/components/artifacts/runtime/` |
 | **Artifact References (v0)** | References/backlinks + graph view in Artifact Panel | `apps/web/src/components/artifacts/ArtifactReferences.tsx`, `apps/web/src/components/artifacts/ArtifactGraph.tsx` |
 
-### Missing (25%)
+### Missing (10%)
 
 | Component | What's Needed | Priority |
 |-----------|---------------|----------|
-| **Widget Execution Pipeline** | `widgetExecutions` table, `/ai/widgets` streaming, progress UI, preview modal, slash menu | P0 |
-| **Async Infrastructure** | `notificationInbox` table, workpool for long jobs, in-app toasts + inbox | P0 |
-| **Receipts Block (v1)** | Done - TipTap extension with staleness, sources, commands | Complete |
-| **Deep Linking** | Done - `rhei://` scheme, centralized parsing in `@mythos/core`, Expo + Tauri handlers | Complete |
+| **Widget Execution Pipeline** | ✅ Done - execution store, progress tile, preview modal, slash menu, command palette | Complete |
+| **Widget Thread Integration** | Thread UI in AI panel, click block → open thread, live intervention | P1 |
+| **Widget Learning** | Preference proposal, storage, prompt enhancement | P2 |
+| **Async Infrastructure** | `notificationInbox` table, workpool for long jobs, in-app toasts + inbox | P1 |
+| **Receipts Block (v1)** | ✅ Done - TipTap extension with staleness, sources, commands | Complete |
+| **Deep Linking** | ✅ Done - `rhei://` scheme, centralized parsing in `@mythos/core`, Expo + Tauri handlers | Complete |
 | **Batch PDF (rendered)** | Offscreen runtime render per artifact (SVG/PNG) + page-per-artifact PDF assembly | P2 |
 | **Platform Push** | Expo push, Web push (VAPID), Tauri OS notifications | P3 (post-MLP1) |
 
@@ -302,10 +311,12 @@ Docs:
 
 | Area | Item | Priority | Complexity | Effort | Notes |
 |------|------|----------|------------|--------|-------|
-| **Widgets (P0)** | Widget execution pipeline | P0 | High | 2-3 weeks | `widgetExecutions` table, `/ai/widgets` streaming, progress UI, preview modal |
-| | Slash menu widget trigger | P0 | Medium | 3-5 days | Editor integration, filter UI, keyboard navigation |
-| **Async (P0)** | Notification inbox | P0 | Medium | 1 week | `notificationInbox` table, inbox UI, toast integration |
-| | Workpool for long jobs | P0 | High | 1-2 weeks | `@convex-dev/workpool` setup, job status tracking |
+| **Widgets (P1)** | Thread integration | P1 | Medium | 1 week | Click inline block → open AI panel thread |
+| | Expandable progress details | P2 | Low | 2-3 days | Tool calls/timing in WidgetProgressTile |
+| | Receipts disclosure | P2 | Low | 2-3 days | Execution trace in WidgetPreviewModal |
+| | Deep links for threads | P2 | Low | 2-3 days | `rhei://project/:id/thread/:threadId` |
+| **Async (P1)** | Notification inbox | P1 | Medium | 1 week | `notificationInbox` table, inbox UI, toast integration |
+| | Workpool for long jobs | P1 | High | 1-2 weeks | `@convex-dev/workpool` setup, job status tracking |
 | **Artifacts (P1)** | Receipts block v1 | P1 | Medium | 3-5 days | Source picker, stable UX, stale badge |
 | | Batch PDF (rendered) | P2 | High | 1-2 weeks | Offscreen runtime render, SVG/PNG capture, PDF assembly |
 | **Deep Links (P1)** | Web URL routing | P2 | Medium | 3-5 days | React Router integration, artifact/{key} routes |
@@ -336,10 +347,12 @@ Docs:
 | | `VersionHistoryResultCard` | P1 | Medium | 2-3 days | Display version history in chat, diff preview, restore action |
 | | `CommentsResultCard` | P1 | Low | 1-2 days | Display comments list in chat with author, timestamp, selection context |
 | | `UserSearchResultCard` | P1 | Low | 1 day | Display user search results for @mention picker |
-| **Widgets** | Widget progress indicator | P0 | Medium | 2-3 days | Spinner/progress bar during widget execution |
-| | Widget preview modal | P0 | Medium | 3-5 days | Preview artifact before confirm/apply |
-| | Slash menu widget picker | P0 | Medium | 3-5 days | `/widget` filter UI with categories, keyboard nav |
-| | Widget error state | P0 | Low | 1 day | Error display with retry action |
+| **Widgets** | ~~Widget progress indicator~~ | ✅ | Done | Done | `WidgetProgressTile.tsx` |
+| | ~~Widget preview modal~~ | ✅ | Done | Done | `WidgetPreviewModal.tsx` |
+| | ~~Slash menu widget picker~~ | ✅ | Done | Done | `Canvas.tsx` slash menu integration |
+| | ~~Widget error state~~ | ✅ | Done | Done | Error display in preview modal |
+| | Widget thread UI | P1 | Medium | 1 week | Click block → open AI panel thread |
+| | Expandable progress details | P2 | Low | 2-3 days | Tool calls/timing in progress tile |
 | **Artifacts** | Receipts source picker | P1 | Medium | 2-3 days | Dropdown/modal to select artifact sources |
 | | Artifact staleness badge | P1 | Low | 1 day | Visual indicator for stale artifacts |
 | | Artifact compare toggle | P1 | Low | 1 day | Button to toggle split/diff view modes |
@@ -405,6 +418,7 @@ Docs:
 | **Web Research** | `web_search` | Search the internet (Parallel Web) | Auto |
 | | `web_extract` | Extract full page content from URL | Auto |
 | **Entity Management** | `graph_mutation` | Create/update/delete entities + relationships | Risk-based |
+| **Evidence** | `evidence_mutation` | Propose image regions + evidence links (Knowledge PRs) | User approval |
 | **Analysis** | `analyze_content` | Unified analysis (entities/consistency/logic/clarity/policy) | Auto |
 | | `analyze_image` | Extract visual details from image | Auto |
 | **Project Setup** | `project_manage` | Bootstrap project (template + seed flag) | User approval |
@@ -492,6 +506,10 @@ Storage flow:
 ```
 Upload → Convex _storage → projectAssets table → Qdrant saga_unified (image_clip 512-dim)
 ```
+
+Evidence layer:
+- `assetRegions` + `evidenceLinks` tables with portable selectors (xywh / SVG)
+- `evidence_mutation` Knowledge PRs for region/link approvals
 
 Env vars:
 - `QDRANT_COLLECTION_UNIFIED=saga_unified`

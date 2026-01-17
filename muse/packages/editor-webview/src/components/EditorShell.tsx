@@ -76,6 +76,11 @@ export interface EditorShellProps {
   scrollIndicatorRightOffset?: number;
   /** Widget status per document - for TabBar indicators */
   widgetStatusMap?: Record<string, TabWidgetStatus>;
+  /** Notify host app about selection changes */
+  onSelectionChange?: (
+    selection: { from: number; to: number; text: string } | null,
+    documentId: string | null
+  ) => void;
 }
 
 const CSS_TOKENS = `
@@ -206,6 +211,63 @@ const CSS_TOKENS = `
 }
 `;
 
+interface ApplyInlineWidgetPayload {
+  requestId: string;
+  executionId: string;
+  widgetId: string;
+  projectId: string;
+  content: string;
+  range?: { from: number; to: number };
+}
+
+interface ApplyInlineWidgetResult {
+  requestId: string;
+  executionId: string;
+  applied: boolean;
+  error?: string;
+}
+
+function applyInlineWidgetToEditor(
+  editor: any,
+  payload: ApplyInlineWidgetPayload
+): { applied: boolean; error?: string } {
+  if (!editor || editor.isDestroyed) {
+    return { applied: false, error: 'Editor is not ready' };
+  }
+
+  const safeFrom = Math.max(0, payload.range?.from ?? editor.state.selection.from);
+  const safeTo = Math.max(safeFrom, payload.range?.to ?? editor.state.selection.to);
+
+  try {
+    editor.commands.setExecutionMarkerProjectId?.(payload.projectId);
+    editor
+      .chain()
+      .focus()
+      .insertContentAt({ from: safeFrom, to: safeTo }, payload.content)
+      .run();
+
+    const endPos = editor.state.selection.from;
+    if (endPos > safeFrom) {
+      editor
+        .chain()
+        .setTextSelection({ from: safeFrom, to: endPos })
+        .setExecutionMarker?.({
+          executionId: payload.executionId,
+          widgetId: payload.widgetId,
+          projectId: payload.projectId,
+        })
+        .run();
+
+      editor.commands.setAppliedHighlight?.({ from: safeFrom, to: endPos });
+      editor.commands.setTextSelection(endPos);
+    }
+
+    return { applied: true };
+  } catch (error) {
+    return { applied: false, error: error instanceof Error ? error.message : 'Apply failed' };
+  }
+}
+
 // Extract plain text from HTML for preview using DOM parser
 function extractPreviewText(html: string, maxLength = 280): string {
   if (!html || html === '<p></p>') return '';
@@ -279,6 +341,7 @@ export function EditorShell({
   flowSettings,
   scrollIndicatorRightOffset = 0,
   widgetStatusMap = {},
+  onSelectionChange,
 }: EditorShellProps): JSX.Element {
   useEffect(() => {
     const styleId = 'editor-webview-tokens';
@@ -446,6 +509,37 @@ export function EditorShell({
     editorInstanceRef.current = editor;
     setReadyDocumentId(collaborationDocumentId ?? null);
   }, [collaborationDocumentId]);
+
+  const handleSelectionChange = useCallback(
+    (selection: { from: number; to: number; text: string } | null) => {
+      const documentId = collaborationDocumentId ?? activeDocId ?? null;
+      onSelectionChange?.(selection, documentId);
+    },
+    [activeDocId, collaborationDocumentId, onSelectionChange]
+  );
+
+  useEffect(() => {
+    const handleApplyInline = (event: Event) => {
+      const customEvent = event as CustomEvent<ApplyInlineWidgetPayload>;
+      const payload = customEvent.detail;
+      if (!payload) return;
+      const editor = editorInstanceRef.current;
+      const result = applyInlineWidgetToEditor(editor, payload);
+      window.dispatchEvent(
+        new CustomEvent<ApplyInlineWidgetResult>('widget:apply-inline-result', {
+          detail: {
+            requestId: payload.requestId,
+            executionId: payload.executionId,
+            applied: result.applied,
+            error: result.error,
+          },
+        })
+      );
+    };
+
+    window.addEventListener('widget:apply-inline', handleApplyInline);
+    return () => window.removeEventListener('widget:apply-inline', handleApplyInline);
+  }, []);
 
   // Apply pending write_content when editor is ready and document matches
   useEffect(() => {
@@ -661,6 +755,7 @@ export function EditorShell({
             title={activeDoc?.title ?? ''}
             onTitleChange={handleTitleChange}
             onChange={handleContentChange}
+            onSelectionChange={handleSelectionChange}
             onEditorReady={handleEditorReady}
             onSyncError={handleSyncError}
             fontStyle={fontStyle}
@@ -678,6 +773,7 @@ export function EditorShell({
             content={activeDoc?.content ?? ''}
             onTitleChange={handleTitleChange}
             onChange={handleContentChange}
+            onSelectionChange={handleSelectionChange}
             onEditorReady={handleEditorReady}
             fontStyle={fontStyle}
             isSmallText={isSmallText}

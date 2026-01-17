@@ -48,7 +48,6 @@ export function WidgetPreviewModal({ onConfirm }: WidgetPreviewModalProps) {
   const error = useWidgetError();
 
   const setTitle = useWidgetExecutionStore((s) => s.setTitle);
-  const reset = useWidgetExecutionStore((s) => s.reset);
   const cancel = useWidgetExecutionStore((s) => s.cancel);
 
   const [showFullPreview, setShowFullPreview] = useState(false);
@@ -59,8 +58,7 @@ export function WidgetPreviewModal({ onConfirm }: WidgetPreviewModalProps) {
 
   const handleConfirm = useCallback(() => {
     onConfirm();
-    reset();
-  }, [onConfirm, reset]);
+  }, [onConfirm]);
 
   const handleCancel = useCallback(() => {
     cancel();

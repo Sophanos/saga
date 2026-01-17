@@ -71,6 +71,17 @@ export type {
 } from "./commandPalette";
 
 // ============================================================
+// EDITOR SELECTION STORE
+// ============================================================
+export {
+  useEditorSelectionStore,
+  useEditorSelection,
+  useEditorSelectionDocumentId,
+  useHasEditorSelection,
+} from "./editorSelection";
+export type { EditorSelectionRange } from "./editorSelection";
+
+// ============================================================
 // LAYOUT STORE
 // ============================================================
 export {

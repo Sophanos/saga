@@ -18,9 +18,35 @@ export { ImagePicker } from "./components/image-picker";
 export { Toaster, toast, toastConfig } from "./components/toaster";
 export { TOC } from "./components/toc";
 
+// InlineCard - unified card system for entities, widgets, artifacts
+export {
+  InlineCard,
+  InlineCardHeader,
+  InlineCardBody,
+  InlineCardTabs,
+  InlineCardContent,
+  InlineCardInput,
+  InlineCardActions,
+  InlineCardActionButton,
+  useCardBehavior,
+} from "./components/inline-card";
+
 // Types
 export type { AvatarProps } from "./components/avatar";
 export type { FormFieldProps } from "./components/form-field";
+export type {
+  InlineCardVariant,
+  InlineCardProps,
+  InlineCardHeaderProps,
+  InlineCardActionsProps,
+  InlineCardActionButtonProps,
+  InlineCardTabsProps,
+  InlineCardTab,
+  InlineCardContentProps,
+  InlineCardInputProps,
+  UseCardBehaviorOptions,
+  UseCardBehaviorReturn,
+} from "./components/inline-card";
 export type { SelectProps, SelectOption } from "./components/select";
 export type { TextAreaProps } from "./components/textarea";
 export type {

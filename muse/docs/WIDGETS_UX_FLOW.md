@@ -906,35 +906,47 @@ useActivityStore.getState().syncFromWidgetExecution({
 
 ## Implementation Phases
 
-### Phase 1: Foundation (Current)
-- [x] Widget execution store
-- [x] WidgetProgressTile
-- [x] WidgetPreviewModal
-- [x] Command palette integration
-- [ ] Basic inline block
+### Phase 1: Foundation ✅ (95%)
+- [x] Widget execution store (`packages/state/src/widgetExecution.ts`)
+- [x] WidgetProgressTile with stage labels (`apps/expo/src/components/widgets/WidgetProgressTile.tsx`)
+- [x] WidgetPreviewModal with title field, preview truncation (`apps/expo/src/components/widgets/WidgetPreviewModal.tsx`)
+- [x] Command palette widget filter + category (`apps/expo/src/components/CommandPalette.tsx`)
+- [x] Slash menu widget picker (`apps/web/src/components/canvas/Canvas.tsx`)
+- [x] Widget capabilities registry (`packages/capabilities/src/registry.ts`)
+- [x] Recent widgets tracking (per-project)
+- [x] Selection store wiring (`packages/state/src/editorSelection.ts`)
+- [x] Execution marker extension (`packages/editor/src/extensions/execution-marker.ts`)
+- [x] Applied highlight with 3.5s fade (`packages/editor/src/extensions/applied-highlight.ts`)
+- [x] Revert functionality on hover (`apps/web/src/components/widgets/ExecutionMarkerOverlay.tsx`)
+- [x] Inline apply function (`apps/web/src/lib/widgets/applyInlineWidget.ts`)
+- [ ] Expandable details in progress tile (tool calls, timing)
+- [ ] Receipts disclosure in preview modal
 
-### Phase 2: Activity System
+### Phase 2: Activity System ✅ (90%)
 - [x] ActivityBell component
 - [x] ActivityInbox dropdown
 - [x] TabIndicator component (with shimmer effect)
-- [ ] Execution → Activity item flow (wiring complete, needs E2E test)
+- [x] Activity store with selectors (`packages/state/src/activity.ts`)
+- [x] Widget status sync to activity/inbox stores
+- [ ] E2E test for execution → activity flow
 
-### Phase 3: Thread Integration
+### Phase 3: Thread Integration (0%)
 - [ ] Widget thread UI in AI panel
-- [ ] Click block → open thread
-- [ ] Live intervention support
-- [ ] Thread persistence
+- [ ] Click inline block → open thread
+- [ ] Live intervention support (user types during generation)
+- [ ] Thread persistence (store threadId in widget execution)
+- [ ] Deep links for threads (`rhei://project/:id/thread/:threadId`)
 
-### Phase 4: Learning
-- [ ] Preference proposal UI
-- [ ] Preference storage
-- [ ] Prompt enhancement with preferences
-- [ ] Global vs widget-level preferences
+### Phase 4: Learning (0%)
+- [ ] Preference proposal UI ("Remember this preference?")
+- [ ] Preference storage (widget-level vs global)
+- [ ] Prompt enhancement with stored preferences
+- [ ] Comment-based learning detection
 
-### Phase 5: Async
-- [ ] Background execution queue
+### Phase 5: Async (0%)
+- [ ] Background execution queue (`@convex-dev/workpool`)
 - [ ] Progress updates via SSE/WebSocket
-- [ ] Notification on completion
+- [ ] Notification on completion (bell + toast)
 - [ ] Retry/cancel for async jobs
 
 ---

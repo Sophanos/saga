@@ -12,6 +12,8 @@ import type {
   WidgetExecutionStatus,
   WidgetInvokeRequest,
 } from '@mythos/agent-protocol';
+import { useActivityStore } from './activity';
+import { useInboxStore } from './inbox';
 
 // =============================================================================
 // Types
@@ -71,6 +73,8 @@ export type WidgetStreamExecutor = (
 export interface WidgetExecutionActions {
   start: (params: WidgetStartParams, executor: WidgetStreamExecutor) => void;
   setTitle: (title: string) => void;
+  setError: (error: string) => void;
+  markApplied: () => void;
   reset: () => void;
   cancel: () => void;
   getApplyData: () => {
@@ -78,8 +82,70 @@ export interface WidgetExecutionActions {
     selection: WidgetSelection | null;
     currentWidgetId: string | null;
     projectId: string | null;
+    documentId: string | null;
+    widgetLabel: string | null;
     executionId: string | null;
   };
+}
+
+type InboxActivityStatus = 'running' | 'ready' | 'applied' | 'failed';
+
+function getStatusText(status: WidgetExecutionStatus): string {
+  switch (status) {
+    case 'gathering':
+      return 'Gathering context...';
+    case 'generating':
+      return 'Generating...';
+    case 'formatting':
+      return 'Formatting...';
+    case 'preview':
+      return 'Ready to view';
+    case 'done':
+      return 'Applied';
+    case 'error':
+      return 'Failed';
+    default:
+      return 'Working...';
+  }
+}
+
+function mapStatusToInbox(status: WidgetExecutionStatus): InboxActivityStatus {
+  switch (status) {
+    case 'gathering':
+    case 'generating':
+    case 'formatting':
+      return 'running';
+    case 'preview':
+      return 'ready';
+    case 'done':
+      return 'applied';
+    case 'error':
+      return 'failed';
+    default:
+      return 'running';
+  }
+}
+
+function syncActivityAndInbox(params: {
+  executionId: string;
+  widgetId: string;
+  label: string;
+  status: WidgetExecutionStatus;
+  documentId?: string | null;
+  documentName?: string | null;
+  projectId: string;
+}): void {
+  useActivityStore.getState().syncFromWidgetExecution(params);
+  useInboxStore.getState().syncActivityFromWidgetExecution({
+    executionId: params.executionId,
+    widgetId: params.widgetId,
+    label: params.label,
+    status: mapStatusToInbox(params.status),
+    statusText: getStatusText(params.status),
+    documentId: params.documentId ?? null,
+    documentName: params.documentName ?? null,
+    projectId: params.projectId,
+  });
 }
 
 // =============================================================================
@@ -124,6 +190,8 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
         parameters,
       } = params;
 
+      const executionId = `widget-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
       set((state) => {
         state.status = 'gathering';
         state.currentWidgetId = widgetId;
@@ -136,9 +204,18 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
         state.partialOutput = '';
         state.title = '';
         state.manifestDraft = null;
-        state.executionId = null;
+        state.executionId = executionId;
         state.error = null;
         state.abortController = controller;
+      });
+
+      syncActivityAndInbox({
+        executionId,
+        widgetId,
+        label: widgetLabel,
+        status: 'gathering',
+        documentId,
+        projectId,
       });
 
       executor(
@@ -160,18 +237,40 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
               set((state) => {
                 state.status = stage;
               });
+              const state = get();
+              if (state.executionId && state.currentWidgetId && state.projectId) {
+                syncActivityAndInbox({
+                  executionId: state.executionId,
+                  widgetId: state.currentWidgetId,
+                  label: state.widgetLabel ?? 'Widget',
+                  status: stage,
+                  documentId: state.documentId,
+                  projectId: state.projectId,
+                });
+              }
             }
 
             const result = data.result;
             if (result) {
               set((state) => {
                 state.status = 'preview';
-                state.executionId = result.executionId ?? state.executionId;
+                state.executionId = state.executionId ?? result.executionId ?? state.executionId;
                 state.widgetType = result.widgetType ?? state.widgetType;
                 state.previewContent = state.partialOutput || state.previewContent;
                 state.title = result.titleSuggestion ?? state.title;
                 state.manifestDraft = result.manifestDraft ?? state.manifestDraft;
               });
+              const state = get();
+              if (state.executionId && state.currentWidgetId && state.projectId) {
+                syncActivityAndInbox({
+                  executionId: state.executionId,
+                  widgetId: state.currentWidgetId,
+                  label: state.widgetLabel ?? 'Widget',
+                  status: 'preview',
+                  documentId: state.documentId,
+                  projectId: state.projectId,
+                });
+              }
             }
           },
           onDelta: (content) => {
@@ -186,6 +285,17 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
                 state.status = 'preview';
                 state.previewContent = partialOutput;
               });
+              const state = get();
+              if (state.executionId && state.currentWidgetId && state.projectId) {
+                syncActivityAndInbox({
+                  executionId: state.executionId,
+                  widgetId: state.currentWidgetId,
+                  label: state.widgetLabel ?? 'Widget',
+                  status: 'preview',
+                  documentId: state.documentId,
+                  projectId: state.projectId,
+                });
+              }
             }
           },
           onError: (error) => {
@@ -193,6 +303,17 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
               state.status = 'error';
               state.error = error.message;
             });
+            const state = get();
+            if (state.executionId && state.currentWidgetId && state.projectId) {
+              syncActivityAndInbox({
+                executionId: state.executionId,
+                widgetId: state.currentWidgetId,
+                label: state.widgetLabel ?? 'Widget',
+                status: 'error',
+                documentId: state.documentId,
+                projectId: state.projectId,
+              });
+            }
           },
         }
       );
@@ -202,6 +323,41 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
       set((state) => {
         state.title = title;
       }),
+
+    setError: (error) => {
+      set((state) => {
+        state.status = 'error';
+        state.error = error;
+      });
+      const state = get();
+      if (state.executionId && state.currentWidgetId && state.projectId) {
+        syncActivityAndInbox({
+          executionId: state.executionId,
+          widgetId: state.currentWidgetId,
+          label: state.widgetLabel ?? 'Widget',
+          status: 'error',
+          documentId: state.documentId,
+          projectId: state.projectId,
+        });
+      }
+    },
+
+    markApplied: () => {
+      const state = get();
+      if (state.executionId && state.currentWidgetId && state.projectId) {
+        syncActivityAndInbox({
+          executionId: state.executionId,
+          widgetId: state.currentWidgetId,
+          label: state.widgetLabel ?? 'Widget',
+          status: 'done',
+          documentId: state.documentId,
+          projectId: state.projectId,
+        });
+      }
+      set((draft) => {
+        draft.status = 'done';
+      });
+    },
 
     reset: () =>
       set((state) => {
@@ -217,8 +373,8 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
     },
 
     getApplyData: () => {
-      const { previewContent, selection, currentWidgetId, projectId, executionId } = get();
-      return { previewContent, selection, currentWidgetId, projectId, executionId };
+      const { previewContent, selection, currentWidgetId, projectId, documentId, widgetLabel, executionId } = get();
+      return { previewContent, selection, currentWidgetId, projectId, documentId, widgetLabel, executionId };
     },
   }))
 );

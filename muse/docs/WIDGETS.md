@@ -562,15 +562,38 @@ Track full funnel with context signals:
 - High contrast support for badges and highlights.
 
 ### Implementation anchors (current repo)
-- Widget definitions and command registry: `muse/packages/commands/`
-- Execution mode flags and capability wiring: `muse/packages/capabilities/`
-- Artifact and manifest types: `muse/packages/manifest/`, `muse/packages/core/`
-- Entity lookup and project context: `muse/packages/memory/`, `muse/packages/context/`
-- UI surfaces (inline/modal/manifest block): `muse/packages/ui/`, `muse/packages/editor/`, `muse/packages/editor-webview/`
-- Prompts: `muse/packages/prompts/`
-- Backend schema and actions: `muse/convex/`
-- Client access: `muse/packages/convex-client/`, `muse/packages/api-client/`
-- Tier limits and gating: `muse/packages/tier-config/`
+
+**Widget Pipeline (✅ Done)**
+- Widget capabilities registry: `packages/capabilities/src/registry.ts`
+- Widget command definitions: `packages/commands/src/definitions/widget.ts`
+- Widget execution store: `packages/state/src/widgetExecution.ts`
+- Selection store: `packages/state/src/editorSelection.ts`
+- Activity store: `packages/state/src/activity.ts`
+- Widget types: `packages/agent-protocol/src/widgets.ts`
+
+**UI Components (✅ Done)**
+- WidgetProgressTile: `apps/expo/src/components/widgets/WidgetProgressTile.tsx`
+- WidgetPreviewModal: `apps/expo/src/components/widgets/WidgetPreviewModal.tsx`
+- ExecutionMarkerOverlay: `apps/web/src/components/widgets/ExecutionMarkerOverlay.tsx`
+- CommandPalette (widget filter): `apps/expo/src/components/CommandPalette.tsx`
+- Slash menu (widgets): `apps/web/src/components/canvas/Canvas.tsx`
+
+**Editor Extensions (✅ Done)**
+- Execution marker: `packages/editor/src/extensions/execution-marker.ts`
+- Applied highlight: `packages/editor/src/extensions/applied-highlight.ts`
+- Inline apply: `apps/web/src/lib/widgets/applyInlineWidget.ts`
+
+**Shared UI (✅ Done)**
+- InlineCard system: `packages/ui/src/components/inline-card/`
+
+**Backend**
+- Widget streaming: `convex/ai/widgets.ts` (planned)
+- Artifact schema: `convex/schema.ts`, `convex/artifacts.ts`
+
+**Supporting**
+- Deep links: `packages/core/src/deeplinks/rhei.ts`
+- Prompts: `packages/prompts/`
+- Tier limits: `packages/tier-config/`
 
 ### Success metric
 - Primary KPI: artifact reuse rate, weighted (linked/referenced later > re-viewed or exported).
@@ -677,6 +700,9 @@ Track full funnel with context signals:
 - Dashboard: who can edit the pinned dashboard in collaboration?
 - Is inbox a block or its own pinned artifact? (deferred past MVP1)
 - Goals block definition and data model (deferred past MVP1)
+
+### Deferred tasks
+- Add deep links for widget executions/threads (`rhei://project/:id/execution/:executionId`, `rhei://project/:id/thread/:threadId`) so activity entries and inline blocks can jump back to provenance.
 
 ### Widget output versioning
 
