@@ -61,6 +61,7 @@ export function WidgetProvider({ children }: WidgetProviderProps) {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     if (!isAuthenticated) return;
+    if (!projectId) return;
 
     const handler = (event: Event) => {
       const customEvent = event as CustomEvent<{
