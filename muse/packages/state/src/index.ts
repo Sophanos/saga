@@ -402,6 +402,7 @@ export {
   useNeedsAttentionCount,
   useRunningCount,
   useHasRunningWidgets,
+  useWidgetStatusByDocument,
 } from "./activity";
 export type {
   ActivityTab,
@@ -409,7 +410,69 @@ export type {
   ActivityItem,
   ActivityState,
   ActivityActions,
+  TabWidgetStatus,
 } from "./activity";
+
+// ============================================================
+// INBOX STORE
+// ============================================================
+export {
+  useInboxStore,
+  useInboxOpen,
+  useInboxTab,
+  useInboxCollapsedSections,
+  usePulseItems,
+  useChangeItems,
+  useActivityInboxItems,
+  useArtifactInboxItems,
+  usePulseCount,
+  useChangesPendingCount,
+  useActivityRunningCount,
+  useActivityNeedsAttentionCount,
+  useStaleArtifactCount,
+  useTotalInboxCount,
+  useHasRunningActivity,
+  useUnreadCountByType,
+  useAllInboxItems,
+  useGroupedInboxItems,
+} from "./inbox";
+export type {
+  InboxTab,
+  InboxItemType,
+  InboxItemStatus,
+  PulseSignalType,
+  InboxItem,
+  PulseSignal,
+  ChangeItem,
+  ActivityItem as InboxActivityItem,
+  ArtifactItem as InboxArtifactItem,
+  AnyInboxItem,
+  InboxState,
+  InboxActions,
+} from "./inbox";
+
+// ============================================================
+// HISTORY STORE
+// ============================================================
+export {
+  useHistoryStore,
+  useHistoryOpen,
+  useHistoryTarget,
+  useHistoryRevisions,
+  useHistoryLoading,
+  useHistoryError,
+  useHistorySelectedRevision,
+  useHistoryCompareRevision,
+  useSelectedRevision,
+  useCompareRevision,
+  useIsCompareMode,
+} from "./history";
+export type {
+  HistoryTargetType,
+  HistoryRevision,
+  HistoryState,
+  HistoryActions,
+} from "./history";
 
 // ============================================================
 // RESET UTILITIES

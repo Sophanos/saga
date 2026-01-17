@@ -4,6 +4,7 @@ import { ModeToggle } from "./ModeToggle";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { CollaboratorsBar } from "./collaboration/CollaboratorsBar";
 import { FlowToggleButton } from "./flow";
+import { InboxBell } from "./inbox";
 import { useMythosStore } from "../stores";
 import { useActiveTotalWritingTime, useIsGardenerMode } from "@mythos/state";
 
@@ -105,6 +106,7 @@ export function Header() {
         <div className="w-px h-6 bg-mythos-border-default mx-1" />
         <ModeToggle />
         <div className="w-px h-6 bg-mythos-border-default mx-1" />
+        <InboxBell />
       </div>
     </header>
   );

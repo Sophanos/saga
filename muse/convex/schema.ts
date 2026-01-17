@@ -832,6 +832,35 @@ export default defineSchema({
     .index("by_target_status", ["targetType", "targetId", "status"]),
 
   // ============================================================
+  // ANALYSIS OUTBOX
+  // ============================================================
+  analysisJobs: defineTable({
+    projectId: v.id("projects"),
+    userId: v.string(),
+    documentId: v.optional(v.id("documents")),
+    kind: v.string(),
+    status: v.string(), // "pending" | "processing" | "succeeded" | "failed"
+    attempts: v.number(),
+    lastError: v.optional(v.string()),
+    scheduledFor: v.number(),
+    contentHash: v.optional(v.string()),
+    dedupeKey: v.optional(v.string()),
+    processingRunId: v.optional(v.string()),
+    processingStartedAt: v.optional(v.number()),
+    leaseExpiresAt: v.optional(v.number()),
+    payload: v.any(),
+    resultSummary: v.optional(v.string()),
+    resultRef: v.optional(v.any()),
+    dirty: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status_scheduledFor", ["status", "scheduledFor"])
+    .index("by_project_kind", ["projectId", "kind"])
+    .index("by_document_kind", ["documentId", "kind"])
+    .index("by_dedupeKey", ["dedupeKey"]),
+
+  // ============================================================
   // AI MEMORIES
   // ============================================================
   memories: defineTable({
@@ -1407,6 +1436,43 @@ export default defineSchema({
     .index("by_project_user_createdAt", ["projectId", "userId", "createdAt"])
     .index("by_document_createdAt", ["documentId", "createdAt"])
     .index("by_user_createdAt", ["userId", "createdAt"]),
+
+  // ============================================================
+  // PULSE SIGNALS (Ambient intelligence alerts)
+  // ============================================================
+  pulseSignals: defineTable({
+    projectId: v.id("projects"),
+    signalType: v.union(
+      v.literal("entity_detected"),
+      v.literal("voice_drift"),
+      v.literal("consistency_issue"),
+      v.literal("suggestion")
+    ),
+    title: v.string(),
+    description: v.optional(v.string()),
+    targetDocumentId: v.optional(v.id("documents")),
+    targetEntityId: v.optional(v.id("entities")),
+    // Context about where the signal was detected
+    context: v.optional(v.string()), // e.g., "Chapter 3", "Scene 4"
+    excerpt: v.optional(v.string()), // Relevant text excerpt
+    confidence: v.optional(v.number()), // 0-1 confidence score
+    status: v.union(
+      v.literal("unread"),
+      v.literal("read"),
+      v.literal("dismissed"),
+      v.literal("actioned")
+    ),
+    // Provenance
+    sourceAgentId: v.optional(v.string()),
+    sourceStreamId: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project_status_createdAt", ["projectId", "status", "createdAt"])
+    .index("by_project_createdAt", ["projectId", "createdAt"])
+    .index("by_project_signalType", ["projectId", "signalType"])
+    .index("by_document", ["targetDocumentId"]),
 
   // ============================================================
   // VECTOR DELETE OUTBOX

@@ -22,6 +22,7 @@ import { AIPanel, AIFloatingButton } from '@/components/ai';
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel';
 import { KnowledgePRsPanel } from '@/components/knowledge/KnowledgePRsPanel';
 import { FlowOverlay } from '@/components/flow';
+import { InboxBell } from '@/components/inbox';
 import { useArtifactSync } from '@/hooks/useArtifactSync';
 
 interface AppShellProps {
@@ -300,6 +301,15 @@ export function AppShell({ children }: AppShellProps) {
 
       {showFloating && <AIPanel mode="floating" />}
       {showFAB && <AIFloatingButton />}
+
+      {!flowEnabled && (() => {
+        const panelOffset = showSidePanel ? aiPanelWidth + spacing[3] : showArtifactPanel ? artifactPanelWidth + spacing[3] : spacing[3];
+        return (
+          <View style={[styles.activityBellContainer, { right: panelOffset }]}>
+            <InboxBell rightOffset={panelOffset} />
+          </View>
+        );
+      })()}
     </View>
   );
 }
@@ -564,5 +574,10 @@ const styles = StyleSheet.create({
   tooltipLabel: {
     fontSize: typography.xs,
     fontWeight: typography.medium,
+  },
+  activityBellContainer: {
+    position: 'absolute',
+    top: spacing[3],
+    zIndex: 60,
   },
 });
