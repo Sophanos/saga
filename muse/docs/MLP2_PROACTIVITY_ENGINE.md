@@ -235,19 +235,24 @@ This turns “Notice: Image + Text embeddings” into experiential UI.
 
 ## Decision lock: Unified vectors (Option B)
 
-We will move to a single Qdrant collection with **named vectors** (text + image + sparse), replacing the dual-collection fusion approach.
+We now use a single Qdrant collection with **named vectors** (text + image + sparse), replacing the dual-collection fusion approach.
 
-**Why now:** no active users → minimal migration risk.
+**Current shape:**
+- `saga_unified` collection
+- `text_qwen` (4096, cosine)
+- `image_clip` (512, cosine)
+- `sparse_bm25` (optional)
 
-**Migration plan (high-level):**
-1) Create unified collection (e.g., `saga_unified`) with named vectors:
-   - `text_qwen` (4096, cosine)
-   - `image_clip` (512, cosine)
-   - `sparse_bm25` (optional)
-2) Dual-write new content to old + unified collections.
-3) Backfill existing content into unified collection.
-4) Switch query aggregator to unified collection.
-5) Remove dual-write + deprecate old collections.
+**Migration switches:**
+- `QDRANT_COLLECTION_UNIFIED`
+- `QDRANT_READ_FROM_UNIFIED`
+- `QDRANT_DUAL_WRITE`
+
+**Cutover plan (ops):**
+1) Dual-write new content to legacy + unified.
+2) Backfill existing content into unified.
+3) Switch reads to unified.
+4) Remove dual-write + deprecate old collections.
 
 ---
 

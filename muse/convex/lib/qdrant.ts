@@ -7,7 +7,8 @@
  * Configuration:
  * - QDRANT_URL: Base URL for Qdrant instance
  * - QDRANT_API_KEY: API key for authentication
- * - QDRANT_COLLECTION: Collection name (default: saga_vectors)
+ * - QDRANT_COLLECTION: Legacy collection name (default: saga_vectors)
+ * - QDRANT_COLLECTION_UNIFIED: Unified collection name (default: saga_unified)
  */
 
 // ============================================================
@@ -24,7 +25,10 @@ const DEFAULT_RETRY_MAX_DELAY_MS = 5000;
 // Types
 // ============================================================
 
-export type QdrantVector = number[] | Record<string, number[]>;
+export type QdrantDenseVector = number[];
+export type QdrantNamedVector = Record<string, QdrantDenseVector>;
+export type QdrantSparseVector = { indices: number[]; values: number[] };
+export type QdrantVector = QdrantDenseVector | QdrantNamedVector;
 
 export interface QdrantPoint {
   id: string;
@@ -35,6 +39,12 @@ export interface QdrantPoint {
 export interface QdrantSearchResult {
   id: string;
   score: number;
+  payload: Record<string, unknown>;
+  vector?: QdrantVector;
+}
+
+export interface QdrantRetrievedPoint {
+  id: string;
   payload: Record<string, unknown>;
   vector?: QdrantVector;
 }
@@ -144,9 +154,16 @@ function resolveSearchVector(vector: QdrantVector): { vector: number[]; using?: 
   if (entries.length === 0) {
     throw new QdrantError("Named vector search requires at least one vector");
   }
+  if (entries.length > 1) {
+    throw new QdrantError("Search expects exactly one named vector");
+  }
 
   const [name, values] = entries[0];
   return { vector: values, using: name };
+}
+
+export function namedDense(name: string, vector: number[]): QdrantNamedVector {
+  return { [name]: vector };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -264,6 +281,57 @@ export async function searchPoints(
   );
 
   return response.result;
+}
+
+export async function queryPoints(
+  body: Record<string, unknown>,
+  config?: Partial<QdrantConfig>
+): Promise<QdrantSearchResult[]> {
+  const envConfig = getQdrantConfig();
+  const finalConfig: QdrantConfig = { ...envConfig, ...config };
+
+  const response = await qdrantRequest<{
+    result: QdrantSearchResult[] | { points: QdrantSearchResult[] };
+  }>(
+    finalConfig,
+    "POST",
+    `/collections/${finalConfig.collection}/points/query`,
+    body
+  );
+
+  if (Array.isArray(response.result)) {
+    return response.result;
+  }
+
+  return response.result.points ?? [];
+}
+
+export async function retrievePoints(
+  ids: string[],
+  options?: { withPayload?: boolean; withVector?: boolean },
+  config?: Partial<QdrantConfig>
+): Promise<QdrantRetrievedPoint[]> {
+  const envConfig = getQdrantConfig();
+  const finalConfig: QdrantConfig = { ...envConfig, ...config };
+
+  const response = await qdrantRequest<{
+    result: { points: Array<{ id: string; payload: Record<string, unknown>; vector?: QdrantVector }> };
+  }>(
+    finalConfig,
+    "POST",
+    `/collections/${finalConfig.collection}/points`,
+    {
+      ids,
+      with_payload: options?.withPayload ?? true,
+      with_vector: options?.withVector ?? false,
+    }
+  );
+
+  return response.result.points.map((point) => ({
+    id: String(point.id),
+    payload: point.payload,
+    vector: point.vector,
+  }));
 }
 
 export async function countPoints(

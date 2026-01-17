@@ -5,6 +5,7 @@
  */
 
 import { scrollPoints, type QdrantFilter } from "../lib/qdrant";
+import { getReadQdrantConfig } from "../lib/qdrantCollections";
 
 export interface ChunkContextOptions {
   before?: number;
@@ -47,7 +48,8 @@ export async function fetchDocumentChunkContext(
   const points = await scrollPoints(
     filter,
     before + after + 1,
-    { orderBy: { key: "chunk_index", direction: "asc" } }
+    { orderBy: { key: "chunk_index", direction: "asc" } },
+    getReadQdrantConfig("text")
   );
 
   const chunks = points

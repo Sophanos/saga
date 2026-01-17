@@ -57,20 +57,27 @@ ufw allow from YOUR_IP to any port 6334
 
 ---
 
-## 2. Create Saga Collection
+## 2. Create Unified Collection
 
 ### Via REST API
 
 ```bash
-# Create collection for Mythos/Saga
-curl -X PUT "http://localhost:6333/collections/saga_vectors" \
+# Create unified collection for Mythos/Saga
+curl -X PUT "http://localhost:6333/collections/saga_unified" \
   -H "Content-Type: application/json" \
   -H "api-key: your-secure-api-key-here" \
   -d '{
     "vectors": {
-      "size": 4096,
-      "distance": "Cosine",
-      "on_disk": true
+      "text_qwen": {
+        "size": 4096,
+        "distance": "Cosine",
+        "on_disk": true
+      },
+      "image_clip": {
+        "size": 512,
+        "distance": "Cosine",
+        "on_disk": true
+      }
     },
     "optimizers_config": {
       "indexing_threshold": 10000
@@ -82,7 +89,7 @@ curl -X PUT "http://localhost:6333/collections/saga_vectors" \
   }'
 
 # Verify collection
-curl -s "http://localhost:6333/collections/saga_vectors" \
+curl -s "http://localhost:6333/collections/saga_unified" \
   -H "api-key: your-secure-api-key-here" | jq
 ```
 
@@ -91,8 +98,14 @@ curl -s "http://localhost:6333/collections/saga_vectors" \
 ```json
 {
   "vectors": {
-    "size": 4096,
-    "distance": "Cosine"
+    "text_qwen": {
+      "size": 4096,
+      "distance": "Cosine"
+    },
+    "image_clip": {
+      "size": 512,
+      "distance": "Cosine"
+    }
   },
   "payload_schema": {
     "project_id": "keyword",
@@ -101,10 +114,14 @@ curl -s "http://localhost:6333/collections/saga_vectors" \
     "title": "text",
     "document_id": "keyword",
     "entity_id": "keyword",
+    "memory_id": "keyword",
+    "asset_id": "keyword",
     "chunk_index": "integer"
   }
 }
 ```
+
+Optional: add a sparse vector named `sparse_bm25` under `sparse_vectors` if you want hybrid dense+sparse retrieval. Use the Qdrant version-specific sparse vector config.
 
 **Note:** `scrollPoints(... order_by: chunk_index ...)` requires a payload index on `chunk_index` (numeric/range). Ensure your Qdrant version supports `order_by` on payload fields before enabling this.
 
@@ -120,7 +137,13 @@ Add to Supabase Edge Function secrets (via Dashboard or CLI):
 # Qdrant Configuration (server-side only)
 QDRANT_URL=http://78.47.165.136:6333
 QDRANT_API_KEY=your-secure-api-key-here
+QDRANT_COLLECTION_UNIFIED=saga_unified
+QDRANT_READ_FROM_UNIFIED=true
+QDRANT_DUAL_WRITE=false
+
+# Legacy collections (optional during migration)
 QDRANT_COLLECTION=saga_vectors
+QDRANT_IMAGE_COLLECTION=saga_images
 
 # DeepInfra Configuration (server-side only)
 DEEPINFRA_API_KEY=your-deepinfra-api-key
@@ -154,7 +177,7 @@ VITE_QDRANT_URL=https://qdrant.yourdomain.com
 │   (Metadata)        │             │  78.47.165.136:6333 │
 ├─────────────────────┤             ├─────────────────────┤
 │ • projects          │             │ Collection:         │
-│ • documents         │◄───────────►│ saga_vectors        │
+│ • documents         │◄───────────►│ saga_unified        │
 │ • entities          │  (IDs sync) │                     │
 │ • relationships     │             │ • document vectors  │
 │ • mentions          │             │ • entity vectors    │
@@ -193,7 +216,7 @@ import { QdrantClient } from "@qdrant/js-client-rest";
 
 const QDRANT_URL = import.meta.env.VITE_QDRANT_URL || "http://localhost:6333";
 const QDRANT_API_KEY = import.meta.env.VITE_QDRANT_API_KEY;
-const COLLECTION_NAME = import.meta.env.VITE_QDRANT_COLLECTION || "saga_vectors";
+const COLLECTION_NAME = import.meta.env.VITE_QDRANT_COLLECTION || "saga_unified";
 
 let qdrantClient: QdrantClient | null = null;
 
@@ -495,7 +518,7 @@ VITE_QDRANT_URL=http://10.0.0.1:6333
 
 ```bash
 # From your machine
-curl -s "http://78.47.165.136:6333/collections/saga_vectors" \
+curl -s "http://78.47.165.136:6333/collections/saga_unified" \
   -H "api-key: your-key" | jq
 
 # Expected output:
@@ -511,13 +534,13 @@ curl -s "http://78.47.165.136:6333/collections/saga_vectors" \
 ### Insert Test Vector
 
 ```bash
-curl -X PUT "http://78.47.165.136:6333/collections/saga_vectors/points" \
+curl -X PUT "http://78.47.165.136:6333/collections/saga_unified/points" \
   -H "Content-Type: application/json" \
   -H "api-key: your-key" \
   -d '{
     "points": [{
       "id": "test-1",
-      "vector": [0.1, 0.2, 0.3, ...],  
+      "vector": { "text_qwen": [0.1, 0.2, 0.3, ...] },
       "payload": {
         "project_id": "test",
         "type": "document",
@@ -539,11 +562,11 @@ BACKUP_DIR=/opt/qdrant/backups
 DATE=$(date +%Y%m%d)
 
 # Create snapshot via API
-curl -X POST "http://localhost:6333/collections/saga_vectors/snapshots" \
+curl -X POST "http://localhost:6333/collections/saga_unified/snapshots" \
   -H "api-key: your-key"
 
 # Copy to backup directory
-cp /opt/qdrant/storage/collections/saga_vectors/snapshots/* $BACKUP_DIR/
+cp /opt/qdrant/storage/collections/saga_unified/snapshots/* $BACKUP_DIR/
 
 # Keep only last 7 days
 find $BACKUP_DIR -mtime +7 -delete
@@ -570,7 +593,7 @@ vs Qdrant Cloud: $50-100/month
 ## Next Steps
 
 1. [ ] SSH into Hetzner, check/install Qdrant
-2. [ ] Create `saga_vectors` collection
+2. [ ] Create `saga_unified` collection
 3. [ ] Set up secure access (Cloudflare Tunnel or UFW)
 4. [ ] Add environment variables
 5. [ ] Implement Qdrant client in codebase

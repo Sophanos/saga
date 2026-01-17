@@ -11,7 +11,8 @@ import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { verifyProjectAccess } from "./lib/auth";
 import { hashSnapshot } from "./lib/contentHash";
-import { deletePoints, isQdrantConfigured } from "./lib/qdrant";
+import { isQdrantConfigured } from "./lib/qdrant";
+import { deletePointsForWrite } from "./lib/qdrantCollections";
 import {
   getEntityTypeDef,
   getRelationshipTypeDef,
@@ -2265,7 +2266,7 @@ export const rollbackSuggestion = action({
         if (!memoryId) throw new Error("Missing memoryId for rollback");
         await ctx.runMutation(apiAny.memories.remove, { id: memoryId });
         if (isQdrantConfigured()) {
-          await deletePoints([memoryId], { collection: "saga_vectors" });
+          await deletePointsForWrite([memoryId], "text");
         }
       } else {
         throw new Error(`Rollback not supported for: ${kind}`);

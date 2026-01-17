@@ -12,16 +12,17 @@ import {
   isDeepInfraImageEmbeddingConfigured,
 } from "../lib/providers/deepinfraImageEmbedding";
 import {
-  deletePoints,
-  deletePointsByFilter,
   isQdrantConfigured,
-  type QdrantConfig,
+  namedDense,
   type QdrantFilter,
   type QdrantPoint,
-  upsertPoints,
 } from "../lib/qdrant";
-
-const DEFAULT_IMAGE_VECTOR_NAME = "image";
+import {
+  deletePointsByFilterForWrite,
+  deletePointsForWrite,
+  QDRANT_IMAGE_VECTOR,
+  upsertPointsForWrite,
+} from "../lib/qdrantCollections";
 
 type ImageEmbeddingResult = {
   embedded: boolean;
@@ -36,16 +37,6 @@ type DeleteEmbeddingResult = {
 type DeleteFilterResult = {
   deleted: boolean;
 };
-
-function getImageVectorName(): string {
-  return process.env["QDRANT_IMAGE_VECTOR_NAME"] ?? DEFAULT_IMAGE_VECTOR_NAME;
-}
-
-function getImageQdrantConfig(): Partial<QdrantConfig> | undefined {
-  const collection = process.env["QDRANT_IMAGE_COLLECTION"];
-  if (!collection) return undefined;
-  return { collection };
-}
 
 function buildImagePointId(assetId: Id<"projectAssets">): string {
   return `image:${assetId}`;
@@ -143,14 +134,13 @@ export const embedImageAsset = internalAction({
       imageUrl,
     });
 
-    const vectorName = getImageVectorName();
     const point: QdrantPoint = {
       id: buildImagePointId(asset._id),
-      vector: { [vectorName]: embedding },
+      vector: namedDense(QDRANT_IMAGE_VECTOR, embedding),
       payload: buildImagePayload(asset),
     };
 
-    await upsertPoints([point], getImageQdrantConfig());
+    await upsertPointsForWrite([point], "image");
 
     return { embedded: true, pointId: point.id };
   },
@@ -170,7 +160,7 @@ export const deleteImageEmbeddings = internalAction({
     }
 
     const pointIds = args.assetIds.map((assetId) => buildImagePointId(assetId));
-    await deletePoints(pointIds, getImageQdrantConfig());
+    await deletePointsForWrite(pointIds, "image");
 
     return { deleted: pointIds.length };
   },
@@ -186,7 +176,7 @@ export const deleteImageEmbeddingsByProject = internalAction({
     }
 
     const filter = buildImageFilter({ projectId: String(args.projectId) });
-    await deletePointsByFilter(filter, getImageQdrantConfig());
+    await deletePointsByFilterForWrite(filter, "image");
 
     return { deleted: true };
   },
@@ -202,7 +192,7 @@ export const deleteImageEmbeddingsByEntity = internalAction({
     }
 
     const filter = buildImageFilter({ entityId: String(args.entityId) });
-    await deletePointsByFilter(filter, getImageQdrantConfig());
+    await deletePointsByFilterForWrite(filter, "image");
 
     return { deleted: true };
   },

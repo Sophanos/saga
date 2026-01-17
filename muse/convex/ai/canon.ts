@@ -6,6 +6,7 @@
  */
 
 import { isQdrantConfigured, scrollPoints, type QdrantFilter } from "../lib/qdrant";
+import { getReadQdrantConfig } from "../lib/qdrantCollections";
 
 export type DecisionCategory = "decision" | "policy";
 
@@ -41,9 +42,12 @@ export async function fetchPinnedProjectMemories(
     ],
   };
 
-  const points = await scrollPoints(filter, limit, {
-    orderBy: { key: "created_at_ts", direction: "desc" },
-  }, { collection: "saga_vectors" });
+  const points = await scrollPoints(
+    filter,
+    limit,
+    { orderBy: { key: "created_at_ts", direction: "desc" } },
+    getReadQdrantConfig("text")
+  );
 
   const memories: PinnedMemory[] = [];
 
@@ -75,4 +79,3 @@ export async function fetchPinnedProjectMemories(
 export function formatMemoriesForPrompt(memories: PinnedMemory[]): string {
   return memories.map((m) => `[M:${m.memoryId}] ${m.text}`).join("\n");
 }
-

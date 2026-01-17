@@ -3,14 +3,19 @@ import type { AnalysisJobRecord } from "../../analysisJobs";
 import type { AnalysisHandlerResult } from "./types";
 import { generateEmbedding, generateEmbeddings, isDeepInfraConfigured } from "../../../lib/embeddings";
 import {
-  deletePoints,
-  deletePointsByFilter,
   isQdrantConfigured,
+  namedDense,
   scrollPoints,
   type QdrantFilter,
   type QdrantPoint,
-  upsertPoints,
 } from "../../../lib/qdrant";
+import {
+  deletePointsByFilterForWrite,
+  deletePointsForWrite,
+  getReadQdrantConfig,
+  QDRANT_TEXT_VECTOR,
+  upsertPointsForWrite,
+} from "../../../lib/qdrantCollections";
 
 const internal = require("../../../_generated/api").internal as any;
 
@@ -168,9 +173,12 @@ async function fetchExistingChunkHashes(options: {
     filter.must!.push({ key: "entity_id", match: { value: targetId } });
   }
 
-  const points = await scrollPoints(filter, expectedCount, {
-    orderBy: { key: "chunk_index", direction: "asc" },
-  });
+  const points = await scrollPoints(
+    filter,
+    expectedCount,
+    { orderBy: { key: "chunk_index", direction: "asc" } },
+    getReadQdrantConfig("text")
+  );
   const hashes = new Map<number, string>();
 
   for (const point of points) {
@@ -260,7 +268,7 @@ async function embedDocument(
       const chunk = slice[idx];
       return {
         id: `document:${documentId}:${chunk.index}`,
-        vector,
+        vector: namedDense(QDRANT_TEXT_VECTOR, vector),
         payload: {
           type: "document",
           project_id: String(job.projectId),
@@ -277,7 +285,7 @@ async function embedDocument(
     });
 
     if (points.length > 0) {
-      await upsertPoints(points);
+      await upsertPointsForWrite(points, "text");
     }
 
     updatedChunks += slice.length;
@@ -292,19 +300,19 @@ async function embedDocument(
   };
 
   if (chunks.length === 0) {
-    await deletePointsByFilter(baseFilter);
+    await deletePointsByFilterForWrite(baseFilter, "text");
     return {
       summary: "Document empty; removed embeddings.",
       resultRef: { targetType: "document", targetId: documentId, chunks: 0, contentHash },
     };
   }
 
-  await deletePointsByFilter({
+  await deletePointsByFilterForWrite({
     must: [
       ...baseFilter.must!,
       { key: "chunk_index", range: { gte: chunks.length } },
     ],
-  });
+  }, "text");
 
   const summary =
     updatedChunks === 0
@@ -381,7 +389,7 @@ async function embedEntity(
       const chunk = slice[idx];
       return {
         id: `entity:${entityId}:${chunk.index}`,
-        vector,
+        vector: namedDense(QDRANT_TEXT_VECTOR, vector),
         payload: {
           type: "entity",
           project_id: String(job.projectId),
@@ -398,7 +406,7 @@ async function embedEntity(
     });
 
     if (points.length > 0) {
-      await upsertPoints(points);
+      await upsertPointsForWrite(points, "text");
     }
 
     updatedChunks += slice.length;
@@ -413,19 +421,19 @@ async function embedEntity(
   };
 
   if (chunks.length === 0) {
-    await deletePointsByFilter(baseFilter);
+    await deletePointsByFilterForWrite(baseFilter, "text");
     return {
       summary: "Entity empty; removed embeddings.",
       resultRef: { targetType: "entity", targetId: entityId, chunks: 0, contentHash },
     };
   }
 
-  await deletePointsByFilter({
+  await deletePointsByFilterForWrite({
     must: [
       ...baseFilter.must!,
       { key: "chunk_index", range: { gte: chunks.length } },
     ],
-  });
+  }, "text");
 
   const summary =
     updatedChunks === 0
@@ -467,7 +475,7 @@ async function embedMemory(
       : String(memory._id);
   const text = typeof memory.text === "string" ? memory.text.trim() : "";
   if (!text) {
-    await deletePoints([vectorId]);
+    await deletePointsForWrite([vectorId], "text");
     return { summary: "Memory empty; removed embeddings." };
   }
 
@@ -476,13 +484,16 @@ async function embedMemory(
   const embedding = await generateEmbedding(embeddingText, { task: "embed_document" });
 
   const payload = buildMemoryPayload(memory as Record<string, unknown>, String(job.projectId));
-  await upsertPoints([
-    {
-      id: vectorId,
-      vector: embedding,
-      payload,
-    },
-  ]);
+  await upsertPointsForWrite(
+    [
+      {
+        id: vectorId,
+        vector: namedDense(QDRANT_TEXT_VECTOR, embedding),
+        payload,
+      },
+    ],
+    "text"
+  );
 
   await ctx.runMutation((internal as any).memories.updateVectorStatus, {
     memoryId: memory._id,
@@ -498,7 +509,7 @@ async function embedMemory(
 async function deleteMemoryEmbedding(
   memoryVectorId: string
 ): Promise<AnalysisHandlerResult> {
-  await deletePoints([memoryVectorId]);
+  await deletePointsForWrite([memoryVectorId], "text");
   return {
     summary: "Deleted memory embedding.",
     resultRef: { targetType: "memory_delete", targetId: memoryVectorId },

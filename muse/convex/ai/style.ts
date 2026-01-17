@@ -11,7 +11,8 @@ import { internalAction, internalMutation, internalQuery } from "../_generated/s
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateEmbedding } from "../lib/embeddings";
-import { upsertPoints } from "../lib/qdrant";
+import { namedDense } from "../lib/qdrant";
+import { QDRANT_TEXT_VECTOR, upsertPointsForWrite } from "../lib/qdrantCollections";
 import { getModelForTaskSync, checkTaskAccess, type TierId } from "../lib/providers";
 import { assertAiAllowed } from "../lib/quotaEnforcement";
 
@@ -269,10 +270,10 @@ export const learnStyle = internalAction({
         });
 
         try {
-          await upsertPoints([
+          await upsertPointsForWrite([
             {
               id: vectorId,
-              vector: embedding,
+              vector: namedDense(QDRANT_TEXT_VECTOR, embedding),
               payload: {
                 type: "memory",
                 project_id: projectId,

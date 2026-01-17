@@ -2,9 +2,16 @@ import { internal } from "../../_generated/api";
 import type { ActionCtx } from "../../_generated/server";
 import { embedTextWithClip, isDeepInfraImageEmbeddingConfigured } from "../../lib/providers/deepinfraImageEmbedding";
 import { getModelForTaskSync } from "../../lib/providers/taskConfig";
-import { searchPoints, isQdrantConfigured, type QdrantFilter } from "../../lib/qdrant";
+import {
+  isQdrantConfigured,
+  namedDense,
+  retrievePoints,
+  searchPoints,
+  type QdrantFilter,
+  type QdrantVector,
+} from "../../lib/qdrant";
+import { getReadQdrantConfig, QDRANT_IMAGE_VECTOR } from "../../lib/qdrantCollections";
 import type { AnalyzeImageArgs, AnalyzeImageResult } from "../../../packages/agent-protocol/src/tools";
-import { SAGA_IMAGES_COLLECTION } from "./constants";
 
 /**
  * Unified analyze_image executor with mode dispatch.
@@ -181,10 +188,10 @@ async function executeAnalyzeImageSearch(
 
   // Search Qdrant
   const results = await searchPoints(
-    queryEmbedding,
+    namedDense(QDRANT_IMAGE_VECTOR, queryEmbedding),
     limit,
     filter,
-    { collection: SAGA_IMAGES_COLLECTION }
+    getReadQdrantConfig("image")
   );
 
   return {
@@ -229,6 +236,26 @@ interface SimilarImagesResult {
   };
 }
 
+function resolveImageVector(vector: QdrantVector | undefined): QdrantVector {
+  if (!vector) {
+    throw new Error("Source image has no vector");
+  }
+  if (Array.isArray(vector)) return vector;
+
+  const named = vector[QDRANT_IMAGE_VECTOR];
+  if (Array.isArray(named)) {
+    return { [QDRANT_IMAGE_VECTOR]: named };
+  }
+
+  const entries = Object.entries(vector);
+  if (entries.length === 0) {
+    throw new Error("Source image vector is empty");
+  }
+
+  const [name, values] = entries[0];
+  return { [name]: values as number[] };
+}
+
 async function executeAnalyzeImageSimilar(
   input: FindSimilarImagesInput,
   projectId: string
@@ -248,15 +275,10 @@ async function executeAnalyzeImageSimilar(
   const limit = Math.min(input.limit ?? 10, 50);
 
   // First, get the source image's vector from Qdrant
-  const sourceFilter: QdrantFilter = {
-    must: [{ has_id: [input.assetId] }],
-  };
-
-  const sourceResults = await searchPoints(
-    [],
-    1,
-    sourceFilter,
-    { collection: SAGA_IMAGES_COLLECTION }
+  const sourceResults = await retrievePoints(
+    [input.assetId],
+    { withPayload: true, withVector: true },
+    getReadQdrantConfig("image")
   );
 
   if (sourceResults.length === 0) {
@@ -264,11 +286,7 @@ async function executeAnalyzeImageSimilar(
   }
 
   const sourceImage = sourceResults[0];
-  const sourceVector = sourceImage.vector;
-
-  if (!sourceVector) {
-    throw new Error(`Source image ${input.assetId} has no vector`);
-  }
+  const sourceVector = resolveImageVector(sourceImage.vector);
 
   // Build filter for similar images
   const filter: QdrantFilter = {
@@ -287,7 +305,7 @@ async function executeAnalyzeImageSimilar(
     sourceVector,
     limit,
     filter,
-    { collection: SAGA_IMAGES_COLLECTION }
+    getReadQdrantConfig("image")
   );
 
   return {

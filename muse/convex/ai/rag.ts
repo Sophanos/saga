@@ -8,10 +8,12 @@ import { ServerAgentEvents } from "../lib/analytics";
 import { generateEmbedding, isDeepInfraConfigured } from "../lib/embeddings";
 import {
   isQdrantConfigured,
+  namedDense,
   searchPoints,
   type QdrantFilter,
   type QdrantSearchResult,
 } from "../lib/qdrant";
+import { getReadQdrantConfig, QDRANT_TEXT_VECTOR } from "../lib/qdrantCollections";
 import { isRerankConfigured, rerank } from "../lib/rerank";
 import type { LexicalHit } from "./lexical";
 import { fetchDocumentChunkContext } from "./ragChunkContext";
@@ -361,7 +363,12 @@ export async function retrieveRAGContext(
       }
 
       const qdrantStart = Date.now();
-      const results = await searchPoints(queryEmbedding, CANDIDATE_LIMIT, filter);
+      const results = await searchPoints(
+        namedDense(QDRANT_TEXT_VECTOR, queryEmbedding),
+        CANDIDATE_LIMIT,
+        filter,
+        getReadQdrantConfig("text")
+      );
       qdrantMs = Date.now() - qdrantStart;
       const denseCandidates = buildCandidatesFromQdrant(results);
       denseCandidatesCount = denseCandidates.length;

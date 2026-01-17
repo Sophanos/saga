@@ -107,7 +107,7 @@ Style memories already stored in Convex + Qdrant (`convex/ai/style.ts`, 180-day 
 
 ### Storage Strategy
 
-- **Qdrant**: Full vector corpus, heavy lifting (async)
+- **Qdrant**: Unified corpus (`saga_unified`) with named vectors (`text_qwen`, `image_clip`)
 - **Convex**: Cached profile, fast reads during Flow Mode
 - **Refresh**: Daily scheduled job or on-demand `/refresh`
 
@@ -198,7 +198,7 @@ For real-time checks during Flow Mode without querying full Qdrant corpus.
 ### Architecture
 
 ```
-saga_vectors (cold)     →    session_{projectId} (hot)
+saga_unified (cold)     →    session_{projectId} (hot)
 Full corpus                  Current context only
 ~500ms queries               ~50ms queries
 ```

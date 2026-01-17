@@ -2,11 +2,12 @@ import { internal } from "../../_generated/api";
 import type { ActionCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { generateEmbedding, isDeepInfraConfigured } from "../../lib/embeddings";
-import { isQdrantConfigured, upsertPoints } from "../../lib/qdrant";
+import { isQdrantConfigured, namedDense } from "../../lib/qdrant";
+import { upsertPointsForWrite } from "../../lib/qdrantCollections";
 import {
   MAX_DECISION_EMBEDDING_CHARS,
   MAX_DECISION_LENGTH,
-  SAGA_VECTORS_COLLECTION,
+  QDRANT_TEXT_VECTOR,
 } from "./constants";
 
 interface CommitDecisionInput {
@@ -127,13 +128,13 @@ export async function executeCommitDecision(
   // Upsert to Qdrant
   if (isQdrantConfigured()) {
     try {
-      await upsertPoints(
+      await upsertPointsForWrite(
         [{
           id: memoryId,
-          vector: embedding,
+          vector: namedDense(QDRANT_TEXT_VECTOR, embedding),
           payload,
         }],
-        { collection: SAGA_VECTORS_COLLECTION }
+        "text"
       );
       console.log(`[tools.commit_decision] Stored memory ${memoryId} in Qdrant`);
       await ctx.runMutation((internal as any).memories.updateVectorStatus, {

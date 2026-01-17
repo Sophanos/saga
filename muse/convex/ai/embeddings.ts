@@ -8,13 +8,18 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateEmbeddings, isDeepInfraConfigured } from "../lib/embeddings";
 import {
-  deletePointsByFilter,
   isQdrantConfigured,
+  namedDense,
   scrollPoints,
   type QdrantFilter,
   type QdrantPoint,
-  upsertPoints,
 } from "../lib/qdrant";
+import {
+  deletePointsByFilterForWrite,
+  getReadQdrantConfig,
+  QDRANT_TEXT_VECTOR,
+  upsertPointsForWrite,
+} from "../lib/qdrantCollections";
 
 const DEFAULT_BATCH_SIZE = 5;
 const MAX_EMBED_BATCH = 8;
@@ -209,9 +214,12 @@ async function fetchExistingChunkHashes(options: {
     filter.must!.push({ key: "entity_id", match: { value: targetId } });
   }
 
-  const points = await scrollPoints(filter, expectedCount, {
-    orderBy: { key: "chunk_index", direction: "asc" },
-  });
+  const points = await scrollPoints(
+    filter,
+    expectedCount,
+    { orderBy: { key: "chunk_index", direction: "asc" } },
+    getReadQdrantConfig("text")
+  );
   const hashes = new Map<number, string>();
 
   for (const point of points) {
@@ -694,7 +702,7 @@ export const processEmbeddingJobs = internalAction({
               const chunk = slice[idx];
               return {
                 id: `document:${job.targetId}:${chunk.index}`,
-                vector,
+                vector: namedDense(QDRANT_TEXT_VECTOR, vector),
                 payload: {
                   type: "document",
                   project_id: job.projectId,
@@ -711,7 +719,7 @@ export const processEmbeddingJobs = internalAction({
             });
 
             if (points.length > 0) {
-              await upsertPoints(points);
+              await upsertPointsForWrite(points, "text");
             }
 
             processed += slice.length;
@@ -730,14 +738,14 @@ export const processEmbeddingJobs = internalAction({
           };
 
           if (chunks.length === 0) {
-            await deletePointsByFilter(baseFilter);
+            await deletePointsByFilterForWrite(baseFilter, "text");
           } else {
-            await deletePointsByFilter({
+            await deletePointsByFilterForWrite({
               must: [
                 ...baseFilter.must!,
                 { key: "chunk_index", range: { gte: chunks.length } },
               ],
-            });
+            }, "text");
           }
 
           await ctx.runMutation(internal.ai.embeddings.finalizeEmbeddingJob, {
@@ -800,7 +808,7 @@ export const processEmbeddingJobs = internalAction({
               const chunk = slice[idx];
               return {
                 id: `entity:${job.targetId}:${chunk.index}`,
-                vector,
+                vector: namedDense(QDRANT_TEXT_VECTOR, vector),
                 payload: {
                   type: "entity",
                   project_id: job.projectId,
@@ -817,7 +825,7 @@ export const processEmbeddingJobs = internalAction({
             });
 
             if (points.length > 0) {
-              await upsertPoints(points);
+              await upsertPointsForWrite(points, "text");
             }
 
             processed += slice.length;
@@ -836,14 +844,14 @@ export const processEmbeddingJobs = internalAction({
           };
 
           if (chunks.length === 0) {
-            await deletePointsByFilter(baseFilter);
+            await deletePointsByFilterForWrite(baseFilter, "text");
           } else {
-            await deletePointsByFilter({
+            await deletePointsByFilterForWrite({
               must: [
                 ...baseFilter.must!,
                 { key: "chunk_index", range: { gte: chunks.length } },
               ],
-            });
+            }, "text");
           }
 
           await ctx.runMutation(internal.ai.embeddings.finalizeEmbeddingJob, {

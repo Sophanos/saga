@@ -45,6 +45,11 @@ import {
   type QdrantFilter,
 } from "./lib/qdrant";
 import {
+  getReadQdrantConfig,
+  getUnifiedCollectionName,
+  QDRANT_TEXT_VECTOR,
+} from "./lib/qdrantCollections";
+import {
   verifyRevenueCatWebhook,
   verifyStripeWebhook,
 } from "./lib/webhookSecurity";
@@ -1860,8 +1865,11 @@ http.route({
           };
         };
 
+        const deleteKind = filter?.type === "image" ? "image" : "text";
+        const deleteConfig = getReadQdrantConfig(deleteKind);
+
         if (Array.isArray(pointIds) && pointIds.length > 0) {
-          await deletePoints(pointIds);
+          await deletePoints(pointIds, deleteConfig);
           return new Response(JSON.stringify({ deleted: pointIds.length }), {
             status: 200,
             headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
@@ -1888,7 +1896,7 @@ http.route({
             qdrantFilter.must!.push({ key: "asset_id", match: { value: filter.assetId } });
           }
 
-          await deletePointsByFilter(qdrantFilter);
+          await deletePointsByFilter(qdrantFilter, deleteConfig);
           return new Response(JSON.stringify({ deleted: 0 }), {
             status: 200,
             headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
@@ -1906,6 +1914,7 @@ http.route({
         qdrant?: {
           enabled?: boolean;
           collection?: string;
+          vectorName?: string;
           points?: Array<{ id: string; payload: Record<string, unknown> }>;
         };
       };
@@ -1943,13 +1952,20 @@ http.route({
           });
         }
 
+        const targetConfig = qdrant.collection
+          ? { collection: qdrant.collection }
+          : getReadQdrantConfig("text");
+        const vectorName = typeof qdrant.vectorName === "string" ? qdrant.vectorName : undefined;
+        const useNamedVector = vectorName ? true : targetConfig.collection === getUnifiedCollectionName();
+        const vectorKey = vectorName ?? QDRANT_TEXT_VECTOR;
+
         const points = embedResult.embeddings.map((vector, index) => ({
           id: qdrant.points![index]!.id,
-          vector,
+          vector: useNamedVector ? { [vectorKey]: vector } : vector,
           payload: qdrant.points![index]!.payload,
         }));
 
-        await upsertPoints(points, qdrant.collection ? { collection: qdrant.collection } : undefined);
+        await upsertPoints(points, targetConfig);
         qdrantUpserted = true;
       }
 
@@ -2370,7 +2386,7 @@ async function attachVectorUsage(
   };
 
   try {
-    const used = await countPoints(filter, { exact: false });
+    const used = await countPoints(filter, { exact: false }, getReadQdrantConfig("text"));
     return {
       ...snapshot,
       usageDetail: {
