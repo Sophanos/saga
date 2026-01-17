@@ -11,7 +11,7 @@ import { internalAction, type ActionCtx } from "../_generated/server";
 import { api, internal, components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { Agent } from "@convex-dev/agent";
-import { createOpenAI } from "@ai-sdk/openai";
+import type { LanguageModel } from "ai";
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type {
@@ -25,7 +25,7 @@ import { commitDecisionTool } from "./tools/memoryTools";
 import { searchContextTool, readDocumentTool, getEntityTool } from "./tools/ragTools";
 import { analyzeImageTool, graphMutationTool } from "./tools/projectGraphTools";
 import { analyzeContentTool } from "./tools/analysisTools";
-import { spawnTaskTool, writeTodosTool } from "./tools/planningTools";
+import { requestTaskSlugTool, spawnTaskTool, writeTodosTool } from "./tools/planningTools";
 import { generateTemplateTool } from "./tools/templateTools";
 import { projectManageTool } from "./tools/projectManageTools";
 import { webSearchTool, webExtractTool } from "./tools/webSearchTools";
@@ -48,8 +48,9 @@ import {
 import { getEmbeddingModelForTask } from "../lib/embeddings";
 import { ServerAgentEvents } from "../lib/analytics";
 import { createUsageHandler } from "../lib/rateLimiting";
-import { assertAiAllowed } from "../lib/quotaEnforcement";
-import { resolveOpenRouterKey, isByokRequest } from "../lib/openRouterKey";
+import { getLanguageModelForRequest } from "../lib/providers/registry";
+import type { AITaskSlug, TierId } from "../lib/providers/types";
+import { resolveExecutionContext } from "./llmExecution";
 import {
   hasIdentityChange,
   isSignificantStrengthChange,
@@ -154,30 +155,10 @@ async function maybeKeepAiTypingAlive(opts: {
   return now;
 }
 
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
 const LEXICAL_LIMIT = 20;
 const E2E_TEST_MODE = process.env["E2E_TEST_MODE"] === "true";
 const SAGA_TEST_MODE = process.env["SAGA_TEST_MODE"] === "true";
 const TEST_MODE = E2E_TEST_MODE || SAGA_TEST_MODE;
-
-/**
- * Creates an OpenRouter client with the given API key.
- * Used for both platform key and BYOK.
- */
-function createOpenRouterClient(apiKey: string) {
-  return createOpenAI({
-    apiKey,
-    baseURL: OPENROUTER_BASE_URL,
-    headers: {
-      "HTTP-Referer": process.env["OPENROUTER_SITE_URL"] ?? "https://rhei.team",
-      "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Rhei",
-    },
-  });
-}
-
-// Default client using platform key (for backward compatibility)
-const openrouter = createOpenRouterClient(process.env["OPENROUTER_API_KEY"] ?? "");
 
 export type SagaTestStreamChunk = LanguageModelV3StreamPart;
 
@@ -234,11 +215,62 @@ function createTestLanguageModel() {
   });
 }
 
-function createSagaAgent(byokKey?: string, model?: string) {
-  const testMode = TEST_MODE;
-  const client = byokKey ? createOpenRouterClient(byokKey) : openrouter;
-  const modelId = model ?? DEFAULT_MODEL;
-  const languageModel = testMode ? createTestLanguageModel() : client.chat(modelId);
+async function resolveUserTierId(ctx: ActionCtx, userId: string): Promise<TierId> {
+  const resolved = await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
+    userId,
+  });
+  return resolved as TierId;
+}
+
+function resolveSagaTaskSlug(mode?: string): AITaskSlug {
+  switch (mode) {
+    case "analysis":
+      return "review";
+    case "creation":
+      return "generation";
+    case "onboarding":
+      return "chat";
+    case "editing":
+    default:
+      return "chat";
+  }
+}
+
+async function resolveLanguageModelForTask(
+  ctx: ActionCtx,
+  args: {
+    userId: string;
+    promptText: string;
+    taskSlug: AITaskSlug;
+    byokKey?: string;
+    skipQuota?: boolean;
+  }
+): Promise<{ languageModel: LanguageModel; model: string; provider: string }> {
+  const tierId = await resolveUserTierId(ctx, args.userId);
+  const exec = await resolveExecutionContext(ctx, {
+    userId: args.userId,
+    taskSlug: args.taskSlug,
+    tierId,
+    byokKey: args.byokKey,
+    promptText: args.promptText,
+    endpoint: "chat",
+    skipQuota: args.skipQuota,
+  });
+
+  const languageModel = getLanguageModelForRequest(exec.resolved.provider, exec.resolved.model, {
+    apiKeyOverride: exec.apiKey,
+  });
+
+  if (!languageModel) {
+    throw new Error(`No available model for task: ${exec.taskSlug}`);
+  }
+
+  return { languageModel, model: exec.resolved.model, provider: exec.resolved.provider };
+}
+
+function createSagaAgent(opts: { languageModel: LanguageModel; testMode: boolean }) {
+  const testMode = opts.testMode;
+  const languageModel = testMode ? createTestLanguageModel() : opts.languageModel;
 
   return new Agent(components.agent, {
     name: "Saga",
@@ -283,6 +315,7 @@ function createSagaAgent(byokKey?: string, model?: string) {
       analyze_image: analyzeImageTool,
       write_todos: writeTodosTool,
       spawn_task: spawnTaskTool,
+      request_task_slug: requestTaskSlugTool,
       web_search: webSearchTool,
       web_extract: webExtractTool,
       view_version_history: viewVersionHistoryTool,
@@ -316,6 +349,7 @@ type ToolPolicy = {
 
 const TOOL_POLICY: Record<string, ToolPolicy> = {
   ask_question: { category: "hitl", autoExecute: false },
+  request_task_slug: { category: "hitl", autoExecute: false },
   write_content: { category: "hitl", autoExecute: false },
   commit_decision: { category: "hitl", autoExecute: false },
   search_context: { category: "rag", autoExecute: true },
@@ -994,6 +1028,7 @@ async function resolveUniqueEntityTypeForUpdate(
 
 function resolveApprovalType(toolName: string): ToolApprovalType {
   if (toolName === "ask_question") return "input";
+  if (toolName === "request_task_slug") return "input";
   if (toolName === "write_content") return "apply";
   return "execution";
 }
@@ -1354,13 +1389,17 @@ function getSubAgentSpec(agent: SpawnedAgentType, requireCitations?: boolean): S
   }
 }
 
-function createSubAgent(spec: SubAgentSpec, maxSteps: number): Agent {
+function createSubAgent(
+  spec: SubAgentSpec,
+  maxSteps: number,
+  languageModel: LanguageModel
+): Agent {
   const testMode = TEST_MODE;
-  const languageModel = testMode ? createTestLanguageModel() : openrouter.chat(DEFAULT_MODEL);
+  const resolvedModel = testMode ? createTestLanguageModel() : languageModel;
 
   return new Agent(components.agent, {
     name: spec.name,
-    languageModel,
+    languageModel: resolvedModel,
     usageHandler: createUsageHandler(),
     textEmbeddingModel: undefined,
     contextOptions: {
@@ -1416,7 +1455,8 @@ async function executeSpawnTaskTool(
   ctx: ActionCtx,
   args: Record<string, unknown>,
   projectId: string,
-  userId: string
+  userId: string,
+  byokKey?: string
 ): Promise<unknown> {
   const agent = args["agent"] as SpawnedAgentType | undefined;
   const title = typeof args["title"] === "string" ? (args["title"] as string) : "Spawned Task";
@@ -1432,8 +1472,19 @@ async function executeSpawnTaskTool(
       : 6;
   const requireCitations = Boolean(args["requireCitations"]);
 
+  const requestedTaskSlug = typeof args["taskSlug"] === "string" ? (args["taskSlug"] as string) : undefined;
+  const taskSlug = (requestedTaskSlug ?? (agent === "writing" ? "generation" : "thinking")) as AITaskSlug;
+
+  const { languageModel } = await resolveLanguageModelForTask(ctx, {
+    userId,
+    promptText: instructions,
+    taskSlug,
+    byokKey,
+    skipQuota: TEST_MODE,
+  });
+
   const spec = getSubAgentSpec(agent, requireCitations);
-  const subAgent = createSubAgent(spec, maxSteps);
+  const subAgent = createSubAgent(spec, maxSteps, languageModel);
 
   const { threadId } = await subAgent.createThread(ctx, {
     userId,
@@ -1473,7 +1524,8 @@ async function executeSpawnTaskTool(
         call.input as Record<string, unknown>,
         projectId,
         userId,
-        threadId
+        threadId,
+        byokKey
       );
 
       await subAgent.saveMessage(ctx, {
@@ -1511,7 +1563,8 @@ async function executeAutoTool(
   args: Record<string, unknown>,
   projectId: string,
   userId: string,
-  threadId?: string
+  threadId?: string,
+  byokKey?: string
 ): Promise<unknown> {
   const category = getToolPolicy(toolName)?.category;
   if (category === "web") {
@@ -1535,7 +1588,7 @@ async function executeAutoTool(
     return executeWriteTodosTool(ctx, args, projectId, userId, threadId);
   }
   if (toolName === "spawn_task") {
-    return executeSpawnTaskTool(ctx, args, projectId, userId);
+    return executeSpawnTaskTool(ctx, args, projectId, userId, byokKey);
   }
   if (category === "artifact") {
     return executeArtifactTool(ctx, toolName, args, projectId, userId);
@@ -1548,14 +1601,14 @@ async function executeArtifactTool(
   toolName: string,
   args: Record<string, unknown>,
   projectId: string,
-  userId: string
+  _userId: string
 ): Promise<unknown> {
   const now = Date.now();
 
   // artifact_link - pure computation, no mutations
   if (toolName === "artifact_link") {
     const target = args["target"] as string;
-    const baseUrl = process.env.SITE_URL ?? "https://cascada.vision";
+    const baseUrl = process.env["SITE_URL"] ?? "https://cascada.vision";
     switch (target) {
       case "project":
         return { ok: true, url: `${baseUrl}/project/${args["projectId"]}` };
@@ -1973,37 +2026,6 @@ export const runSagaAgentChatToStream = internalAction({
     const isTemplateBuilder = projectId === "template-builder";
     const projectIdValue = projectId as Id<"projects">;
     const testMode = TEST_MODE;
-    const isByok = isByokRequest(byokKey);
-
-    // Validate API key is available (BYOK or platform)
-    if (!testMode) {
-      try {
-        resolveOpenRouterKey(byokKey);
-      } catch {
-        await ctx.runMutation((internal as any)["ai/streams"].fail, {
-          streamId,
-          error: "OPENROUTER_API_KEY not configured",
-        });
-        return;
-      }
-    }
-
-    // Skip quota check for BYOK users - they pay their own API costs
-    if (!testMode && !isTemplateBuilder && !isByok) {
-      try {
-        await assertAiAllowed(ctx, {
-          userId,
-          endpoint: "chat",
-          promptText: prompt,
-        });
-      } catch (error) {
-        await ctx.runMutation((internal as any)["ai/streams"].fail, {
-          streamId,
-          error: error instanceof Error ? error.message : "Quota enforcement failed",
-        });
-        return;
-      }
-    }
 
     let presenceDocumentId: string | undefined;
     let lastAiPresenceAt = 0;
@@ -2038,12 +2060,16 @@ export const runSagaAgentChatToStream = internalAction({
         setSagaTestScript(script.steps as SagaTestStreamStep[]);
       }
 
-      // Get user's preferred model (for BYOK users)
-      const preferredModel = isByok
-        ? await ctx.runQuery((internal as any).billingSettings.getPreferredModel, { userId })
-        : undefined;
+      const taskSlug = resolveSagaTaskSlug(mode);
+      const { languageModel, model: resolvedModel } = await resolveLanguageModelForTask(ctx, {
+        userId,
+        promptText: prompt,
+        taskSlug,
+        byokKey,
+        skipQuota: testMode || isTemplateBuilder,
+      });
 
-      const sagaAgent = createSagaAgent(isByok ? byokKey : undefined, preferredModel);
+      const sagaAgent = createSagaAgent({ languageModel, testMode });
       const templateHints = resolveTemplateBuilderHints(contextHints);
       let threadId = args.threadId;
       const editorDocumentId = resolveEditorDocumentId(editorContext);
@@ -2125,7 +2151,7 @@ export const runSagaAgentChatToStream = internalAction({
       });
 
       // Track stream started
-      await ServerAgentEvents.streamStarted(userId, projectId, threadId!, DEFAULT_MODEL);
+      await ServerAgentEvents.streamStarted(userId, projectId, threadId!, resolvedModel);
 
       const shouldSkipRag = testMode || isTemplateBuilder;
       const lexicalDocuments = shouldSkipRag
@@ -2226,7 +2252,8 @@ export const runSagaAgentChatToStream = internalAction({
               call.input as Record<string, unknown>,
               projectId,
               userId,
-              threadId ?? undefined
+              threadId ?? undefined,
+              byokKey
             );
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Unknown tool error";
@@ -2391,7 +2418,7 @@ export const runSagaAgentChatToStream = internalAction({
                   streamId,
                   threadId,
                   promptMessageId: currentPromptMessageId,
-                  model: DEFAULT_MODEL,
+                  model: resolvedModel,
                 }
               )) as string;
             } catch (error) {
@@ -2468,7 +2495,7 @@ export const runSagaAgentChatToStream = internalAction({
                     streamId,
                     threadId,
                     promptMessageId: currentPromptMessageId,
-                    model: DEFAULT_MODEL,
+                    model: resolvedModel,
                   }
                 )) as string;
               } catch (error) {
@@ -2619,20 +2646,6 @@ export const applyToolResultAndResumeToStream = internalAction({
       actorName: "Muse",
     };
     const testMode = TEST_MODE;
-    const isByok = isByokRequest(byokKey);
-
-    // Resolve API key (BYOK or platform)
-    if (!testMode) {
-      try {
-        resolveOpenRouterKey(byokKey);
-      } catch {
-        await ctx.runMutation((internal as any)["ai/streams"].fail, {
-          streamId,
-          error: "OPENROUTER_API_KEY not configured",
-        });
-        return;
-      }
-    }
 
     let presenceDocumentId: string | undefined;
     let activityDocumentId: Id<"documents"> | undefined;
@@ -2666,12 +2679,16 @@ export const applyToolResultAndResumeToStream = internalAction({
         setSagaTestScript(script.steps as SagaTestStreamStep[]);
       }
 
-      // Get user's preferred model (for BYOK users)
-      const preferredModel = isByok
-        ? await ctx.runQuery((internal as any).billingSettings.getPreferredModel, { userId })
-        : undefined;
+      const taskSlug = resolveSagaTaskSlug(undefined);
+      const { languageModel, model: resolvedModel } = await resolveLanguageModelForTask(ctx, {
+        userId,
+        promptText: toolName,
+        taskSlug,
+        byokKey,
+        skipQuota: testMode || isTemplateBuilder,
+      });
 
-      const sagaAgent = createSagaAgent(isByok ? byokKey : undefined, preferredModel);
+      const sagaAgent = createSagaAgent({ languageModel, testMode });
       if (isTemplateBuilder) {
         await ctx.runQuery((internal as any).templateBuilderSessions.assertThreadOwner, {
           threadId,
@@ -2820,7 +2837,7 @@ export const applyToolResultAndResumeToStream = internalAction({
                   streamId,
                   threadId,
                   promptMessageId,
-                  model: DEFAULT_MODEL,
+                  model: resolvedModel,
                 }
               )) as string;
             } catch (error) {

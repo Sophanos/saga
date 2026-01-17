@@ -208,6 +208,17 @@ export function getProvider(providerSlug: string): ProviderInstance | null {
 // MODEL HELPERS
 // ============================================================================
 
+function createOpenRouterClientWithKey(apiKey: string) {
+  return createOpenAI({
+    apiKey,
+    baseURL: DEFAULT_PROVIDERS["openrouter"].baseUrl,
+    headers: {
+      "HTTP-Referer": process.env["OPENROUTER_SITE_URL"] ?? "https://mythos.app",
+      "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
+    },
+  });
+}
+
 export function getLanguageModel(providerSlug: string, modelId: string): LanguageModel | null {
   const provider = getProvider(providerSlug);
   if (!provider) return null;
@@ -218,6 +229,24 @@ export function getLanguageModel(providerSlug: string, modelId: string): Languag
     console.error(`Failed to get language model ${modelId} from ${providerSlug}:`, error);
     return null;
   }
+}
+
+export function getLanguageModelForRequest(
+  providerSlug: string,
+  modelId: string,
+  opts?: { apiKeyOverride?: string }
+): LanguageModel | null {
+  if (providerSlug === "openrouter" && opts?.apiKeyOverride) {
+    try {
+      const client = createOpenRouterClientWithKey(opts.apiKeyOverride);
+      return client.chat(modelId);
+    } catch (error) {
+      console.error(`Failed to create OpenRouter client for override:`, error);
+      return null;
+    }
+  }
+
+  return getLanguageModel(providerSlug, modelId);
 }
 
 export function getEmbeddingModel(

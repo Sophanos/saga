@@ -22,8 +22,6 @@ export { analyzeImageExecutor } from "./analyzeImage";
 export type { AnalyzeImageArgs, AnalyzeImageResult } from "@mythos/agent-protocol";
 export { createEntityFromImageExecutor } from "./createEntityFromImage";
 export type { CreateEntityFromImageArgs, CreateEntityFromImageResult } from "@mythos/agent-protocol";
-export { illustrateSceneExecutor } from "./illustrateScene";
-export type { IllustrateSceneArgs, IllustrateSceneResult } from "@mythos/agent-protocol";
 
 // Saga unified agent tools
 export { genesisWorldExecutor, type GenesisWorldExecutionResult } from "./genesisWorld";

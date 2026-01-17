@@ -1,7 +1,7 @@
 /**
  * Project Assets Module
  *
- * File storage management for project assets (portraits, scenes, maps, etc.)
+ * File storage management for project assets (avatars, diagrams, illustrations, etc.)
  * Uses Convex file storage with soft delete support.
  */
 
@@ -18,10 +18,14 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
 const assetTypeValidator = v.union(
-  v.literal("portrait"),
-  v.literal("scene"),
+  v.literal("avatar"),
+  v.literal("diagram"),
+  v.literal("mockup"),
+  v.literal("illustration"),
+  v.literal("photo"),
   v.literal("map"),
-  v.literal("cover"),
+  v.literal("icon"),
+  v.literal("chart"),
   v.literal("reference"),
   v.literal("other")
 );

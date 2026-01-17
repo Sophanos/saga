@@ -16,13 +16,13 @@ import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { canonicalizeName } from "../lib/canonicalize";
+import { resolveExecutionContext } from "./llmExecution";
 
 // ============================================================
 // Constants
 // ============================================================
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
 const E2E_TEST_MODE = process.env["E2E_TEST_MODE"] === "true";
 
 // ============================================================
@@ -156,18 +156,39 @@ function detectMockEntities(
   };
 }
 
-async function runDetection(args: {
-  text: string;
-  entityTypes?: string[];
-  minConfidence?: number;
-}): Promise<DetectionResult> {
+async function runDetection(
+  ctx: ActionCtx,
+  args: {
+    userId: string;
+    text: string;
+    entityTypes?: string[];
+    minConfidence?: number;
+    byokKey?: string;
+  }
+): Promise<DetectionResult> {
   const { text, entityTypes, minConfidence = 0.7 } = args;
 
   if (MOCK_MODE) {
     return detectMockEntities(text, entityTypes, minConfidence);
   }
 
-  const apiKey = process.env["OPENROUTER_API_KEY"];
+  const tierId = await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
+    userId: args.userId,
+  });
+  const exec = await resolveExecutionContext(ctx, {
+    userId: args.userId,
+    taskSlug: "detect",
+    tierId,
+    byokKey: args.byokKey,
+    promptText: text,
+    endpoint: "detect",
+  });
+
+  if (exec.resolved.provider !== "openrouter") {
+    throw new Error(`Provider ${exec.resolved.provider} is not supported for detection`);
+  }
+
+  const apiKey = exec.apiKey ?? process.env["OPENROUTER_API_KEY"];
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY not configured");
   }
@@ -187,13 +208,14 @@ async function runDetection(args: {
       "X-Title": "Saga AI",
     },
     body: JSON.stringify({
-      model: DEFAULT_MODEL,
+      model: exec.resolved.model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: `Analyze this text for entities:\n\n${text}` },
       ],
-      response_format: { type: "json_object" },
-      max_tokens: 4096,
+      response_format: { type: exec.responseFormat },
+      max_tokens: exec.maxOutputTokens,
+      temperature: exec.temperature,
     }),
   });
 
@@ -264,13 +286,20 @@ export const detectEntities = internalAction({
     entityTypes: v.optional(v.array(v.string())),
     minConfidence: v.optional(v.number()),
     fixtureKey: v.optional(v.string()),
+    byokKey: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<DetectionResult> => {
     const fixture = await maybeGetFixture(ctx, args.projectId, args.fixtureKey);
     if (fixture) return fixture;
 
     const { text, entityTypes, minConfidence } = args;
-    return runDetection({ text, entityTypes, minConfidence });
+    return runDetection(ctx, {
+      userId: args.userId,
+      text,
+      entityTypes,
+      minConfidence,
+      byokKey: args.byokKey,
+    });
   },
 });
 
@@ -294,6 +323,7 @@ export const detectEntitiesPublic = action({
     includeContext: v.optional(v.boolean()),
     contextLength: v.optional(v.number()),
     fixtureKey: v.optional(v.string()),
+    byokKey: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<DetectionResult> => {
     const identity = await ctx.auth.getUserIdentity();
@@ -305,6 +335,12 @@ export const detectEntitiesPublic = action({
     if (fixture) return fixture;
 
     const { text, entityTypes, minConfidence } = args;
-    return runDetection({ text, entityTypes, minConfidence });
+    return runDetection(ctx, {
+      userId: identity.subject,
+      text,
+      entityTypes,
+      minConfidence,
+      byokKey: args.byokKey,
+    });
   },
 });

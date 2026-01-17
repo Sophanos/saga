@@ -1,20 +1,18 @@
 /**
  * generate_image tool executor
  *
- * Generates AI portraits and visual assets for entities.
- * Calls the ai-image edge function and updates entity portraits.
+ * Generates AI images via the ai/image edge function.
+ * Simplified: agent builds full prompt, we pass through.
  */
 
-import type { Entity } from "@mythos/core";
 import type {
-  ImageStyle,
   AspectRatio,
-  AssetType,
   GenerateImageArgs,
   GenerateImageResult,
+  ImageTier,
+  AssetType,
 } from "@mythos/agent-protocol";
 import type { ToolDefinition, ToolExecutionResult } from "../types";
-import { resolveEntityByName } from "../types";
 import { callEdgeFunction, ApiError } from "../../services/api-client";
 import { API_TIMEOUTS } from "../../services/config";
 
@@ -22,18 +20,15 @@ import { API_TIMEOUTS } from "../../services/config";
 // Types
 // =============================================================================
 
-// Edge function API contract - matches ai-image/index.ts
+// Edge function API contract
 interface AIImageRequest {
   projectId: string;
+  prompt: string;
+  aspectRatio?: AspectRatio;
+  negativePrompt?: string;
+  tier?: ImageTier;
   entityId?: string;
   assetType?: AssetType;
-  subject: string;
-  entityName?: string;
-  visualDescription?: string;
-  style?: ImageStyle;
-  aspectRatio?: AspectRatio;
-  setAsPortrait?: boolean;
-  negativePrompt?: string;
 }
 
 interface AIImageResponse {
@@ -41,52 +36,7 @@ interface AIImageResponse {
   storagePath: string;
   imageUrl: string;
   entityId?: string;
-  /** Whether this was a cache hit (existing identical generation) */
   cached?: boolean;
-  /** Number of times this asset has been reused from cache */
-  cacheHitCount?: number;
-}
-
-// =============================================================================
-// Helpers
-// =============================================================================
-
-/**
- * Get visual description from an entity if available.
- */
-function getEntityVisualDescription(entity: Entity): string | undefined {
-  // Check for character visual description
-  const props = entity.properties as Record<string, unknown>;
-  const visualDesc = props["visualDescription"] as Record<string, unknown> | undefined;
-
-  if (visualDesc) {
-    const parts: string[] = [];
-
-    if (visualDesc["height"]) parts.push(`height: ${visualDesc["height"]}`);
-    if (visualDesc["build"]) parts.push(`build: ${visualDesc["build"]}`);
-    if (visualDesc["hairColor"]) parts.push(`${visualDesc["hairColor"]} hair`);
-    if (visualDesc["hairStyle"]) parts.push(`${visualDesc["hairStyle"]} hairstyle`);
-    if (visualDesc["eyeColor"]) parts.push(`${visualDesc["eyeColor"]} eyes`);
-    if (visualDesc["skinTone"]) parts.push(`${visualDesc["skinTone"]} skin`);
-    if (visualDesc["clothing"]) parts.push(`wearing ${visualDesc["clothing"]}`);
-    if (Array.isArray(visualDesc["distinguishingFeatures"])) {
-      parts.push(...visualDesc["distinguishingFeatures"].map(f => String(f)));
-    }
-    if (Array.isArray(visualDesc["accessories"])) {
-      parts.push(`with ${visualDesc["accessories"].join(", ")}`);
-    }
-
-    if (parts.length > 0) {
-      return parts.join(", ");
-    }
-  }
-  
-  // Fallback to notes or general description
-  if (entity.notes) {
-    return entity.notes;
-  }
-  
-  return undefined;
 }
 
 // =============================================================================
@@ -100,14 +50,14 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
   danger: "costly",
 
   renderSummary: (args) => {
-    const style = args.style ?? "fantasy_art";
-    const target = args.entityName ?? args.subject.slice(0, 30);
-    return `${style} image for "${target}"`;
+    const tier = args.tier ?? "standard";
+    const preview = args.prompt.slice(0, 40);
+    return `${tier} image: "${preview}..."`;
   },
 
   validate: (args) => {
-    if (!args.subject || args.subject.trim().length === 0) {
-      return { valid: false, error: "Subject description is required" };
+    if (!args.prompt || args.prompt.trim().length === 0) {
+      return { valid: false, error: "Prompt is required" };
     }
     return { valid: true };
   },
@@ -130,72 +80,26 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
         };
       }
 
-      // Report initial progress
-      ctx.onProgress?.({ pct: 5, stage: "Preparing image generation..." });
+      ctx.onProgress?.({ pct: 10, stage: "Generating image..." });
 
-      // Resolve entity if name provided but no ID
-      let entityId = args.entityId;
-      let entity: Entity | undefined;
-      let visualDescription = args.visualDescription;
-
-      if (!entityId && args.entityName) {
-        const resolution = resolveEntityByName(
-          args.entityName,
-          ctx.entities,
-          args.entityType
-        );
-
-        if (resolution.found && resolution.entity) {
-          entityId = resolution.entity.id;
-          entity = resolution.entity;
-        } else if (resolution.candidates && resolution.candidates.length > 1) {
-          // Multiple matches - require user to specify
-          return {
-            success: false,
-            error: `Multiple entities named "${args.entityName}" found: ${
-              resolution.candidates.map(c => `${c.name} (${c.type})`).join(", ")
-            }. Please specify entityId or entityType to disambiguate.`,
-          };
-        } else if (resolution.candidates && resolution.candidates.length === 1) {
-          // Single candidate is fine
-          entity = resolution.candidates[0];
-          entityId = entity.id;
-        }
-        // If not found, continue without entity linking
-      } else if (entityId) {
-        entity = ctx.entities.get(entityId);
-      }
-
-      // Get visual description from entity if not provided
-      if (!visualDescription && entity) {
-        visualDescription = getEntityVisualDescription(entity);
-      }
-
-      ctx.onProgress?.({ pct: 15, stage: "Generating image with AI..." });
-
-      // Build request
+      // Build request - pass through simplified args
       const request: AIImageRequest = {
         projectId: ctx.projectId,
-        entityId,
-        assetType: args.assetType ?? (entityId ? "portrait" : "other"),
-        subject: args.subject,
-        entityName: args.entityName ?? entity?.name,
-        visualDescription,
-        style: args.style ?? "fantasy_art",
-        aspectRatio: args.aspectRatio ?? "3:4",
-        setAsPortrait: args.setAsPortrait !== false,
+        prompt: args.prompt,
+        aspectRatio: args.aspectRatio ?? "1:1",
         negativePrompt: args.negativePrompt,
+        tier: args.tier ?? "standard",
+        entityId: args.entityId,
+        assetType: args.assetType ?? "other",
       };
 
       // Call the edge function with timeout
-      // Use centralized timeout config and combine with user cancellation signal
       const timeoutController = new AbortController();
       const timeoutId = setTimeout(
         () => timeoutController.abort(),
         API_TIMEOUTS.IMAGE_GENERATION_MS
       );
 
-      // Combine user signal with timeout signal
       const combinedSignal = ctx.signal
         ? AbortSignal.any([ctx.signal, timeoutController.signal])
         : timeoutController.signal;
@@ -208,16 +112,13 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
           {
             apiKey: ctx.apiKey,
             signal: combinedSignal,
-            // Disable auto-retry for costly image generation to prevent duplicate assets
-            retry: false,
+            retry: false, // Don't retry costly image generation
           }
         );
         clearTimeout(timeoutId);
       } catch (error) {
         clearTimeout(timeoutId);
-        // Handle abort/timeout - callEdgeFunction wraps AbortError as ApiError(code="ABORTED")
         if (error instanceof ApiError && error.code === "ABORTED") {
-          // Check if it was a timeout vs user cancellation
           if (timeoutController.signal.aborted) {
             return {
               success: false,
@@ -232,30 +133,15 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
         throw error;
       }
 
-      ctx.onProgress?.({ pct: 90, stage: "Updating entity..." });
-
-      // Update entity in store if portrait was set
-      if (response.entityId && entity && request.setAsPortrait) {
-        const updatedEntity: Entity = {
-          ...entity,
-          portraitUrl: response.imageUrl,
-          portraitAssetId: response.assetId,
-        };
-        ctx.addEntity(updatedEntity);
-      }
-
       ctx.onProgress?.({ pct: 100, stage: "Complete" });
 
-      // Determine resolved entity name for artifact title
-      const resolvedEntityName = args.entityName ?? entity?.name ?? args.subject.slice(0, 30);
-
-      // Build artifact title (include [Cached] indicator for cache hits)
-      const baseTitle = `${request.style ?? "fantasy_art"} ${request.assetType ?? "portrait"} for ${resolvedEntityName}`;
+      // Build artifact title
+      const tierLabel = args.tier ?? "standard";
+      const promptPreview = args.prompt.slice(0, 30);
       const artifactTitle = response.cached
-        ? `[Cached] ${baseTitle}`
-        : baseTitle;
+        ? `[Cached] ${tierLabel} image: ${promptPreview}...`
+        : `${tierLabel} image: ${promptPreview}...`;
 
-      // Return result with artifacts
       return {
         success: true,
         result: {
@@ -272,7 +158,7 @@ export const generateImageExecutor: ToolDefinition<GenerateImageArgs, GenerateIm
             url: response.imageUrl,
             previewUrl: response.imageUrl,
             title: artifactTitle,
-            mimeType: "image/png", // TODO: get from response
+            mimeType: "image/png",
           },
         ],
       };

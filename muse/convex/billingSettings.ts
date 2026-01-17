@@ -51,6 +51,7 @@ export const setBillingMode = internalMutation({
  * Default model for managed users.
  */
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
+const DEFAULT_IMAGE_MODEL = "google/gemini-2.5-flash-image";
 
 /**
  * Get user's preferred model (for BYOK users).
@@ -107,6 +108,60 @@ export const setPreferredModel = internalMutation({
 });
 
 /**
+ * Get user's preferred image model (for BYOK users).
+ * Falls back to platform default if not set.
+ */
+export const getPreferredImageModel = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const record = await ctx.db
+      .query("userBillingSettings")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+
+    // Only return custom model for BYOK users who have set one
+    if (record?.billingMode === "byok" && record.preferredImageModel) {
+      return record.preferredImageModel;
+    }
+
+    return DEFAULT_IMAGE_MODEL;
+  },
+});
+
+/**
+ * Set user's preferred image model (for BYOK users).
+ */
+export const setPreferredImageModel = internalMutation({
+  args: {
+    userId: v.string(),
+    model: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("userBillingSettings")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        preferredImageModel: args.model,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("userBillingSettings", {
+        userId: args.userId,
+        billingMode: "byok", // Setting image model implies BYOK
+        preferredImageModel: args.model,
+        updatedAt: now,
+      });
+    }
+
+    return { success: true, preferredImageModel: args.model };
+  },
+});
+
+/**
  * Get full billing settings for a user.
  */
 export const getBillingSettings = internalQuery({
@@ -120,6 +175,7 @@ export const getBillingSettings = internalQuery({
     return {
       billingMode: record?.billingMode === "byok" ? "byok" : "managed",
       preferredModel: record?.preferredModel ?? DEFAULT_MODEL,
+      preferredImageModel: record?.preferredImageModel ?? DEFAULT_IMAGE_MODEL,
     };
   },
 });
@@ -147,6 +203,7 @@ export const getMyBillingSettings = query({
     return {
       billingMode: (record?.billingMode === "byok" ? "byok" : "managed") as "managed" | "byok",
       preferredModel: record?.preferredModel ?? DEFAULT_MODEL,
+      preferredImageModel: record?.preferredImageModel ?? DEFAULT_IMAGE_MODEL,
     };
   },
 });
@@ -217,5 +274,40 @@ export const setMyPreferredModel = mutation({
     }
 
     return { success: true, preferredModel: args.model };
+  },
+});
+
+/**
+ * Set current user's preferred image model.
+ */
+export const setMyPreferredImageModel = mutation({
+  args: { model: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("userBillingSettings")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        preferredImageModel: args.model,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("userBillingSettings", {
+        userId,
+        billingMode: "byok",
+        preferredImageModel: args.model,
+        updatedAt: now,
+      });
+    }
+
+    return { success: true, preferredImageModel: args.model };
   },
 });

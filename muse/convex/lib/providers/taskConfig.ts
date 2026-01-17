@@ -11,7 +11,6 @@ import { getModelWithFallback } from "./registry";
 import { isTierHigher } from "../tierConfig";
 
 const TASK_ALIASES: Record<string, AITaskSlug> = {
-  coach: "review",
   creative: "generation",
 };
 
@@ -177,6 +176,71 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskSlug, LlmTaskConfig> = {
     temperature: 0.2,
     responseFormat: "text",
     minTier: "free",
+    enabled: true,
+  },
+  artifact_iteration: {
+    taskSlug: "artifact_iteration",
+    modality: "text",
+    description: "Artifact refinement and iteration",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.4,
+    responseFormat: "json_object",
+    minTier: "pro",
+    enabled: true,
+  },
+  clarity_check: {
+    taskSlug: "clarity_check",
+    modality: "text",
+    description: "Clarity checking and ambiguity detection",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.3,
+    responseFormat: "json_object",
+    minTier: "pro",
+    enabled: true,
+  },
+  policy_check: {
+    taskSlug: "policy_check",
+    modality: "text",
+    description: "Policy and guardrail checking",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.2,
+    responseFormat: "json_object",
+    minTier: "pro",
+    enabled: true,
+  },
+  name_generator: {
+    taskSlug: "name_generator",
+    modality: "text",
+    description: "Name generation",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.7,
+    responseFormat: "json_object",
+    minTier: "free",
+    enabled: true,
+  },
+  check_logic: {
+    taskSlug: "check_logic",
+    modality: "text",
+    description: "Logic validation and rule checking",
+    directModel: "anthropic/claude-sonnet-4",
+    directProvider: "openrouter",
+    fallback1Model: "google/gemini-2.0-flash-001",
+    fallback1Provider: "openrouter",
+    temperature: 0.2,
+    responseFormat: "json_object",
+    minTier: "pro",
     enabled: true,
   },
   requirements_draft: {
@@ -373,7 +437,7 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskSlug, LlmTaskConfig> = {
     description: "Generate images from text",
     directModel: "black-forest-labs/FLUX-1-dev",
     directProvider: "deepinfra",
-    fallback1Model: "google/gemini-2.0-flash-preview-image-generation",
+    fallback1Model: "google/gemini-2.5-flash-image",
     fallback1Provider: "openrouter",
     responseFormat: "text",
     minTier: "pro",
@@ -591,6 +655,29 @@ export function isTaskAvailable(taskSlug: AITaskSlug, userTier: TierId): boolean
 /**
  * Check task access with detailed response
  */
+export function checkTaskAccessForConfig(
+  config: LlmTaskConfig,
+  userTier: TierId
+): { allowed: boolean; reason?: string; upgradeRequired?: boolean; requiredTier?: TierId } {
+  if (!config.enabled) {
+    return { allowed: false, reason: `Task ${config.taskSlug} is not enabled` };
+  }
+
+  if (!isTierAtLeast(userTier, config.minTier)) {
+    return {
+      allowed: false,
+      reason: `${config.taskSlug} requires ${config.minTier} tier`,
+      upgradeRequired: true,
+      requiredTier: config.minTier,
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Check task access with detailed response
+ */
 export function checkTaskAccess(
   taskSlug: AITaskSlug,
   userTier: TierId
@@ -601,20 +688,7 @@ export function checkTaskAccess(
     return { allowed: false, reason: `Unknown task: ${taskSlug}` };
   }
 
-  if (!config.enabled) {
-    return { allowed: false, reason: `Task ${taskSlug} is not enabled` };
-  }
-
-  if (!isTierAtLeast(userTier, config.minTier)) {
-    return {
-      allowed: false,
-      reason: `${taskSlug} requires ${config.minTier} tier`,
-      upgradeRequired: true,
-      requiredTier: config.minTier,
-    };
-  }
-
-  return { allowed: true };
+  return checkTaskAccessForConfig(config, userTier);
 }
 
 /**
@@ -650,7 +724,7 @@ export async function getModelForTask(
   const config = await getTaskConfig(ctx, taskSlug);
 
   // Check tier access
-  const access = checkTaskAccess(taskSlug, userTier);
+  const access = checkTaskAccessForConfig(config, userTier);
   if (!access.allowed) {
     throw new Error(access.reason);
   }
@@ -689,7 +763,7 @@ export function getModelForTaskSync(
   const config = getTaskConfigSync(taskSlug);
 
   // Check tier access
-  const access = checkTaskAccess(taskSlug, userTier);
+  const access = checkTaskAccessForConfig(config, userTier);
   if (!access.allowed) {
     throw new Error(access.reason);
   }

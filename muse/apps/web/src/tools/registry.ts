@@ -44,10 +44,10 @@ import { findSimilarImagesExecutor } from "./executors/findSimilarImages";
 // Phase 3+4: Reference image & scene tools
 import { analyzeImageExecutor } from "./executors/analyzeImage";
 import { createEntityFromImageExecutor } from "./executors/createEntityFromImage";
-import { illustrateSceneExecutor } from "./executors/illustrateScene";
 // Planning tools
 import { writeTodosExecutor } from "./executors/writeTodos";
 import { spawnTaskExecutor } from "./executors/spawnTask";
+import { requestTaskSlugExecutor } from "./executors/requestTaskSlug";
 
 // =============================================================================
 // Tool Registry
@@ -91,13 +91,13 @@ export const toolRegistry: Record<string, ToolDefinition<unknown, unknown>> = {
   // Image search tools
   search_images: searchImagesExecutor as ToolDefinition<unknown, unknown>,
   find_similar_images: findSimilarImagesExecutor as ToolDefinition<unknown, unknown>,
-  // Phase 3+4: Reference image & scene tools
+  // Phase 3+4: Reference image tools
   analyze_image: analyzeImageExecutor as ToolDefinition<unknown, unknown>,
   create_entity_from_image: createEntityFromImageExecutor as ToolDefinition<unknown, unknown>,
-  illustrate_scene: illustrateSceneExecutor as ToolDefinition<unknown, unknown>,
   // Planning tools
   write_todos: writeTodosExecutor as ToolDefinition<unknown, unknown>,
   spawn_task: spawnTaskExecutor as ToolDefinition<unknown, unknown>,
+  request_task_slug: requestTaskSlugExecutor as ToolDefinition<unknown, unknown>,
 };
 
 /**

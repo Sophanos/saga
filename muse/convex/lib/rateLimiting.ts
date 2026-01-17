@@ -262,7 +262,6 @@ export function createUsageHandler(options?: {
       const costMicros = calculateCostMicros(model, inputTokens, outputTokens);
 
       const billingMode: "managed" | "byok" = await (ctx as any).runQuery(
-        // @ts-expect-error - internal type is too deeply nested
         internal.billingSettings.getBillingMode,
         { userId }
       );

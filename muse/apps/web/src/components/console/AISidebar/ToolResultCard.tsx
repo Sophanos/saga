@@ -20,7 +20,7 @@ import {
   ListTodo,
   Workflow,
 } from "lucide-react";
-import { Button, cn } from "@mythos/ui";
+import { Button, Input, cn } from "@mythos/ui";
 import {
   useMythosStore,
   type ChatMessage,
@@ -37,6 +37,8 @@ import type { EntityType } from "@mythos/core";
 import type {
   AskQuestionArgs,
   AskQuestionResult,
+  RequestTaskSlugArgs,
+  RequestTaskSlugResult,
   WriteContentOperation,
   WriteContentResult,
   WriteTodosArgs,
@@ -124,6 +126,7 @@ function getCardStyles(
 
 function resolveDefaultApprovalType(toolName: ToolName): ToolApprovalType | undefined {
   if (toolName === "ask_question") return "input";
+  if (toolName === "request_task_slug") return "input";
   if (toolName === "write_content") return "apply";
   return undefined;
 }
@@ -161,6 +164,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
   const applyWriteContentSuggestion = useMythosStore((s) => s.applyWriteContentSuggestion);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [taskSlugInput, setTaskSlugInput] = useState("");
 
   const args = (tool.args ?? {}) as Record<string, unknown>;
   const getArg = <T,>(key: string, fallback?: T): T | undefined =>
@@ -172,6 +176,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
   const isCanceled = tool.status === "canceled";
   const canRetry = isFailed || isCanceled;
   const isAskQuestion = tool.toolName === "ask_question";
+  const isRequestTaskSlug = tool.toolName === "request_task_slug";
   const isWriteContent = tool.toolName === "write_content";
   const isWriteTodos = tool.toolName === "write_todos";
   const isSpawnTask = tool.toolName === "spawn_task";
@@ -183,6 +188,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
   const danger = (tool.danger ?? getToolDanger(tool.toolName)) as ToolApprovalDanger;
   const label = getToolLabel(tool.toolName);
   const summary = renderToolSummary(tool.toolName, tool.args);
+  const taskSlugArgs = isRequestTaskSlug ? (tool.args as RequestTaskSlugArgs) : undefined;
   const needsApproval = tool.needsApproval ?? approvalType !== undefined;
   const approvalBadgeLabel = getApprovalBadgeLabel(approvalType);
 
@@ -280,7 +286,10 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
   );
 
   const streamToolResult = useCallback(
-    async (resultPayload: AskQuestionResult | WriteContentResult, finalStatus: ToolInvocationStatus) => {
+    async (
+      resultPayload: AskQuestionResult | WriteContentResult | RequestTaskSlugResult,
+      finalStatus: ToolInvocationStatus
+    ) => {
       if (!projectId) {
         updateToolInvocation(messageId, { status: "failed", error: "Project not available" });
         return;
@@ -398,6 +407,15 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
       await streamToolResult(result, "executed");
     },
     [isAskQuestion, streamToolResult]
+  );
+
+  const handleSubmitTaskSlug = useCallback(
+    async (taskSlug: string) => {
+      if (!isRequestTaskSlug || !taskSlug.trim()) return;
+      const result: RequestTaskSlugResult = { taskSlug: taskSlug.trim() };
+      await streamToolResult(result, "executed");
+    },
+    [isRequestTaskSlug, streamToolResult]
   );
 
   const handleSkipQuestion = useCallback(async () => {
@@ -717,6 +735,55 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
         </div>
       )}
 
+      {isProposed && isRequestTaskSlug && (
+        <div className="mt-2 space-y-2" data-testid="tool-approval-request">
+          {taskSlugArgs?.description && (
+            <p className="text-xs text-mythos-text-muted">{taskSlugArgs.description}</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {(taskSlugArgs?.recommended ?? []).map((option) => (
+              <Button
+                key={option.taskSlug}
+                size="sm"
+                variant="outline"
+                onClick={() => handleSubmitTaskSlug(option.taskSlug)}
+                disabled={isSubmitting}
+                className="h-7 text-xs"
+              >
+                {option.label}
+              </Button>
+            ))}
+            {taskSlugArgs?.allowAuto && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleSubmitTaskSlug("auto")}
+                disabled={isSubmitting}
+                className="h-7 text-xs"
+              >
+                Auto
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              value={taskSlugInput}
+              onChange={(event) => setTaskSlugInput(event.target.value)}
+              placeholder="Enter task slug"
+              className="h-7 text-xs"
+            />
+            <Button
+              size="sm"
+              onClick={() => handleSubmitTaskSlug(taskSlugInput)}
+              disabled={isSubmitting || !taskSlugInput.trim()}
+              className="h-7 text-xs"
+            >
+              Submit
+            </Button>
+          </div>
+        </div>
+      )}
+
       {isProposed && isWriteContent && (
         <div className="flex items-center gap-2 mt-2">
           <Button
@@ -742,7 +809,7 @@ export function ToolResultCard({ messageId, tool, sessionWriter }: ToolResultCar
         </div>
       )}
 
-      {isProposed && !isAskQuestion && !isWriteContent && (
+      {isProposed && !isAskQuestion && !isRequestTaskSlug && !isWriteContent && (
         <div className="flex items-center gap-2 mt-2">
           <Button
             size="sm"

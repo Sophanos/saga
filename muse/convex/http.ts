@@ -1338,6 +1338,7 @@ http.route({
     const origin = request.headers.get("Origin");
     logRequestStart(request, "/ai/image");
     logLargeRequest(request, "/ai/image");
+    const byokKey = request.headers.get("x-openrouter-key") ?? undefined;
 
     const auth = await validateAuth(ctx, request);
     if (!auth.isValid) {
@@ -1400,14 +1401,25 @@ http.route({
           return quotaResponse;
         }
 
-        const result = await ctx.runAction((internal as any)["ai/image"].illustrateSceneAction, {
+        // Build prompt from scene text and optional focus
+        const focusPrompts: Record<string, string> = {
+          action: "dynamic composition, motion blur, intense movement, action pose, dramatic angle",
+          dialogue: "conversational framing, eye contact, intimate composition",
+          establishing: "wide shot, environmental focus, setting the scene",
+          dramatic: "dramatic lighting, emotional intensity, key moment, cinematic composition",
+        };
+        const stylePrefix = style ? `${style} style, ` : "";
+        const focusPrefix = sceneFocus && focusPrompts[sceneFocus] ? `${focusPrompts[sceneFocus]}, ` : "";
+        const prompt = `${stylePrefix}${focusPrefix}Illustrate this scene: ${sceneText.slice(0, 500)}`;
+
+        const result = await ctx.runAction((internal as any)["ai/image"].generateImageAction, {
           projectId,
           userId: auth.userId,
-          sceneText,
-          style,
-          aspectRatio,
-          sceneFocus,
-          tier,
+          prompt,
+          aspectRatio: aspectRatio ?? "16:9",
+          tier: tier ?? "standard",
+          byokKey,
+          assetType: "illustration",
         });
 
         if (!result?.success) {
@@ -1442,6 +1454,7 @@ http.route({
       }
 
       const {
+        prompt: providedPrompt,
         subject,
         style,
         aspectRatio,
@@ -1451,6 +1464,7 @@ http.route({
         assetType,
         tier,
       } = body as {
+        prompt?: string;
         subject?: string;
         style?: string;
         aspectRatio?: string;
@@ -1461,8 +1475,15 @@ http.route({
         tier?: string;
       };
 
-      if (!subject) {
-        return new Response(JSON.stringify({ error: "subject is required for image generation" }), {
+      const prompt =
+        typeof providedPrompt === "string" && providedPrompt.trim().length > 0
+          ? providedPrompt.trim()
+          : [subject, style ? `${style} style` : undefined, visualDescription]
+              .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+              .join(", ");
+
+      if (!prompt) {
+        return new Response(JSON.stringify({ error: "prompt is required for image generation" }), {
           status: 400,
           headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
         });
@@ -1473,7 +1494,7 @@ http.route({
         origin,
         userId: auth.userId,
         endpoint: "image_generate",
-        promptText: subject,
+        promptText: prompt,
       });
       if (quotaResponse) {
         return quotaResponse;
@@ -1482,14 +1503,13 @@ http.route({
       const result = await ctx.runAction((internal as any)["ai/image"].generateImageAction, {
         projectId,
         userId: auth.userId,
-        subject,
-        style,
+        prompt,
         aspectRatio,
-        visualDescription,
         negativePrompt,
         entityId,
         assetType,
         tier,
+        byokKey,
       });
 
       if (!result?.success) {
@@ -2500,7 +2520,7 @@ async function resolveImageSource(
 
   const extension = mimeType.split("/")[1] ?? "png";
   const filename = `analysis_${Date.now()}.${extension}`;
-  const assetType = setAsPortrait ? "portrait" : "reference";
+  const assetType = setAsPortrait ? "avatar" : "reference";
 
   const assetId = await ctx.runMutation((internal as any).projectAssets.saveAssetInternal, {
     projectId: projectId as Id<"projects">,

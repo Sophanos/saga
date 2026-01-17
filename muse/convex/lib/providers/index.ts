@@ -45,7 +45,7 @@ export {
   type ResolvedModel,
 } from "./types";
 
-// Image contexts
+// Image generation config
 export {
   // Tiers
   IMAGE_TIERS,
@@ -53,24 +53,9 @@ export {
   type ImageTierConfig,
   getTierConfig,
   selectImageTier,
-  type ImageTierSelectionOptions,
 
-  // Contexts
-  IMAGE_CONTEXTS,
-  type ImageContext,
-  type ImageContextConfig,
-  getContextConfig,
-  getDefaultsForContext,
-  getImageContextForEntityType,
-
-  // Storage
-  IMAGE_STORAGE_TARGETS,
-  type ImageStorageTarget,
-
-  // Styles
-  IMAGE_STYLES,
-  type ImageStyle,
-  getStylePromptPrefix,
+  // BYOK default
+  BYOK_IMAGE_MODEL,
 
   // Aspect ratios
   ASPECT_RATIOS,

@@ -12,16 +12,14 @@ import type { Id } from "../_generated/dataModel";
 import {
   IMAGE_TIERS,
   selectImageTier,
-  getStylePromptPrefix,
   type ImageTier,
-  type ImageStyle,
-  getModelForTaskSync,
   checkTaskAccess,
   type TierId,
 } from "../lib/providers";
 import { assertAiAllowed } from "../lib/quotaEnforcement";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const DEEPINFRA_INFERENCE_URL = "https://api.deepinfra.com/v1/inference";
 
 interface GenerateImageResult {
   success: boolean;
@@ -41,58 +39,132 @@ interface OpenRouterImageResponse {
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
-function buildImagePrompt(
-  subject: string,
-  style?: ImageStyle,
-  visualDescription?: string,
-  negativePrompt?: string
-): string {
-  const parts: string[] = [];
-
-  if (style) {
-    parts.push(getStylePromptPrefix(style));
-  }
-
-  parts.push(subject);
-
-  if (visualDescription) {
-    parts.push(visualDescription);
-  }
-
-  let prompt = parts.join(" ");
-
+function buildImagePrompt(prompt: string, negativePrompt?: string): string {
   if (negativePrompt) {
-    prompt += ` --no ${negativePrompt}`;
+    return `${prompt} --no ${negativePrompt}`;
   }
-
   return prompt;
 }
 
-function buildScenePrompt(
-  sceneText: string,
-  style?: ImageStyle,
-  sceneFocus?: "action" | "dialogue" | "establishing" | "dramatic"
-): string {
-  const parts: string[] = [];
+type ImageCandidate = {
+  dataUrl?: string;
+  base64?: string;
+  url?: string;
+};
 
-  if (style) {
-    parts.push(getStylePromptPrefix(style));
+function resolveAspectRatioSize(aspectRatio?: string): { width?: number; height?: number } {
+  if (!aspectRatio) return {};
+  const parts = aspectRatio.split(":").map((value) => Number(value));
+  if (parts.length !== 2) return {};
+  const [w, h] = parts;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return {};
+
+  const maxSide = 1024;
+  let width = maxSide;
+  let height = Math.round((maxSide * h) / w);
+
+  if (height > maxSide) {
+    height = maxSide;
+    width = Math.round((maxSide * w) / h);
   }
 
-  const focusPrompts = {
-    action: "dynamic composition, motion blur, intense movement, action pose, dramatic angle",
-    dialogue: "conversational framing, eye contact, intimate composition",
-    establishing: "wide shot, environmental focus, setting the scene",
-    dramatic: "dramatic lighting, emotional intensity, key moment, cinematic composition",
-  };
+  const snap = (value: number) => Math.max(64, Math.round(value / 64) * 64);
+  return { width: snap(width), height: snap(height) };
+}
 
-  if (sceneFocus) {
-    parts.push(focusPrompts[sceneFocus]);
+function resolveImageCandidate(value: string): ImageCandidate | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("data:image/")) {
+    return { dataUrl: trimmed };
+  }
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return { url: trimmed };
+  }
+  return { base64: trimmed };
+}
+
+function extractImageCandidate(payload: unknown): ImageCandidate | null {
+  if (typeof payload === "string") {
+    return resolveImageCandidate(payload);
   }
 
-  parts.push(`Illustrate this scene: ${sceneText.slice(0, 500)}`);
+  if (Array.isArray(payload)) {
+    const first = payload.find((value) => typeof value === "string");
+    return typeof first === "string" ? resolveImageCandidate(first) : null;
+  }
 
-  return parts.join(" ");
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    const images = record["images"];
+    if (Array.isArray(images) && typeof images[0] === "string") {
+      return resolveImageCandidate(images[0]);
+    }
+
+    if (typeof record["image"] === "string") {
+      return resolveImageCandidate(record["image"]);
+    }
+
+    const output = record["output"];
+    if (Array.isArray(output) && typeof output[0] === "string") {
+      return resolveImageCandidate(output[0]);
+    }
+
+    const data = record["data"];
+    if (Array.isArray(data) && data.length > 0 && data[0] && typeof data[0] === "object") {
+      const first = data[0] as Record<string, unknown>;
+      if (typeof first["b64_json"] === "string") {
+        return { base64: first["b64_json"] };
+      }
+      if (typeof first["url"] === "string") {
+        return { url: first["url"] };
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseDataUrl(dataUrl: string): { base64: string; mimeType: string } | null {
+  const parts = dataUrl.split(",");
+  if (parts.length !== 2) return null;
+  const header = parts[0];
+  const base64 = parts[1];
+  const mimeMatch = header.match(/data:([^;]+)/);
+  const mimeType = mimeMatch?.[1] ?? "image/png";
+  return { base64, mimeType };
+}
+
+async function resolveImageBuffer(candidate: ImageCandidate): Promise<{ buffer: Buffer; mimeType: string }> {
+  if (candidate.dataUrl) {
+    const parsed = parseDataUrl(candidate.dataUrl);
+    if (!parsed) {
+      throw new Error("Invalid data URL returned from image provider");
+    }
+    return {
+      buffer: Buffer.from(parsed.base64, "base64"),
+      mimeType: parsed.mimeType,
+    };
+  }
+
+  if (candidate.base64) {
+    return {
+      buffer: Buffer.from(candidate.base64, "base64"),
+      mimeType: "image/png",
+    };
+  }
+
+  if (candidate.url) {
+    const response = await fetch(candidate.url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch generated image: ${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const mimeType = response.headers.get("content-type") ?? "image/png";
+    return { buffer: Buffer.from(arrayBuffer), mimeType };
+  }
+
+  throw new Error("No image data returned from image provider");
 }
 
 export const storeGeneratedAsset = internalMutation({
@@ -100,10 +172,14 @@ export const storeGeneratedAsset = internalMutation({
     projectId: v.id("projects"),
     entityId: v.optional(v.id("entities")),
     type: v.union(
-      v.literal("portrait"),
-      v.literal("scene"),
+      v.literal("avatar"),
+      v.literal("diagram"),
+      v.literal("mockup"),
+      v.literal("illustration"),
+      v.literal("photo"),
       v.literal("map"),
-      v.literal("cover"),
+      v.literal("icon"),
+      v.literal("chart"),
       v.literal("reference"),
       v.literal("other")
     ),
@@ -149,29 +225,33 @@ export const generateImageAction = internalAction({
   args: {
     projectId: v.string(),
     userId: v.string(),
-    subject: v.string(),
-    style: v.optional(v.string()),
+    prompt: v.string(),
     aspectRatio: v.optional(v.string()),
-    visualDescription: v.optional(v.string()),
     negativePrompt: v.optional(v.string()),
     entityId: v.optional(v.string()),
     tier: v.optional(v.string()),
     tierId: v.optional(v.string()),
+    byokKey: v.optional(v.string()),
     assetType: v.optional(
       v.union(
-        v.literal("portrait"),
-        v.literal("scene"),
+        v.literal("avatar"),
+        v.literal("diagram"),
+        v.literal("mockup"),
+        v.literal("illustration"),
+        v.literal("photo"),
         v.literal("map"),
-        v.literal("cover"),
+        v.literal("icon"),
+        v.literal("chart"),
         v.literal("reference"),
         v.literal("other")
       )
     ),
   },
   handler: async (ctx, args): Promise<GenerateImageResult> => {
-    const { projectId, userId, subject, style, visualDescription, negativePrompt, entityId, assetType } = args;
+    const { projectId, userId, negativePrompt, entityId, assetType } = args;
     const userTierId = (args.tierId as TierId) ?? "free";
     const startTime = Date.now();
+    const basePrompt = args.prompt.trim();
 
     // Check tier access
     const access = checkTaskAccess("image_generate", userTierId);
@@ -181,79 +261,135 @@ export const generateImageAction = internalAction({
 
     const selectedTier = (args.tier as ImageTier) ?? selectImageTier({ quality: "standard" });
     const tierConfig = IMAGE_TIERS[selectedTier];
-    const resolved = getModelForTaskSync("image_generate", userTierId);
-
-    const apiKey = process.env["OPENROUTER_API_KEY"];
-    if (!apiKey) {
-      return { success: false, error: "OPENROUTER_API_KEY not configured" };
-    }
+    const billingMode = await ctx.runQuery(
+      (internal as any).billingSettings.getBillingMode,
+      { userId }
+    );
+    const isByok = billingMode === "byok";
+    let generationModel = tierConfig.model;
+    let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
     try {
-      const prompt = buildImagePrompt(
-        subject,
-        style as ImageStyle | undefined,
-        visualDescription,
-        negativePrompt
-      );
-
-      const { maxOutputTokens } = await assertAiAllowed(ctx, {
-        userId,
-        endpoint: "image_generate",
-        promptText: prompt,
-        requestedMaxOutputTokens: 4096,
-      });
-
-      const response = await fetch(OPENROUTER_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "HTTP-Referer": process.env["OPENROUTER_SITE_URL"] ?? "https://mythos.app",
-          "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
-        },
-        body: JSON.stringify({
-          model: resolved.model,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.7,
-          max_tokens: maxOutputTokens,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return { success: false, error: `API error: ${response.status} - ${errorText}` };
-      }
-
-      const data = (await response.json()) as OpenRouterImageResponse;
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        return { success: false, error: "No content in response" };
-      }
-
-      const imageMatch = content.match(/!\[.*?\]\((data:image\/[^)]+)\)/);
-      let imageBase64: string | null = null;
+      let imageBuffer: Buffer;
       let mimeType = "image/png";
+      const promptForUsage = buildImagePrompt(basePrompt, negativePrompt);
 
-      if (imageMatch) {
-        const dataUrl = imageMatch[1];
-        const parts = dataUrl.split(",");
-        if (parts.length === 2) {
-          const header = parts[0];
-          imageBase64 = parts[1];
-          const mimeMatch = header.match(/data:([^;]+)/);
-          if (mimeMatch) {
-            mimeType = mimeMatch[1];
+      if (isByok) {
+        const byokKey = args.byokKey?.trim();
+        if (!byokKey) {
+          return { success: false, error: "BYOK key is required for image generation" };
+        }
+
+        const byokModel = await ctx.runQuery(
+          (internal as any).billingSettings.getPreferredImageModel,
+          { userId }
+        );
+        generationModel = byokModel;
+
+        const response = await fetch(OPENROUTER_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${byokKey}`,
+            "HTTP-Referer": process.env["OPENROUTER_SITE_URL"] ?? "https://mythos.app",
+            "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
+          },
+          body: JSON.stringify({
+            model: byokModel,
+            messages: [{ role: "user", content: promptForUsage }],
+            temperature: 0.7,
+            max_tokens: 4096,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          return { success: false, error: `OpenRouter error: ${response.status} - ${errorText}` };
+        }
+
+        const data = (await response.json()) as OpenRouterImageResponse;
+        const content = data.choices[0]?.message?.content;
+
+        if (!content) {
+          return { success: false, error: "No content in response" };
+        }
+
+        const markdownMatch = content.match(/!\[.*?\]\((data:image\/[^)]+)\)/);
+        let candidate = markdownMatch ? resolveImageCandidate(markdownMatch[1]) : null;
+        if (!candidate && content.trim().startsWith("{")) {
+          try {
+            candidate = extractImageCandidate(JSON.parse(content));
+          } catch {
+            candidate = null;
           }
         }
+        if (!candidate) {
+          candidate = extractImageCandidate(content);
+        }
+        if (!candidate) {
+          return { success: false, error: "No image data in response" };
+        }
+
+        const resolvedImage = await resolveImageBuffer(candidate);
+        imageBuffer = resolvedImage.buffer;
+        mimeType = resolvedImage.mimeType;
+        usage = {
+          promptTokens: data.usage?.prompt_tokens ?? 0,
+          completionTokens: data.usage?.completion_tokens ?? 0,
+          totalTokens: data.usage?.total_tokens ?? 0,
+        };
+      } else {
+        const apiKey = process.env["DEEPINFRA_API_KEY"];
+        if (!apiKey) {
+          return { success: false, error: "DEEPINFRA_API_KEY not configured" };
+        }
+
+        await assertAiAllowed(ctx, {
+          userId,
+          endpoint: "image_generate",
+          promptText: promptForUsage,
+          requestedMaxOutputTokens: 4096,
+        });
+
+        const { width, height } = resolveAspectRatioSize(args.aspectRatio);
+        const body: Record<string, unknown> = { prompt: basePrompt };
+        if (negativePrompt) {
+          body["negative_prompt"] = negativePrompt;
+        }
+        if (width && height) {
+          body["width"] = width;
+          body["height"] = height;
+        }
+
+        const response = await fetch(`${DEEPINFRA_INFERENCE_URL}/${tierConfig.model}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          return { success: false, error: `DeepInfra error: ${response.status} - ${errorText}` };
+        }
+
+        const data = (await response.json()) as unknown;
+        const candidate = extractImageCandidate(data);
+        if (!candidate) {
+          return { success: false, error: "No image data in response" };
+        }
+
+        const resolvedImage = await resolveImageBuffer(candidate);
+        imageBuffer = resolvedImage.buffer;
+        mimeType = resolvedImage.mimeType;
+        generationModel = tierConfig.model;
       }
 
-      if (!imageBase64) {
-        return { success: false, error: "No image data in response" };
-      }
-
-      const imageBuffer = Buffer.from(imageBase64, "base64");
-      const blob = new Blob([imageBuffer], { type: mimeType });
+      const arrayBuffer = new ArrayBuffer(imageBuffer.byteLength);
+      new Uint8Array(arrayBuffer).set(imageBuffer);
+      const blob = new Blob([arrayBuffer], { type: mimeType });
 
       const storageId = await ctx.storage.store(blob);
 
@@ -268,25 +404,21 @@ export const generateImageAction = internalAction({
         mimeType,
         storageId,
         sizeBytes: imageBuffer.length,
-        generationPrompt: prompt,
-        generationModel: tierConfig.model,
+        generationPrompt: promptForUsage,
+        generationModel,
       });
 
       const imageUrl = await ctx.storage.getUrl(storageId);
 
-      const billingMode = await ctx.runQuery(
-        (internal as any).billingSettings.getBillingMode,
-        { userId }
-      );
-      if (billingMode !== "byok") {
+      if (!isByok) {
         await ctx.runMutation(internal.aiUsage.trackUsage, {
           userId,
           projectId,
           endpoint: "image_generate",
-          model: resolved.model,
-          promptTokens: data.usage?.prompt_tokens ?? 0,
-          completionTokens: data.usage?.completion_tokens ?? 0,
-          totalTokens: data.usage?.total_tokens ?? 0,
+          model: generationModel,
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          totalTokens: usage.totalTokens,
           costMicros: Math.round(tierConfig.pricePerImage * 1_000_000),
           billingMode,
           latencyMs: Date.now() - startTime,
@@ -303,16 +435,12 @@ export const generateImageAction = internalAction({
     } catch (error) {
       console.error("[ai/image] Generation error:", error);
 
-      const billingMode = await ctx.runQuery(
-        (internal as any).billingSettings.getBillingMode,
-        { userId }
-      );
-      if (billingMode !== "byok") {
+      if (!isByok) {
         await ctx.runMutation(internal.aiUsage.trackUsage, {
           userId,
           projectId,
           endpoint: "image_generate",
-          model: resolved.model,
+          model: generationModel,
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
@@ -328,44 +456,6 @@ export const generateImageAction = internalAction({
         error: error instanceof Error ? error.message : "Image generation failed",
       };
     }
-  },
-});
-
-export const illustrateSceneAction = internalAction({
-  args: {
-    projectId: v.string(),
-    userId: v.string(),
-    sceneText: v.string(),
-    style: v.optional(v.string()),
-    aspectRatio: v.optional(v.string()),
-    sceneFocus: v.optional(
-      v.union(
-        v.literal("action"),
-        v.literal("dialogue"),
-        v.literal("establishing"),
-        v.literal("dramatic")
-      )
-    ),
-    tier: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<GenerateImageResult> => {
-    const { projectId, userId, sceneText, style, aspectRatio, sceneFocus, tier } = args;
-
-    const prompt = buildScenePrompt(
-      sceneText,
-      style as ImageStyle | undefined,
-      sceneFocus
-    );
-
-    return await ctx.runAction((internal as any)["ai/image"].generateImageAction, {
-      projectId,
-      userId,
-      subject: prompt,
-      style,
-      aspectRatio,
-      tier: tier ?? "standard",
-      assetType: "scene",
-    });
   },
 });
 

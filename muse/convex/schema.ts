@@ -949,7 +949,8 @@ export default defineSchema({
   userBillingSettings: defineTable({
     userId: v.string(),
     billingMode: v.string(), // "managed" | "byok"
-    preferredModel: v.optional(v.string()), // OpenRouter model ID for BYOK users
+    preferredModel: v.optional(v.string()), // OpenRouter model ID for BYOK text
+    preferredImageModel: v.optional(v.string()), // OpenRouter model ID for BYOK images
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
 
@@ -1155,12 +1156,16 @@ export default defineSchema({
     projectId: v.id("projects"),
     entityId: v.optional(v.id("entities")),
     type: v.union(
-      v.literal("portrait"),
-      v.literal("scene"),
-      v.literal("map"),
-      v.literal("cover"),
-      v.literal("reference"),
-      v.literal("other")
+      v.literal("avatar"),       // Profile image (character, team member, persona)
+      v.literal("diagram"),      // Technical diagrams, flowcharts, architecture
+      v.literal("mockup"),       // UI mockups, wireframes, prototypes
+      v.literal("illustration"), // Scene illustrations, concept art
+      v.literal("photo"),        // Photography, product shots
+      v.literal("map"),          // Maps, floor plans, layouts
+      v.literal("icon"),         // Icons, logos, emblems
+      v.literal("chart"),        // Data visualizations, graphs
+      v.literal("reference"),    // Reference images, mood boards
+      v.literal("other")         // Uncategorized
     ),
     filename: v.string(),
     mimeType: v.string(),

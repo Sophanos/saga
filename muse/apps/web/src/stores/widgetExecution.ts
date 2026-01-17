@@ -6,11 +6,25 @@ import type {
   WidgetInvokeRequest,
   WidgetExecutionResult,
 } from "@mythos/agent-protocol";
+import { useActivityStore } from "@mythos/state";
 
 type WidgetType = WidgetExecutionResult["widgetType"];
 import type { Editor } from "@mythos/editor";
 import { sendWidgetRunStreaming } from "../services/ai/widgetClient";
 import { applyInlineWidget } from "../lib/widgets/applyInlineWidget";
+
+// Helper to sync widget execution to activity store
+function syncToActivity(params: {
+  executionId: string;
+  widgetId: string;
+  label: string;
+  status: WidgetExecutionStatus;
+  documentId?: string | null;
+  documentName?: string | null;
+  projectId: string;
+}) {
+  useActivityStore.getState().syncFromWidgetExecution(params);
+}
 
 interface WidgetExecutionState {
   status: WidgetExecutionStatus;
@@ -70,6 +84,9 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
       const controller = new AbortController();
       const { widgetId, widgetType, widgetLabel, projectId, documentId, selectionRange, selectionText, parameters } = params;
 
+      // Generate execution ID for activity tracking
+      const executionId = `widget-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
       set((state) => {
         state.status = "gathering";
         state.currentWidgetId = widgetId;
@@ -84,9 +101,19 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
         state.partialOutput = "";
         state.title = "";
         state.manifestDraft = null;
-        state.executionId = null;
+        state.executionId = executionId;
         state.error = null;
         state.abortController = controller;
+      });
+
+      // Sync to activity on start
+      syncToActivity({
+        executionId,
+        widgetId,
+        label: widgetLabel,
+        status: "gathering",
+        documentId,
+        projectId,
       });
 
       void sendWidgetRunStreaming(
@@ -108,6 +135,18 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
               set((state) => {
                 state.status = stage as WidgetExecutionStatus;
               });
+              // Sync status change to activity
+              const state = get();
+              if (state.executionId && state.currentWidgetId && state.projectId) {
+                syncToActivity({
+                  executionId: state.executionId,
+                  widgetId: state.currentWidgetId,
+                  label: state.widgetLabel ?? "Widget",
+                  status: stage as WidgetExecutionStatus,
+                  documentId: state.documentId,
+                  projectId: state.projectId,
+                });
+              }
             }
 
             const result = payload["result"] as {
@@ -126,6 +165,18 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
                 state.title = result.titleSuggestion ?? state.title;
                 state.manifestDraft = result.manifestDraft ?? state.manifestDraft;
               });
+              // Sync preview status to activity
+              const state = get();
+              if (state.executionId && state.currentWidgetId && state.projectId) {
+                syncToActivity({
+                  executionId: state.executionId,
+                  widgetId: state.currentWidgetId,
+                  label: state.widgetLabel ?? "Widget",
+                  status: "preview",
+                  documentId: state.documentId,
+                  projectId: state.projectId,
+                });
+              }
             }
           },
           onDelta: (content) => {
@@ -147,6 +198,18 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
               state.status = "error";
               state.error = error.message;
             });
+            // Sync error to activity
+            const state = get();
+            if (state.executionId && state.currentWidgetId && state.projectId) {
+              syncToActivity({
+                executionId: state.executionId,
+                widgetId: state.currentWidgetId,
+                label: state.widgetLabel ?? "Widget",
+                status: "error",
+                documentId: state.documentId,
+                projectId: state.projectId,
+              });
+            }
           },
         }
       );
@@ -171,7 +234,7 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
     },
 
     confirmInlineApply: (editor) => {
-      const { previewContent, selection, currentWidgetId, projectId, executionId } = get();
+      const { previewContent, selection, currentWidgetId, projectId, executionId, widgetLabel, documentId } = get();
       if (!editor || editor.isDestroyed) {
         return { applied: false, error: "Editor is not available" };
       }
@@ -200,6 +263,16 @@ export const useWidgetExecutionStore = create<WidgetExecutionState & WidgetExecu
         projectId,
         range,
         content: previewContent,
+      });
+
+      // Sync applied/done status to activity
+      syncToActivity({
+        executionId,
+        widgetId: currentWidgetId,
+        label: widgetLabel ?? "Widget",
+        status: "done",
+        documentId,
+        projectId,
       });
 
       return {

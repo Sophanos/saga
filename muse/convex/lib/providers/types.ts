@@ -28,6 +28,11 @@ export const AI_TASK_CATEGORIES = {
     "thinking", // Deep reasoning
     "creative", // Legacy creative generation
     "summarize", // Text summarization
+    "artifact_iteration", // Artifact refinement
+    "clarity_check", // Clarity checks
+    "policy_check", // Policy checks
+    "name_generator", // Name generation
+    "check_logic", // Logic checks
     // Product
     "requirements_draft",
     "prd_review",

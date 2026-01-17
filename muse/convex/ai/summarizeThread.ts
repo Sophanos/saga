@@ -10,14 +10,11 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { internal, components } from "../_generated/api";
-import { resolveOpenRouterKey, isByokRequest } from "../lib/openRouterKey";
-import { assertAiAllowed } from "../lib/quotaEnforcement";
 import { Agent } from "@convex-dev/agent";
-import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
+import { getLanguageModelForRequest } from "../lib/providers/registry";
+import { resolveExecutionContext } from "./llmExecution";
 
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-const SUMMARIZE_MODEL = "anthropic/claude-sonnet-4";
 const MAX_MESSAGES_TO_SUMMARIZE = 50;
 const SUMMARIZATION_TOKEN_THRESHOLD = 6000;
 const AUTO_SUMMARIZE_THRESHOLD = 8000;
@@ -27,16 +24,6 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-function createOpenRouterClient(apiKey: string) {
-  return createOpenAI({
-    apiKey,
-    baseURL: OPENROUTER_BASE_URL,
-    headers: {
-      "HTTP-Referer": process.env["OPENROUTER_SITE_URL"] ?? "https://rhei.team",
-      "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Rhei",
-    },
-  });
-}
 
 type AgentMessage = {
   _id: string;
@@ -144,18 +131,6 @@ export const summarizeThread = action({
     }
     const userId = identity.subject;
 
-    // Validate API key
-    const isByok = isByokRequest(byokKey);
-    const apiKey = resolveOpenRouterKey(byokKey);
-
-    // Check quota (skip for BYOK)
-    if (!isByok) {
-      await assertAiAllowed(ctx, {
-        userId,
-        endpoint: "chat",
-        promptText: "",
-      });
-    }
 
     // Fetch messages from Agent component
     const messages = await fetchThreadMessages(ctx, threadId, MAX_MESSAGES_TO_SUMMARIZE);
@@ -195,12 +170,32 @@ export const summarizeThread = action({
     const conversationText = conversationLines.join("\n\n");
     const userPrompt = `Please summarize the following conversation:\n\n${conversationText}`;
 
-    // Call summarization model
-    const client = createOpenRouterClient(apiKey.apiKey);
+    const tierId = await ctx.runQuery((internal as any)["lib/entitlements"].getUserTierInternal, {
+      userId,
+    });
+    const exec = await resolveExecutionContext(ctx, {
+      userId,
+      taskSlug: "summarize",
+      tierId,
+      byokKey,
+      promptText: userPrompt,
+      endpoint: "chat",
+    });
+
+    const languageModel = getLanguageModelForRequest(exec.resolved.provider, exec.resolved.model, {
+      apiKeyOverride: exec.apiKey,
+    });
+
+    if (!languageModel) {
+      throw new Error("No available model for summarization");
+    }
+
     const response = await generateText({
-      model: client.chat(SUMMARIZE_MODEL),
+      model: languageModel,
       system: SUMMARIZE_SYSTEM_PROMPT,
       prompt: userPrompt,
+      maxOutputTokens: exec.maxOutputTokens,
+      temperature: exec.temperature,
     });
 
     const summary = response.text;
@@ -214,7 +209,7 @@ export const summarizeThread = action({
       // Create a new thread with the summary as the first message
       const agent = new Agent(components.agent, {
         name: "Saga",
-        languageModel: client.chat(SUMMARIZE_MODEL),
+        languageModel,
       });
 
       const newThread = await agent.createThread(ctx, {

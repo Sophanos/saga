@@ -51,6 +51,26 @@ export const writeTodosTool = tool({
 });
 
 // =============================================================================
+// Task Slug Selection
+// =============================================================================
+
+const taskSlugOptionSchema = z.object({
+  taskSlug: z.string().describe("Task slug identifier"),
+  label: z.string().describe("UI label"),
+  description: z.string().optional().describe("Optional helper text"),
+});
+
+export const requestTaskSlugTool = tool({
+  description: "Ask the user to choose an AI task slug for model routing.",
+  inputSchema: z.object({
+    title: z.string().optional().describe("Optional title for the picker"),
+    description: z.string().optional().describe("Optional helper text"),
+    recommended: z.array(taskSlugOptionSchema).optional().describe("Suggested task options"),
+    allowAuto: z.boolean().optional().describe("Allow automatic selection"),
+  }),
+});
+
+// =============================================================================
 // Spawn Task Schema
 // =============================================================================
 
@@ -58,6 +78,7 @@ export const spawnTaskParameters = z.object({
   agent: z.enum(["research", "analysis", "writing"]).describe("Sub-agent type"),
   title: z.string().describe("Task title"),
   instructions: z.string().describe("Task instructions"),
+  taskSlug: z.string().optional().describe("AITaskSlug to route the sub-agent model"),
   maxSteps: z.number().optional().describe("Step limit (default 4)"),
   requireCitations: z.boolean().optional().describe("Require citations"),
 });

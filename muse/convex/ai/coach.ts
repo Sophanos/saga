@@ -13,9 +13,8 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { WRITING_COACH_SYSTEM, GENRE_COACH_CONTEXTS } from "./prompts/coach";
 import { fetchPinnedProjectMemories, formatMemoriesForPrompt } from "./canon";
-import { getModelForTaskSync, checkTaskAccess, type TierId } from "../lib/providers";
-import { assertAiAllowed } from "../lib/quotaEnforcement";
-import { resolveOpenRouterKey } from "../lib/openRouterKey";
+import type { TierId } from "../lib/providers";
+import { resolveExecutionContext } from "./llmExecution";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_ANALYZE_TEXT_MAX_CHARS = 20000;
@@ -287,13 +286,23 @@ export const runCoach = internalAction({
     const tierId = (args.tierId as TierId) ?? "free";
     const startTime = Date.now();
 
-    // Check tier access
-    const access = checkTaskAccess("coach", tierId);
-    if (!access.allowed) {
+    let exec;
+    try {
+      exec = await resolveExecutionContext(ctx, {
+        userId,
+        taskSlug: "coach",
+        tierId,
+        byokKey,
+        promptText: documentContent,
+        endpoint: "coach",
+      });
+    } catch {
       return getDefaultAnalysis();
     }
 
-    const resolved = getModelForTaskSync("coach", tierId);
+    if (exec.resolved.provider !== "openrouter") {
+      throw new Error(`Provider ${exec.resolved.provider} is not supported for coach`);
+    }
 
     // Fetch pinned canon (decisions + policies) for canon-aware coaching
     let canonDecisionsText: string | undefined;
@@ -310,25 +319,10 @@ export const runCoach = internalAction({
 
     const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre, canonDecisionsText);
 
-    const billingMode = await ctx.runQuery(
-      (internal as any).billingSettings.getBillingMode,
-      { userId }
-    );
-    const resolvedByokKey = byokKey?.trim();
-    if (billingMode === "byok" && !resolvedByokKey) {
-      throw new Error("OpenRouter API key required for BYOK mode");
+    const apiKey = exec.apiKey ?? process.env["OPENROUTER_API_KEY"];
+    if (!apiKey) {
+      throw new Error("OPENROUTER_API_KEY not configured");
     }
-
-    const { apiKey } = resolveOpenRouterKey(
-      billingMode === "byok" ? resolvedByokKey : undefined
-    );
-
-    const { maxOutputTokens } = await assertAiAllowed(ctx, {
-      userId,
-      endpoint: "coach",
-      promptText: userPrompt,
-      requestedMaxOutputTokens: 4096,
-    });
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
@@ -339,13 +333,14 @@ export const runCoach = internalAction({
         "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
       },
       body: JSON.stringify({
-        model: resolved.model,
+        model: exec.resolved.model,
         messages: [
           { role: "system", content: WRITING_COACH_SYSTEM },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.3,
-        max_tokens: maxOutputTokens,
+        response_format: { type: exec.responseFormat },
+        temperature: exec.temperature ?? 0.3,
+        max_tokens: exec.maxOutputTokens,
       }),
     });
 
@@ -359,16 +354,18 @@ export const runCoach = internalAction({
     const content = data.choices[0]?.message?.content ?? "";
     const analysis = parseResponse(content);
 
-    if (billingMode !== "byok") {
+    const billingModeUsed = exec.billingModeUsed;
+
+    if (billingModeUsed !== "byok") {
       await ctx.runMutation(internal.aiUsage.trackUsage, {
         userId,
         projectId: projectId as Id<"projects">,
         endpoint: "coach",
-        model: resolved.model,
+        model: exec.resolved.model,
         promptTokens: data.usage?.prompt_tokens ?? 0,
         completionTokens: data.usage?.completion_tokens ?? 0,
         totalTokens: data.usage?.total_tokens ?? 0,
-        billingMode,
+        billingMode: billingModeUsed,
         latencyMs: processingTimeMs,
         success: true,
       });
@@ -402,17 +399,31 @@ export const runCoachToStream = internalAction({
     const startTime = Date.now();
 
     try {
-      // Check tier access
-      const access = checkTaskAccess("coach", tierId);
-      if (!access.allowed) {
+      let exec;
+      try {
+        exec = await resolveExecutionContext(ctx, {
+          userId,
+          taskSlug: "coach",
+          tierId,
+          byokKey,
+          promptText: documentContent,
+          endpoint: "coach",
+        });
+      } catch (error) {
         await ctx.runMutation((internal as unknown as { "ai/streams": { fail: unknown } })["ai/streams"]["fail"] as typeof internal.aiUsage.trackUsage, {
           streamId,
-          error: "Coach not available on current tier",
+          error: error instanceof Error ? error.message : "Coach not available",
         } as never);
         return;
       }
 
-      const resolved = getModelForTaskSync("coach", tierId);
+      if (exec.resolved.provider !== "openrouter") {
+        await ctx.runMutation((internal as any)["ai/streams"].fail, {
+          streamId,
+          error: `Provider ${exec.resolved.provider} is not supported for coach`,
+        });
+        return;
+      }
 
       // Fetch pinned canon (decisions + policies) for canon-aware coaching
       let canonDecisionsText: string | undefined;
@@ -429,46 +440,12 @@ export const runCoachToStream = internalAction({
 
       const userPrompt = buildAnalysisPrompt(documentContent, entities, relationships, genre, canonDecisionsText);
 
-      const billingMode = await ctx.runQuery(
-        (internal as any).billingSettings.getBillingMode,
-        { userId }
-      );
-      const resolvedByokKey = byokKey?.trim();
-      if (billingMode === "byok" && !resolvedByokKey) {
+      const apiKey = exec.apiKey ?? process.env["OPENROUTER_API_KEY"];
+      if (!apiKey) {
         await ctx.runMutation((internal as unknown as { "ai/streams": { fail: unknown } })["ai/streams"]["fail"] as typeof internal.aiUsage.trackUsage, {
           streamId,
-          error: "OpenRouter API key required for BYOK mode",
+          error: "OPENROUTER_API_KEY not configured",
         } as never);
-        return;
-      }
-
-      let apiKey: string;
-      try {
-        ({ apiKey } = resolveOpenRouterKey(
-          billingMode === "byok" ? resolvedByokKey : undefined
-        ));
-      } catch (error) {
-        await ctx.runMutation((internal as unknown as { "ai/streams": { fail: unknown } })["ai/streams"]["fail"] as typeof internal.aiUsage.trackUsage, {
-          streamId,
-          error: error instanceof Error ? error.message : "OPENROUTER_API_KEY not configured",
-        } as never);
-        return;
-      }
-
-      let maxOutputTokens = 4096;
-      try {
-        const result = await assertAiAllowed(ctx, {
-          userId,
-          endpoint: "coach",
-          promptText: userPrompt,
-          requestedMaxOutputTokens: 4096,
-        });
-        maxOutputTokens = result.maxOutputTokens;
-      } catch (error) {
-        await ctx.runMutation((internal as any)["ai/streams"].fail, {
-          streamId,
-          error: error instanceof Error ? error.message : "Quota enforcement failed",
-        });
         return;
       }
 
@@ -481,13 +458,14 @@ export const runCoachToStream = internalAction({
           "X-Title": process.env["OPENROUTER_APP_NAME"] ?? "Saga AI",
         },
         body: JSON.stringify({
-          model: resolved.model,
+          model: exec.resolved.model,
           messages: [
             { role: "system", content: WRITING_COACH_SYSTEM },
             { role: "user", content: userPrompt },
           ],
-          temperature: 0.3,
-          max_tokens: maxOutputTokens,
+          response_format: { type: exec.responseFormat },
+          temperature: exec.temperature ?? 0.3,
+          max_tokens: exec.maxOutputTokens,
         }),
       });
 
@@ -517,16 +495,16 @@ export const runCoachToStream = internalAction({
         },
       } as never);
 
-      if (billingMode !== "byok") {
+      if (exec.billingModeUsed !== "byok") {
         await ctx.runMutation(internal.aiUsage.trackUsage, {
           userId,
           projectId: projectId as Id<"projects">,
           endpoint: "coach",
-          model: resolved.model,
+          model: exec.resolved.model,
           promptTokens: data.usage?.prompt_tokens ?? 0,
           completionTokens: data.usage?.completion_tokens ?? 0,
           totalTokens: data.usage?.total_tokens ?? 0,
-          billingMode,
+          billingMode: exec.billingModeUsed,
           latencyMs: processingTimeMs,
           success: true,
         });

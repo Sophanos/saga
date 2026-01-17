@@ -276,21 +276,6 @@ export const updateEdgeTool = tool({
 // Image Tools
 // =============================================================================
 
-const imageStyleSchema = z.enum([
-  "realistic",
-  "illustrated",
-  "anime",
-  "painterly",
-  "sketch",
-  "comic",
-  "fantasy_art",
-  "dark_fantasy",
-  "sci_fi",
-  "portrait",
-  "landscape",
-  "concept_art",
-]);
-
 const aspectRatioSchema = z.enum([
   "1:1",
   "3:4",
@@ -301,56 +286,40 @@ const aspectRatioSchema = z.enum([
   "3:2",
 ]);
 
-const imageTierSchema = z.enum([
-  "inline",
-  "fast",
-  "standard",
-  "premium",
-  "ultra",
+const imageTierSchema = z.enum(["fast", "standard", "premium"]);
+
+const assetTypeSchema = z.enum([
+  "avatar",       // Profile image (character, team member, persona)
+  "diagram",      // Technical diagrams, flowcharts, architecture
+  "mockup",       // UI mockups, wireframes, prototypes
+  "illustration", // Scene illustrations, concept art
+  "photo",        // Photography, product shots
+  "map",          // Maps, floor plans, layouts
+  "icon",         // Icons, logos, emblems
+  "chart",        // Data visualizations, graphs
+  "reference",    // Reference images, mood boards
+  "other",        // Uncategorized
 ]);
 
 export const generateImageParameters = z.object({
-  subject: z.string().describe("The main subject to generate (character, scene, location, etc.)"),
-  style: imageStyleSchema.optional().describe("Visual style for the image"),
+  prompt: z.string().describe("Full image generation prompt - be descriptive about subject, style, mood, lighting"),
   aspectRatio: aspectRatioSchema.optional().describe("Aspect ratio (default 1:1)"),
-  visualDescription: z.string().optional().describe("Additional visual details to include"),
   negativePrompt: z.string().optional().describe("Elements to exclude from the image"),
-  entityId: z.string().optional().describe("ID of an entity to associate the image with"),
-  tier: imageTierSchema.optional().describe("Quality tier (default: standard)"),
+  tier: imageTierSchema.optional().describe("Quality tier: fast (drafts), standard (default), premium (max quality)"),
+  entityId: z.string().optional().describe("Entity ID to link the image to (for association and cascade delete)"),
+  assetType: assetTypeSchema.optional().describe("Asset type: avatar, diagram, mockup, illustration, photo, map, icon, chart, reference, other"),
 });
 
 export type GenerateImageArgs = z.infer<typeof generateImageParameters>;
 
 export const generateImageTool = tool({
   description:
-    "Generate an image for a character portrait, scene illustration, location, or concept. Use this when the author needs visual reference material.",
+    "Generate an image from a text prompt. Use for visual assets, illustrations, diagrams, or any image generation need.",
   inputSchema: generateImageParameters,
 });
 
 export function generateImageNeedsApproval(): boolean {
   return true; // Always require approval for image generation
-}
-
-export const illustrateSceneParameters = z.object({
-  sceneText: z.string().describe("The prose or scene description to illustrate"),
-  style: imageStyleSchema.optional().describe("Visual style for the illustration"),
-  aspectRatio: aspectRatioSchema.optional().describe("Aspect ratio (default 16:9 for scenes)"),
-  sceneFocus: z
-    .enum(["action", "dialogue", "establishing", "dramatic"])
-    .optional()
-    .describe("What aspect of the scene to emphasize"),
-});
-
-export type IllustrateSceneArgs = z.infer<typeof illustrateSceneParameters>;
-
-export const illustrateSceneTool = tool({
-  description:
-    "Create an illustration based on a scene from the narrative. Analyzes the prose and generates a fitting visual.",
-  inputSchema: illustrateSceneParameters,
-});
-
-export function illustrateSceneNeedsApproval(): boolean {
-  return true;
 }
 
 // Shared options for search/similar modes

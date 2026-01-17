@@ -57,6 +57,7 @@ export type ToolName =
   | "write_todos"
   | "spawn_task"
   // Human-in-the-loop editor tools
+  | "request_task_slug"
   | "ask_question"
   | "write_content"
   | "view_version_history"
@@ -72,8 +73,7 @@ export type ToolName =
   | "find_similar_images"
   // Phase 3+4: Reference image & scene composition
   | "analyze_image"
-  | "create_entity_from_image"
-  | "illustrate_scene";
+  | "create_entity_from_image";
 
 // =============================================================================
 // Tool Invocation Lifecycle
@@ -441,39 +441,47 @@ export type ImageStyle =
 export type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9" | "2:3" | "3:2";
 
 /**
- * Asset type classification.
- */
-export type AssetType = "portrait" | "scene" | "location" | "item" | "reference" | "other";
-
-/**
  * Image edit modes.
  */
 export type EditMode = "inpaint" | "outpaint" | "remix" | "style_transfer";
 
 /**
+ * Image quality tier.
+ */
+export type ImageTier = "fast" | "standard" | "premium";
+
+/**
+ * Generalized asset type for any domain.
+ */
+export type AssetType =
+  | "avatar"       // Profile image (character portrait, team member, persona)
+  | "diagram"      // Technical diagrams, flowcharts, architecture
+  | "mockup"       // UI mockups, wireframes, prototypes
+  | "illustration" // Scene illustrations, concept art
+  | "photo"        // Photography, product shots
+  | "map"          // Maps, floor plans, layouts
+  | "icon"         // Icons, logos, emblems
+  | "chart"        // Data visualizations, graphs
+  | "reference"    // Reference images, mood boards
+  | "other";       // Uncategorized
+
+/**
  * Arguments for generate_image tool.
+ * Agent builds full descriptive prompt - no predefined styles.
  */
 export interface GenerateImageArgs {
-  /** Main subject description */
-  subject: string;
-  /** Entity name for linking the result */
-  entityName?: string;
-  /** Entity type for context */
-  entityType?: EntityType;
-  /** Entity ID if known (for direct linking) */
-  entityId?: string;
-  /** Visual description from entity data */
-  visualDescription?: string;
-  /** Art style preset */
-  style?: ImageStyle;
+  /** Full image generation prompt - be descriptive about subject, style, mood, lighting */
+  prompt: string;
   /** Image aspect ratio */
   aspectRatio?: AspectRatio;
-  /** Asset type classification */
-  assetType?: AssetType;
-  /** Whether to set as entity portrait */
-  setAsPortrait?: boolean;
   /** Negative prompt - what to avoid */
   negativePrompt?: string;
+  /** Quality tier: fast (drafts), standard (default), premium (max quality) */
+  tier?: ImageTier;
+  /** Entity ID to link the image to (for Qdrant association and cascade delete) */
+  entityId?: string;
+  /** Asset type classification */
+  assetType?: AssetType;
 }
 
 /**
@@ -1021,6 +1029,7 @@ export interface SpawnTaskArgs {
   agent: SubAgentType;
   title: string;
   instructions: string;
+  taskSlug?: string;
   maxSteps?: number;
   requireCitations?: boolean;
 }
@@ -1029,6 +1038,17 @@ export interface SpawnTaskResult {
   agent: SubAgentType;
   output: string;
   artifacts?: ToolArtifact[];
+}
+
+export interface RequestTaskSlugArgs {
+  title?: string;
+  description?: string;
+  recommended?: Array<{ taskSlug: string; label: string; description?: string }>;
+  allowAuto?: boolean;
+}
+
+export interface RequestTaskSlugResult {
+  taskSlug: string;
 }
 
 // =============================================================================
@@ -1211,54 +1231,6 @@ export interface CreateEntityFromImageResult {
 }
 
 // =============================================================================
-// Phase 4: Scene Composition
-// =============================================================================
-
-/**
- * Arguments for illustrate_scene tool.
- * Generates a scene illustration from narrative text.
- */
-export interface IllustrateSceneArgs {
-  /** The narrative text describing the scene */
-  sceneText: string;
-  /** Names of characters to include (will use their portraits for consistency) */
-  characterNames?: string[];
-  /** Art style for the illustration */
-  style?: ImageStyle;
-  /** Aspect ratio (default 16:9 for scenes) */
-  aspectRatio?: AspectRatio;
-  /** Composition focus */
-  sceneFocus?: SceneFocus;
-  /** Negative prompt - what to avoid */
-  negativePrompt?: string;
-}
-
-/**
- * Character included in an illustrated scene.
- */
-export interface SceneCharacter {
-  /** Character name */
-  name: string;
-  /** Entity ID if resolved */
-  entityId?: string;
-  /** Whether a portrait reference was available */
-  hadPortraitReference: boolean;
-}
-
-/**
- * Result of illustrate_scene tool.
- */
-export interface IllustrateSceneResult {
-  /** Public URL to the generated image */
-  imageUrl: string;
-  /** Asset ID of the stored image */
-  assetId: string;
-  /** Description/caption of the scene */
-  sceneDescription: string;
-  /** Characters included in the illustration */
-  charactersIncluded: SceneCharacter[];
-}
-
 /**
  * Map of tool names to their argument types.
  */
@@ -1292,6 +1264,7 @@ export interface ToolArgsMap {
   write_todos: WriteTodosArgs;
   spawn_task: SpawnTaskArgs;
   // Human-in-the-loop editor tools
+  request_task_slug: RequestTaskSlugArgs;
   ask_question: AskQuestionArgs;
   write_content: WriteContentArgs;
   view_version_history: ViewVersionHistoryArgs;
@@ -1308,7 +1281,6 @@ export interface ToolArgsMap {
   // Phase 3+4 tools
   analyze_image: AnalyzeImageArgs;
   create_entity_from_image: CreateEntityFromImageArgs;
-  illustrate_scene: IllustrateSceneArgs;
 }
 
 // =============================================================================
@@ -1922,6 +1894,7 @@ export interface ToolResultsMap {
   write_todos: WriteTodosResult;
   spawn_task: SpawnTaskResult;
   // Human-in-the-loop editor tools
+  request_task_slug: RequestTaskSlugResult;
   ask_question: AskQuestionResult;
   write_content: WriteContentResult;
   view_version_history: ViewVersionHistoryResult;
@@ -1938,7 +1911,6 @@ export interface ToolResultsMap {
   // Phase 3+4 tools
   analyze_image: AnalyzeImageResult;
   create_entity_from_image: CreateEntityFromImageResult;
-  illustrate_scene: IllustrateSceneResult;
 }
 
 // =============================================================================
