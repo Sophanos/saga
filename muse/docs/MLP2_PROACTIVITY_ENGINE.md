@@ -220,7 +220,7 @@ This is meaning integrity, not “AI help.”
 
 Implementation notes (current):
 - `canonClaims` table lives in `muse/convex/schema.ts`
-- Minimal API in `muse/convex/canonClaims.ts`
+- Minimal API in `muse/convex/canonClaims.ts` (list/create/archive)
 - Optional backfill from pinned memories: `muse/convex/migrations/backfillCanonClaimsFromMemories.ts`
 
 ### Pattern 3: Cross-modal grounding (CLIP + text)
