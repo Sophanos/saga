@@ -518,6 +518,11 @@ Env vars:
 - `QDRANT_DUAL_WRITE=false` (set `true` during migration to dual-write legacy + unified)
 - `QDRANT_IMAGE_COLLECTION=saga_images` (legacy)
 
+Smoke checks (optional):
+- `muse/scripts/smoke-mlp1.sh` (Qdrant + Convex health, optional memory + agent calls)
+- Set env: `QDRANT_URL`, `QDRANT_API_KEY`, `CONVEX_URL`, `CONVEX_AUTH_TOKEN`
+- Optional: `PROJECT_ID`, `CREATE_MEMORY=1` (enqueues embeddings), `RUN_AGENT=1`, `KEEP_PROJECT=1`
+
 ## Platform Strategy
 
 - Editor bundle built once in `packages/editor-webview/` and used across platforms.
