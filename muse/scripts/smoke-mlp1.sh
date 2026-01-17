@@ -93,6 +93,7 @@ async function adminRequest(path, args, kind) {
   if (json.status === "success") {
     return jsonToConvex(json.value);
   }
+  console.log(`[admin] error=${JSON.stringify(json)}`);
   throw new Error(json.errorMessage ?? "Convex admin request failed");
 }
 
