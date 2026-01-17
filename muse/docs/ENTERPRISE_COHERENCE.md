@@ -17,6 +17,13 @@
 
 **Strictness decreases, flexibility increases** as you go down the hierarchy.
 
+## Start Here (MLP2+ entry)
+
+- **Enterprise Hub first**: define the minimal curated facts, decisions, and approved messaging that everything else inherits.
+- **Governed updates**: all Hub changes go through Knowledge PRs with trace links.
+- **Pulse signals**: surface drift and conflicts as ambient signals, never interrupts.
+- **Visibility scopes**: audiences gate what can be seen and proposed at each level.
+
 ---
 
 ## Full Hierarchy

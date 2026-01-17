@@ -844,6 +844,66 @@ When widget needs disambiguation before executing:
 
 ---
 
+## Development Testing
+
+### Tab Indicator Testing (Dev Mode)
+
+Enable dev mode to test tab widget indicators without running actual widgets:
+
+```javascript
+// In browser console:
+window.__DEV_TAB_INDICATORS__ = true
+```
+
+When enabled, a dashed button appears in the tab bar (after the + button) that cycles through states:
+- `○` idle - no indicator
+- `⟳` running - spinner + shimmer text
+- `●` ready - pulsing dot (needs attention)
+- `✕` failed - red dot
+
+**Tab Indicator States:**
+| State | Indicator | Text Effect | Meaning |
+|-------|-----------|-------------|---------|
+| `idle` | None | Normal | No active widgets |
+| `running` | Spinner (8px) | AI shimmer gradient | Widget executing |
+| `ready` | Pulsing dot | Normal | Widget complete, needs review |
+| `failed` | Red dot | Normal | Widget failed, action needed |
+
+**Shimmer Effect:** When running, tab title gets a subtle gradient shimmer animation (like "Pro thinking" in Claude) using CSS `background-clip: text` with a sweeping highlight.
+
+### Activity Store Testing
+
+The activity store provides selectors for testing:
+
+```typescript
+import {
+  useWidgetStatusByDocument,
+  useHasRunningWidgets,
+  useNeedsAttentionCount,
+  useActivityStore,
+} from '@mythos/state';
+
+// Get widget status map for all documents
+const statusMap = useWidgetStatusByDocument();
+// { "doc-id-1": "running", "doc-id-2": "ready" }
+
+// Check if any widgets are running
+const hasRunning = useHasRunningWidgets();
+
+// Programmatically add test activity
+useActivityStore.getState().syncFromWidgetExecution({
+  executionId: 'test-123',
+  widgetId: 'summarize',
+  label: 'Summarize',
+  status: 'generating',
+  documentId: 'doc-123',
+  documentName: 'Chapter 1',
+  projectId: 'proj-123',
+});
+```
+
+---
+
 ## Implementation Phases
 
 ### Phase 1: Foundation (Current)
@@ -854,10 +914,10 @@ When widget needs disambiguation before executing:
 - [ ] Basic inline block
 
 ### Phase 2: Activity System
-- [ ] ActivityBell component
-- [ ] ActivityInbox dropdown
-- [ ] TabIndicator component
-- [ ] Execution → Activity item flow
+- [x] ActivityBell component
+- [x] ActivityInbox dropdown
+- [x] TabIndicator component (with shimmer effect)
+- [ ] Execution → Activity item flow (wiring complete, needs E2E test)
 
 ### Phase 3: Thread Integration
 - [ ] Widget thread UI in AI panel

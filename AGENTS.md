@@ -38,6 +38,10 @@
 
 ## Docs of Record
 - Roadmap: `muse/docs/MLP1_ROADMAP.md`
+- MVP plan: `muse/docs/MVP_LIVING_OS_PLAN.md`
+- Review hub: `muse/docs/REVIEW_HUB_SPEC.md`
+- Launch packs: `muse/docs/MLP1_LAUNCH_PACKS.md`
+- Enterprise coherence: `muse/docs/ENTERPRISE_COHERENCE.md`
 - E2E plan: `muse/docs/MLP1_E2E_SCRIPT.md`
 - E2E testability contract: `muse/docs/E2E_TESTABILITY_CONTRACT.md`
 - E2E review prompts: `muse/docs/MLP1_E2E_CONTEXT_BUILDER_PROMPTS.md`
@@ -54,6 +58,7 @@
 - Focus Mode + writer tools are P1/P2; AI stays silent unless invoked.
 - Export/Import is being centralized into `@mythos/io` (P2).
 - Prefer capability abstractions in `@mythos/platform` (avoid `.tauri.ts` sprawl).
+- Pulse is ambient intelligence; async completions stay in Activity.
 
 ## Testing
 - `bun run test` (Turbo) when configured; keep tests in their package.

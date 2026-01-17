@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Mythos IDE: AI-powered knowledge environment for creative and professional work. Entity tracking, Project Graph, AI agents, and governed automation. Supports writers, product teams, engineers, marketers, and researchers.
+Mythos IDE: AI-powered knowledge environment for creative and professional work. Entity tracking, Project Graph, ambient intelligence, and governed automation. Agents execute. Rhei remembers.
 
 ## Quick Commands (run from `muse/`)
 ```bash
@@ -90,6 +90,10 @@ Always put shared logic in `packages/`, then thin wrappers in `apps/`.
 
 ## Docs of Record
 - Roadmap: `docs/MLP1_ROADMAP.md`
+- MVP plan: `docs/MVP_LIVING_OS_PLAN.md`
+- Inbox spec: `docs/REVIEW_HUB_SPEC.md` (Pulse + Changes + Activity + Artifacts)
+- Launch packs: `docs/MLP1_LAUNCH_PACKS.md`
+- Enterprise coherence: `docs/ENTERPRISE_COHERENCE.md`
 - E2E plan: `docs/MLP1_E2E_SCRIPT.md`
 - E2E testability contract: `docs/E2E_TESTABILITY_CONTRACT.md`
 - E2E review prompts: `docs/MLP1_E2E_CONTEXT_BUILDER_PROMPTS.md`
@@ -112,6 +116,15 @@ Never `git restore`, `git checkout --`, `git reset`, or any destructive git comm
 - Export/Import centralization into `@mythos/io` (P2)
 - Platform capability layer in `@mythos/platform` (no `.tauri.ts` sprawl)
 - Full details: `docs/MLP1_ROADMAP.md`
+
+## Naming (product)
+- Pulse = ambient intelligence signals (pull-based)
+- Activity = async jobs + notifications
+- Trail = receipts + trace links
+- "Every change leaves a trail."
+
+## Templates (current direction)
+- Template onboarding uses the project type picker plus AI Template Builder.
 
 ## E2E Guidelines
 - Playwright runs TS directly; no precompile step.

@@ -8,6 +8,7 @@
 > See also: [Coherence Spec](./COHERENCE_SPEC.md) (persona-aware consistency)
 > See also: [Rhei GPT Context](./GPT_RHEI_CONTEXT.md) (messaging + prompts)
 > See also: [Landing Page Spec](./LANDING_PAGE_SPEC.md) (design + animations)
+> See also: [Inbox Spec](./REVIEW_HUB_SPEC.md) (Pulse + Changes + Activity + Artifacts)
 
 ## Purpose
 
@@ -15,14 +16,32 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 
 ## Summary (What MLP1 ships)
 
-- Project Knowledge System: templates, registries, Project Graph, and schema validation.
+- Project Knowledge System: AI Template Builder + registries + Project Graph + schema validation.
 - AI co-author with explicit approvals; Focus Mode keeps AI silent unless invoked.
-- Widgets & Artifacts (MVP1): command → preview → confirm → inline insert or saved artifact, with receipts by default.
+- Widgets & Artifacts (MVP1): command → preview → confirm → inline insert or saved artifact, with trails (receipts) by default.
 - Knowledge PRs: review queue, diffs, approvals, and rollback.
 - Web Research: `web_search` + `web_extract` for real-world reference lookup (Parallel Web SDK).
 - MCP integrations and citations for external tool access and evidence.
 - Offline-first plus real-time sync for collaboration.
 - Platform focus: Expo Web first, macOS (Tauri v2) next, iOS/iPad later.
+
+Positioning: Agents execute. Rhei remembers.
+
+## Naming (current)
+
+- **Inbox**: unified review surface (bell icon opens it)
+- **Pulse**: ambient signals (`pulseSignals`) — first section in Inbox
+- **Changes**: governed mutations (UI label); backend = Knowledge PRs (`knowledgeSuggestions`)
+- **Activity**: async jobs + notifications (`widgetExecutions`, `activityLog`)
+- **Artifacts**: living outputs with staleness tracking
+- **Trail**: receipts + trace links — every action leaves a trail
+
+## Current Focus (UI placeholders)
+
+- Inbox shell (Pulse + Changes + Activity + Artifacts) — Cursor-style unified panel.
+- Bell icon → opens Inbox (default: Activity tab).
+- Pulse as first section in "All" view, ambient signals (no interruption).
+- Project type picker remains in UI, plus AI Template Builder.
 
 ## Status Snapshot
 
@@ -207,7 +226,7 @@ Goal: editable Project Graph with registry-enforced validation and risk-aware ap
 
 ## Phase 2: Knowledge PRs Hardening
 
-Goal: production-grade review surface where every PR is actionable, diffs are readable, approvals are safe, rollbacks are reliable, and provenance is navigable.
+Goal: production-grade review surface where every PR is actionable, diffs are readable, approvals are safe, rollbacks are reliable, and trace is navigable.
 
 ### P1 Important (post-beta)
 
@@ -215,7 +234,7 @@ Goal: production-grade review surface where every PR is actionable, diffs are re
 |---|------|--------|--------------|
 | 3 | Web Entity/Relationship Diffs | Expo done | Port DiffList from Expo `KnowledgeSuggestionDetails.tsx` to Web `KnowledgePRsView.tsx` |
 | 4 | JSON Patch Viewer | Not started | Create `JsonPatchView` component for `normalizedPatch` |
-| 5 | Provenance Deep-links | Partial | Add "Open memory" navigation in Expo, add provenance section in Web |
+| 5 | Trace Deep-links | Partial | Add "Open memory" navigation in Expo, add trace section in Web |
 | 6 | Activity Query in Web | Missing | Port `activity.listBySuggestion` integration from Expo to Web |
 
 ### P2 Nice-to-have
