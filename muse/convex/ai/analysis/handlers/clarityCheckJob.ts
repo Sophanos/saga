@@ -1,7 +1,8 @@
 import type { ActionCtx } from "../../../_generated/server";
-import { internal } from "../../../_generated/api";
 import type { AnalysisJobRecord } from "../../analysisJobs";
 import type { AnalysisHandlerResult } from "./types";
+
+const internal = require("../../../_generated/api").internal as any;
 
 export async function runClarityCheckJob(
   ctx: ActionCtx,

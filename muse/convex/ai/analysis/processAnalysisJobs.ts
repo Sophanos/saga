@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { internalAction, type ActionCtx } from "../../_generated/server";
-import { internal } from "../../_generated/api";
 import type { AnalysisJobRecord } from "../analysisJobs";
 import { runClarityCheckJob } from "./handlers/clarityCheckJob";
 import { runCoherenceLintJob } from "./handlers/coherenceLintJob";
@@ -8,6 +7,8 @@ import { runDetectEntitiesJob } from "./handlers/detectEntitiesJob";
 import { runDigestDocumentJob } from "./handlers/digestDocumentJob";
 import { runPolicyCheckJob } from "./handlers/policyCheckJob";
 import type { AnalysisHandlerResult } from "./handlers/types";
+
+const internal = require("../../_generated/api").internal as any;
 
 const DEFAULT_BATCH_SIZE = 10;
 const MAX_BATCH_SIZE = 25;
