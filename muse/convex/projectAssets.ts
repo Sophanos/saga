@@ -16,7 +16,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { verifyProjectAccess, verifyProjectEditor } from "./lib/auth";
 
 const assetTypeValidator = v.union(
   v.literal("avatar"),
@@ -132,6 +132,7 @@ export const listByProject = query({
     includeDeleted: v.optional(v.boolean()),
   },
   handler: async (ctx, { projectId, type, includeDeleted }) => {
+    await verifyProjectAccess(ctx, projectId);
     let assets;
 
     if (type) {
@@ -217,8 +218,8 @@ export const saveAsset = mutation({
     generationModel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const actorUserId = await verifyProjectEditor(ctx, args.projectId);
     const now = Date.now();
-    const userId = (await getAuthUserId(ctx)) ?? "system";
     const assetId = await ctx.db.insert("projectAssets", {
       ...args,
       createdAt: now,
@@ -226,7 +227,7 @@ export const saveAsset = mutation({
     });
 
     await scheduleImageEmbedding(ctx, assetId, args.projectId, args.mimeType);
-    await scheduleImageEvidenceSuggestions(ctx, assetId, args.projectId, args.mimeType, userId);
+    await scheduleImageEvidenceSuggestions(ctx, assetId, args.projectId, args.mimeType, actorUserId);
 
     return assetId;
   },

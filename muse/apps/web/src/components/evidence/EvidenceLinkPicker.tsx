@@ -97,6 +97,8 @@ export function EvidenceLinkPicker({
             });
             const linkId = (result as { linkId?: string } | null)?.linkId;
             if (linkId && onCreated) onCreated(linkId);
+          } catch (error) {
+            console.error("[EvidenceLinkPicker] Failed to create link:", error);
           } finally {
             setIsSaving(false);
           }
