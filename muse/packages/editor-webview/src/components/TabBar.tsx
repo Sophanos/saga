@@ -1,5 +1,14 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { TabPreview, useTabPreview } from './TabPreview';
+
+// DEV: Enable widget status testing buttons (set via console: window.__DEV_TAB_INDICATORS__ = true)
+declare global {
+  interface Window {
+    __DEV_TAB_INDICATORS__?: boolean;
+  }
+}
+
+export type TabWidgetStatus = 'idle' | 'running' | 'ready' | 'failed';
 
 export interface Tab {
   id: string;
@@ -7,6 +16,8 @@ export interface Tab {
   content?: string; // Preview content (first ~200 chars)
   isActive?: boolean;
   isDirty?: boolean;
+  /** Widget execution status for this document */
+  widgetStatus?: TabWidgetStatus;
 }
 
 interface TabBarProps {
@@ -21,6 +32,8 @@ interface TabBarProps {
   canGoForward?: boolean;
   /** When true, adds left padding for the sidebar toggle button */
   sidebarCollapsed?: boolean;
+  /** Widget status per document (keyed by tab id) - for production use */
+  widgetStatusMap?: Record<string, TabWidgetStatus>;
 }
 
 export function TabBar({
@@ -34,8 +47,19 @@ export function TabBar({
   canGoBack = false,
   canGoForward = false,
   sidebarCollapsed = false,
+  widgetStatusMap = {},
 }: TabBarProps) {
   const preview = useTabPreview(400);
+  // DEV: Internal state for testing widget indicators
+  const [devWidgetStatus, setDevWidgetStatus] = useState<TabWidgetStatus>('idle');
+
+  // Merge tabs with widget status (from props or dev testing)
+  const tabsWithStatus = tabs.map((tab) => ({
+    ...tab,
+    widgetStatus: tab.id === activeTabId
+      ? (widgetStatusMap[tab.id] ?? devWidgetStatus)
+      : (widgetStatusMap[tab.id] ?? tab.widgetStatus),
+  }));
 
   return (
     <div className="tab-bar" style={sidebarCollapsed ? { paddingLeft: 44 } : undefined}>
@@ -59,7 +83,7 @@ export function TabBar({
       </div>
 
       <div className="tab-bar-tabs">
-        {tabs.map((tab) => (
+        {tabsWithStatus.map((tab) => (
           <TabItem
             key={tab.id}
             tab={tab}
@@ -75,6 +99,10 @@ export function TabBar({
         <button className="tab-new" onClick={onNewTab} aria-label="New tab">
           <PlusIcon />
         </button>
+        <DevWidgetTestButton
+          currentStatus={devWidgetStatus}
+          onStatusChange={setDevWidgetStatus}
+        />
       </div>
 
       <TabPreview
@@ -175,6 +203,37 @@ export function TabBar({
   );
 }
 
+interface TabIndicatorProps {
+  isDirty?: boolean;
+  widgetStatus?: TabWidgetStatus;
+}
+
+/**
+ * TabIndicator - Shows document status (dirty, widget running/ready/failed)
+ * Priority: widgetStatus > isDirty (widget status takes precedence)
+ */
+function TabIndicator({ isDirty, widgetStatus }: TabIndicatorProps) {
+  // Widget status takes priority over dirty state
+  if (widgetStatus === 'running') {
+    return <span className="tab-indicator tab-indicator--spinner" aria-label="Widget running" />;
+  }
+
+  if (widgetStatus === 'ready') {
+    return <span className="tab-indicator tab-indicator--ready" aria-label="Widget ready" />;
+  }
+
+  if (widgetStatus === 'failed') {
+    return <span className="tab-indicator tab-indicator--failed" aria-label="Widget failed" />;
+  }
+
+  // Only show dirty indicator if actually dirty and no widget status
+  if (isDirty === true) {
+    return <span className="tab-indicator tab-indicator--dirty" aria-label="Unsaved changes" />;
+  }
+
+  return null;
+}
+
 interface TabItemProps {
   tab: Tab;
   isActive: boolean;
@@ -213,8 +272,14 @@ function TabItem({ tab, isActive, onSelect, onClose, onHoverStart, onHoverEnd }:
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {tab.isDirty && <span className="tab-item-dirty" />}
-      <span className="tab-item-title">
+      <TabIndicator
+        isDirty={tab.isDirty}
+        widgetStatus={tab.widgetStatus}
+      />
+      <span
+        className={`tab-item-title ${tab.widgetStatus === 'running' ? 'tab-item-title--shimmer' : ''}`}
+        data-ai-shimmer={tab.widgetStatus === 'running' ? 'true' : undefined}
+      >
         {tab.title || 'Untitled'}
       </span>
       <button
@@ -252,12 +317,45 @@ function TabItem({ tab, isActive, onSelect, onClose, onHoverStart, onHoverEnd }:
           background: var(--color-bg-surface);
         }
 
-        .tab-item-dirty {
+        /* Tab Indicator States */
+        .tab-indicator {
           width: 8px;
           height: 8px;
           border-radius: 50%;
-          background: #5e9fd0;
           flex-shrink: 0;
+        }
+
+        /* Dirty state - subtle blue */
+        .tab-indicator--dirty {
+          background: #5e9fd0;
+        }
+
+        /* Running - spinner animation */
+        .tab-indicator--spinner {
+          border: 1.5px solid transparent;
+          border-top-color: var(--color-accent, #5e9fd0);
+          border-right-color: var(--color-accent, #5e9fd0);
+          animation: tab-spinner 0.8s linear infinite;
+        }
+
+        @keyframes tab-spinner {
+          to { transform: rotate(360deg); }
+        }
+
+        /* Ready - accent dot with subtle pulse */
+        .tab-indicator--ready {
+          background: var(--color-accent, #5e9fd0);
+          animation: tab-pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes tab-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+
+        /* Failed - red/orange attention */
+        .tab-indicator--failed {
+          background: #e5534b;
         }
 
         .tab-item-title {
@@ -303,6 +401,44 @@ function TabItem({ tab, isActive, onSelect, onClose, onHoverStart, onHoverEnd }:
           width: 8px;
           height: 8px;
         }
+
+        /* AI Shimmer - text gradient animation for running state */
+        @keyframes ai-shimmer {
+          0% { background-position: -200% center; }
+          100% { background-position: 200% center; }
+        }
+
+        .tab-item-title--shimmer {
+          background: linear-gradient(
+            90deg,
+            var(--color-text-muted) 0%,
+            var(--color-text-muted) 35%,
+            rgba(255, 255, 255, 0.9) 50%,
+            var(--color-text-muted) 65%,
+            var(--color-text-muted) 100%
+          );
+          background-size: 200% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: ai-shimmer 2s ease-in-out infinite;
+        }
+
+        .tab-item--active .tab-item-title--shimmer {
+          background: linear-gradient(
+            90deg,
+            var(--color-text-secondary) 0%,
+            var(--color-text-secondary) 35%,
+            rgba(255, 255, 255, 0.95) 50%,
+            var(--color-text-secondary) 65%,
+            var(--color-text-secondary) 100%
+          );
+          background-size: 200% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: ai-shimmer 2s ease-in-out infinite;
+        }
       `}</style>
     </div>
   );
@@ -338,5 +474,72 @@ function CloseIcon() {
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
       <path d="M4 4L12 12M12 4L4 12" />
     </svg>
+  );
+}
+
+// DEV: Widget status testing component
+interface DevWidgetTestProps {
+  onStatusChange: (status: TabWidgetStatus) => void;
+  currentStatus?: TabWidgetStatus;
+}
+
+function DevWidgetTestButton({ onStatusChange, currentStatus = 'idle' }: DevWidgetTestProps) {
+  const [isDevMode, setIsDevMode] = useState(false);
+
+  useEffect(() => {
+    // Check for dev mode flag
+    const checkDevMode = () => {
+      setIsDevMode(typeof window !== 'undefined' && window.__DEV_TAB_INDICATORS__ === true);
+    };
+    checkDevMode();
+
+    // Re-check periodically in case it's set via console
+    const interval = setInterval(checkDevMode, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!isDevMode) return null;
+
+  const states: TabWidgetStatus[] = ['idle', 'running', 'ready', 'failed'];
+  const currentIndex = states.indexOf(currentStatus);
+  const nextStatus = states[(currentIndex + 1) % states.length];
+
+  const statusLabels: Record<TabWidgetStatus, string> = {
+    idle: '○',
+    running: '⟳',
+    ready: '●',
+    failed: '✕',
+  };
+
+  return (
+    <button
+      className="dev-widget-test"
+      onClick={() => onStatusChange(nextStatus)}
+      title={`DEV: Widget status = ${currentStatus}, click for ${nextStatus}`}
+    >
+      {statusLabels[currentStatus]}
+      <style>{`
+        .dev-widget-test {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border: 1px dashed var(--color-text-muted);
+          background: transparent;
+          color: var(--color-accent);
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12px;
+          margin-left: 4px;
+          opacity: 0.6;
+          transition: opacity 80ms ease-out;
+        }
+        .dev-widget-test:hover {
+          opacity: 1;
+          background: var(--color-bg-hover);
+        }
+      `}</style>
+    </button>
   );
 }

@@ -6,7 +6,6 @@
  */
 
 import { Node, mergeAttributes } from "@tiptap/core";
-import { ReactNodeViewRenderer } from "@tiptap/react";
 import type { EntityType } from "@mythos/core";
 
 export interface EntityCardNodeOptions {
@@ -74,7 +73,7 @@ export const EntityCardNode = Node.create<EntityCardNodeOptions>({
     return [
       "div",
       mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
-        "data-entity-card": HTMLAttributes.entityId,
+        "data-entity-card": HTMLAttributes["entityId"],
         class: "entity-card-node",
       }),
     ];
@@ -103,7 +102,7 @@ export const EntityCardNode = Node.create<EntityCardNodeOptions>({
           let found = false;
 
           doc.descendants((node, pos) => {
-            if (node.type.name === this.name && node.attrs.entityId === entityId) {
+            if (node.type.name === this.name && node.attrs["entityId"] === entityId) {
               tr.delete(pos, pos + node.nodeSize);
               found = true;
               return false;
@@ -126,10 +125,10 @@ export const EntityCardNode = Node.create<EntityCardNodeOptions>({
           let found = false;
 
           doc.descendants((node, pos) => {
-            if (node.type.name === this.name && node.attrs.entityId === entityId) {
+            if (node.type.name === this.name && node.attrs["entityId"] === entityId) {
               tr.setNodeMarkup(pos, undefined, {
                 ...node.attrs,
-                isExpanded: !node.attrs.isExpanded,
+                isExpanded: !node.attrs["isExpanded"],
               });
               found = true;
               return false;

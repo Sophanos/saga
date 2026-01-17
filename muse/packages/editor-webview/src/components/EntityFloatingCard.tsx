@@ -71,11 +71,6 @@ function getEntityColor(type: EntityType, override?: NotionColorName): string {
   return notion.dark[colorName].text;
 }
 
-function getEntityBgColor(type: EntityType, override?: NotionColorName): string {
-  const colorName = getNotionColorForEntity(type, override);
-  return notion.dark[colorName].bg;
-}
-
 // ============================================================================
 // SVG Icons
 // ============================================================================

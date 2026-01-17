@@ -10,7 +10,6 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   notion,
   getNotionColorForEntity,
-  type NotionColorName,
 } from '@mythos/theme';
 import { MOCK_ENTITIES, type EntityData, type EntityType } from './EntityFloatingCard';
 
@@ -59,12 +58,6 @@ const IconSparkle = ({ color, size = 18 }: { color: string; size?: number }) => 
   </svg>
 );
 
-const IconChevron = ({ direction, size = 14 }: { direction: 'down' | 'right'; size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d={direction === 'down' ? 'm6 9 6 6 6-6' : 'm9 18 6-6-6-6'} />
-  </svg>
-);
-
 const IconX = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M18 6 6 18M6 6l12 12" />
@@ -96,20 +89,6 @@ const IconPin = ({ size = 14, pinned = false }: { size?: number; pinned?: boolea
 const IconMinus = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M5 12h14" />
-  </svg>
-);
-
-const IconComment = ({ size = 14 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-  </svg>
-);
-
-const IconHistory = ({ size = 14 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-    <path d="M3 3v5h5" />
-    <path d="M12 7v5l4 2" />
   </svg>
 );
 
@@ -183,7 +162,7 @@ export function EntityCardNodeView({ node, deleteNode, updateAttributes }: NodeV
 
   // Use local state for isExpanded to ensure React re-renders properly
   // TipTap's updateAttributes updates the document but may not trigger re-render
-  const [isExpanded, setIsExpanded] = useState<boolean>(node.attrs.isExpanded ?? true);
+  const [isExpanded, setIsExpanded] = useState<boolean>(node.attrs["isExpanded"] ?? true);
   const [isPinned, setIsPinned] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [isHovered, setIsHovered] = useState(false);
@@ -192,10 +171,10 @@ export function EntityCardNodeView({ node, deleteNode, updateAttributes }: NodeV
 
   // Sync local state with node attributes when they change externally
   useEffect(() => {
-    if (node.attrs.isExpanded !== isExpanded) {
-      setIsExpanded(node.attrs.isExpanded ?? true);
+    if (node.attrs["isExpanded"] !== isExpanded) {
+      setIsExpanded(node.attrs["isExpanded"] ?? true);
     }
-  }, [node.attrs.isExpanded]);
+  }, [node.attrs["isExpanded"]]);
 
   // Auto-collapse when user starts typing elsewhere in the editor (unless pinned)
   useEffect(() => {
@@ -276,11 +255,6 @@ export function EntityCardNodeView({ node, deleteNode, updateAttributes }: NodeV
     // Also update node attributes for persistence
     updateAttributes({ isExpanded: newExpanded });
   }, [isExpanded, updateAttributes]);
-
-  const handleClose = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    deleteNode();
-  }, [deleteNode]);
 
   const properties = entity.properties ?? {};
   const propertyEntries = Object.entries(properties);

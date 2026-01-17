@@ -50,6 +50,9 @@ export interface FlowModeSettings {
   typewriterScrolling: boolean;
 }
 
+/** Widget status for TabBar indicators */
+export type TabWidgetStatus = 'idle' | 'running' | 'ready' | 'failed';
+
 export interface EditorShellProps {
   initialDocuments?: DocumentState[];
   onDocumentChange?: (doc: DocumentState) => void;
@@ -71,6 +74,8 @@ export interface EditorShellProps {
   flowSettings?: FlowModeSettings;
   /** Right offset for scroll indicator to account for side panels (AI panel, artifact panel) */
   scrollIndicatorRightOffset?: number;
+  /** Widget status per document - for TabBar indicators */
+  widgetStatusMap?: Record<string, TabWidgetStatus>;
 }
 
 const CSS_TOKENS = `
@@ -273,6 +278,7 @@ export function EditorShell({
   minimalMode = false,
   flowSettings,
   scrollIndicatorRightOffset = 0,
+  widgetStatusMap = {},
 }: EditorShellProps): JSX.Element {
   useEffect(() => {
     const styleId = 'editor-webview-tokens';
@@ -586,6 +592,7 @@ export function EditorShell({
           canGoBack={historyIndex > 0}
           canGoForward={historyIndex < navHistory.length - 1}
           sidebarCollapsed={sidebarCollapsed}
+          widgetStatusMap={widgetStatusMap}
         />
       )}
 
