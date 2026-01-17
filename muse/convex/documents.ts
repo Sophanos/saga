@@ -235,10 +235,12 @@ export const create = mutation({
       updatedAt: now,
     });
 
-    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
       projectId: args.projectId,
+      userId,
       targetType: "document",
       targetId: id,
+      documentId: id,
     });
 
     if (args.contentText !== undefined) {
@@ -296,10 +298,12 @@ export const update = mutation({
 
     const document = await ctx.db.get(id);
     if (document) {
-      await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+      await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
         projectId: document.projectId,
+        userId,
         targetType: "document",
         targetId: document._id,
+        documentId: document._id,
       });
 
       if (contentText !== undefined) {
@@ -456,7 +460,7 @@ export const removeInternal = internalMutation({
       reason: "document_deleted",
     });
 
-    await ctx.runMutation((internal as any)["ai/embeddings"].deleteEmbeddingJobsForTarget, {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].deleteEmbeddingJobsForTarget, {
       projectId,
       targetType: "document",
       targetId: id,

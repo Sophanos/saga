@@ -350,7 +350,7 @@ export const processEmbeddingJobsNow = action({
   },
   handler: async (ctx, args) => {
     assertE2EAccess(args.secret);
-    await ctx.runAction((internal as any)["ai/embeddings"].processEmbeddingJobs, {
+    await ctx.runAction((internal as any)["ai/analysis/processAnalysisJobs"].processAnalysisJobs, {
       batchSize: args.batchSize,
     });
     return { success: true };

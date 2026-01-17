@@ -457,6 +457,23 @@ export default defineSchema({
     .index("by_project_createdAt", ["projectId", "createdAt"]),
 
   // ============================================================
+  // CANON CLAIMS (Lightweight canonical statements)
+  // ============================================================
+  canonClaims: defineTable({
+    projectId: v.id("projects"),
+    text: v.string(),
+    source: v.optional(v.string()),
+    sourceId: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_project_source", ["projectId", "source"])
+    .index("by_project_sourceId", ["projectId", "sourceId"]),
+
+  // ============================================================
   // DOCUMENT REVISIONS (version history)
   // ============================================================
   documentRevisions: defineTable({
@@ -821,7 +838,7 @@ export default defineSchema({
     .index("by_stream_index", ["streamId", "index"]),
 
   // ============================================================
-  // EMBEDDING OUTBOX
+  // EMBEDDING OUTBOX (legacy; use analysisJobs + embedding_generation)
   // ============================================================
   embeddingJobs: defineTable({
     projectId: v.id("projects"),

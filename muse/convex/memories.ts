@@ -341,15 +341,11 @@ export const enqueueVectorSync = internalMutation({
     projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    // This will be processed by the embedding jobs processor
-    await ctx.db.insert("embeddingJobs", {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
       projectId: args.projectId,
+      userId: "system",
       targetType: "memory",
       targetId: args.memoryId,
-      status: "pending",
-      attempts: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
     });
   },
 });
@@ -363,17 +359,12 @@ export const enqueueVectorDelete = internalMutation({
     projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    // This will be processed by a vector deletion job processor
-    // For now, we store the intent - actual Qdrant deletion happens in an action
     for (const vectorId of args.vectorIds) {
-      await ctx.db.insert("embeddingJobs", {
+      await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
         projectId: args.projectId,
+        userId: "system",
         targetType: "memory_delete",
         targetId: vectorId,
-        status: "pending",
-        attempts: 0,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
       });
     }
   },

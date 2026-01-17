@@ -623,8 +623,9 @@ export const executeCreateEntity = internalAction({
       }
     );
 
-    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
       projectId: projectIdVal,
+      userId: actorInfo.actorUserId ?? "system",
       targetType: "entity",
       targetId: entityId,
     });
@@ -743,8 +744,9 @@ export const executeUpdateEntity = internalAction({
       { id: entity._id, updates: dbUpdates }
     );
 
-    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
       projectId: entity.projectId,
+      userId: actorInfo.actorUserId ?? "system",
       targetType: "entity",
       targetId: entity._id,
     });
@@ -1092,8 +1094,9 @@ export const executeCreateNode = internalAction({
       }
     );
 
-    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
       projectId: projectIdVal,
+      userId: actorInfo.actorUserId ?? "system",
       targetType: "entity",
       targetId: entityId,
     });
@@ -1204,8 +1207,9 @@ export const executeUpdateNode = internalAction({
       { id: entity._id, updates: dbUpdates }
     );
 
-    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
       projectId: entity.projectId,
+      userId: actorInfo.actorUserId ?? "system",
       targetType: "entity",
       targetId: entity._id,
     });

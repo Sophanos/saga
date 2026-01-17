@@ -5,8 +5,11 @@ import { runClarityCheckJob } from "./handlers/clarityCheckJob";
 import { runCoherenceLintJob } from "./handlers/coherenceLintJob";
 import { runDetectEntitiesJob } from "./handlers/detectEntitiesJob";
 import { runDigestDocumentJob } from "./handlers/digestDocumentJob";
+import { runEmbeddingGenerationJob } from "./handlers/embeddingGenerationJob";
 import { runPolicyCheckJob } from "./handlers/policyCheckJob";
 import type { AnalysisHandlerResult } from "./handlers/types";
+import { isDeepInfraConfigured } from "../../lib/embeddings";
+import { isQdrantConfigured } from "../../lib/qdrant";
 
 const internal = require("../../_generated/api").internal as any;
 
@@ -34,9 +37,21 @@ async function dispatchJob(ctx: ActionCtx, job: AnalysisJobRecord): Promise<Anal
       return runPolicyCheckJob(ctx, job);
     case "digest_document":
       return runDigestDocumentJob(ctx, job);
+    case "embedding_generation":
+      return runEmbeddingGenerationJob(ctx, job);
     default:
       throw new Error(`Unknown analysis job kind: ${job.kind}`);
   }
+}
+
+function resolveEmbeddingTargetType(job: AnalysisJobRecord): string | null {
+  if (job.kind !== "embedding_generation") return null;
+  if (job.payload && typeof job.payload === "object" && !Array.isArray(job.payload)) {
+    const record = job.payload as Record<string, unknown>;
+    const targetType = record["targetType"];
+    if (typeof targetType === "string") return targetType;
+  }
+  return job.documentId ? "document" : null;
 }
 
 export const processAnalysisJobs = internalAction({
@@ -51,6 +66,8 @@ export const processAnalysisJobs = internalAction({
 
     if (jobs.length === 0) return;
 
+    const qdrantReady = isQdrantConfigured();
+    const embeddingsReady = qdrantReady && isDeepInfraConfigured();
     const concurrency = Math.min(resolveMaxConcurrency(), jobs.length);
     const queue = [...jobs];
 
@@ -58,6 +75,16 @@ export const processAnalysisJobs = internalAction({
       while (queue.length > 0) {
         const job = queue.shift();
         if (!job) return;
+
+        if (job.kind === "embedding_generation") {
+          if (!qdrantReady) {
+            continue;
+          }
+          const targetType = resolveEmbeddingTargetType(job);
+          if (targetType !== "memory_delete" && !embeddingsReady) {
+            continue;
+          }
+        }
 
         const claim = await ctx.runMutation((internal as any)["ai/analysisJobs"].claimAnalysisJob, {
           jobId: job._id,

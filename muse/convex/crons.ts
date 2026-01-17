@@ -72,34 +72,6 @@ crons.daily(
 );
 
 // ============================================================
-// Embedding Sync
-// Runs every 30s to process embedding outbox
-// ============================================================
-
-crons.interval(
-  "sync-embeddings",
-  { seconds: 30 },
-  (internal as any)["ai/embeddings"].processEmbeddingJobs
-);
-
-// ============================================================
-// Embedding Job Recovery
-// Reclaims stuck processing jobs and cleans up stale records
-// ============================================================
-
-crons.interval(
-  "requeue-stale-embedding-jobs",
-  { minutes: 5 },
-  (internal as any)["ai/embeddings"].requeueStaleProcessingJobs
-);
-
-crons.daily(
-  "cleanup-embedding-jobs",
-  { hourUTC: 1, minuteUTC: 30 },
-  (internal as any)["ai/embeddings"].cleanupEmbeddingJobs
-);
-
-// ============================================================
 // Invitation Cleanup
 // Runs daily at 4:00 AM UTC to expire old invitations
 // ============================================================

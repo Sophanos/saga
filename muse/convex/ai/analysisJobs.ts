@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "../_generated/server";
+import { internalMutation, internalQuery, type MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 
 export const ANALYSIS_JOB_KINDS = [
@@ -8,6 +8,7 @@ export const ANALYSIS_JOB_KINDS = [
   "clarity_check",
   "policy_check",
   "digest_document",
+  "embedding_generation",
 ] as const;
 
 export type AnalysisJobKind = (typeof ANALYSIS_JOB_KINDS)[number];
@@ -44,6 +45,14 @@ const ANALYSIS_JOB_BACKOFF_MAX_MS = 15 * 60 * 1000;
 const ANALYSIS_JOB_CLEANUP_AFTER_MS = 14 * 24 * 60 * 60 * 1000;
 const ANALYSIS_JOB_CLEANUP_SCAN_LIMIT = 50;
 const ANALYSIS_JOB_STALE_SCAN_LIMIT = 50;
+const EMBEDDING_JOB_KIND = "embedding_generation";
+const EMBEDDING_JOB_DEBOUNCE_MS = 15000;
+const embeddingTargetSchema = v.union(
+  v.literal("document"),
+  v.literal("entity"),
+  v.literal("memory"),
+  v.literal("memory_delete")
+);
 
 function computeBackoffMs(attempts: number): number {
   const exponent = Math.max(0, attempts - 1);
@@ -64,6 +73,79 @@ function buildDedupeKey(args: {
   return `${args.kind}:${args.projectId}`;
 }
 
+function buildEmbeddingDedupeKey(targetType: string, targetId: string): string {
+  return `${EMBEDDING_JOB_KIND}:${targetType}:${targetId}`;
+}
+
+async function enqueueJob(
+  ctx: MutationCtx,
+  args: {
+    projectId: Id<"projects">;
+    userId: string;
+    documentId?: Id<"documents">;
+    kind: string;
+    payload: unknown;
+    contentHash?: string;
+    dedupeKey?: string;
+    debounceMs?: number;
+  }
+): Promise<{ jobId: Id<"analysisJobs">; status: string }> {
+  const now = Date.now();
+  const debounceMs = Math.max(0, args.debounceMs ?? ANALYSIS_JOB_DEBOUNCE_MS);
+  const scheduledFor = now + debounceMs;
+  const dedupeKey = buildDedupeKey({
+    projectId: String(args.projectId),
+    documentId: args.documentId ? String(args.documentId) : undefined,
+    kind: args.kind,
+    dedupeKey: args.dedupeKey,
+  });
+
+  if (dedupeKey) {
+    const active = await ctx.db
+      .query("analysisJobs")
+      .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", dedupeKey))
+      .filter((q) =>
+        q.or(q.eq(q.field("status"), "pending"), q.eq(q.field("status"), "processing"))
+      )
+      .first();
+
+    if (active) {
+      await ctx.db.patch(active._id, {
+        payload: args.payload,
+        contentHash: args.contentHash,
+        scheduledFor: active.status === "pending" ? scheduledFor : active.scheduledFor,
+        updatedAt: now,
+        dirty: active.status === "processing" ? true : active.dirty,
+      });
+      return { jobId: active._id, status: active.status };
+    }
+  }
+
+  const jobId = await ctx.db.insert("analysisJobs", {
+    projectId: args.projectId,
+    userId: args.userId,
+    documentId: args.documentId,
+    kind: args.kind,
+    status: "pending",
+    attempts: 0,
+    lastError: undefined,
+    scheduledFor,
+    contentHash: args.contentHash,
+    dedupeKey,
+    processingRunId: undefined,
+    processingStartedAt: undefined,
+    leaseExpiresAt: undefined,
+    payload: args.payload,
+    resultSummary: undefined,
+    resultRef: undefined,
+    dirty: false,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return { jobId, status: "pending" };
+}
+
 export const enqueueAnalysisJob = internalMutation({
   args: {
     projectId: v.id("projects"),
@@ -76,60 +158,47 @@ export const enqueueAnalysisJob = internalMutation({
     debounceMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const now = Date.now();
-    const debounceMs = Math.max(0, args.debounceMs ?? ANALYSIS_JOB_DEBOUNCE_MS);
-    const scheduledFor = now + debounceMs;
-    const dedupeKey = buildDedupeKey({
-      projectId: String(args.projectId),
-      documentId: args.documentId ? String(args.documentId) : undefined,
-      kind: args.kind,
-      dedupeKey: args.dedupeKey,
-    });
-
-    if (dedupeKey) {
-      const active = await ctx.db
-        .query("analysisJobs")
-        .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", dedupeKey))
-        .filter((q) =>
-          q.or(q.eq(q.field("status"), "pending"), q.eq(q.field("status"), "processing"))
-        )
-        .first();
-
-      if (active) {
-        await ctx.db.patch(active._id, {
-          payload: args.payload,
-          contentHash: args.contentHash,
-          scheduledFor: active.status === "pending" ? scheduledFor : active.scheduledFor,
-          updatedAt: now,
-          dirty: active.status === "processing" ? true : active.dirty,
-        });
-        return { jobId: active._id, status: active.status };
-      }
-    }
-
-    const jobId = await ctx.db.insert("analysisJobs", {
+    return await enqueueJob(ctx, {
       projectId: args.projectId,
       userId: args.userId,
       documentId: args.documentId,
       kind: args.kind,
-      status: "pending",
-      attempts: 0,
-      lastError: undefined,
-      scheduledFor,
-      contentHash: args.contentHash,
-      dedupeKey,
-      processingRunId: undefined,
-      processingStartedAt: undefined,
-      leaseExpiresAt: undefined,
       payload: args.payload,
-      resultSummary: undefined,
-      resultRef: undefined,
-      dirty: false,
-      createdAt: now,
-      updatedAt: now,
+      contentHash: args.contentHash,
+      dedupeKey: args.dedupeKey,
+      debounceMs: args.debounceMs,
     });
+  },
+});
 
-    return { jobId, status: "pending" };
+export const enqueueEmbeddingJob = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.optional(v.string()),
+    targetType: embeddingTargetSchema,
+    targetId: v.string(),
+    documentId: v.optional(v.id("documents")),
+    debounceMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = args.userId ?? "system";
+    const dedupeKey = buildEmbeddingDedupeKey(args.targetType, args.targetId);
+    const documentId =
+      args.documentId ??
+      (args.targetType === "document" ? (args.targetId as Id<"documents">) : undefined);
+
+    return await enqueueJob(ctx, {
+      projectId: args.projectId,
+      userId,
+      documentId,
+      kind: EMBEDDING_JOB_KIND,
+      payload: {
+        targetType: args.targetType,
+        targetId: args.targetId,
+      },
+      dedupeKey,
+      debounceMs: args.debounceMs ?? EMBEDDING_JOB_DEBOUNCE_MS,
+    });
   },
 });
 
@@ -317,9 +386,73 @@ export const cleanupAnalysisJobs = internalMutation({
   },
 });
 
+export const deleteEmbeddingJobsForTarget = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    targetType: embeddingTargetSchema,
+    targetId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const dedupeKey = buildEmbeddingDedupeKey(args.targetType, args.targetId);
+    const jobs = await ctx.db
+      .query("analysisJobs")
+      .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", dedupeKey))
+      .collect();
+
+    let removed = 0;
+    for (const job of jobs) {
+      if (job.projectId !== args.projectId || job.kind !== EMBEDDING_JOB_KIND) {
+        continue;
+      }
+      await ctx.db.delete(job._id);
+      removed += 1;
+    }
+
+    return { removed };
+  },
+});
+
+export const deleteEmbeddingJobsForProject = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    const jobs = await ctx.db
+      .query("analysisJobs")
+      .withIndex("by_project_kind", (q) =>
+        q.eq("projectId", args.projectId).eq("kind", EMBEDDING_JOB_KIND)
+      )
+      .collect();
+
+    for (const job of jobs) {
+      await ctx.db.delete(job._id);
+    }
+
+    return { removed: jobs.length };
+  },
+});
+
 export const getDocumentForAnalysis = internalQuery({
   args: {
     id: v.id("documents"),
+  },
+  handler: async (ctx, { id }) => {
+    return ctx.db.get(id);
+  },
+});
+
+export const getEntityForAnalysis = internalQuery({
+  args: {
+    id: v.id("entities"),
+  },
+  handler: async (ctx, { id }) => {
+    return ctx.db.get(id);
+  },
+});
+
+export const getMemoryForAnalysis = internalQuery({
+  args: {
+    id: v.id("memories"),
   },
   handler: async (ctx, { id }) => {
     return ctx.db.get(id);

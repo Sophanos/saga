@@ -103,10 +103,12 @@ export const {
         actorType: "system",
       });
 
-      await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+      await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
         projectId: document["projectId"] as Id<"projects">,
+        userId: "system",
         targetType: "document",
         targetId: documentId,
+        documentId,
       });
     } catch (error) {
       console.error("[prosemirrorSync] Failed to parse snapshot:", error);

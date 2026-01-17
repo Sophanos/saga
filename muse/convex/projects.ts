@@ -316,7 +316,7 @@ export const removeInternal = internalMutation({
         reason: "project_deleted",
       });
 
-      await ctx.runMutation((internal as any)["ai/embeddings"].deleteEmbeddingJobsForTarget, {
+      await ctx.runMutation((internal as any)["ai/analysisJobs"].deleteEmbeddingJobsForTarget, {
         projectId: id,
         targetType: "entity",
         targetId: entity._id,
@@ -375,15 +375,9 @@ export const removeInternal = internalMutation({
     // Delete memories
     await ctx.runMutation(internal.memories.removeByProject, { projectId: id });
 
-    // Delete embedding jobs
-    const embeddingJobs = await ctx.db
-      .query("embeddingJobs")
-      .withIndex("by_project_target", (q) => q.eq("projectId", id))
-      .collect();
-
-    for (const job of embeddingJobs) {
-      await ctx.db.delete(job._id);
-    }
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].deleteEmbeddingJobsForProject, {
+      projectId: id,
+    });
 
     // Delete saga threads
     const sagaThreads = await ctx.db

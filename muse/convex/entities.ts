@@ -156,7 +156,7 @@ export const getByCanonical = query({
     canonicalName: v.string(),
   },
   handler: async (ctx, args) => {
-    await verifyProjectAccess(ctx, args.projectId);
+    const { userId } = await verifyProjectAccess(ctx, args.projectId);
 
     const canonicalName = canonicalizeName(args.canonicalName);
 
@@ -259,8 +259,9 @@ export const create = mutation({
       updatedAt: now,
     });
 
-    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
       projectId: args.projectId,
+      userId,
       targetType: "entity",
       targetId: id,
     });
@@ -288,7 +289,7 @@ export const update = mutation({
     const { id, ...updates } = args;
 
     // Verify user has access via entity's project
-    await verifyEntityAccess(ctx, id);
+    const { userId } = await verifyEntityAccess(ctx, id);
 
     const entity = await ctx.db.get(id);
     if (!entity) {
@@ -327,8 +328,9 @@ export const update = mutation({
       updatedAt: Date.now(),
     });
 
-    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
       projectId: entity.projectId,
+      userId,
       targetType: "entity",
       targetId: entity._id,
     });
@@ -353,7 +355,7 @@ export const upsertDetectedEntities = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await verifyProjectAccess(ctx, args.projectId);
+    const { userId } = await verifyProjectAccess(ctx, args.projectId);
 
     const registry = await getResolvedRegistryForProject(ctx, args.projectId);
     const deduped = new Map<
@@ -443,8 +445,9 @@ export const upsertDetectedEntities = mutation({
           updatedAt: now,
         });
 
-        await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+        await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
           projectId: existing.projectId,
+          userId,
           targetType: "entity",
           targetId: existing._id,
         });
@@ -511,8 +514,9 @@ export const upsertDetectedEntities = mutation({
             updatedAt: now,
           });
 
-          await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+          await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
             projectId: existing.projectId,
+            userId,
             targetType: "entity",
             targetId: existing._id,
           });
@@ -537,8 +541,9 @@ export const upsertDetectedEntities = mutation({
           updatedAt: now,
         });
 
-        await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+        await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
           projectId: args.projectId,
+          userId,
           targetType: "entity",
           targetId: id,
         });
@@ -601,7 +606,7 @@ export const remove = mutation({
       reason: "entity_deleted",
     });
 
-    await ctx.runMutation((internal as any)["ai/embeddings"].deleteEmbeddingJobsForTarget, {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].deleteEmbeddingJobsForTarget, {
       projectId: entity.projectId,
       targetType: "entity",
       targetId: id,

@@ -167,10 +167,12 @@ export const bootstrap = mutation({
       updatedAt: now,
     });
 
-    await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+    await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
       projectId,
+      userId: userId ?? "system",
       targetType: "document",
       targetId: initialDocumentId,
+      documentId: initialDocumentId,
     });
 
     let seedDocumentId: Id<"documents"> | null = null;
@@ -195,10 +197,12 @@ export const bootstrap = mutation({
         updatedAt: now,
       });
 
-      await ctx.runMutation((internal as any)["ai/embeddings"].enqueueEmbeddingJob, {
+      await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
         projectId,
+        userId: userId ?? "system",
         targetType: "document",
         targetId: seedDocumentId,
+        documentId: seedDocumentId,
       });
     }
 
