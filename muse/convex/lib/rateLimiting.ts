@@ -14,7 +14,9 @@
 
 import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
 import type { UsageHandler } from "@convex-dev/agent";
-import { components, internal } from "../_generated/api";
+import { components } from "../_generated/api";
+
+const internal = require("../_generated/api").internal as any;
 
 // ============================================================
 // Rate Limiter Configuration
@@ -261,10 +263,14 @@ export function createUsageHandler(options?: {
       const outputTokens = usage.outputTokens ?? 0;
       const costMicros = calculateCostMicros(model, inputTokens, outputTokens);
 
-      const billingMode: "managed" | "byok" = await (ctx as any).runQuery(
-        internal.billingSettings.getBillingMode,
+      const runQuery = (ctx as any).runQuery as (
+        query: unknown,
+        args: Record<string, unknown>
+      ) => Promise<unknown>;
+      const billingMode = (await runQuery(
+        (internal as any)["billingSettings"]["getBillingMode"],
         { userId }
-      );
+      )) as "managed" | "byok";
       if (billingMode === "byok") {
         return;
       }
@@ -280,7 +286,7 @@ export function createUsageHandler(options?: {
         projectId = thread?.projectId ?? undefined;
       }
 
-      await ctx.runMutation(internal.aiUsage.trackUsage, {
+      await ctx.runMutation((internal as any)["aiUsage"].trackUsage, {
         userId,
         projectId,
         threadId,

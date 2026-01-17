@@ -3,10 +3,11 @@
  */
 
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
-import { internal } from "../_generated/api";
 import { checkAiRateLimits, estimateTokenCount } from "./rateLimiting";
 import { canAccessFeature, getUserTier } from "./entitlements";
 import { dbToTierConfig, getTierDefaults, type TierId } from "./tierConfig";
+
+const internal = require("../_generated/api").internal as any;
 
 export type AiEndpoint =
   | "chat"
@@ -140,7 +141,7 @@ async function getTierConfig(
   }
 
   const record = await (ctx as ActionCtx).runQuery(
-    internal.tiers.getByTierInternal,
+    internal["tiers"]["getByTierInternal"],
     { tier }
   );
   if (!record) {
@@ -166,7 +167,7 @@ async function getUsageCounters(
   }
 
   const record = await (ctx as ActionCtx).runQuery(
-    internal.billing.getBillingUsageCounters,
+    internal["billing"]["getBillingUsageCounters"],
     { userId, periodStartMs }
   );
 
