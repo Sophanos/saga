@@ -80,6 +80,7 @@ export function needsToolApproval(
     case "commit_decision":
     case "add_comment":
     case "delete_document":
+    case "evidence_mutation":
       return true;
 
     case "create_entity":

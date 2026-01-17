@@ -15,6 +15,9 @@ export * from "./types";
 // Tool definitions, invocation types, arguments, and results
 export * from "./tools";
 
+// Evidence selector utilities
+export * from "./evidenceSelectors";
+
 // SSE stream events for agent responses
 export * from "./events";
 

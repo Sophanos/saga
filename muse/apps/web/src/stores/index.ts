@@ -321,6 +321,7 @@ interface UIState {
   modal: ModalState | null; // Currently open modal
   recent: RecentItems; // Recently accessed items
   selectedMemoryId: string | null; // Story Bible selection
+  selectedKnowledgeSuggestionId: string | null; // Active Knowledge PR selection
 }
 
 // Combined store
@@ -434,6 +435,7 @@ interface MythosStore {
   openModal: (modal: ModalState) => void;
   closeModal: () => void;
   setSelectedMemoryId: (id: string | null) => void;
+  setSelectedKnowledgeSuggestionId: (id: string | null) => void;
 }
 
 export const useMythosStore = create<MythosStore>()(
@@ -504,6 +506,7 @@ export const useMythosStore = create<MythosStore>()(
       modal: null,
       recent: { documentIds: [], entityIds: [] },
       selectedMemoryId: null,
+      selectedKnowledgeSuggestionId: null,
     },
 
     // Project actions
@@ -1069,6 +1072,10 @@ export const useMythosStore = create<MythosStore>()(
     setSelectedMemoryId: (id) =>
       set((state) => {
         state.ui.selectedMemoryId = id;
+      }),
+    setSelectedKnowledgeSuggestionId: (id) =>
+      set((state) => {
+        state.ui.selectedKnowledgeSuggestionId = id;
       }),
   }))
 );

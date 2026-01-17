@@ -470,6 +470,22 @@ function formatChangeTitle(
       return `Update memory`;
     case "delete_memory":
       return `Remove memory`;
+    case "evidence.region.create":
+      return "Add image region";
+    case "evidence.region.delete":
+      return "Remove image region";
+    case "evidence.link.create": {
+      const ops = Array.isArray(patch?.["ops"]) ? (patch?.["ops"] as Array<Record<string, unknown>>) : [];
+      const link = ops.find((op) => op?.["type"] === "link.create");
+      const targetType = typeof link?.["targetType"] === "string" ? (link["targetType"] as string) : "";
+      const targetId = typeof link?.["targetId"] === "string" ? (link["targetId"] as string) : "";
+      if (targetType) {
+        return `Attach image evidence to ${targetType}${targetId ? `: ${targetId}` : ""}`;
+      }
+      return "Attach image evidence";
+    }
+    case "evidence.link.delete":
+      return "Remove image evidence";
     default:
       return `${operation} on ${targetType}`;
   }
@@ -523,6 +539,8 @@ function formatAnalysisKind(kind: string): string {
       return "Policy Check";
     case "digest_document":
       return "Document Digest";
+    case "image_evidence_suggestions":
+      return "Image Evidence Suggestions";
     default:
       return kind
         .replace(/_/g, " ")

@@ -783,6 +783,113 @@ async function preflightSuggestion(
       }
       break;
     }
+    case "evidence_mutation": {
+      const ops = getEvidenceOps(toolArgs);
+      if (ops.length === 0) {
+        errors.push("Missing evidence operations.");
+        break;
+      }
+
+      for (const op of ops) {
+        const opType = typeof op["type"] === "string" ? (op["type"] as string) : "";
+        if (!opType) {
+          errors.push("Evidence operation is missing type.");
+          continue;
+        }
+
+        if (opType === "region.create") {
+          const assetId = typeof op["assetId"] === "string" ? (op["assetId"] as string) : "";
+          if (!assetId) {
+            errors.push("Missing assetId for evidence region.");
+            continue;
+          }
+          const asset = await resolveEvidenceAsset(ctx, input.projectId, assetId);
+          if (!asset) {
+            errors.push("Evidence asset not found.");
+            continue;
+          }
+          const shape = typeof op["shape"] === "string" ? (op["shape"] as string) : "";
+          if (shape === "rect") {
+            if (!op["rect"]) {
+              errors.push("Missing rect for evidence region.");
+            }
+          } else if (shape === "polygon") {
+            if (!op["polygon"]) {
+              errors.push("Missing polygon for evidence region.");
+            }
+            if (!op["selector"]) {
+              errors.push("Missing selector for polygon evidence region.");
+            }
+          } else {
+            errors.push("Unknown evidence region shape.");
+          }
+          continue;
+        }
+
+        if (opType === "region.delete") {
+          const regionId = typeof op["regionId"] === "string" ? (op["regionId"] as string) : "";
+          if (!regionId) {
+            errors.push("Missing regionId for evidence region deletion.");
+            continue;
+          }
+          const region = await resolveEvidenceRegion(ctx, input.projectId, regionId);
+          if (!region) {
+            errors.push("Evidence region not found.");
+          }
+          continue;
+        }
+
+        if (opType === "link.create") {
+          const assetId = typeof op["assetId"] === "string" ? (op["assetId"] as string) : "";
+          if (!assetId) {
+            errors.push("Missing assetId for evidence link.");
+            continue;
+          }
+          const asset = await resolveEvidenceAsset(ctx, input.projectId, assetId);
+          if (!asset) {
+            errors.push("Evidence asset not found.");
+            continue;
+          }
+          const regionId = typeof op["regionId"] === "string" ? (op["regionId"] as string) : undefined;
+          if (regionId) {
+            const region = await resolveEvidenceRegion(ctx, input.projectId, regionId);
+            if (!region) {
+              errors.push("Evidence region not found.");
+              continue;
+            }
+          }
+          const targetId = typeof op["targetId"] === "string" ? (op["targetId"] as string) : "";
+          if (!targetId) {
+            errors.push("Missing targetId for evidence link.");
+            continue;
+          }
+          const targetType = resolveEvidenceTargetType(op["targetType"]);
+          const targetOk = await resolveEvidenceTarget(ctx, input.projectId, targetType, targetId);
+          if (!targetOk) {
+            errors.push(`Evidence target not found (${targetType}).`);
+            continue;
+          }
+          resolvedTargetId = resolvedTargetId ?? targetId;
+          continue;
+        }
+
+        if (opType === "link.delete") {
+          const linkId = typeof op["linkId"] === "string" ? (op["linkId"] as string) : "";
+          if (!linkId) {
+            errors.push("Missing linkId for evidence link deletion.");
+            continue;
+          }
+          const link = await ctx.db.get(linkId as Id<"evidenceLinks">);
+          if (!link || link.projectId !== input.projectId) {
+            errors.push("Evidence link not found.");
+          }
+          continue;
+        }
+
+        errors.push(`Unsupported evidence op: ${opType}`);
+      }
+      break;
+    }
     default:
       break;
   }
@@ -1333,6 +1440,66 @@ async function resolveRelationshipByNames(
   });
 }
 
+function getEvidenceOps(toolArgs: Record<string, unknown>): Array<Record<string, unknown>> {
+  const ops = toolArgs["ops"];
+  if (!Array.isArray(ops)) return [];
+  return ops.filter((op) => op && typeof op === "object" && !Array.isArray(op)) as Array<
+    Record<string, unknown>
+  >;
+}
+
+function resolveEvidenceTargetType(value: unknown): "document" | "entity" | "relationship" | "memory" {
+  if (value === "entity") return "entity";
+  if (value === "relationship") return "relationship";
+  if (value === "memory") return "memory";
+  return "document";
+}
+
+async function resolveEvidenceAsset(
+  ctx: any,
+  projectId: Id<"projects">,
+  assetId: string
+): Promise<Doc<"projectAssets"> | null> {
+  const asset = await ctx.db.get(assetId as Id<"projectAssets">);
+  if (!asset || asset.projectId !== projectId) return null;
+  return asset;
+}
+
+async function resolveEvidenceRegion(
+  ctx: any,
+  projectId: Id<"projects">,
+  regionId: string
+): Promise<Doc<"assetRegions"> | null> {
+  const region = await ctx.db.get(regionId as Id<"assetRegions">);
+  if (!region || region.projectId !== projectId) return null;
+  return region;
+}
+
+async function resolveEvidenceTarget(
+  ctx: any,
+  projectId: Id<"projects">,
+  targetType: "document" | "entity" | "relationship" | "memory",
+  targetId: string
+): Promise<boolean> {
+  if (targetType === "document") {
+    const doc = await ctx.db.get(targetId as Id<"documents">);
+    return Boolean(doc && doc.projectId === projectId);
+  }
+  if (targetType === "entity") {
+    const entity = await ctx.db.get(targetId as Id<"entities">);
+    return Boolean(entity && entity.projectId === projectId);
+  }
+  if (targetType === "relationship") {
+    const rel = await ctx.db.get(targetId as Id<"relationships">);
+    return Boolean(rel && rel.projectId === projectId);
+  }
+  if (targetType === "memory") {
+    const memory = await ctx.db.get(targetId as Id<"memories">);
+    return Boolean(memory && memory.projectId === projectId);
+  }
+  return false;
+}
+
 async function applySuggestionApprove(
   ctx: any,
   suggestion: any,
@@ -1673,6 +1840,44 @@ async function applySuggestionApprove(
         { kind: "memory", id: memoryId },
         { kind: "memory.commit_decision", memoryId }
       );
+    }
+    case "evidence_mutation": {
+      const ops = Array.isArray(toolArgs["ops"]) ? (toolArgs["ops"] as Record<string, unknown>[]) : [];
+      if (ops.length === 0) {
+        return buildErrorEnvelope("Missing evidence operations.");
+      }
+
+      try {
+        const result = await ctx.runMutation(internalAny.evidence.applyEvidenceMutationInternal, {
+          projectId,
+          ops,
+          actor,
+        });
+        let artifact: ToolResultArtifact | undefined;
+        for (const op of ops) {
+          if (op && typeof op === "object" && op["type"] === "link.create") {
+            const targetType = op["targetType"];
+            const targetId = op["targetId"];
+            if (
+              (targetType === "document" ||
+                targetType === "entity" ||
+                targetType === "relationship" ||
+                targetType === "memory") &&
+              typeof targetId === "string"
+            ) {
+              artifact = { kind: targetType, id: targetId };
+              break;
+            }
+          }
+        }
+        return buildSuccessEnvelope(artifact, {
+          kind: "evidence.apply",
+          createdRegionIds: result?.createdRegionIds,
+          createdLinkIds: result?.createdLinkIds,
+        });
+      } catch (error) {
+        return buildErrorEnvelope(error instanceof Error ? error.message : "Failed to apply evidence ops");
+      }
     }
     case "write_content":
       return buildErrorEnvelope("Apply document changes from the editor UI.");

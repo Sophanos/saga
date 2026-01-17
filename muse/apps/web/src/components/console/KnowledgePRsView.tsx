@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, CornerUpLeft, FileText, Loader2, X } from "lucide-react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
+import { xywhPercentToRect } from "@mythos/agent-protocol";
 import { Button, ScrollArea, cn } from "@mythos/ui";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useMythosStore } from "../../stores";
 import { DiffView } from "./DiffViews";
 import { RollbackConfirmModal } from "../modals/RollbackConfirmModal";
+import { AssetEvidenceViewer } from "../evidence/AssetEvidenceViewer";
 
 type KnowledgeStatus = "proposed" | "accepted" | "rejected" | "resolved";
 type KnowledgeRiskLevel = "low" | "high" | "core";
@@ -71,7 +73,8 @@ interface KnowledgeSuggestion {
 
 interface KnowledgeCitation {
   _id: string;
-  memoryId: string;
+  sourceKind?: "memory" | "image_region";
+  memoryId?: string;
   memoryCategory?: string;
   excerpt?: string;
   reason?: string;
@@ -80,6 +83,15 @@ interface KnowledgeCitation {
   redactionReason?: string;
   memoryText?: string;
   memoryType?: string;
+  assetId?: string;
+  regionId?: string;
+  selector?: string;
+  imageUrl?: string | null;
+  region?: {
+    rect?: { x: number; y: number; w: number; h: number };
+    polygon?: Array<{ x: number; y: number }>;
+    selector?: string;
+  } | null;
   createdAt: number;
 }
 
@@ -352,6 +364,8 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
   const documents = useMythosStore((s) => s.document.documents);
   const setCurrentDocument = useMythosStore((s) => s.setCurrentDocument);
   const setCanvasView = useMythosStore((s) => s.setCanvasView);
+  const selectedSuggestionId = useMythosStore((s) => s.ui.selectedKnowledgeSuggestionId);
+  const setSelectedSuggestionId = useMythosStore((s) => s.setSelectedKnowledgeSuggestionId);
   const convex = useConvex();
   const apiAny: any = api;
 
@@ -478,9 +492,17 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
       setSelectedId(null);
       return;
     }
+    if (selectedSuggestionId && filtered.some((s) => s._id === selectedSuggestionId)) {
+      setSelectedId(selectedSuggestionId);
+      return;
+    }
     if (selectedId && filtered.some((s) => s._id === selectedId)) return;
     setSelectedId(filtered[0]?._id ?? null);
-  }, [filtered, selectedId]);
+  }, [filtered, selectedId, selectedSuggestionId]);
+
+  useEffect(() => {
+    setSelectedSuggestionId(selectedId);
+  }, [selectedId, setSelectedSuggestionId]);
 
   const selected = useMemo((): KnowledgeSuggestion | null => {
     return filtered.find((s) => s._id === selectedId) ?? null;
@@ -513,6 +535,17 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
       documentRecord?.title
     );
   }, [documentRecord?.title, documentText, selected]);
+
+  const evidencePreview = useMemo(() => {
+    if (!selected || selected.toolName !== "evidence_mutation") return null;
+    if (!selected.preview || typeof selected.preview !== "object") return null;
+    return selected.preview as {
+      assetId?: string;
+      imageUrl?: string | null;
+      regions?: Array<Record<string, unknown>>;
+      links?: Array<Record<string, unknown>>;
+    };
+  }, [selected]);
 
   const handleOpenDocument = useCallback((): void => {
     if (!documentId) return;
@@ -912,6 +945,22 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
               </div>
             ) : null}
 
+            {evidencePreview?.assetId && projectId ? (
+              <div className="rounded-md border border-mythos-border-default bg-mythos-bg-secondary/40 p-3 space-y-3">
+                <div className="text-[10px] uppercase tracking-wider text-mythos-text-muted">
+                  Evidence preview
+                </div>
+                <AssetEvidenceViewer
+                  projectId={projectId}
+                  assetId={evidencePreview.assetId}
+                  mode="review"
+                  imageUrl={evidencePreview.imageUrl ?? undefined}
+                  previewRegions={evidencePreview.regions}
+                  previewLinks={evidencePreview.links}
+                />
+              </div>
+            ) : null}
+
             <div className="rounded-md border border-mythos-border-default bg-mythos-bg-secondary/40 p-3 space-y-3">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-mythos-text-muted">
@@ -940,45 +989,101 @@ export function KnowledgePRsView(_: KnowledgePRsViewProps): JSX.Element {
                 </div>
                 <div className="space-y-2">
                   {citations.map((citation) => {
+                    const isImageEvidence = citation.sourceKind === "image_region";
                     const redacted = citation.visibility === "redacted";
+                    const previewRegions: Array<Record<string, unknown>> = [];
+                    let label = "Canon memory";
+                    if (isImageEvidence) {
+                      label = "Image evidence";
+                    } else if (citation.memoryCategory) {
+                      label = titleCase(citation.memoryCategory);
+                    }
+                    const idLabel = isImageEvidence
+                      ? citation.regionId ?? citation.assetId ?? "Image region"
+                      : citation.memoryId ?? "Memory";
+                    if (isImageEvidence) {
+                      if (citation.region) {
+                        previewRegions.push(citation.region);
+                      } else if (citation.selector) {
+                        const rect = xywhPercentToRect(citation.selector);
+                        if (rect) {
+                          previewRegions.push({
+                            rect,
+                            shape: "rect",
+                            selector: citation.selector,
+                          });
+                        }
+                      }
+                    }
+                    let citationBody: JSX.Element;
+                    if (isImageEvidence) {
+                      citationBody = (
+                        <>
+                          {citation.assetId && projectId ? (
+                            <AssetEvidenceViewer
+                              projectId={projectId}
+                              assetId={citation.assetId}
+                              mode="review"
+                              imageUrl={citation.imageUrl ?? undefined}
+                              previewRegions={previewRegions}
+                            />
+                          ) : (
+                            <div className="text-xs text-mythos-text-muted">
+                              Image evidence unavailable.
+                            </div>
+                          )}
+                          {citation.reason ? (
+                            <div className="text-xs text-mythos-text-muted">
+                              {citation.reason}
+                            </div>
+                          ) : null}
+                          {citation.selector ? (
+                            <div className="text-xs text-mythos-text-muted">
+                              {citation.selector}
+                            </div>
+                          ) : null}
+                        </>
+                      );
+                    } else if (redacted) {
+                      citationBody = (
+                        <div className="text-xs text-mythos-text-muted">
+                          Citation redacted
+                          {citation.redactionReason
+                            ? ` (${citation.redactionReason})`
+                            : ""}
+                          .
+                        </div>
+                      );
+                    } else {
+                      citationBody = (
+                        <>
+                          <div className="text-sm text-mythos-text-primary">
+                            {citation.memoryText ?? "Memory content unavailable."}
+                          </div>
+                          {citation.reason ? (
+                            <div className="text-xs text-mythos-text-muted">
+                              {citation.reason}
+                            </div>
+                          ) : null}
+                          {citation.excerpt ? (
+                            <div className="text-xs text-mythos-text-muted">
+                              {citation.excerpt}
+                            </div>
+                          ) : null}
+                        </>
+                      );
+                    }
+
                     return (
                       <div
                         key={citation._id}
                         className="rounded-md border border-mythos-border-default p-3 space-y-2"
                       >
                         <div className="flex items-center justify-between gap-2 text-xs text-mythos-text-muted">
-                          <span>
-                            {citation.memoryCategory
-                              ? titleCase(citation.memoryCategory)
-                              : "Canon memory"}
-                          </span>
-                          <span className="truncate">{citation.memoryId}</span>
+                          <span>{label}</span>
+                          <span className="truncate">{idLabel}</span>
                         </div>
-                        {redacted ? (
-                          <div className="text-xs text-mythos-text-muted">
-                            Citation redacted
-                            {citation.redactionReason
-                              ? ` (${citation.redactionReason})`
-                              : ""}
-                            .
-                          </div>
-                        ) : (
-                          <>
-                            <div className="text-sm text-mythos-text-primary">
-                              {citation.memoryText ?? "Memory content unavailable."}
-                            </div>
-                            {citation.reason ? (
-                              <div className="text-xs text-mythos-text-muted">
-                                {citation.reason}
-                              </div>
-                            ) : null}
-                            {citation.excerpt ? (
-                              <div className="text-xs text-mythos-text-muted">
-                                {citation.excerpt}
-                              </div>
-                            ) : null}
-                          </>
-                        )}
+                        {citationBody}
                       </div>
                     );
                   })}

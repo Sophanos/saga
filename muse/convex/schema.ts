@@ -438,8 +438,12 @@ export default defineSchema({
     ),
     targetId: v.string(),
     phase: v.union(v.literal("proposal"), v.literal("review"), v.literal("result")),
-    memoryId: v.string(),
+    sourceKind: v.optional(v.union(v.literal("memory"), v.literal("image_region"))),
+    memoryId: v.optional(v.string()),
     memoryCategory: v.optional(v.union(v.literal("decision"), v.literal("policy"))),
+    assetId: v.optional(v.id("projectAssets")),
+    regionId: v.optional(v.id("assetRegions")),
+    selector: v.optional(v.string()),
     excerpt: v.optional(v.string()),
     reason: v.optional(v.string()),
     confidence: v.optional(v.number()),
@@ -1248,6 +1252,64 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_entity", ["entityId"])
     .index("by_project_type", ["projectId", "type"])
+    .index("by_deleted", ["deletedAt"]),
+
+  // ============================================================
+  // IMAGE EVIDENCE (Regions + Links)
+  // ============================================================
+  assetRegions: defineTable({
+    projectId: v.id("projects"),
+    assetId: v.id("projectAssets"),
+    shape: v.union(v.literal("rect"), v.literal("polygon")),
+    rect: v.optional(
+      v.object({ x: v.number(), y: v.number(), w: v.number(), h: v.number() })
+    ),
+    polygon: v.optional(v.array(v.object({ x: v.number(), y: v.number() }))),
+    selector: v.string(),
+    label: v.optional(v.string()),
+    note: v.optional(v.string()),
+    actorType: v.string(),
+    actorUserId: v.optional(v.string()),
+    actorAgentId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_project_asset_createdAt", ["projectId", "assetId", "createdAt"])
+    .index("by_asset_createdAt", ["assetId", "createdAt"])
+    .index("by_project_createdAt", ["projectId", "createdAt"])
+    .index("by_deleted", ["deletedAt"]),
+
+  evidenceLinks: defineTable({
+    projectId: v.id("projects"),
+    assetId: v.id("projectAssets"),
+    regionId: v.optional(v.id("assetRegions")),
+    targetType: v.union(
+      v.literal("document"),
+      v.literal("entity"),
+      v.literal("relationship"),
+      v.literal("memory")
+    ),
+    targetId: v.string(),
+    claimPath: v.optional(v.string()),
+    relation: v.optional(v.string()),
+    confidence: v.optional(v.number()),
+    note: v.optional(v.string()),
+    actorType: v.string(),
+    actorUserId: v.optional(v.string()),
+    actorAgentId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_project_target_createdAt", [
+      "projectId",
+      "targetType",
+      "targetId",
+      "createdAt",
+    ])
+    .index("by_project_asset_createdAt", ["projectId", "assetId", "createdAt"])
+    .index("by_region_createdAt", ["regionId", "createdAt"])
     .index("by_deleted", ["deletedAt"]),
 
   // ============================================================

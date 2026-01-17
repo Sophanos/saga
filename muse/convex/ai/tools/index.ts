@@ -38,6 +38,7 @@ export {
 } from "./projectGraphTools";
 export { expandChunkContext } from "./ragHandlers";
 export { analyzeContentTool, type AnalyzeContentArgs } from "./analysisTools";
+export { evidenceMutationTool } from "./evidenceTools";
 export {
   viewVersionHistoryTool,
   viewCommentsTool,

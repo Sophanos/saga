@@ -16,6 +16,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { getAuthUserId } from "@convex-dev/auth/server";
 
 const assetTypeValidator = v.union(
   v.literal("avatar"),
@@ -29,6 +30,9 @@ const assetTypeValidator = v.union(
   v.literal("reference"),
   v.literal("other")
 );
+
+const IMAGE_EVIDENCE_JOB_KIND = "image_evidence_suggestions";
+const IMAGE_EVIDENCE_JOB_DEBOUNCE_MS = 15000;
 
 function shouldEmbedAsset(mimeType: string): boolean {
   return mimeType.startsWith("image/");
@@ -73,6 +77,48 @@ async function scheduleEntityImageEmbeddingDeletion(
   await ctx.scheduler.runAfter(0, internal.ai.imageEmbeddings.deleteImageEmbeddingsByEntity, {
     entityId,
   });
+}
+
+async function scheduleImageEvidenceSuggestions(
+  ctx: MutationCtx,
+  assetId: Id<"projectAssets">,
+  projectId: Id<"projects">,
+  mimeType: string,
+  userId: string
+): Promise<void> {
+  if (!shouldEmbedAsset(mimeType)) return;
+  await ctx.runMutation(internal.ai.analysisJobs.enqueueAnalysisJob, {
+    projectId,
+    userId,
+    kind: IMAGE_EVIDENCE_JOB_KIND,
+    payload: { assetId },
+    dedupeKey: `${IMAGE_EVIDENCE_JOB_KIND}:${assetId}`,
+    debounceMs: IMAGE_EVIDENCE_JOB_DEBOUNCE_MS,
+  });
+}
+
+async function softDeleteEvidenceForAssets(
+  ctx: MutationCtx,
+  assetIds: Id<"projectAssets">[]
+): Promise<void> {
+  if (assetIds.length === 0) return;
+  await ctx.runMutation(internal.evidence.softDeleteEvidenceForAssetsInternal, { assetIds });
+}
+
+async function restoreEvidenceForAssets(
+  ctx: MutationCtx,
+  assetIds: Id<"projectAssets">[]
+): Promise<void> {
+  if (assetIds.length === 0) return;
+  await ctx.runMutation(internal.evidence.restoreEvidenceForAssetsInternal, { assetIds });
+}
+
+async function deleteEvidenceForAssets(
+  ctx: MutationCtx,
+  assetIds: Id<"projectAssets">[]
+): Promise<void> {
+  if (assetIds.length === 0) return;
+  await ctx.runMutation(internal.evidence.deleteEvidenceForAssetsInternal, { assetIds });
 }
 
 // ============================================================
@@ -172,6 +218,7 @@ export const saveAsset = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const userId = (await getAuthUserId(ctx)) ?? "system";
     const assetId = await ctx.db.insert("projectAssets", {
       ...args,
       createdAt: now,
@@ -179,6 +226,7 @@ export const saveAsset = mutation({
     });
 
     await scheduleImageEmbedding(ctx, assetId, args.projectId, args.mimeType);
+    await scheduleImageEvidenceSuggestions(ctx, assetId, args.projectId, args.mimeType, userId);
 
     return assetId;
   },
@@ -210,6 +258,7 @@ export const saveAssetInternal = internalMutation({
     });
 
     await scheduleImageEmbedding(ctx, assetId, args.projectId, args.mimeType);
+    await scheduleImageEvidenceSuggestions(ctx, assetId, args.projectId, args.mimeType, "system");
 
     return assetId;
   },
@@ -252,6 +301,7 @@ export const softDelete = mutation({
       deletedAt: Date.now(),
       updatedAt: Date.now(),
     });
+    await softDeleteEvidenceForAssets(ctx, [id]);
   },
 });
 
@@ -262,6 +312,7 @@ export const restore = mutation({
       deletedAt: undefined,
       updatedAt: Date.now(),
     });
+    await restoreEvidenceForAssets(ctx, [id]);
   },
 });
 
@@ -270,6 +321,8 @@ export const hardDelete = mutation({
   handler: async (ctx, { id }) => {
     const asset = await ctx.db.get(id);
     if (!asset) return;
+
+    await deleteEvidenceForAssets(ctx, [asset._id]);
 
     // Delete storage files
     await ctx.storage.delete(asset.storageId);
@@ -297,6 +350,11 @@ export const deleteByProject = internalMutation({
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
       .collect();
 
+    await deleteEvidenceForAssets(
+      ctx,
+      assets.map((asset) => asset._id)
+    );
+
     for (const asset of assets) {
       await ctx.storage.delete(asset.storageId);
       if (asset.thumbnailStorageId) {
@@ -320,6 +378,11 @@ export const deleteByEntity = internalMutation({
       .query("projectAssets")
       .withIndex("by_entity", (q) => q.eq("entityId", entityId))
       .collect();
+
+    await deleteEvidenceForAssets(
+      ctx,
+      assets.map((asset) => asset._id)
+    );
 
     for (const asset of assets) {
       await ctx.storage.delete(asset.storageId);
@@ -355,6 +418,9 @@ export const cleanupSoftDeleted = internalMutation({
     const embeddableIds = assetsToDelete
       .filter((asset) => shouldEmbedAsset(asset.mimeType))
       .map((asset) => asset._id);
+    const assetIds = assetsToDelete.map((asset) => asset._id);
+
+    await deleteEvidenceForAssets(ctx, assetIds);
 
     for (const asset of assetsToDelete) {
       await ctx.storage.delete(asset.storageId);
@@ -405,6 +471,7 @@ export const storeFromUrlInternal = internalMutation({
     });
 
     await scheduleImageEmbedding(ctx, assetId, args.projectId, args.mimeType);
+    await scheduleImageEvidenceSuggestions(ctx, assetId, args.projectId, args.mimeType, "system");
 
     return assetId;
   },

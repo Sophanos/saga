@@ -36,6 +36,7 @@ import {
   searchUsersTool,
   deleteDocumentTool,
 } from "./tools/collaborationTools";
+import { evidenceMutationTool } from "./tools/evidenceTools";
 import {
   artifactTool,
   artifactStageTool,
@@ -108,6 +109,26 @@ function resolveSuggestionEditorContext(
     (value) => typeof value === "string" && value.length > 0
   );
   return hasValue ? context : undefined;
+}
+
+function resolveSuggestionTargetId(
+  toolName: string,
+  args: Record<string, unknown>,
+  editorContext: unknown
+): string | undefined {
+  if (toolName === "write_content") {
+    return resolveEditorDocumentId(editorContext);
+  }
+
+  if (toolName === "evidence_mutation") {
+    const ops = getEvidenceOps(args);
+    const op = ops[0];
+    const opType = typeof op?.["type"] === "string" ? (op["type"] as string) : undefined;
+    const targetId = typeof op?.["targetId"] === "string" ? (op["targetId"] as string) : undefined;
+    if (opType === "link.create" && targetId) return targetId;
+  }
+
+  return undefined;
 }
 
 async function setAiPresence(
@@ -472,6 +493,7 @@ function createSagaAgent(opts: { languageModel: LanguageModel; testMode: boolean
       add_comment: addCommentTool,
       search_users: searchUsersTool,
       delete_document: deleteDocumentTool,
+      evidence_mutation: evidenceMutationTool,
       // Artifact tools
       artifact_tool: artifactTool,
       artifact_stage: artifactStageTool,
@@ -518,6 +540,7 @@ const TOOL_POLICY: Record<string, ToolPolicy> = {
   search_users: { category: "rag", autoExecute: true },
   add_comment: { category: "hitl", autoExecute: false },
   delete_document: { category: "hitl", autoExecute: false },
+  evidence_mutation: { category: "hitl", autoExecute: false },
   // Artifact tools - auto-execute, client handles UI effects
   artifact_tool: { category: "artifact", autoExecute: true },
   artifact_stage: { category: "artifact", autoExecute: true },
@@ -605,7 +628,73 @@ type GraphApprovalPreview =
       note?: string;
     };
 
+type EvidenceApprovalPreview = {
+  kind: "evidence";
+  assetId?: string;
+  imageUrl?: string | null;
+  regions?: Array<{
+    id?: string;
+    shape?: string;
+    rect?: { x: number; y: number; w: number; h: number };
+    polygon?: Array<{ x: number; y: number }>;
+    selector?: string;
+    label?: string;
+    note?: string;
+  }>;
+  links?: Array<{
+    id?: string;
+    regionId?: string;
+    targetType?: string;
+    targetId?: string;
+    targetLabel?: string;
+    claimPath?: string;
+    relation?: string;
+    confidence?: number;
+    note?: string;
+  }>;
+};
+
 type KnowledgeSuggestionTargetType = "document" | "entity" | "relationship" | "memory";
+
+function resolveEvidenceTargetType(value: unknown): KnowledgeSuggestionTargetType {
+  if (value === "entity") return "entity";
+  if (value === "relationship") return "relationship";
+  if (value === "memory") return "memory";
+  return "document";
+}
+
+function getEvidenceOps(args: Record<string, unknown>): Array<Record<string, unknown>> {
+  const ops = args["ops"];
+  if (!Array.isArray(ops)) return [];
+  return ops.filter((op) => op && typeof op === "object" && !Array.isArray(op)) as Array<
+    Record<string, unknown>
+  >;
+}
+
+function resolveEvidenceSuggestion(
+  args: Record<string, unknown>
+): { targetType: KnowledgeSuggestionTargetType; operation: string } | null {
+  const ops = getEvidenceOps(args);
+  const op = ops[0];
+  const opType = typeof op?.["type"] === "string" ? (op["type"] as string) : undefined;
+  if (!opType) return null;
+
+  if (opType === "link.create") {
+    const targetType = resolveEvidenceTargetType(op["targetType"]);
+    return { targetType, operation: "evidence.link.create" };
+  }
+  if (opType === "link.delete") {
+    return { targetType: "document", operation: "evidence.link.delete" };
+  }
+  if (opType === "region.create") {
+    return { targetType: "document", operation: "evidence.region.create" };
+  }
+  if (opType === "region.delete") {
+    return { targetType: "document", operation: "evidence.region.delete" };
+  }
+
+  return { targetType: "document", operation: "evidence.mutation" };
+}
 
 function classifyKnowledgeSuggestion(
   toolName: string,
@@ -634,6 +723,8 @@ function classifyKnowledgeSuggestion(
       return { targetType: "document", operation: toolName };
     case "commit_decision":
       return { targetType: "memory", operation: toolName };
+    case "evidence_mutation":
+      return resolveEvidenceSuggestion(args);
     default:
       return null;
   }
@@ -1174,6 +1265,111 @@ async function resolveUniqueEntityTypeForUpdate(
   return matches[0]?.type ?? null;
 }
 
+async function resolveEvidenceTargetLabel(
+  ctx: ActionCtx,
+  projectId: Id<"projects">,
+  targetType: KnowledgeSuggestionTargetType,
+  targetId: string
+): Promise<string | undefined> {
+  if (targetType === "document") {
+    const doc = await ctx.db.get(targetId as Id<"documents">);
+    if (!doc || doc.projectId !== projectId) return undefined;
+    return doc.title ?? "Untitled document";
+  }
+  if (targetType === "entity") {
+    const entity = await ctx.db.get(targetId as Id<"entities">);
+    if (!entity || entity.projectId !== projectId) return undefined;
+    return entity.name;
+  }
+  if (targetType === "relationship") {
+    const rel = await ctx.db.get(targetId as Id<"relationships">);
+    if (!rel || rel.projectId !== projectId) return undefined;
+    return rel.type ?? "Relationship";
+  }
+  if (targetType === "memory") {
+    const memory = await ctx.db.get(targetId as Id<"memories">);
+    if (!memory || memory.projectId !== projectId) return undefined;
+    return memory.text?.slice(0, 80);
+  }
+  return undefined;
+}
+
+async function buildEvidenceApprovalPreview(
+  ctx: ActionCtx,
+  projectId: Id<"projects">,
+  args: Record<string, unknown>
+): Promise<EvidenceApprovalPreview | null> {
+  const ops = getEvidenceOps(args);
+  if (ops.length === 0) return null;
+
+  const preview: EvidenceApprovalPreview = { kind: "evidence", regions: [], links: [] };
+  const assetId = typeof ops[0]?.["assetId"] === "string" ? (ops[0]["assetId"] as string) : undefined;
+
+  if (assetId) {
+    const asset = await ctx.db.get(assetId as Id<"projectAssets">);
+    if (asset && asset.projectId === projectId) {
+      preview.assetId = assetId;
+      if (asset.storageId) {
+        const url = (await ctx.runQuery(api.projectAssets.getUrl, {
+          storageId: asset.storageId,
+        })) as string | null;
+        preview.imageUrl = url ?? null;
+      }
+    }
+  }
+
+  for (const op of ops) {
+    const opType = typeof op["type"] === "string" ? (op["type"] as string) : undefined;
+    if (!opType) continue;
+
+    if (opType === "region.create") {
+      preview.regions?.push({
+        shape: typeof op["shape"] === "string" ? (op["shape"] as string) : undefined,
+        rect: op["rect"] as { x: number; y: number; w: number; h: number } | undefined,
+        polygon: op["polygon"] as Array<{ x: number; y: number }> | undefined,
+        selector: typeof op["selector"] === "string" ? (op["selector"] as string) : undefined,
+        label: typeof op["label"] === "string" ? (op["label"] as string) : undefined,
+        note: typeof op["note"] === "string" ? (op["note"] as string) : undefined,
+      });
+      continue;
+    }
+
+    if (opType === "region.delete") {
+      preview.regions?.push({
+        id: typeof op["regionId"] === "string" ? (op["regionId"] as string) : undefined,
+      });
+      continue;
+    }
+
+    if (opType === "link.create") {
+      const targetType = resolveEvidenceTargetType(op["targetType"]);
+      const targetId = typeof op["targetId"] === "string" ? (op["targetId"] as string) : undefined;
+      const targetLabel = targetId
+        ? await resolveEvidenceTargetLabel(ctx, projectId, targetType, targetId)
+        : undefined;
+      preview.links?.push({
+        regionId: typeof op["regionId"] === "string" ? (op["regionId"] as string) : undefined,
+        targetType,
+        targetId,
+        targetLabel,
+        claimPath: typeof op["claimPath"] === "string" ? (op["claimPath"] as string) : undefined,
+        relation: typeof op["relation"] === "string" ? (op["relation"] as string) : undefined,
+        confidence: typeof op["confidence"] === "number" ? (op["confidence"] as number) : undefined,
+        note: typeof op["note"] === "string" ? (op["note"] as string) : undefined,
+      });
+      continue;
+    }
+
+    if (opType === "link.delete") {
+      preview.links?.push({
+        id: typeof op["linkId"] === "string" ? (op["linkId"] as string) : undefined,
+      });
+    }
+  }
+
+  return preview;
+}
+
 
 function resolveApprovalType(toolName: string): ToolApprovalType {
   if (toolName === "ask_question") return "input";
@@ -1192,6 +1388,7 @@ function resolveApprovalDanger(toolName: string, args: Record<string, unknown>):
     }
     return "safe";
   }
+  if (toolName === "evidence_mutation") return "safe";
   if (toolName === "project_manage") {
     const action = typeof args["action"] === "string" ? (args["action"] as string) : undefined;
     if (action === "restructure" || action === "pivot") {
@@ -1212,6 +1409,7 @@ async function resolveSuggestionRiskLevel(
   registry: ProjectTypeRegistryResolved | null
 ): Promise<RiskLevel> {
   if (toolName === "commit_decision") return "core";
+  if (toolName === "evidence_mutation") return "low";
 
   if (toolName === "write_content") {
     const danger = resolveApprovalDanger(toolName, args);
@@ -2539,7 +2737,11 @@ export const runSagaAgentChatToStream = internalAction({
           if (suggestion && !isTemplateBuilder) {
             try {
               const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
-              const suggestionTargetId = suggestionEditorContext?.documentId;
+              const suggestionTargetId = resolveSuggestionTargetId(
+                call.toolName,
+                approvalArgs,
+                editorContext
+              );
               const riskLevel = await resolveSuggestionRiskLevel(
                 ctx,
                 projectIdValue,
@@ -2622,35 +2824,48 @@ export const runSagaAgentChatToStream = internalAction({
           if (needsToolApproval(registry, call.toolName, args)) {
             let suggestionId: string | undefined;
             const suggestion = classifyKnowledgeSuggestion(call.toolName, args);
-          if (suggestion && !isTemplateBuilder) {
-            try {
-              const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
-              const suggestionTargetId = suggestionEditorContext?.documentId;
-              const riskLevel = await resolveSuggestionRiskLevel(
-                ctx,
-                projectIdValue,
-                call.toolName,
-                args,
-                registry
-              );
-              suggestionId = (await ctx.runMutation(
-                (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
-                {
-                  projectId: projectIdValue,
-                  toolCallId: call.toolCallId,
-                  toolName: call.toolName,
-                  approvalType: resolveApprovalType(call.toolName),
-                  danger: resolveApprovalDanger(call.toolName, args),
-                  riskLevel,
-                  operation: suggestion.operation,
-                  targetType: suggestion.targetType,
-                  targetId: suggestionTargetId,
-                  proposedPatch: call.input,
-                  editorContext: suggestionEditorContext,
-                  actorType: aiActor.actorType,
-                  actorUserId: aiActor.actorUserId,
-                  actorAgentId: aiActor.actorAgentId,
-                  actorName: aiActor.actorName,
+            if (suggestion && !isTemplateBuilder) {
+              try {
+                const suggestionEditorContext = resolveSuggestionEditorContext(call.toolName, editorContext);
+                const suggestionTargetId = resolveSuggestionTargetId(
+                  call.toolName,
+                  args,
+                  editorContext
+                );
+                const riskLevel = await resolveSuggestionRiskLevel(
+                  ctx,
+                  projectIdValue,
+                  call.toolName,
+                  args,
+                  registry
+                );
+                const preview =
+                  call.toolName === "evidence_mutation"
+                    ? await buildEvidenceApprovalPreview(
+                        ctx,
+                        projectIdValue,
+                        args
+                      )
+                    : null;
+                suggestionId = (await ctx.runMutation(
+                  (internal as any).knowledgeSuggestions.upsertFromToolApprovalRequest,
+                  {
+                    projectId: projectIdValue,
+                    toolCallId: call.toolCallId,
+                    toolName: call.toolName,
+                    approvalType: resolveApprovalType(call.toolName),
+                    danger: resolveApprovalDanger(call.toolName, args),
+                    riskLevel,
+                    operation: suggestion.operation,
+                    targetType: suggestion.targetType,
+                    targetId: suggestionTargetId,
+                    proposedPatch: call.input,
+                    preview: preview ?? undefined,
+                    editorContext: suggestionEditorContext,
+                    actorType: aiActor.actorType,
+                    actorUserId: aiActor.actorUserId,
+                    actorAgentId: aiActor.actorAgentId,
+                    actorName: aiActor.actorName,
                     streamId,
                     threadId,
                     promptMessageId: currentPromptMessageId,

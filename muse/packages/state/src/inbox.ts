@@ -44,7 +44,7 @@ export interface InboxItem {
   title: string;
   subtitle?: string;
   context?: string; // e.g., "Chapter 3", "Scene 4"
-  targetType?: 'document' | 'entity' | 'artifact';
+  targetType?: 'document' | 'entity' | 'relationship' | 'memory' | 'artifact';
   targetId?: string;
   read: boolean;
   createdAt: number;

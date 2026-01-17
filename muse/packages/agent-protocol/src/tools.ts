@@ -18,6 +18,7 @@ import type {
   CanonCitation,
   ToolDangerLevel,
 } from "./types";
+import type { NormalizedRect } from "./evidenceSelectors";
 
 // =============================================================================
 // Tool Names
@@ -73,7 +74,8 @@ export type ToolName =
   | "find_similar_images"
   // Phase 3+4: Reference image & scene composition
   | "analyze_image"
-  | "create_entity_from_image";
+  | "create_entity_from_image"
+  | "evidence_mutation";
 
 // =============================================================================
 // Tool Invocation Lifecycle
@@ -1240,6 +1242,63 @@ export interface CreateEntityFromImageResult {
 }
 
 // =============================================================================
+// Evidence tools
+// =============================================================================
+
+export type EvidencePoint = { x: number; y: number };
+
+export type EvidenceOp =
+  | {
+      type: "region.create";
+      assetId: string;
+      shape: "rect";
+      rect: NormalizedRect;
+      selector?: string;
+      label?: string;
+      note?: string;
+    }
+  | {
+      type: "region.create";
+      assetId: string;
+      shape: "polygon";
+      polygon: EvidencePoint[];
+      selector: string;
+      label?: string;
+      note?: string;
+    }
+  | {
+      type: "region.delete";
+      regionId: string;
+    }
+  | {
+      type: "link.create";
+      assetId: string;
+      regionId?: string;
+      targetType: EntityType | "document" | "memory" | "relationship";
+      targetId: string;
+      claimPath?: string;
+      relation?: string;
+      confidence?: number;
+      note?: string;
+    }
+  | {
+      type: "link.delete";
+      linkId: string;
+    };
+
+export interface EvidenceMutationArgs {
+  ops: EvidenceOp[];
+  rationale?: string;
+}
+
+export interface EvidenceMutationResult {
+  applied: boolean;
+  createdRegionIds?: string[];
+  createdLinkIds?: string[];
+  error?: string;
+}
+
+// =============================================================================
 /**
  * Map of tool names to their argument types.
  */
@@ -1290,6 +1349,7 @@ export interface ToolArgsMap {
   // Phase 3+4 tools
   analyze_image: AnalyzeImageArgs;
   create_entity_from_image: CreateEntityFromImageArgs;
+  evidence_mutation: EvidenceMutationArgs;
 }
 
 // =============================================================================
@@ -1920,6 +1980,7 @@ export interface ToolResultsMap {
   // Phase 3+4 tools
   analyze_image: AnalyzeImageResult;
   create_entity_from_image: CreateEntityFromImageResult;
+  evidence_mutation: EvidenceMutationResult;
 }
 
 // =============================================================================

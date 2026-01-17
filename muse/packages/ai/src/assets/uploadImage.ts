@@ -10,6 +10,22 @@ export type UploadImageAssetType =
   | "reference"
   | "other";
 
+type ProjectAssetType =
+  | "avatar"
+  | "illustration"
+  | "map"
+  | "reference"
+  | "other";
+
+const ASSET_TYPE_MAP: Record<UploadImageAssetType, ProjectAssetType> = {
+  portrait: "avatar",
+  scene: "illustration",
+  cover: "illustration",
+  map: "map",
+  reference: "reference",
+  other: "other",
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ConvexClient = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,7 +78,7 @@ export async function uploadProjectImage(opts: {
   const assetId: string = await convex.mutation(projectAssets.saveAsset, {
     projectId,
     entityId,
-    type,
+    type: ASSET_TYPE_MAP[type],
     filename,
     mimeType,
     storageId,

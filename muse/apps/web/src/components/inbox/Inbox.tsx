@@ -9,9 +9,11 @@
  * Pattern: "Agents execute. Rhei remembers."
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { MoreHorizontal, Check, Trash2, X } from "lucide-react";
 import { cn, ScrollArea } from "@mythos/ui";
+import { useAction } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
 import {
   useInboxStore,
   useInboxTab,
@@ -21,6 +23,7 @@ import {
   useActivityInboxItems,
   useArtifactInboxItems,
 } from "@mythos/state";
+import { useMythosStore } from "../../stores";
 import { InboxTabs } from "./InboxTabs";
 import { InboxSection } from "./InboxSection";
 import {
@@ -56,6 +59,10 @@ export function Inbox({
   const setTab = useInboxStore((s) => s.setTab);
   const markAllRead = useInboxStore((s) => s.markAllRead);
   const clearDismissed = useInboxStore((s) => s.clearDismissed);
+  const setActiveTab = useMythosStore((s) => s.setActiveTab);
+  const setSelectedSuggestionId = useMythosStore((s) => s.setSelectedKnowledgeSuggestionId);
+  const applyDecisions = useAction(api.knowledgeSuggestions.applyDecisions);
+  const [isApplying, setIsApplying] = useState(false);
 
   // Get items
   const pulseItems = usePulseItems();
@@ -98,6 +105,28 @@ export function Inbox({
     filteredChanges.length === 0 &&
     filteredActivity.length === 0 &&
     filteredArtifacts.length === 0;
+
+  const openKnowledgeSuggestion = useCallback(
+    (suggestionId?: string) => {
+      if (!suggestionId) return;
+      setActiveTab("knowledge");
+      setSelectedSuggestionId(suggestionId);
+    },
+    [setActiveTab, setSelectedSuggestionId]
+  );
+
+  const handleDecision = useCallback(
+    async (suggestionId: string, decision: "approve" | "reject") => {
+      if (isApplying) return;
+      setIsApplying(true);
+      try {
+        await applyDecisions({ suggestionIds: [suggestionId], decision });
+      } finally {
+        setIsApplying(false);
+      }
+    },
+    [applyDecisions, isApplying]
+  );
 
   return (
     <div
@@ -245,7 +274,7 @@ export function Inbox({
               <InboxSection
                 title="Changes"
                 count={filteredChanges.length}
-                action={{ label: "Review all", onClick: () => {} }}
+                action={{ label: "Review all", onClick: () => setActiveTab("knowledge") }}
               >
                 {filteredChanges.map((item) => (
                   <ChangeItemRow
@@ -256,13 +285,13 @@ export function Inbox({
                     actorName={item.metadata?.["actorName"] as string | undefined}
                     updatedAt={item.updatedAt}
                     onApprove={() => {
-                      // TODO: Approve mutation
+                      void handleDecision(item.id, "approve");
                     }}
                     onReject={() => {
-                      // TODO: Reject mutation
+                      void handleDecision(item.id, "reject");
                     }}
                     onViewDiff={() => {
-                      // TODO: Open diff view
+                      openKnowledgeSuggestion(item.id);
                     }}
                   />
                 ))}

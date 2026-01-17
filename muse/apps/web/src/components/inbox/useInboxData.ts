@@ -63,7 +63,7 @@ export function useInboxData({ projectId, enabled = true }: UseInboxDataOptions)
       title: item.title,
       subtitle: item.actorName ? `by ${item.actorName}` : undefined,
       operation: item.operation,
-      targetType: item.targetType as "document" | "entity",
+      targetType: item.targetType as ChangeItem["targetType"],
       targetId: item.targetId,
       riskLevel: item.riskLevel as ChangeItem["riskLevel"],
       toolCallId: item.toolCallId,

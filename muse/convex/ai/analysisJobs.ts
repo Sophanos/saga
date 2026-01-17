@@ -9,6 +9,7 @@ export const ANALYSIS_JOB_KINDS = [
   "policy_check",
   "digest_document",
   "embedding_generation",
+  "image_evidence_suggestions",
 ] as const;
 
 export type AnalysisJobKind = (typeof ANALYSIS_JOB_KINDS)[number];

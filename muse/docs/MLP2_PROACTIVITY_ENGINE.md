@@ -13,6 +13,7 @@ MLP2 adds **proactivity without interruptions**: Muse runs background analysis a
 - `ai/analysis/processAnalysisJobs.ts` runner with bounded concurrency + cron backstop.
 - Document updates enqueue `detect_entities` jobs and schedule the runner.
 - Handlers emit `pulseSignals` for entity detection, lint, clarity, and policy checks.
+- Image uploads enqueue `image_evidence_suggestions` jobs for evidence PR drafts (asset-level).
 
 ---
 
@@ -56,6 +57,12 @@ Use these as explicit research spikes to validate demand, UX, and operational co
 - **Citations everywhere:** test if trace links change review behavior and trust; measure how often users click into sources.
 - **Permission-scoped Pulse/PRs:** validate team needs for scoped visibility and approval; ensure it does not slow review.
 - **Tracked-changes exports:** validate external workflow fit (editors, legal, compliance) and acceptable DOCX fidelity.
+
+---
+
+## Deferred ideas (nice-to-have)
+
+- **Widget execution deep links:** add `rhei://.../execution/:executionId` and `rhei://.../thread/:threadId` so activity entries and inline blocks can jump back to the originating thread and execution history. Useful for provenance, but not required for MLP2.
 
 ---
 
