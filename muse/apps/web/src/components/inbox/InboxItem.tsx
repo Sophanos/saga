@@ -17,7 +17,7 @@ import {
   FileText,
   Clock,
 } from "lucide-react";
-import { cn, Button } from "@mythos/ui";
+import { cn } from "@mythos/ui";
 
 export type InboxItemStatus =
   | "new"
@@ -283,7 +283,7 @@ export interface ChangeItemProps {
 export function ChangeItemRow({
   title,
   operation,
-  riskLevel,
+  riskLevel: _riskLevel,
   actorName,
   updatedAt,
   onApprove,

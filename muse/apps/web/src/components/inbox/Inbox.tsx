@@ -20,7 +20,6 @@ import {
   useChangeItems,
   useActivityInboxItems,
   useArtifactInboxItems,
-  type InboxTab,
 } from "@mythos/state";
 import { InboxTabs } from "./InboxTabs";
 import { InboxSection } from "./InboxSection";
@@ -254,7 +253,7 @@ export function Inbox({
                     title={item.title}
                     operation={item.operation}
                     riskLevel={item.riskLevel}
-                    actorName={item.metadata?.actorName as string | undefined}
+                    actorName={item.metadata?.["actorName"] as string | undefined}
                     updatedAt={item.updatedAt}
                     onApprove={() => {
                       // TODO: Approve mutation

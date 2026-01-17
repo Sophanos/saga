@@ -14,12 +14,10 @@ import {
   User,
   Bot,
   Cog,
-  RotateCcw,
-  ChevronRight,
   FileText,
   GitBranch,
 } from "lucide-react";
-import { cn, ScrollArea, Button } from "@mythos/ui";
+import { cn, ScrollArea } from "@mythos/ui";
 import {
   useHistoryStore,
   useHistoryOpen,
@@ -107,7 +105,6 @@ export function HistoryPanel({
                 key={revision.id}
                 revision={revision}
                 isSelected={selectedRevisionId === revision.id}
-                isFirst={index === 0}
                 isLast={index === revisions.length - 1}
                 onSelect={() => selectRevision(revision.id)}
                 onRestore={() => onRestore?.(revision.id)}
@@ -124,7 +121,6 @@ export function HistoryPanel({
 interface HistoryRevisionItemProps {
   revision: HistoryRevision;
   isSelected: boolean;
-  isFirst: boolean;
   isLast: boolean;
   onSelect: () => void;
   onRestore: () => void;
@@ -134,7 +130,6 @@ interface HistoryRevisionItemProps {
 function HistoryRevisionItem({
   revision,
   isSelected,
-  isFirst,
   isLast,
   onSelect,
   onRestore,

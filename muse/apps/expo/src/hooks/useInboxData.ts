@@ -1,16 +1,10 @@
-/**
- * Inbox Data Hook
- *
- * Syncs Convex inbox data to the client-side Zustand store.
- * Provides a unified interface for accessing inbox items.
- */
-
 import { useEffect } from "react";
 import { useQuery } from "convex/react";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import {
   useInboxStore,
+  useProjectStore,
   type PulseSignal,
   type ChangeItem,
   type InboxActivityItem,
@@ -18,27 +12,38 @@ import {
 } from "@mythos/state";
 
 interface UseInboxDataOptions {
-  projectId: Id<"projects"> | null;
+  projectId?: Id<"projects"> | null;
   enabled?: boolean;
 }
 
-export function useInboxData({ projectId, enabled = true }: UseInboxDataOptions) {
+export function useInboxData(options: UseInboxDataOptions = {}): {
+  isLoading: boolean;
+  counts: {
+    pulse: number;
+    changes: number;
+    activity: number;
+    artifacts: number;
+    total: number;
+    hasRunning: boolean;
+  };
+} {
+  const storeProjectId = useProjectStore((s) => s.currentProjectId) as Id<"projects"> | null;
+  const projectId = options.projectId ?? storeProjectId;
+  const enabled = options.enabled ?? true;
+
   const setPulseItems = useInboxStore((s) => s.setPulseItems);
   const setChangeItems = useInboxStore((s) => s.setChangeItems);
   const setActivityItems = useInboxStore((s) => s.setActivityItems);
   const setArtifactItems = useInboxStore((s) => s.setArtifactItems);
 
-  // Fetch inbox data from Convex
   const inboxData = useQuery(
     api.inbox.getInboxData,
     enabled && projectId ? { projectId } : "skip"
   );
 
-  // Sync to Zustand store
   useEffect(() => {
-    if (!inboxData) return;
+    if (!inboxData || !projectId) return;
 
-    // Transform and set pulse items
     const pulseItems: PulseSignal[] = inboxData.pulse.items.map((item) => ({
       id: item.id,
       type: "pulse" as const,
@@ -56,7 +61,6 @@ export function useInboxData({ projectId, enabled = true }: UseInboxDataOptions)
     }));
     setPulseItems(pulseItems);
 
-    // Transform and set change items
     const changeItems: ChangeItem[] = inboxData.changes.items.map((item) => ({
       id: item.id,
       type: "change" as const,
@@ -74,7 +78,6 @@ export function useInboxData({ projectId, enabled = true }: UseInboxDataOptions)
     }));
     setChangeItems(changeItems);
 
-    // Transform widget executions to activity items
     const widgetActivityItems: InboxActivityItem[] = inboxData.activity.items.map((item) => ({
       id: item.id,
       type: "activity" as const,
@@ -84,37 +87,34 @@ export function useInboxData({ projectId, enabled = true }: UseInboxDataOptions)
       statusText: item.statusText,
       documentId: item.documentId,
       documentName: item.documentName,
-      projectId: projectId!,
+      projectId,
       status: item.status as InboxActivityItem["status"],
       read: item.read,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }));
 
-    // Transform analysis jobs to activity items (merged into activity section)
     const analysisActivityItems: InboxActivityItem[] = (inboxData.analysis?.items ?? []).map((item) => ({
       id: `analysis-${item.id}`,
       type: "activity" as const,
       executionId: item.id,
-      widgetId: `analysis:${item.kind}`, // Prefix to distinguish from widgets
+      widgetId: `analysis:${item.kind}`,
       title: item.title,
       statusText: item.statusText,
       documentId: item.documentId,
       documentName: item.documentName,
-      projectId: projectId!,
+      projectId,
       status: item.status as InboxActivityItem["status"],
       read: item.read,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }));
 
-    // Combine and sort by updatedAt
     const activityItems = [...widgetActivityItems, ...analysisActivityItems].sort(
       (a, b) => b.updatedAt - a.updatedAt
     );
     setActivityItems(activityItems);
 
-    // Transform and set artifact items
     const artifactItems: InboxArtifactItem[] = inboxData.artifacts.items.map((item) => ({
       id: item.id,
       type: "artifact" as const,
@@ -154,36 +154,5 @@ export function useInboxData({ projectId, enabled = true }: UseInboxDataOptions)
           total: 0,
           hasRunning: false,
         },
-  };
-}
-
-/**
- * Get inbox counts only (for badge display without full data).
- */
-export function useInboxCounts(projectId: Id<"projects"> | null) {
-  const counts = useQuery(
-    api.inbox.getInboxCounts,
-    projectId ? { projectId } : "skip"
-  );
-
-  if (!counts) {
-    return {
-      pulse: 0,
-      changes: 0,
-      activity: 0,
-      artifacts: 0,
-      total: 0,
-      hasRunning: false,
-    };
-  }
-
-  // Merge analysis count into activity
-  return {
-    pulse: counts.pulse,
-    changes: counts.changes,
-    activity: counts.activity + (counts.analysis ?? 0),
-    artifacts: counts.artifacts,
-    total: counts.total,
-    hasRunning: counts.hasRunning,
   };
 }

@@ -6,7 +6,6 @@
  */
 
 import {
-  Bell,
   Sparkles,
   GitPullRequest,
   Activity,
