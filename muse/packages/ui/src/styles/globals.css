@@ -237,6 +237,57 @@
   }
 }
 
+/* =============================================================================
+   AI Shimmer Effect
+   Text gradient shimmer for AI thinking/processing states
+   Usage: .ai-shimmer or [data-ai-shimmer]
+   ============================================================================= */
+@keyframes ai-shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.ai-shimmer,
+[data-ai-shimmer="true"] {
+  background: linear-gradient(
+    90deg,
+    currentColor 0%,
+    currentColor 40%,
+    rgba(255, 255, 255, 0.8) 50%,
+    currentColor 60%,
+    currentColor 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: ai-shimmer 2s ease-in-out infinite;
+}
+
+/* Dark mode variant - brighter highlight */
+@media (prefers-color-scheme: dark) {
+  .ai-shimmer,
+  [data-ai-shimmer="true"] {
+    background: linear-gradient(
+      90deg,
+      currentColor 0%,
+      currentColor 35%,
+      rgba(255, 255, 255, 0.9) 50%,
+      currentColor 65%,
+      currentColor 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: ai-shimmer 2s ease-in-out infinite;
+  }
+}
+
 /* Flow mode container */
 .flow-overlay {
   animation: flow-fade-in var(--flow-transition-slow) ease-out;
