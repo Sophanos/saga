@@ -647,6 +647,24 @@ export default defineSchema({
     .index("by_scene_analyzedAt", ["sceneId", "analyzedAt"]),
 
   // ============================================================
+  // DOCUMENT DIGESTS (lightweight summaries)
+  // ============================================================
+  documentDigests: defineTable({
+    projectId: v.id("projects"),
+    documentId: v.id("documents"),
+    contentHash: v.optional(v.string()),
+    summary: v.string(),
+    digest: v.string(),
+    model: v.optional(v.string()),
+    sourceJobId: v.optional(v.id("analysisJobs")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project_updatedAt", ["projectId", "updatedAt"])
+    .index("by_document", ["documentId"])
+    .index("by_document_hash", ["documentId", "contentHash"]),
+
+  // ============================================================
   // CHAT SESSIONS (assistant chat history)
   // ============================================================
   chatSessions: defineTable({

@@ -6,12 +6,66 @@
  */
 
 import { v } from "convex/values";
-import { query, mutation, internalMutation } from "./_generated/server";
+import { query, mutation, internalMutation, type MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { verifyProjectAccess, verifyDocumentAccess, verifyProjectEditor } from "./lib/auth";
 import { hashText } from "./lib/contentHash";
+import { isTaskAvailable, type AITaskSlug, type TierId } from "./lib/providers";
+import type { AnalysisJobKind } from "./ai/analysisJobs";
 import type { DeleteDocumentResult } from "../packages/agent-protocol/src/tools";
+
+async function enqueueDocumentAnalysisJobs(
+  ctx: MutationCtx,
+  params: {
+    projectId: Id<"projects">;
+    documentId: Id<"documents">;
+    userId: string;
+    contentText: string;
+    source: "document_create" | "document_update";
+  }
+): Promise<void> {
+  const contentHash = await hashText(params.contentText);
+  const debounceMs = 3000;
+  const tierId = (await ctx.runQuery(
+    (internal as any)["lib/entitlements"].getUserTierInternal,
+    { userId: params.userId }
+  )) as TierId;
+
+  const analysisJobs: Array<{ kind: AnalysisJobKind; taskSlug: AITaskSlug }> = [
+    { kind: "detect_entities", taskSlug: "detect" },
+    { kind: "coherence_lint", taskSlug: "lint" },
+    { kind: "clarity_check", taskSlug: "clarity_check" },
+    { kind: "policy_check", taskSlug: "policy_check" },
+    { kind: "digest_document", taskSlug: "summarize" },
+  ];
+
+  const eligibleJobs = analysisJobs.filter((jobSpec) =>
+    isTaskAvailable(jobSpec.taskSlug, tierId)
+  );
+
+  await Promise.all(
+    eligibleJobs.map((jobSpec) =>
+      ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueAnalysisJob, {
+        projectId: params.projectId,
+        userId: params.userId,
+        documentId: params.documentId,
+        kind: jobSpec.kind,
+        payload: { source: params.source },
+        contentHash,
+        debounceMs,
+      })
+    )
+  );
+
+  if (eligibleJobs.length > 0) {
+    await ctx.scheduler.runAfter(
+      debounceMs,
+      (internal as any)["ai/analysis/processAnalysisJobs"].processAnalysisJobs,
+      { batchSize: 10 }
+    );
+  }
+}
 
 // ============================================================
 // QUERIES
@@ -138,7 +192,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     // Verify user has access to this project
-    await verifyProjectAccess(ctx, args.projectId);
+    const { userId } = await verifyProjectAccess(ctx, args.projectId);
 
     const now = Date.now();
 
@@ -186,6 +240,16 @@ export const create = mutation({
       targetType: "document",
       targetId: id,
     });
+
+    if (args.contentText !== undefined) {
+      await enqueueDocumentAnalysisJobs(ctx, {
+        projectId: args.projectId,
+        documentId: id,
+        userId,
+        contentText: args.contentText,
+        source: "document_create",
+      });
+    }
 
     return id;
   },
@@ -239,24 +303,13 @@ export const update = mutation({
       });
 
       if (contentText !== undefined) {
-        const contentHash = await hashText(contentText);
-        const debounceMs = 3000;
-
-        await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueAnalysisJob, {
+        await enqueueDocumentAnalysisJobs(ctx, {
           projectId: document.projectId,
-          userId,
           documentId: document._id,
-          kind: "detect_entities",
-          payload: { source: "document_update" },
-          contentHash,
-          debounceMs,
+          userId,
+          contentText,
+          source: "document_update",
         });
-
-        await ctx.scheduler.runAfter(
-          debounceMs,
-          (internal as any)["ai/analysis/processAnalysisJobs"].processAnalysisJobs,
-          { batchSize: 10 }
-        );
       }
     }
 
