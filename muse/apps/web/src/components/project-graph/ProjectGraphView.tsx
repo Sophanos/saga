@@ -29,7 +29,7 @@ export function ProjectGraphView() {
     () => allEntityTypes.slice().sort().join(","),
     [allEntityTypes]
   );
-  
+
   // Filter state - all visible by default
   const [visibleTypes, setVisibleTypes] = useState<Set<GraphEntityType>>(new Set());
 
@@ -98,11 +98,8 @@ export function ProjectGraphView() {
     openModal({ type: "registryEditor" });
   }, [openModal]);
 
-  // Reserved for entity profile feature
-  const _handleOpenEntityProfile = useCallback((entityId: string) => {
-    openModal({ type: "entityProfile", entityId });
-  }, [openModal]);
-  void _handleOpenEntityProfile;
+  // TODO: Entity click should open in Artifact Panel per ENTITY_UX.md
+  // See: "Graph to Artifact" flow - no modal, opens EntityCard in side panel
 
   return (
     <div

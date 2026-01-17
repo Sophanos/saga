@@ -63,6 +63,10 @@ const taskSlugOptionSchema = z.object({
 export const requestTaskSlugTool = tool({
   description: "Ask the user to choose an AI task slug for model routing.",
   inputSchema: z.object({
+    reason: z.string().optional().describe("Optional reason shown in UI"),
+    allowlist: z.array(z.string()).optional().describe("Allowed task slugs"),
+    prefer: z.array(z.string()).optional().describe("Preferred task slug order"),
+    modality: z.enum(["text", "image"]).optional().describe("Optional modality hint"),
     title: z.string().optional().describe("Optional title for the picker"),
     description: z.string().optional().describe("Optional helper text"),
     recommended: z.array(taskSlugOptionSchema).optional().describe("Suggested task options"),
