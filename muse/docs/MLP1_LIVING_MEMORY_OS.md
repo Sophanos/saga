@@ -110,6 +110,7 @@ Style memories already stored in Convex + Qdrant (`convex/ai/style.ts`, 180-day 
 - **Qdrant**: Unified corpus (`saga_unified`) with named vectors (`text_qwen`, `image_clip`)
 - **Convex**: Cached profile, fast reads during Flow Mode
 - **Refresh**: Daily scheduled job or on-demand `/refresh`
+- **Migration toggles**: `QDRANT_READ_FROM_UNIFIED` controls reads; `QDRANT_DUAL_WRITE=true` writes legacy + unified during migration, `false` for greenfield (no backfill needed)
 
 ---
 

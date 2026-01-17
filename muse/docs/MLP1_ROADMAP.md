@@ -515,7 +515,7 @@ Evidence layer:
 Env vars:
 - `QDRANT_COLLECTION_UNIFIED=saga_unified`
 - `QDRANT_READ_FROM_UNIFIED=true`
-- `QDRANT_DUAL_WRITE=false`
+- `QDRANT_DUAL_WRITE=false` (set `true` during migration to dual-write legacy + unified)
 - `QDRANT_IMAGE_COLLECTION=saga_images` (legacy)
 
 ## Platform Strategy
@@ -658,8 +658,8 @@ Current paths: `muse/apps/web/src/services/export/*`, `muse/apps/web/src/service
 >
 > **Remaining ops (to finish cutover):**
 > 1. Create `saga_unified` in Qdrant (named vectors + payload indexes).
-> 2. Dual-write + backfill legacy content into unified.
-> 3. Flip `QDRANT_READ_FROM_UNIFIED=true`, then deprecate legacy collections.
+> 2. Dual-write + backfill legacy content into unified (skip for greenfield).
+> 3. Flip `QDRANT_READ_FROM_UNIFIED=true` after backfill (greenfield can set immediately), then deprecate legacy collections.
 >
 > **MLP2 consideration:** If we want true CLIP-only multimodal retrieval (text + images), migrate text embeddings to CLIP or dual-embed text into `image_clip` for cross-modal search.
 
