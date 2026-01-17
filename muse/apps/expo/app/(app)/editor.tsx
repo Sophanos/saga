@@ -22,6 +22,7 @@ import {
   useDimOpacity,
   useTypewriterScrolling,
   useArtifactStore,
+  useWidgetStatusByDocument,
 } from '@mythos/state';
 
 // Custom event type for entity actions from editor
@@ -119,6 +120,9 @@ export default function EditorScreen(): JSX.Element {
   const dimOpacity = useDimOpacity();
   const typewriterScrolling = useTypewriterScrolling();
 
+  // Widget status for tab indicators
+  const widgetStatusMap = useWidgetStatusByDocument();
+
   const flowSettings = {
     enabled: flowEnabled,
     focusLevel,
@@ -172,16 +176,16 @@ export default function EditorScreen(): JSX.Element {
             height: '100%',
             width: '100%',
             flex: 1,
-            // @ts-expect-error - web-only CSS properties
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
-          }} className="editor-wrapper">
+          } as React.CSSProperties} className="editor-wrapper">
             <LazyEditorShell
               hideQuickActions={hideQuickActions}
               sidebarCollapsed={sidebarCollapsed}
               minimalMode={flowEnabled}
               flowSettings={flowSettings}
               scrollIndicatorRightOffset={scrollIndicatorRightOffset}
+              widgetStatusMap={widgetStatusMap}
               collaboration={
                 collaborationProjectId && activeDocumentId && collaborationUser
                   ? {

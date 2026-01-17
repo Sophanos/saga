@@ -24,6 +24,7 @@ import { KnowledgePRsPanel } from '@/components/knowledge/KnowledgePRsPanel';
 import { FlowOverlay } from '@/components/flow';
 import { InboxBell } from '@/components/inbox';
 import { useArtifactSync } from '@/hooks/useArtifactSync';
+import { useInboxData } from '@/hooks/useInboxData';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -58,6 +59,7 @@ export function AppShell({ children }: AppShellProps) {
   const { panelWidth: artifactPanelWidth, setPanelWidth: setArtifactPanelWidth, setPanelMode: setArtifactPanelMode } = useArtifactStore();
 
   useArtifactSync();
+  useInboxData();
 
   const [showTooltip, setShowTooltip] = useState(false);
   const [showSidebarOverlay, setShowSidebarOverlay] = useState(false);

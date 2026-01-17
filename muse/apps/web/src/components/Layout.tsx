@@ -12,7 +12,6 @@ import { AsciiHud } from "./hud/AsciiHud";
 import { CommandPalette } from "./command-palette";
 import { ModalHost } from "./modals";
 import { ChatPanel } from "./chat";
-import { WidgetProgressTile } from "./widgets/WidgetProgressTile";
 import { WidgetPreviewModal } from "./widgets/WidgetPreviewModal";
 import { SaveWorkPrompt } from "./auth/SaveWorkPrompt";
 import { ProgressiveNudge, ProgressiveStructureController } from "./progressive";
@@ -147,7 +146,6 @@ export function Layout({
       <CommandPalette />
 
       {/* Widget execution overlays */}
-      <WidgetProgressTile />
       <WidgetPreviewModal />
 
       {/* Global Modal Host */}

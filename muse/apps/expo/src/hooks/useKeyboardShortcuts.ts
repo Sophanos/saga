@@ -12,7 +12,7 @@ const DEMO_ARTIFACTS = [
   {
     type: 'diagram' as const,
     title: 'Character Relationships',
-    content: 'Elena -->|trusts| Marcus\nMarcus -->|betrays| Elena\nElena -->|seeks help| Varen\nVaren -.->|mentors| Elena',
+    content: 'graph LR\n  Elena -->|trusts| Marcus\n  Marcus -->|betrays| Elena\n  Elena -->|seeks help| Varen\n  Varen -.->|mentors| Elena',
     format: 'mermaid' as const,
   },
   {
