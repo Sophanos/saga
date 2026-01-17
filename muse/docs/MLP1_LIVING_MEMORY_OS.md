@@ -228,8 +228,8 @@ Full corpus                  Current context only
 | Lint categories | `convex/ai/lint.ts` | Done |
 | Coach/clarity | `convex/ai/coach.ts`, `convex/ai/prompts/` | Done |
 | Severity config | `packages/core/src/analysis/severity-config.ts` | Done |
+| Unified embedding outbox | `convex/ai/analysisJobs.ts`, `convex/ai/analysis/handlers/embeddingGenerationJob.ts` | Done |
 | Unified profile cache | `convex/ai/profile.ts` | Planned |
 | Session vectors | `convex/ai/sessionVectors.ts` | Planned |
 | Enterprise coherence | `convex/ai/coherence.ts` | Planned |
 | Voice centroid compute | `convex/ai/voice.ts` | Planned |
-

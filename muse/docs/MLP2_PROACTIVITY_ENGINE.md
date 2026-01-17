@@ -165,11 +165,12 @@ Unify embeddings + detection + coherence into a single **analysis outbox**. One 
 - retries with exponential backoff; emits Pulse signals on persistent error
 
 **Job kinds (core set)**
-- `embed_document` (text embeddings)
-- `embed_image` (CLIP image embeddings)
+- `embedding_generation` (text embeddings; payload targetType = document/entity/memory/memory_delete)
 - `detect_entities` (entity extraction + mentions)
 - `coherence_lint` (canon + contradiction lints)
 - optional: `digest_document`, `clarity_policy_check`, `decision_candidates`
+
+Note: CLIP image embeddings still run on the asset path (`convex/ai/imageEmbeddings.ts`).
 
 **Task-driven model routing**
 All handlers resolve models through `llmTaskConfigs` (not hard-coded):
@@ -217,6 +218,11 @@ Output becomes a Knowledge PR:
 
 This is meaning integrity, not “AI help.”
 
+Implementation notes (current):
+- `canonClaims` table lives in `muse/convex/schema.ts`
+- Minimal API in `muse/convex/canonClaims.ts`
+- Optional backfill from pinned memories: `muse/convex/migrations/backfillCanonClaimsFromMemories.ts`
+
 ### Pattern 3: Cross-modal grounding (CLIP + text)
 
 Make images first-class in the graph:
@@ -224,6 +230,24 @@ Make images first-class in the graph:
 - generate a “Media board” artifact grouped by semantic clusters
 
 This turns “Notice: Image + Text embeddings” into experiential UI.
+
+---
+
+## Decision lock: Unified vectors (Option B)
+
+We will move to a single Qdrant collection with **named vectors** (text + image + sparse), replacing the dual-collection fusion approach.
+
+**Why now:** no active users → minimal migration risk.
+
+**Migration plan (high-level):**
+1) Create unified collection (e.g., `saga_unified`) with named vectors:
+   - `text_qwen` (4096, cosine)
+   - `image_clip` (512, cosine)
+   - `sparse_bm25` (optional)
+2) Dual-write new content to old + unified collections.
+3) Backfill existing content into unified collection.
+4) Switch query aggregator to unified collection.
+5) Remove dual-write + deprecate old collections.
 
 ---
 

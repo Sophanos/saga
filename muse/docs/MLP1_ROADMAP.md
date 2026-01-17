@@ -153,6 +153,7 @@ Positioning: Agents execute. Rhei remembers.
 - Ask Question: unified schema with multi-tab UI; single question = inline, multiple = tabbed navigation; rich options with label+description; freeform always available.
 - System prompt: updated with Human-in-the-Loop and Research Tools guidance.
 - Tool registry: added `webSearchExecutor` + `webExtractExecutor` with summaries.
+- Embedding outbox unified under `analysisJobs` (`embedding_generation` handler); added `canonClaims` table + pinned-memory backfill helper.
 
 **2026-01-11 (evening)**
 - P0 fix: Rollback confirmation modal added for Web + Expo; queries `getRollbackImpact`, shows cascade warnings, displays affected relationships.
