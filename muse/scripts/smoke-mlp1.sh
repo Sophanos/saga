@@ -17,6 +17,8 @@ require_cmd() {
 
 QDRANT_URL="${QDRANT_URL:-https://qdrant.rhei.team}"
 CONVEX_URL="${CONVEX_URL:-https://convex.rhei.team}"
+CONVEX_ADMIN_KEY="${CONVEX_SELF_HOSTED_ADMIN_KEY:-${CONVEX_ADMIN_KEY:-}}"
+CONVEX_ADMIN_SUBJECT="${CONVEX_ADMIN_SUBJECT:-admin|smoke}"
 
 note "Qdrant URL: $QDRANT_URL"
 note "Convex URL: $CONVEX_URL"
@@ -27,15 +29,17 @@ if require_cmd curl; then
       "$QDRANT_URL/collections/saga_unified" || true)
     note "qdrant saga_unified status: $status"
   else
-    note "skip qdrant check (set QDRANT_API_KEY to enable)"
+    status=$(curl -s -o /dev/null -w "%{http_code}" \
+      "$QDRANT_URL/collections/saga_unified" || true)
+    note "qdrant saga_unified status (no key): $status"
   fi
 
   health_status=$(curl -s -o /dev/null -w "%{http_code}" "$CONVEX_URL/health" || true)
   note "convex /health status: $health_status"
 fi
 
-if [ -z "${CONVEX_AUTH_TOKEN:-}" ]; then
-  note "skip Convex tests (set CONVEX_AUTH_TOKEN to enable)"
+if [ -z "${CONVEX_AUTH_TOKEN:-}" ] && [ -z "$CONVEX_ADMIN_KEY" ]; then
+  note "skip Convex tests (set CONVEX_AUTH_TOKEN or CONVEX_SELF_HOSTED_ADMIN_KEY to enable)"
   exit 0
 fi
 
@@ -48,17 +52,24 @@ note "running Convex smoke steps"
 tmp_script="$(mktemp)"
 cat >"$tmp_script" <<'BUN'
 const convexUrl = process.env.CONVEX_URL ?? "https://convex.rhei.team";
-const token = process.env.CONVEX_AUTH_TOKEN;
-if (!token) {
-  console.log("[convex] missing CONVEX_AUTH_TOKEN");
-  process.exit(1);
-}
+const token = process.env.CONVEX_AUTH_TOKEN ?? "";
+const adminKey = process.env.CONVEX_SELF_HOSTED_ADMIN_KEY ?? process.env.CONVEX_ADMIN_KEY ?? "";
+const adminSubject = process.env.CONVEX_ADMIN_SUBJECT ?? "admin|smoke";
 
 const { ConvexHttpClient } = await import("convex/browser");
 const { anyApi } = await import("convex/server");
 
 const client = new ConvexHttpClient(convexUrl);
-client.setAuth(token);
+if (token) {
+  client.setAuth(token);
+  console.log("[convex] auth=token");
+} else if (adminKey) {
+  client.setAdminAuth(adminKey, { subject: adminSubject });
+  console.log(`[convex] auth=admin subject=${adminSubject}`);
+} else {
+  console.log("[convex] missing auth (set CONVEX_AUTH_TOKEN or CONVEX_SELF_HOSTED_ADMIN_KEY)");
+  process.exit(1);
+}
 
 let projectId = process.env.PROJECT_ID;
 let createdProject = false;
@@ -93,6 +104,10 @@ if (process.env.CREATE_MEMORY === "1") {
 }
 
 if (process.env.RUN_AGENT === "1") {
+  if (!token) {
+    console.log("[agent] skip (RUN_AGENT=1 requires CONVEX_AUTH_TOKEN)");
+    process.exit(0);
+  }
   const response = await fetch(`${convexUrl}/ai/chat`, {
     method: "POST",
     headers: {
