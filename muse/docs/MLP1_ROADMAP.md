@@ -66,6 +66,7 @@ Positioning: Agents execute. Rhei remembers.
 - Evidence schema: `assetRegions` + `evidenceLinks` tables with portable selectors (xywh / SVG).
 - Evidence API: Convex `evidence.ts` CRUD + bundles for region/link review and UI previews.
 - PR routing: `evidence_mutation` tool creates Knowledge PRs; approvals apply evidence ops.
+- Evidence UI: `AssetEvidenceViewer` (review/edit) with link picker + AI suggest CTA; PR previews render regions.
 - Inbox wiring: Approve/Reject in Inbox changes now routes to Knowledge PRs.
 - Background: `image_evidence_suggestions` analysis job can propose evidence links on upload.
 
