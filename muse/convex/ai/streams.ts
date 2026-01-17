@@ -222,6 +222,43 @@ export const get = internalQuery({
   },
 });
 
+export const getToolCallArgs = internalQuery({
+  args: {
+    streamId: v.string(),
+    toolCallId: v.string(),
+    toolName: v.optional(v.string()),
+  },
+  handler: async (ctx, { streamId, toolCallId, toolName }) => {
+    const chunks = await ctx.db
+      .query("generationStreamChunks")
+      .withIndex("by_stream", (q) => q.eq("streamId", streamId as Id<"generationStreams">))
+      .filter((q) => q.eq(q.field("toolCallId"), toolCallId))
+      .collect();
+
+    const match = chunks.find((chunk) => {
+      if (toolName && chunk.toolName !== toolName) return false;
+      return chunk.args !== undefined;
+    });
+
+    if (match?.args) {
+      return { args: match.args, toolName: match.toolName };
+    }
+
+    const stream = await ctx.db.get(streamId as Id<"generationStreams">);
+    if (!stream) return null;
+    const legacyChunks = (stream as { chunks?: StreamChunk[] }).chunks ?? [];
+    const legacyMatch = legacyChunks.find((chunk) => {
+      if (chunk.toolCallId !== toolCallId) return false;
+      if (toolName && chunk.toolName !== toolName) return false;
+      return chunk.args !== undefined;
+    });
+
+    if (!legacyMatch?.args) return null;
+
+    return { args: legacyMatch.args, toolName: legacyMatch.toolName };
+  },
+});
+
 // ============================================================
 // Public Queries (for client subscriptions)
 // ============================================================

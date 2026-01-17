@@ -120,15 +120,20 @@ export async function executeCheckLogic(
     apiKeyOverride: execution.apiKey,
     responseFormat: execution.responseFormat,
   });
-  const issues = (parsed.issues || []).map((issue: Record<string, unknown>, idx: number) => ({
-    id: `logic-${Date.now()}-${idx}`,
-    type: issue["type"] as LogicIssue["type"],
-    severity: issue["severity"] as LogicIssue["severity"],
-    message: issue["message"] as string,
-    violatedRule: issue["violatedRule"] as LogicIssue["violatedRule"],
-    suggestion: issue["suggestion"] as string | undefined,
-    locations: issue["locations"] as LogicIssue["locations"],
-  }));
+  const rawIssues = Array.isArray(parsed.issues) ? parsed.issues : [];
+  const issues = rawIssues.map((issue, idx) => {
+    const record =
+      typeof issue === "object" && issue !== null ? (issue as Record<string, unknown>) : {};
+    return {
+      id: `logic-${Date.now()}-${idx}`,
+      type: record["type"] as LogicIssue["type"],
+      severity: record["severity"] as LogicIssue["severity"],
+      message: record["message"] as string,
+      violatedRule: record["violatedRule"] as LogicIssue["violatedRule"],
+      suggestion: record["suggestion"] as string | undefined,
+      locations: record["locations"] as LogicIssue["locations"],
+    };
+  });
 
   return {
     issues,

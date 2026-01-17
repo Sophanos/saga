@@ -5,11 +5,12 @@
  */
 
 import type { ActionCtx } from "../_generated/server";
-import { internal } from "../_generated/api";
 import type { AITaskSlug, LlmTaskConfig, ReasoningEffort, ResponseFormat, TierId } from "../lib/providers/types";
 import { assertAiAllowed, type AiEndpoint } from "../lib/quotaEnforcement";
 import { resolveOpenRouterKey, isByokRequest } from "../lib/openRouterKey";
 import type { TaskRouting } from "./modelRouting";
+
+const internal = require("../_generated/api").internal as any;
 
 export type ExecutionContext = {
   taskSlug: AITaskSlug;

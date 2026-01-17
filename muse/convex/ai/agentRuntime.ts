@@ -8,7 +8,7 @@
 
 import { v } from "convex/values";
 import { internalAction, type ActionCtx } from "../_generated/server";
-import { api, internal, components } from "../_generated/api";
+import { api, components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { Agent } from "@convex-dev/agent";
 import type { LanguageModel } from "ai";
@@ -69,7 +69,8 @@ const AI_PRESENCE_ROOM_PREFIXES = {
 };
 
 // Pre-extract function references to avoid deep type instantiation
-const internalAny: Record<string, Record<string, unknown>> = internal as Record<string, Record<string, unknown>>;
+const internal = require("../_generated/api").internal as any;
+const internalAny = internal as any;
 
 function resolveEditorDocumentId(editorContext: unknown): string | undefined {
   if (!editorContext || typeof editorContext !== "object") return undefined;
@@ -252,6 +253,21 @@ function normalizeRequestedTaskSlug(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function normalizeTaskSlugList(value: unknown): AITaskSlug[] {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .map((entry) => normalizeRequestedTaskSlug(entry))
+    .filter((entry): entry is string => Boolean(entry))
+    .filter((entry) => isValidTask(entry))
+    .map((entry) => entry as AITaskSlug);
+  return Array.from(new Set(normalized));
+}
+
+function resolveInteractiveAllowlist(value: unknown): AITaskSlug[] {
+  const normalized = normalizeTaskSlugList(value);
+  return normalized.filter((slug) => INTERACTIVE_TASK_ALLOWLIST.includes(slug));
+}
+
 async function canAccessTaskSlug(
   ctx: ActionCtx,
   params: { userId: string; taskSlug: AITaskSlug; hasByokKey: boolean }
@@ -273,40 +289,65 @@ async function canAccessTaskSlug(
 
 async function resolveInteractiveTaskSlug(
   ctx: ActionCtx,
-  params: { userId: string; requested?: string; hasByokKey: boolean }
+  params: {
+    userId: string;
+    requested?: string;
+    hasByokKey: boolean;
+    allowlist?: AITaskSlug[];
+    prefer?: AITaskSlug[];
+  }
 ): Promise<TaskSlugSelection> {
   const fallback: AITaskSlug = "chat";
   const requested = params.requested;
+  const allowlist = params.allowlist && params.allowlist.length > 0
+    ? params.allowlist
+    : INTERACTIVE_TASK_ALLOWLIST;
+  const preferredOrder = params.prefer && params.prefer.length > 0
+    ? params.prefer.filter((slug) => allowlist.includes(slug))
+    : [];
 
-  if (!requested || !isValidTask(requested)) {
-    return { taskSlug: fallback, warning: "Invalid task slug selection." };
+  const candidateOrder: AITaskSlug[] = [];
+  let warning: string | undefined;
+
+  if (requested) {
+    if (!isValidTask(requested)) {
+      warning = "Invalid task slug selection.";
+    } else if (!allowlist.includes(requested as AITaskSlug)) {
+      warning = "Task slug not allowed in interactive mode.";
+    } else {
+      candidateOrder.push(requested as AITaskSlug);
+    }
   }
 
-  const candidate = requested as AITaskSlug;
-  if (!INTERACTIVE_TASK_ALLOWLIST.includes(candidate)) {
-    return { taskSlug: fallback, warning: "Task slug not allowed in interactive mode." };
+  const fallbackOrder = preferredOrder.length > 0 ? preferredOrder : allowlist;
+  for (const slug of fallbackOrder) {
+    if (!candidateOrder.includes(slug)) {
+      candidateOrder.push(slug);
+    }
   }
 
-  const allowed = await canAccessTaskSlug(ctx, {
-    userId: params.userId,
-    taskSlug: candidate,
-    hasByokKey: params.hasByokKey,
-  });
-  if (!allowed) {
-    return { taskSlug: fallback, warning: "Task slug not available on current tier." };
+  for (const candidate of candidateOrder) {
+    const allowed = await canAccessTaskSlug(ctx, {
+      userId: params.userId,
+      taskSlug: candidate,
+      hasByokKey: params.hasByokKey,
+    });
+    if (allowed) {
+      return { taskSlug: candidate, warning };
+    }
   }
 
-  return { taskSlug: candidate };
+  return { taskSlug: fallback, warning: warning ?? "Task slug not available on current tier." };
 }
 
 async function resolveSpawnTaskSlug(
   ctx: ActionCtx,
   params: { userId: string; agent: SpawnedAgentType; requested?: string; hasByokKey: boolean }
 ): Promise<TaskSlugSelection> {
-  const defaultSlug = DEFAULT_SPAWN_TASK_SLUG[params.agent] ?? "thinking";
-  const allowlist = SPAWN_TASK_ALLOWLIST[params.agent] ?? [];
+  const defaultSlug = (DEFAULT_SPAWN_TASK_SLUG[params.agent] ?? "thinking") as AITaskSlug;
+  const allowlist = (SPAWN_TASK_ALLOWLIST[params.agent] ?? []) as readonly AITaskSlug[];
 
-  let candidate = defaultSlug;
+  let candidate: AITaskSlug = defaultSlug;
   let warning: string | undefined;
   const requested = params.requested;
   if (requested) {
@@ -2798,16 +2839,33 @@ export const applyToolResultAndResumeToStream = internalAction({
       }
 
       const hasByokKey = Boolean(byokKey && byokKey.length > 0);
+      const requestTaskSlugContext =
+        toolName === "request_task_slug"
+          ? ((await ctx.runQuery((internal as any)["ai/streams"].getToolCallArgs, {
+              streamId,
+              toolCallId,
+              toolName,
+            })) as { args?: unknown } | null)
+          : null;
+      const requestTaskArgs = requestTaskSlugContext?.args as Record<string, unknown> | undefined;
       const requestedTaskSlug =
         toolName === "request_task_slug"
           ? normalizeRequestedTaskSlug((result as Record<string, unknown>)?.["taskSlug"])
           : undefined;
+      const allowlist = toolName === "request_task_slug"
+        ? resolveInteractiveAllowlist(requestTaskArgs?.["allowlist"])
+        : undefined;
+      const prefer = toolName === "request_task_slug"
+        ? normalizeTaskSlugList(requestTaskArgs?.["prefer"])
+        : undefined;
       const taskSlugSelection =
         toolName === "request_task_slug"
           ? await resolveInteractiveTaskSlug(ctx, {
               userId,
               requested: requestedTaskSlug,
               hasByokKey,
+              allowlist,
+              prefer,
             })
           : { taskSlug: resolveSagaTaskSlug(undefined) };
 
