@@ -12,10 +12,17 @@ import {
   useFlowEnabled,
   useFlowPreferences,
   useDimOpacity,
+  useFlowSession,
+  useFlowTimer,
   useTypewriterScrolling,
   useSessionWordsWritten,
+  useInboxStore,
   type SessionStats,
 } from "@mythos/state";
+import { useMutation } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
+import { useMythosStore } from "../../stores";
 import { FlowHeader } from "./FlowHeader";
 import { FlowSummaryModal } from "./FlowSummaryModal";
 
@@ -30,10 +37,17 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
   const enabled = useFlowEnabled();
   const preferences = useFlowPreferences();
   const dimOpacity = useDimOpacity();
+  const session = useFlowSession();
+  const timer = useFlowTimer();
   const typewriterScrolling = useTypewriterScrolling();
   const wordsWritten = useSessionWordsWritten();
   const exitFlowMode = useFlowStore((s) => s.exitFlowMode);
   const updateWordCount = useFlowStore((s) => s.updateWordCount);
+  const openInbox = useInboxStore((s) => s.open);
+  const currentProject = useMythosStore((s) => s.project.currentProject);
+  const currentDocument = useMythosStore((s) => s.document.currentDocument);
+
+  const recordFlowSession = useMutation(api.flowSessions.record);
 
   const [isExiting, setIsExiting] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
@@ -49,12 +63,41 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
   }, [enabled, wordCount, updateWordCount]);
 
   // Handle exit with animation
-  const handleExit = useCallback(() => {
+  const handleExit = useCallback(async () => {
     setIsExiting(true);
 
     // Get stats before exiting
+    const currentSession = session;
     const stats = exitFlowMode();
     setSessionStats(stats);
+
+    if (stats && currentProject?.id && currentSession) {
+      try {
+        await recordFlowSession({
+          projectId: currentProject.id as Id<"projects">,
+          documentId: currentDocument?.id
+            ? (currentDocument.id as Id<"documents">)
+            : undefined,
+          startedAtMs: stats.startedAtMs,
+          endedAtMs: stats.endedAtMs,
+          durationSeconds: stats.durationSeconds,
+          startingWordCount: currentSession.startingWordCount,
+          endingWordCount: currentSession.currentWordCount,
+          wordsWritten: stats.wordsWritten,
+          completedPomodoros: stats.completedPomodoros,
+          totalFocusedSeconds: currentSession.totalFocusedSeconds,
+          focusLevel: preferences.focusLevel,
+          typewriterScrolling: preferences.typewriterScrolling,
+          timerMode: timer.mode,
+        });
+      } catch (error) {
+        console.warn("[FlowOverlay] Failed to persist flow session:", error);
+      }
+    }
+
+    if (stats) {
+      openInbox("pulse");
+    }
 
     // Show summary if preference enabled and we have stats
     if (preferences.showSummaryOnExit && stats && stats.wordsWritten > 0) {
@@ -67,7 +110,18 @@ export function FlowOverlay({ children, wordCount = 0 }: FlowOverlayProps) {
         setIsExiting(false);
       }, 300);
     }
-  }, [exitFlowMode, preferences.showSummaryOnExit]);
+  }, [
+    session,
+    exitFlowMode,
+    preferences.focusLevel,
+    preferences.showSummaryOnExit,
+    preferences.typewriterScrolling,
+    timer.mode,
+    currentProject?.id,
+    currentDocument?.id,
+    recordFlowSession,
+    openInbox,
+  ]);
 
   // Handle escape key
   useEffect(() => {

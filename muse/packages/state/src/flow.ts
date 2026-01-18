@@ -87,6 +87,7 @@ interface FlowState {
   preferences: FlowPreferences;
   session: FlowSession | null;
   timer: FlowTimerData;
+  runtimeSessionId: string | null;
 
   // History (last 10 sessions)
   recentSessions: SessionStats[];
@@ -115,6 +116,7 @@ interface FlowState {
 
   // Actions - Session
   updateWordCount: (count: number) => void;
+  setRuntimeSessionId: (id: string | null) => void;
 
   // Reset
   reset: () => void;
@@ -153,6 +155,7 @@ const initialState = {
   session: null as FlowSession | null,
   timer: DEFAULT_TIMER,
   recentSessions: [] as SessionStats[],
+  runtimeSessionId: null as string | null,
 };
 
 // ============================================================================
@@ -216,6 +219,7 @@ export const useFlowStore = create<FlowState>()(
             enabled: false,
             session: null,
             timer: DEFAULT_TIMER,
+            runtimeSessionId: null,
             recentSessions: updatedSessions,
           });
         } else {
@@ -223,6 +227,7 @@ export const useFlowStore = create<FlowState>()(
             enabled: false,
             session: null,
             timer: DEFAULT_TIMER,
+            runtimeSessionId: null,
           });
         }
 
@@ -437,6 +442,8 @@ export const useFlowStore = create<FlowState>()(
           session: s.session ? { ...s.session, currentWordCount: count } : null,
         })),
 
+      setRuntimeSessionId: (id) => set({ runtimeSessionId: id }),
+
       // ========================================
       // Reset
       // ========================================
@@ -462,6 +469,7 @@ export const useFlowEnabled = () => useFlowStore((s) => s.enabled);
 export const useFlowPreferences = () => useFlowStore((s) => s.preferences);
 export const useFlowSession = () => useFlowStore((s) => s.session);
 export const useFlowTimer = () => useFlowStore((s) => s.timer);
+export const useRuntimeSessionId = () => useFlowStore((s) => s.runtimeSessionId);
 export const useFocusLevel = () => useFlowStore((s) => s.preferences.focusLevel);
 export const useDimOpacity = () => useFlowStore((s) => s.preferences.dimOpacity);
 export const useTypewriterScrolling = () => useFlowStore((s) => s.preferences.typewriterScrolling);

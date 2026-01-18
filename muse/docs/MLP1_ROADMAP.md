@@ -9,6 +9,7 @@
 > See also: [Rhei GPT Context](./GPT_RHEI_CONTEXT.md) (messaging + prompts)
 > See also: [Landing Page Spec](./LANDING_PAGE_SPEC.md) (design + animations)
 > See also: [Inbox Spec](./REVIEW_HUB_SPEC.md) (Pulse + Changes + Activity + Artifacts)
+> See also: [/forge + /session Spec](./CREATE_SESSION_SPEC.md) (Canvas execution commands)
 
 ## Purpose
 
@@ -20,6 +21,7 @@ Compact roadmap and status snapshot for MLP1. Keep detailed specs in code or des
 - AI co-author with explicit approvals; Focus Mode keeps AI silent unless invoked.
 - Widgets & Artifacts (MVP1): command → preview → confirm → inline insert or saved artifact, with trails (receipts) by default.
 - Knowledge PRs: review queue, diffs, approvals, and rollback.
+- Skills-aware memory and session vectors (facet-driven retrieval, text + image). See [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md#skills-aware-memory).
 - Web Research: `web_search` + `web_extract` for real-world reference lookup (Parallel Web SDK).
 - MCP integrations and citations for external tool access and evidence.
 - Offline-first plus real-time sync for collaboration.
@@ -206,6 +208,23 @@ Overall completion: ~75% - core features done, P0 blockers resolved.
 - Client-side Convex error parser
 - Expo Web Project Graph components
 - Knowledge PRs inbox (Web + Expo) with cursor-based pagination
+
+## Flow Mode: Current vs Planned (Reality Check)
+
+**Current (in code)**
+- Flow Mode UI is live across Expo + web: dimming + typewriter scroll + Flow header/overlay.
+- Timer logic, focus level, and session tracking are in `@mythos/state`.
+- Expo and Web persist Flow sessions to Convex (`flowSessions`) and show summary on exit.
+- Web Flow Mode does not include the Expo timer panel UX.
+
+**Missing vs roadmap**
+- Session vectors / Flow Mode speed layer (Qdrant session collection + runtime session tracking in place; deeper warmup + checks still pending).
+- Flow enter/exit signals to backend for coherence warmup and teardown.
+- Idle/on-save triggers for checks; current analysis runs on document create/update + cron only.
+
+**Deep dive prompts**
+- Flow Mode parity (web vs Expo): “List parity gaps; propose minimal shared components + timer panel UX.”
+- Session vectors: “Design schema + lifecycle for session vector hot cache; include failure modes and cleanup.”
 - Rollback confirmation modal (Web + Expo) with impact analysis
 - Coach mode selector + PolicyCompliancePanel
 

@@ -7,9 +7,10 @@
 
 import { v } from "convex/values";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { api } from "./_generated/api";
+const internal: any = require("./_generated/api").internal;
 import type { Doc, Id } from "./_generated/dataModel";
-import { verifyProjectAccess } from "./lib/auth";
+import { isVisibleToUser, verifyProjectAccess } from "./lib/auth";
 import { hashSnapshot } from "./lib/contentHash";
 import { isQdrantConfigured } from "./lib/qdrant";
 import { deletePointsForWrite } from "./lib/qdrantCollections";
@@ -857,6 +858,10 @@ async function preflightSuggestion(
               errors.push("Evidence region not found.");
               continue;
             }
+            if (region.assetId !== assetId) {
+              errors.push("Evidence region does not belong to the specified asset.");
+              continue;
+            }
           }
           const targetId = typeof op["targetId"] === "string" ? (op["targetId"] as string) : "";
           if (!targetId) {
@@ -1267,7 +1272,7 @@ export const listByProject = query({
     cursor: v.optional(v.number()),
   },
   handler: async (ctx, { projectId, status, targetType, riskLevel, toolName, includeRolledBack, limit = 50, cursor }) => {
-    await verifyProjectAccess(ctx, projectId);
+    const { userId, role } = await verifyProjectAccess(ctx, projectId);
 
     let results: Doc<"knowledgeSuggestions">[];
 
@@ -1325,7 +1330,13 @@ export const listByProject = query({
       results = results.filter((item) => item.resolution !== "rolled_back");
     }
 
-    return results;
+    return results.filter((item) =>
+      isVisibleToUser({
+        visibility: item.visibility as any,
+        userId,
+        role,
+      })
+    );
   },
 });
 
@@ -2111,6 +2122,41 @@ export const applyDecisions = action({
 
       const success = approvedResult.success === true;
       const errorMessage = success ? undefined : resolveEnvelopeError(approvedResult);
+      if (success) {
+        try {
+          const changeEventId = await ctx.runMutation(
+            (internalAny as any).changeEvents.createChangeEventInternal,
+            {
+              projectId: suggestion.projectId,
+              actorUserId: userId,
+              source: "knowledge_pr_approved",
+              sourceSuggestionId: suggestion._id,
+              sourceDocumentId: suggestion.editorContext?.documentId
+                ? (suggestion.editorContext.documentId as Id<"documents">)
+                : undefined,
+              targetType: suggestion.targetType,
+              targetId: suggestion.targetId,
+              operation: suggestion.operation,
+              payload: {
+                toolName: suggestion.toolName,
+                toolCallId: suggestion.toolCallId,
+              },
+            }
+          );
+
+          await ctx.runMutation(
+            (internalAny as any)["ai/analysisJobs"].enqueueImpactPrJob,
+            {
+              projectId: suggestion.projectId,
+              userId,
+              changeEventId,
+              dedupeKey: `impact_prs:${String(changeEventId)}`,
+            }
+          );
+        } catch (impactError) {
+          console.warn("[knowledgeSuggestions] Failed to enqueue impact PR job:", impactError);
+        }
+      }
       results.push({
         suggestionId,
         status: success ? "accepted" : "rejected",

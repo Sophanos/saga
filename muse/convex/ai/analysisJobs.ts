@@ -10,6 +10,9 @@ export const ANALYSIS_JOB_KINDS = [
   "digest_document",
   "embedding_generation",
   "image_evidence_suggestions",
+  "impact_prs",
+  "invariant_check",
+  "watchlist_scan",
 ] as const;
 
 export type AnalysisJobKind = (typeof ANALYSIS_JOB_KINDS)[number];
@@ -199,6 +202,58 @@ export const enqueueEmbeddingJob = internalMutation({
       },
       dedupeKey,
       debounceMs: args.debounceMs ?? EMBEDDING_JOB_DEBOUNCE_MS,
+    });
+  },
+});
+
+export const enqueueImpactPrJob = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.string(),
+    changeEventId: v.id("changeEvents"),
+    dedupeKey: v.optional(v.string()),
+    debounceMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const dedupeKey =
+      args.dedupeKey ?? `impact_prs:${String(args.changeEventId)}`;
+    return await enqueueJob(ctx, {
+      projectId: args.projectId,
+      userId: args.userId,
+      kind: "impact_prs",
+      payload: {
+        changeEventId: args.changeEventId,
+      },
+      dedupeKey,
+      debounceMs: args.debounceMs ?? ANALYSIS_JOB_DEBOUNCE_MS,
+    });
+  },
+});
+
+export const enqueueInvariantCheckJob = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.string(),
+    documentId: v.optional(v.id("documents")),
+    dedupeKey: v.optional(v.string()),
+    debounceMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const dedupeKey =
+      args.dedupeKey ??
+      (args.documentId
+        ? `invariant_check:${String(args.documentId)}`
+        : `invariant_check:${String(args.projectId)}`);
+    return await enqueueJob(ctx, {
+      projectId: args.projectId,
+      userId: args.userId,
+      documentId: args.documentId,
+      kind: "invariant_check",
+      payload: {
+        documentId: args.documentId,
+      },
+      dedupeKey,
+      debounceMs: args.debounceMs ?? ANALYSIS_JOB_DEBOUNCE_MS,
     });
   },
 });
@@ -479,11 +534,18 @@ export const createPulseSignalInternal = internalMutation({
     sourceAgentId: v.optional(v.string()),
     sourceStreamId: v.optional(v.string()),
     metadata: v.optional(v.any()),
+    visibility: v.optional(v.any()),
+    createdByUserId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
     return ctx.db.insert("pulseSignals", {
       ...args,
+      visibility:
+        args.visibility && typeof args.visibility === "object"
+          ? args.visibility
+          : { scope: "project" },
+      createdByUserId: args.createdByUserId ?? "system",
       status: "unread",
       createdAt: now,
       updatedAt: now,

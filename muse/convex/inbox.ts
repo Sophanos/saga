@@ -13,7 +13,22 @@
 
 import { v } from "convex/values";
 import { query } from "./_generated/server";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getOptionalAuthUserId, isVisibleToUser, verifyProjectAccess } from "./lib/auth";
+
+function filterByVisibility<T extends { visibility?: unknown }>(args: {
+  items: T[];
+  userId: string;
+  role: "owner" | "editor" | "viewer";
+}): T[] {
+  const { items, userId, role } = args;
+  return items.filter((item) =>
+    isVisibleToUser({
+      visibility: item.visibility as any,
+      userId,
+      role,
+    })
+  );
+}
 
 // =============================================================================
 // Types
@@ -122,7 +137,7 @@ export const getInboxData = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, { projectId, limit = 50 }) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await getOptionalAuthUserId(ctx);
     if (!userId) {
       return {
         pulse: { items: [], unreadCount: 0 },
@@ -133,6 +148,7 @@ export const getInboxData = query({
         totalUnread: 0,
       };
     }
+    const { role } = await verifyProjectAccess(ctx, projectId);
 
     // Fetch pulse signals (unread and recent read)
     const pulseSignals = await ctx.db
@@ -141,7 +157,13 @@ export const getInboxData = query({
       .order("desc")
       .take(limit);
 
-    const pulseItems: InboxPulseItem[] = pulseSignals
+    const visiblePulseSignals = filterByVisibility({
+      items: pulseSignals,
+      userId,
+      role,
+    });
+
+    const pulseItems: InboxPulseItem[] = visiblePulseSignals
       .filter((s) => s.status !== "dismissed")
       .map((s) => ({
         type: "pulse" as const,
@@ -168,7 +190,13 @@ export const getInboxData = query({
       .order("desc")
       .take(limit);
 
-    const changeItems: InboxChangeItem[] = suggestions.map((s) => ({
+    const visibleSuggestions = filterByVisibility({
+      items: suggestions,
+      userId,
+      role,
+    });
+
+    const changeItems: InboxChangeItem[] = visibleSuggestions.map((s) => ({
       type: "change" as const,
       id: s._id,
       operation: s.operation,
@@ -345,7 +373,7 @@ export const getInboxCounts = query({
     projectId: v.id("projects"),
   },
   handler: async (ctx, { projectId }) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await getOptionalAuthUserId(ctx);
     if (!userId) {
       return {
         pulse: 0,
@@ -357,6 +385,7 @@ export const getInboxCounts = query({
         hasRunning: false,
       };
     }
+    const { role } = await verifyProjectAccess(ctx, projectId);
 
     // Count unread pulse signals
     const pulseSignals = await ctx.db
@@ -365,6 +394,11 @@ export const getInboxCounts = query({
         q.eq("projectId", projectId).eq("status", "unread")
       )
       .collect();
+    const visiblePulseSignals = filterByVisibility({
+      items: pulseSignals,
+      userId,
+      role,
+    });
 
     // Count pending knowledge suggestions
     const suggestions = await ctx.db
@@ -373,6 +407,11 @@ export const getInboxCounts = query({
         q.eq("projectId", projectId).eq("status", "proposed")
       )
       .collect();
+    const visibleSuggestions = filterByVisibility({
+      items: suggestions,
+      userId,
+      role,
+    });
 
     // Count recent activity needing attention
     const executions = await ctx.db
@@ -423,14 +462,14 @@ export const getInboxCounts = query({
     }).length;
 
     return {
-      pulse: pulseSignals.length,
-      changes: suggestions.length,
+      pulse: visiblePulseSignals.length,
+      changes: visibleSuggestions.length,
       activity: needsAttention,
       analysis: analysisNeedsAttention,
       artifacts: staleCount,
       total:
-        pulseSignals.length +
-        suggestions.length +
+        visiblePulseSignals.length +
+        visibleSuggestions.length +
         needsAttention +
         analysisNeedsAttention +
         staleCount,

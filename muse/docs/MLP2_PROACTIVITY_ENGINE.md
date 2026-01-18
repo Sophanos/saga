@@ -1,6 +1,6 @@
 # MLP2: Proactivity Engine (Silent by Default)
 
-Reference: [MLP1 Roadmap](./MLP1_ROADMAP.md) · [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md) · [Coherence Spec](./COHERENCE_SPEC.md)
+Reference: [MLP1 Roadmap](./MLP1_ROADMAP.md) · [Living Memory OS](./MLP1_LIVING_MEMORY_OS.md) · [Coherence Spec](./COHERENCE_SPEC.md) · [Coherence + Skills Memory](./COHERENCE_SKILLS_MEMORY_SPEC.md)
 
 MLP2 adds **proactivity without interruptions**: Muse runs background analysis as you write or ingest large corpora, then surfaces results as a **Pulse** (read-only signals) and **Knowledge PR drafts** (reviewable changes). No silent high-impact edits.
 
@@ -22,6 +22,22 @@ MLP2 adds **proactivity without interruptions**: Muse runs background analysis a
 - MLP1 is validated on Expo web only (no Tauri).
 - MLP2 is deferred until after MLP1 and is planned before any Tauri development begins.
 - A refactor pass (web architecture consolidation) is scheduled between MLP1 and MLP2; Tauri development follows after MLP2.
+
+---
+
+## MLP1.5 Boundary (Delivery vs Proactivity)
+
+**MLP1.5:** unify execution + delivery only.
+- `/create` routes into widgets (preview/confirm + receipts).
+- Dashboards refresh via widget runs (manual + on-open only).
+- Inbox/notifications wire run completion, failures, PR-ready, stale artifacts.
+- No new proactivity triggers or coherence checks.
+
+**MLP2:** adds triggers + coherence engine.
+- Idle-on-write/flow-exit triggers.
+- Session vectors + real-time checks.
+- Scheduled/on-change dashboard refresh.
+- External source monitoring + impact PRs.
 
 ---
 
@@ -76,6 +92,25 @@ Use these as explicit research spikes to validate demand, UX, and operational co
 Implementation note: these modes are UI policy; the backend always produces the same artifacts (signals + PR drafts) and the client decides how/when to surface them.
 
 ---
+
+## Current implementation reality (code audit)
+
+**What exists today**
+- Analysis outbox + runner + cron processing are implemented (`analysisJobs`, `processAnalysisJobs`, `crons.ts`).
+- Document create/update enqueues analysis jobs (detect_entities, coherence_lint, clarity_check, policy_check, digest_document).
+- Pulse signals are created by analysis handlers and surfaced in Inbox (silent, no popups).
+- Inbox aggregates Pulse, analysis, knowledge PRs, activity, and artifacts.
+- Flow exit opens Inbox on Pulse (post-flow reveal, still silent).
+- Flow runtime sessions + coherence signals are tracked in Convex; session vectors live in Qdrant (`saga_sessions`).
+
+**What is not yet wired**
+- Idle-on-write / Flow-exit triggers; jobs run on save/update + cron only.
+- Session vectors / Flow Mode speed layer (no session collection or warmup).
+- Permission-scoped Pulse/PRs (no per-team visibility filters).
+
+**Deep dive prompts**
+- Idle trigger path: “Define idle detection in editor and how it schedules analysis without over-triggering.”
+- Permissions: “Add visibility scope to pulseSignals/knowledgeSuggestions; ensure no ghost signals.”
 
 ## User journeys
 
@@ -192,6 +227,9 @@ This keeps model swaps safe and centralized, and allows BYOK override for text t
 Add two lightweight tables:
 - `pulseSignals` (new): signals for Pulse (severity, kind, summary, links to doc/project, optional `suggestionId`)
 - `digestSnapshots` (optional): persisted summaries (document/project), used to keep AI context small
+
+Added in MLP1.2 foundation:
+- `changeEvents` (impact provenance), `invariants`, `watchlists`, `flowRuntimeSessions`, `coherenceSignals`
 
 Keep using:
 - `knowledgeSuggestions`: PR lifecycle (`muse/convex/knowledgeSuggestions.ts`)
@@ -346,7 +384,13 @@ These upgrades increase "proactive feel" without breaking Flow Mode or requiring
 
 ## Coherence System (Pulse foundation)
 
-The **Coherence System** ([COHERENCE_SPEC.md](./COHERENCE_SPEC.md)) provides persona-aware consistency checks that feed into Pulse signals.
+The **Coherence System** ([COHERENCE_SPEC.md](./COHERENCE_SPEC.md), [COHERENCE_SKILLS_MEMORY_SPEC.md](./COHERENCE_SKILLS_MEMORY_SPEC.md)) provides persona-aware consistency checks that feed into Pulse signals.
+
+**Key integration points:**
+- Session vectors power real-time checks (<50ms)
+- Facet detection routes to persona-specific checks
+- Hierarchy weighting (enterprise → project) prioritizes signals
+- Ambient UX: drift meter, provenance chips, flow-aware throttling
 
 ### Entry path (from MLP1)
 

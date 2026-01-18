@@ -12,6 +12,13 @@ import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 
 type AuthContext = QueryCtx | MutationCtx;
+export type ProjectRole = "owner" | "editor" | "viewer";
+
+export type Visibility =
+  | { scope: "project" }
+  | { scope: "role"; minRole: ProjectRole }
+  | { scope: "users"; userIds: string[] }
+  | { scope: "private"; userId: string };
 
 /**
  * Get the authenticated user's ID from Convex Auth JWT
@@ -75,7 +82,7 @@ export async function getUserById(ctx: AuthContext, userId: string): Promise<{
 export async function verifyProjectAccess(
   ctx: AuthContext,
   projectId: Id<"projects">
-): Promise<{ userId: string; role: "owner" | "editor" | "viewer" }> {
+): Promise<{ userId: string; role: ProjectRole }> {
   const userId = await getAuthUserId(ctx);
   const project = await ctx.db.get(projectId);
 
@@ -121,7 +128,7 @@ export async function verifyProjectAccess(
       .unique();
 
     if (orgMember) {
-      let role: "owner" | "editor" | "viewer" = "viewer";
+      let role: ProjectRole = "viewer";
       if (orgMember.role === "owner") {
         role = "owner";
       } else if (orgMember.role === "admin") {
@@ -229,4 +236,37 @@ export async function verifyRelationshipAccess(
   const { userId } = await verifyProjectAccess(ctx, relationship.projectId);
 
   return { userId, projectId: relationship.projectId };
+}
+
+function resolveRoleRank(role: ProjectRole): number {
+  switch (role) {
+    case "owner":
+      return 3;
+    case "editor":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+export function isVisibleToUser(args: {
+  visibility?: Visibility;
+  userId: string;
+  role: ProjectRole;
+}): boolean {
+  const { visibility, userId, role } = args;
+  if (!visibility) return true;
+
+  switch (visibility.scope) {
+    case "project":
+      return true;
+    case "role":
+      return resolveRoleRank(role) >= resolveRoleRank(visibility.minRole);
+    case "users":
+      return visibility.userIds.includes(userId);
+    case "private":
+      return visibility.userId === userId;
+    default:
+      return false;
+  }
 }

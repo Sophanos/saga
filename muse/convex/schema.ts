@@ -63,6 +63,10 @@ export default defineSchema({
     templateOverrides: v.optional(v.any()),
     metadata: v.optional(v.any()), // Project metadata (domain-specific)
     settings: v.optional(v.any()), // Runtime settings (AI, review, etc.)
+    proactivityEnabled: v.optional(v.boolean()),
+    proactivityDefaultMode: v.optional(
+      v.union(v.literal("silent"), v.literal("assistive"), v.literal("active"))
+    ),
     orgId: v.optional(v.id("organizations")),
     teamId: v.optional(v.id("teams")),
     genre: v.optional(v.string()), // Deprecated (writer template only)
@@ -411,6 +415,10 @@ export default defineSchema({
     threadId: v.optional(v.string()),
     promptMessageId: v.optional(v.string()),
     model: v.optional(v.string()),
+    visibility: v.optional(v.any()),
+    sourceVisibility: v.optional(v.any()),
+    sourceDocumentId: v.optional(v.id("documents")),
+    sourceSignalId: v.optional(v.id("pulseSignals")),
     // Resolution
     resolvedByUserId: v.optional(v.string()),
     resolvedAt: v.optional(v.number()),
@@ -424,6 +432,75 @@ export default defineSchema({
     .index("by_project_targetType_createdAt", ["projectId", "targetType", "createdAt"])
     .index("by_project_status_targetType_createdAt", ["projectId", "status", "targetType", "createdAt"])
     .index("by_tool_call_id", ["toolCallId"]),
+
+  // ============================================================
+  // CHANGE EVENTS (Impact PR provenance)
+  // ============================================================
+  changeEvents: defineTable({
+    projectId: v.id("projects"),
+    actorUserId: v.string(),
+    source: v.union(
+      v.literal("knowledge_pr_approved"),
+      v.literal("document_update"),
+      v.literal("graph_mutation"),
+      v.literal("memory_change")
+    ),
+    sourceSuggestionId: v.optional(v.id("knowledgeSuggestions")),
+    sourceDocumentId: v.optional(v.id("documents")),
+    targetType: v.string(),
+    targetId: v.optional(v.string()),
+    operation: v.string(),
+    beforeHash: v.optional(v.string()),
+    afterHash: v.optional(v.string()),
+    payload: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_project_createdAt", ["projectId", "createdAt"])
+    .index("by_sourceSuggestion", ["sourceSuggestionId"]),
+
+  // ============================================================
+  // INVARIANTS (Policies-as-code)
+  // ============================================================
+  invariants: defineTable({
+    projectId: v.id("projects"),
+    createdByUserId: v.string(),
+    enabled: v.boolean(),
+    severity: v.union(v.literal("high"), v.literal("medium"), v.literal("low")),
+    scope: v.union(
+      v.literal("project"),
+      v.literal("document"),
+      v.literal("entity_type"),
+      v.literal("relationship_type")
+    ),
+    scopeRef: v.optional(v.string()),
+    title: v.string(),
+    description: v.optional(v.string()),
+    rule: v.any(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project_enabled", ["projectId", "enabled"]),
+
+  // ============================================================
+  // WATCHLISTS (Per-user escalation)
+  // ============================================================
+  watchlists: defineTable({
+    projectId: v.id("projects"),
+    userId: v.string(),
+    targetType: v.union(
+      v.literal("document"),
+      v.literal("entity"),
+      v.literal("relationship"),
+      v.literal("memory"),
+      v.literal("invariant")
+    ),
+    targetId: v.string(),
+    minSeverity: v.optional(
+      v.union(v.literal("low"), v.literal("medium"), v.literal("high"))
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_project_user", ["projectId", "userId"])
+    .index("by_target", ["projectId", "targetType", "targetId"]),
 
   // ============================================================
   // KNOWLEDGE CITATIONS (Canon references for review)
@@ -1185,6 +1262,15 @@ export default defineSchema({
     invitedBy: v.optional(v.string()),
     invitedAt: v.optional(v.number()),
     acceptedAt: v.optional(v.number()),
+    proactivityMode: v.optional(
+      v.union(
+        v.literal("off"),
+        v.literal("silent"),
+        v.literal("assistive"),
+        v.literal("active")
+      )
+    ),
+    pausedUntil: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -1500,6 +1586,31 @@ export default defineSchema({
     .index("by_endpoint", ["endpoint"]),
 
   // ============================================================
+  // FLOW RUNTIME SESSIONS (Live flow state)
+  // ============================================================
+  flowRuntimeSessions: defineTable({
+    projectId: v.id("projects"),
+    documentId: v.optional(v.id("documents")),
+    userId: v.string(),
+    sessionId: v.string(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("ended"),
+      v.literal("expired")
+    ),
+    facetOverride: v.optional(v.any()),
+    proactivityMode: v.optional(v.string()),
+    startedAt: v.number(),
+    endedAt: v.optional(v.number()),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_sessionId", ["sessionId"])
+    .index("by_project_user", ["projectId", "userId"])
+    .index("by_expiresAt", ["expiresAt"]),
+
+  // ============================================================
   // FLOW SESSIONS (Focus mode tracking)
   // ============================================================
   flowSessions: defineTable({
@@ -1535,6 +1646,59 @@ export default defineSchema({
     .index("by_user_createdAt", ["userId", "createdAt"]),
 
   // ============================================================
+  // COHERENCE SIGNALS (Inline checks + Flow review)
+  // ============================================================
+  coherenceSignals: defineTable({
+    projectId: v.id("projects"),
+    documentId: v.id("documents"),
+    userId: v.string(),
+    sessionId: v.optional(v.string()),
+    type: v.union(
+      v.literal("entity_consistency"),
+      v.literal("voice_drift"),
+      v.literal("overuse"),
+      v.literal("timeline_violation"),
+      v.literal("world_fact_conflict"),
+      v.literal("invariant_violation")
+    ),
+    severity: v.union(v.literal("high"), v.literal("medium"), v.literal("low")),
+    anchorStart: v.optional(
+      v.object({
+        blockId: v.string(),
+        offset: v.number(),
+      })
+    ),
+    anchorEnd: v.optional(
+      v.object({
+        blockId: v.string(),
+        offset: v.number(),
+      })
+    ),
+    from: v.optional(v.number()),
+    to: v.optional(v.number()),
+    text: v.string(),
+    message: v.string(),
+    explanation: v.optional(v.string()),
+    suggestion: v.optional(v.string()),
+    canonSource: v.optional(v.any()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("ignored_once"),
+      v.literal("ignored_always"),
+      v.literal("fixed"),
+      v.literal("canon_updated")
+    ),
+    sourceKind: v.string(),
+    sourceRef: v.optional(v.any()),
+    visibility: v.optional(v.any()),
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_document_status", ["documentId", "status"])
+    .index("by_session", ["sessionId"])
+    .index("by_project_user", ["projectId", "userId"]),
+
+  // ============================================================
   // PULSE SIGNALS (Ambient intelligence alerts)
   // ============================================================
   pulseSignals: defineTable({
@@ -1563,6 +1727,8 @@ export default defineSchema({
     sourceAgentId: v.optional(v.string()),
     sourceStreamId: v.optional(v.string()),
     metadata: v.optional(v.any()),
+    visibility: v.optional(v.any()),
+    createdByUserId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

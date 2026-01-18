@@ -254,6 +254,10 @@ sessionVectors: defineTable({
   }),
 ```
 
+Implementation note (2026-01-18):
+- Flow runtime sessions live in Convex (`flowRuntimeSessions`) with `coherenceSignals` for audit.
+- Session vectors are stored in Qdrant (`saga_sessions` by default) to avoid Convex vector dimension limits.
+
 #### Coherence Signals
 
 ```typescript

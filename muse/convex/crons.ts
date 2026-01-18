@@ -11,7 +11,10 @@
  */
 
 import { cronJobs } from "convex/server";
-import { internal } from "./_generated/api";
+
+// Use require to break deep type inference chain for Convex internal API
+// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any
+const internal = require("./_generated/api").internal as any;
 
 const crons = cronJobs();
 
@@ -63,6 +66,17 @@ crons.interval(
   "requeue-stale-analysis-jobs",
   { minutes: 5 },
   (internal as any)["ai/analysisJobs"].requeueStaleProcessingJobs
+);
+
+// ============================================================
+// Flow Runtime Cleanup
+// Runs every 10 minutes to expire session vectors
+// ============================================================
+
+crons.interval(
+  "cleanup-flow-runtime-sessions",
+  { minutes: 10 },
+  (internal as any)["ai/flow/cleanupSessionVectors"].cleanupExpiredSessions
 );
 
 crons.daily(

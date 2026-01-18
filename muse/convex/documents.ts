@@ -7,13 +7,22 @@
 
 import { v } from "convex/values";
 import { query, mutation, internalMutation, type MutationCtx } from "./_generated/server";
-import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { verifyProjectAccess, verifyDocumentAccess, verifyProjectEditor } from "./lib/auth";
 import { hashText } from "./lib/contentHash";
 import { isTaskAvailable, type AITaskSlug, type TierId } from "./lib/providers";
 import type { AnalysisJobKind } from "./ai/analysisJobs";
 import type { DeleteDocumentResult } from "../packages/agent-protocol/src/tools";
+
+const internalApi = require("./_generated/api").internal as Record<string, any>;
+
+async function resolveProjectProactivityEnabled(
+  ctx: MutationCtx,
+  projectId: Id<"projects">
+): Promise<boolean> {
+  const project = await ctx.db.get(projectId);
+  return project?.proactivityEnabled !== false;
+}
 
 async function enqueueDocumentAnalysisJobs(
   ctx: MutationCtx,
@@ -25,10 +34,18 @@ async function enqueueDocumentAnalysisJobs(
     source: "document_create" | "document_update";
   }
 ): Promise<void> {
+  const proactivityEnabled = await resolveProjectProactivityEnabled(
+    ctx,
+    params.projectId
+  );
+  if (!proactivityEnabled) {
+    return;
+  }
+
   const contentHash = await hashText(params.contentText);
   const debounceMs = 3000;
   const tierId = (await ctx.runQuery(
-    (internal as any)["lib/entitlements"].getUserTierInternal,
+    internalApi["lib/entitlements"].getUserTierInternal,
     { userId: params.userId }
   )) as TierId;
 
@@ -46,7 +63,7 @@ async function enqueueDocumentAnalysisJobs(
 
   await Promise.all(
     eligibleJobs.map((jobSpec) =>
-      ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueAnalysisJob, {
+      ctx.runMutation(internalApi["ai/analysisJobs"].enqueueAnalysisJob, {
         projectId: params.projectId,
         userId: params.userId,
         documentId: params.documentId,
@@ -61,7 +78,7 @@ async function enqueueDocumentAnalysisJobs(
   if (eligibleJobs.length > 0) {
     await ctx.scheduler.runAfter(
       debounceMs,
-      (internal as any)["ai/analysis/processAnalysisJobs"].processAnalysisJobs,
+      internalApi["ai/analysis/processAnalysisJobs"].processAnalysisJobs,
       { batchSize: 10 }
     );
   }
@@ -235,7 +252,7 @@ export const create = mutation({
       updatedAt: now,
     });
 
-    await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
+    await ctx.runMutation(internalApi["ai/analysisJobs"].enqueueEmbeddingJob, {
       projectId: args.projectId,
       userId,
       targetType: "document",
@@ -298,7 +315,7 @@ export const update = mutation({
 
     const document = await ctx.db.get(id);
     if (document) {
-      await ctx.runMutation((internal as any)["ai/analysisJobs"].enqueueEmbeddingJob, {
+      await ctx.runMutation(internalApi["ai/analysisJobs"].enqueueEmbeddingJob, {
         projectId: document.projectId,
         userId,
         targetType: "document",
@@ -343,7 +360,7 @@ export const deleteDocument = mutation({
     });
 
     try {
-      await ctx.runMutation((internal as any).revisions.createRevisionInternal, {
+      await ctx.runMutation(internalApi["revisions"].createRevisionInternal, {
         projectId: document.projectId,
         documentId: document._id,
         snapshotJson: JSON.stringify(document.content ?? null),
@@ -437,7 +454,7 @@ export const removeInternal = internalMutation({
       .collect();
 
     for (const child of children) {
-      await ctx.runMutation(internal.documents.removeInternal, {
+      await ctx.runMutation(internalApi["documents"].removeInternal, {
         id: child._id,
         projectId,
       });
@@ -453,14 +470,14 @@ export const removeInternal = internalMutation({
       await ctx.db.delete(mention._id);
     }
 
-    await ctx.runMutation(internal.maintenance.enqueueVectorDeleteJob, {
+    await ctx.runMutation(internalApi["maintenance"].enqueueVectorDeleteJob, {
       projectId,
       targetType: "document",
       targetId: id,
       reason: "document_deleted",
     });
 
-    await ctx.runMutation((internal as any)["ai/analysisJobs"].deleteEmbeddingJobsForTarget, {
+    await ctx.runMutation(internalApi["ai/analysisJobs"].deleteEmbeddingJobsForTarget, {
       projectId,
       targetType: "document",
       targetId: id,
@@ -490,7 +507,7 @@ export const remove = mutation({
     }
 
     // Delegate to internal mutation for recursive delete
-    await ctx.runMutation(internal.documents.removeInternal, {
+    await ctx.runMutation(internalApi["documents"].removeInternal, {
       id: args.id,
       projectId: document.projectId,
     });

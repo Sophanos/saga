@@ -211,6 +211,10 @@ Full corpus                  Current context only
 3. **On Flow Mode exit**: Sync any new learnings back to main corpus
 4. **Cleanup**: Remove session collection after idle timeout
 
+Implementation status (2026-01-18):
+- Flow runtime sessions are tracked in Convex (`flowRuntimeSessions`) with `coherenceSignals` for audit.
+- Session vectors are stored in Qdrant (`saga_sessions` default), with cleanup on Flow exit + cron sweep.
+
 ### What Goes in Session
 
 - Active document embeddings
@@ -218,6 +222,32 @@ Full corpus                  Current context only
 - Recent style memories
 - Relevant policy/decision canon
 - Character voice centroids (fiction)
+
+### Skills-Aware Memory
+
+Facet detection (skills) selects and blends the memory scope for each session.
+This makes retrieval policy-driven instead of prompt-driven.
+
+Core idea:
+
+- Facets define retrieval policy (collections, weights, and top-K).
+- Session vectors are populated per facet and blended by facet weights.
+- Prompts stay minimal; skill profiles drive what memory is loaded.
+
+Flow:
+
+1. Detect active facets (template, explicit setting, folder/path, content).
+2. Build a retrieval plan from facet profiles.
+3. Load session vectors (text + image) from Qdrant + Convex caches.
+4. Run checks and coaching with facet-specific priorities.
+
+### Document- and Task-Aware Routing
+
+Skill-aware memory is both document-aware and task-aware:
+
+- Document-aware: doc type, folder path, template, and content signals influence facet weights.
+- Task-aware: the current action (lint, coach, summarize, research) modifies retrieval policy,
+  choosing different collections, top-K, and fusion weights.
 
 ---
 

@@ -6,8 +6,11 @@ import { runCoherenceLintJob } from "./handlers/coherenceLintJob";
 import { runDetectEntitiesJob } from "./handlers/detectEntitiesJob";
 import { runDigestDocumentJob } from "./handlers/digestDocumentJob";
 import { runEmbeddingGenerationJob } from "./handlers/embeddingGenerationJob";
+import { runImpactPrsJob } from "./handlers/impactPrsJob";
 import { runImageEvidenceSuggestionsJob } from "./handlers/imageEvidenceSuggestionsJob";
+import { runInvariantCheckJob } from "./handlers/invariantCheckJob";
 import { runPolicyCheckJob } from "./handlers/policyCheckJob";
+import { runWatchlistScanJob } from "./handlers/watchlistScanJob";
 import type { AnalysisHandlerResult } from "./handlers/types";
 import { isDeepInfraConfigured } from "../../lib/embeddings";
 import { isQdrantConfigured } from "../../lib/qdrant";
@@ -42,6 +45,12 @@ async function dispatchJob(ctx: ActionCtx, job: AnalysisJobRecord): Promise<Anal
       return runEmbeddingGenerationJob(ctx, job);
     case "image_evidence_suggestions":
       return runImageEvidenceSuggestionsJob(ctx, job);
+    case "impact_prs":
+      return runImpactPrsJob(ctx, job);
+    case "invariant_check":
+      return runInvariantCheckJob(ctx, job);
+    case "watchlist_scan":
+      return runWatchlistScanJob(ctx, job);
     default:
       throw new Error(`Unknown analysis job kind: ${job.kind}`);
   }

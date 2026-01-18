@@ -12,7 +12,22 @@
 
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getAuthUserId, isVisibleToUser, verifyProjectAccess } from "./lib/auth";
+
+function filterSignalsByVisibility(args: {
+  signals: Array<{ visibility?: unknown }>;
+  userId: string;
+  role: "owner" | "editor" | "viewer";
+}): Array<{ visibility?: unknown }> {
+  const { signals, userId, role } = args;
+  return signals.filter((signal) =>
+    isVisibleToUser({
+      visibility: signal.visibility as any,
+      userId,
+      role,
+    })
+  );
+}
 
 // =============================================================================
 // Queries
@@ -44,8 +59,7 @@ export const listByProject = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, { projectId, status, signalType, limit = 50 }) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) return [];
+    const { userId, role } = await verifyProjectAccess(ctx, projectId);
 
     let q;
 
@@ -64,13 +78,14 @@ export const listByProject = query({
     }
 
     const signals = await q.take(limit);
+    const visibleSignals = filterSignalsByVisibility({ signals, userId, role });
 
     // Filter by signal type if specified
     if (signalType) {
-      return signals.filter((s) => s.signalType === signalType);
+      return visibleSignals.filter((s) => s.signalType === signalType);
     }
 
-    return signals;
+    return visibleSignals;
   },
 });
 
@@ -82,8 +97,7 @@ export const getUnreadCount = query({
     projectId: v.id("projects"),
   },
   handler: async (ctx, { projectId }) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) return 0;
+    const { userId, role } = await verifyProjectAccess(ctx, projectId);
 
     const signals = await ctx.db
       .query("pulseSignals")
@@ -92,7 +106,7 @@ export const getUnreadCount = query({
       )
       .collect();
 
-    return signals.length;
+    return filterSignalsByVisibility({ signals, userId, role }).length;
   },
 });
 
@@ -105,9 +119,15 @@ export const get = query({
   },
   handler: async (ctx, { signalId }) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) return null;
-
-    return ctx.db.get(signalId);
+    const signal = await ctx.db.get(signalId);
+    if (!signal) return null;
+    const { role } = await verifyProjectAccess(ctx, signal.projectId);
+    const visible = isVisibleToUser({
+      visibility: signal.visibility as any,
+      userId,
+      role,
+    });
+    return visible ? signal : null;
   },
 });
 
@@ -138,15 +158,20 @@ export const create = mutation({
     sourceAgentId: v.optional(v.string()),
     sourceStreamId: v.optional(v.string()),
     metadata: v.optional(v.any()),
+    visibility: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    const { userId } = await verifyProjectAccess(ctx, args.projectId);
 
     const now = Date.now();
 
     return ctx.db.insert("pulseSignals", {
       ...args,
+      visibility:
+        args.visibility && typeof args.visibility === "object"
+          ? args.visibility
+          : { scope: "project" },
+      createdByUserId: userId,
       status: "unread",
       createdAt: now,
       updatedAt: now,
@@ -162,11 +187,9 @@ export const markRead = mutation({
     signalId: v.id("pulseSignals"),
   },
   handler: async (ctx, { signalId }) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
-
     const signal = await ctx.db.get(signalId);
     if (!signal) throw new Error("Signal not found");
+    await verifyProjectAccess(ctx, signal.projectId);
 
     await ctx.db.patch(signalId, {
       status: "read",
@@ -183,8 +206,7 @@ export const markAllRead = mutation({
     projectId: v.id("projects"),
   },
   handler: async (ctx, { projectId }) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    const { userId, role } = await verifyProjectAccess(ctx, projectId);
 
     const signals = await ctx.db
       .query("pulseSignals")
@@ -193,10 +215,15 @@ export const markAllRead = mutation({
       )
       .collect();
 
+    const visibleSignals = filterSignalsByVisibility({
+      signals,
+      userId,
+      role,
+    });
     const now = Date.now();
 
     await Promise.all(
-      signals.map((signal) =>
+      visibleSignals.map((signal) =>
         ctx.db.patch(signal._id, {
           status: "read",
           updatedAt: now,
@@ -204,7 +231,7 @@ export const markAllRead = mutation({
       )
     );
 
-    return { updated: signals.length };
+    return { updated: visibleSignals.length };
   },
 });
 
@@ -217,10 +244,18 @@ export const dismiss = mutation({
   },
   handler: async (ctx, { signalId }) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
-
     const signal = await ctx.db.get(signalId);
     if (!signal) throw new Error("Signal not found");
+    const { role } = await verifyProjectAccess(ctx, signal.projectId);
+    if (
+      !isVisibleToUser({
+        visibility: signal.visibility as any,
+        userId,
+        role,
+      })
+    ) {
+      throw new Error("Access denied");
+    }
 
     await ctx.db.patch(signalId, {
       status: "dismissed",
@@ -239,10 +274,18 @@ export const markActioned = mutation({
   },
   handler: async (ctx, { signalId, metadata }) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
-
     const signal = await ctx.db.get(signalId);
     if (!signal) throw new Error("Signal not found");
+    const { role } = await verifyProjectAccess(ctx, signal.projectId);
+    if (
+      !isVisibleToUser({
+        visibility: signal.visibility as any,
+        userId,
+        role,
+      })
+    ) {
+      throw new Error("Access denied");
+    }
 
     await ctx.db.patch(signalId, {
       status: "actioned",
@@ -261,8 +304,7 @@ export const cleanupDismissed = mutation({
     olderThanDays: v.optional(v.number()),
   },
   handler: async (ctx, { projectId, olderThanDays = 7 }) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    const { userId, role } = await verifyProjectAccess(ctx, projectId);
 
     const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
 
@@ -273,7 +315,9 @@ export const cleanupDismissed = mutation({
       )
       .collect();
 
-    const toDelete = signals.filter((s) => s.createdAt < cutoff);
+    const toDelete = filterSignalsByVisibility({ signals, userId, role }).filter(
+      (s) => s.createdAt < cutoff
+    );
 
     await Promise.all(toDelete.map((signal) => ctx.db.delete(signal._id)));
 
