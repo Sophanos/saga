@@ -58,7 +58,7 @@ const adminSubject = process.env.CONVEX_ADMIN_SUBJECT ?? "admin|smoke";
 
 const { ConvexHttpClient } = await import("convex/browser");
 const { anyApi } = await import("convex/server");
-const { internal } = await import("./convex/_generated/api.js");
+const { internal } = await import(`${process.cwd()}/convex/_generated/api.js`);
 
 const tokenClient = token ? new ConvexHttpClient(convexUrl) : null;
 const adminClient = adminKey ? new ConvexHttpClient(convexUrl) : null;
